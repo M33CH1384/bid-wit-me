@@ -565,13 +565,20 @@
   .lobby-v3 .lobby-share { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
   /* (1) dock: two wrapped rows + the media bar */
   .lobby-dock { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
-  .lobby-dock .lobby-start { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; max-width: 560px; }
+  /* flex-direction: row is LOAD-BEARING (w4b): the base .lobby-start is a
+     column flex, so without it every flex-basis below became a HEIGHT —
+     on prod the dock ballooned to 609px (START 200 tall, LEAVE 168) and
+     crushed the stage to a sliver. In row terms the bases are widths:
+     meta row (teams + status) wraps above the action row (START/waiting
+     beside LEAVE), and 160 + 150 + 8 gap fits the narrowest dock (351px
+     of content at 375 wide) so the action row never wraps. */
+  .lobby-dock .lobby-start { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 8px; max-width: 560px; }
   .lobby-dock .lobby-teams { order: 1; margin: 0; flex-wrap: nowrap; }
   .lobby-dock .lobby-teams-note { order: 1; margin: 0; }
   .lobby-dock .lobby-status { order: 2; flex: 1 1 130px; margin: 0; justify-content: flex-start; }
-  .lobby-dock .lobby-start > .primary.big { order: 3; flex: 1 1 200px; width: auto; min-height: 48px; padding: 12px 14px; }
-  .lobby-dock .waiting-block { order: 3; flex: 1 1 200px; min-height: 48px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
-  .lobby-dock .leave-table-btn { order: 4; flex: 0 1 168px; width: auto; min-height: 48px; padding: 12px; }
+  .lobby-dock .lobby-start > .primary.big { order: 3; flex: 1 1 160px; width: auto; min-height: 48px; padding: 12px 14px; }
+  .lobby-dock .waiting-block { order: 3; flex: 1 1 160px; min-height: 48px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+  .lobby-dock .leave-table-btn { order: 4; flex: 0 1 150px; width: auto; min-height: 48px; padding: 12px; }
   .lobby-dock .exit-divider { display: none; }
   .lobby-dock .err { order: 5; flex: 1 1 100%; margin: 4px 0 0; }
   .dock-bar { max-width: 560px; margin: 6px auto 0; gap: 8px; }
@@ -604,4 +611,85 @@
   .dock-bar { margin: 0; max-width: none; }
   .dock-bar .av-btn { flex: 0 0 64px; }
   .dock-spacer { flex: 0 0 136px; }
+}
+
+/* ---------- lobby v8b: the prod re-sweep follow-up (design audit 2026-10-25) ----------
+   Three defects v8's static model missed, all proven on production:
+   (1) THE DOCK BALLOON — fixed in v8A above: the start block now declares
+   flex-direction: row explicitly (the base .lobby-start is a column, so
+   v8's row-term flex-bases had become heights: --dock-h measured 609px,
+   START 200px tall, the stage crushed to ~5px seat slivers, and every
+   portrait/landscape overlap in the re-sweep downstream of it). The dock
+   budgets are re-derived in row terms in layout-lobby-fit.test.ts.
+   (2) THE WIDE + BOT PILL was 47×19: v8's 44px strip lived only in the
+   non-wide tier. The wide gate below gives the open card the same strip
+   + reserve, and the wide seat card grows 120 → 148px so the open stack
+   (7 pad + 15 label zone + 52 ring + ~22 plate + 44 strip ≈ 144) still
+   closes inside it.
+   (3) THE 1024–1279 WIDE TIER shared one column between .lobby-main and
+   the chat (tablet-rail areas "settings main" / "settings chat"), but
+   main was a scroll box whose content (~920px) far exceeded its row —
+   its unscrolled tail (teams pencil, CAM/MIC, START) rect-collided with
+   the chat input below. The tier is now a budgeted stage like v7/v8:
+   the chat row is a definite 168px (panel pad 12 + head 30 + list 72 +
+   input row 54), the head is one row, the table's felt is a one-row
+   strip (the diamond's three rows cannot close beside a 168px chat in
+   696–748px of column — the same call v8B made for landscape phones),
+   and the start block is two explicit rows. Nothing in the column can
+   overflow into the chat row: every element is in flow and the felt is
+   the only elastic piece, absorbing the slack (≥50px at both sizes).
+   At ≥1280 the three-column layout is unchanged (chat is its own
+   full-height column; main/settings scroll independently, by design).
+   Also here: the 768–899 stack (settings row over main over chat) let
+   the v7 stage formula over-run the dock — main's height subtracts the
+   dock from the full viewport but the settings row sits above it, so
+   the stage ended a settings-height BELOW the dock top and the top
+   seat met the dock's team pencil. The tier's cols are now
+   height-bounded by the same calc, main flexes into its row, and the
+   stage ends at the dock top again. Geometry only — no theme selectors. */
+
+/* (2) wide tap floor: the + BOT strip, all wide sizes */
+@media (min-width: 1024px) and (min-height: 600px) {
+  .seat-card { height: 148px; }
+  .seat-bot { left: 0; right: 0; bottom: 0; transform: none; width: 100%; height: 44px; padding: 0 8px; border-radius: 0 0 12px 12px; display: flex; align-items: center; justify-content: center; font-size: 12px; background: rgba(255,255,255,.1); }
+  .seat-hit { padding-bottom: 44px; }
+}
+
+/* (3) the 1024–1279 tier: one budgeted column (main over chat) */
+@media (min-width: 1024px) and (max-width: 1279px) and (min-height: 600px) {
+  .lobby-cols { grid-template-rows: minmax(0, 1fr) 168px; }
+  .lobby-main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  /* head: one row (the wordmark stays hidden in this tier, as on phones —
+     title + code ticket carry the head; the row is 62px, not ~214 stacked) */
+  .lobby-v3 .lobby-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; text-align: left; margin-bottom: 8px; }
+  .lobby-v3 .lobby-head > .tour-banner, .lobby-v3 .lobby-head > .muted { flex: 1 1 100%; margin: 0; }
+  .lobby-v3 .lobby-head .logo.small { display: none; }
+  .lobby-v3 .lobby-pick-title { flex: 0 1 auto; margin: 0; }
+  .lobby-v3 .lobby-share { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+  /* table stage: the felt flexes; teams + media bar are fixed rows inside it */
+  .lobby-main .lobby-table { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
+  .lobby-main .mini-felt { flex: 1 1 auto; min-height: 0; height: auto; width: 100%; max-width: none;
+    grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "left top center right bottom"; padding: 10px 14px; gap: 8px; }
+  .lobby-main .mini-felt.n3 { grid-template-areas: "left center right bottom ."; }
+  /* start block: two explicit rows under the table (status, then START
+     beside LEAVE) — flex-direction: row for the same reason as the dock:
+     the base .lobby-start is a column and these flex-bases are widths */
+  .lobby-main .lobby-start { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 18px; }
+  .lobby-main .lobby-status { order: 2; flex: 1 1 100%; margin: 0; justify-content: flex-start; }
+  .lobby-main .lobby-start > .primary.big { order: 3; flex: 1 1 160px; width: auto; min-height: 48px; }
+  .lobby-main .waiting-block { order: 3; flex: 1 1 160px; min-height: 48px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+  .lobby-main .leave-table-btn { order: 4; flex: 0 1 150px; width: auto; min-height: 48px; }
+  .lobby-main .exit-divider { display: none; }
+  .lobby-main .lobby-start .err { order: 5; flex: 1 1 100%; margin: 4px 0 0; }
+}
+
+/* the 768–899 stack: bound the column so the stage ends at the dock top */
+@media (min-width: 768px) and (max-width: 899px) and (min-height: 600px) {
+  .lobby-cols { height: calc(100dvh - (64px + env(safe-area-inset-top)) - var(--dock-h, calc(200px + env(safe-area-inset-bottom)))); grid-template-rows: minmax(0, auto) minmax(0, 1fr) 0px; }
+  .lobby-main { height: auto; min-height: 0; }
+  .lobby-settings { min-height: 0; overflow-y: auto; }
+}
+@media (min-width: 768px) and (max-width: 899px) and (min-height: 600px) and (max-height: 719px) {
+  .lobby-cols { height: calc(100dvh - (58px + env(safe-area-inset-top)) - var(--dock-h, calc(200px + env(safe-area-inset-bottom)))); }
 }

@@ -20,6 +20,29 @@ import { describe, expect, it } from 'vitest';
  *  (3) phone landscape is a stage: a clamp()-wide rail (head over
  *      venue/settings, scrolling inside its own box) beside a one-row
  *      strip felt, with the dock as a two-column grid.
+ *
+ * Lobby v8b (the 2026-10-25 prod re-sweep follow-up) repairs what v8's
+ * static model missed — the re-sweep ran the LIVE build and measured:
+ *  (1) THE DOCK BALLOON: v8's start-block rules were written as row-flex
+ *      shares but never set flex-direction, and the shipped base
+ *      .lobby-start is a COLUMN — so every flex-basis became a height
+ *      (--dock-h measured 609px on prod; START 196×200; seats ~60×5
+ *      slivers). v8b makes the direction explicit in v8A and re-derives
+ *      every dock budget below in ROW terms; the cascade pin here fails
+ *      if the v8 tier's effective direction is ever not row again.
+ *  (2) THE WIDE + BOT pill rendered 47×19: the 44px strip lived only in
+ *      the non-wide tier. It is now in the wide gate too, and the wide
+ *      seat card grows 120 → 148px so the open stack still closes.
+ *  (3) THE 1024–1279 WIDE TIER: main and chat share one column (rail
+ *      areas "settings main" / "settings chat") and main's unscrolled
+ *      tail (pencil, CAM/MIC, START) rect-collided with the chat input.
+ *      The tier is now a budgeted stage: a definite 168px chat row with
+ *      itemized internals, a one-row head, a strip felt, two-row start.
+ *  (4) THE 768–899 STACK: settings sit in a grid row ABOVE main, so the
+ *      v7 stage height (viewport − chrome − dock) over-ran the dock top
+ *      by the settings row and the top seat met the dock's team pencil.
+ *      The tier's cols are now height-bounded by the same calc and main
+ *      flexes into its row — the stage ends at the dock top again.
  * These tests recompute every budget from the shipped CSS constants, in
  * the house idiom, for all 11 audit sizes × the worst states
  * (partnership host — team chips + badges + status present — unless a
@@ -32,10 +55,15 @@ const lobby = readFileSync(new URL('../src/online/Lobby.tsx', import.meta.url), 
 const v7 = css.slice(css.indexOf('lobby v7'));
 const stage = v7.slice(0, v7.indexOf('/* very short screens'));
 const compact = v7.slice(v7.indexOf('/* very short screens'), v7.indexOf('/* landscape phones'));
-const v8 = css.slice(css.indexOf('lobby v8'));
+const v8 = css.slice(css.indexOf('lobby v8'), css.indexOf('lobby v8b'));
+const v8all = css.slice(css.indexOf('lobby v8'));
+const v8b = css.slice(css.indexOf('lobby v8b'));
 const v8tap = v8.slice(0, v8.indexOf('@media (max-width: 1023px)'));
 const v8A = v8.slice(v8.indexOf('@media (max-width: 1023px)'), v8.indexOf('/* (3) phone landscape stage'));
 const v8B = v8.slice(v8.indexOf('/* (3) phone landscape stage'));
+const v8bWide = v8b.slice(v8b.indexOf('@media (min-width: 1024px) and (min-height: 600px)'), v8b.indexOf('@media (min-width: 1024px) and (max-width: 1279px)'));
+const v8bTier = v8b.slice(v8b.indexOf('@media (min-width: 1024px) and (max-width: 1279px)'), v8b.indexOf('@media (min-width: 768px)'));
+const v8bTablet = v8b.slice(v8b.indexOf('@media (min-width: 768px)'));
 
 const num = (re: RegExp, s: string) => {
   const m = s.match(re);
@@ -49,13 +77,17 @@ const clamp3 = (re: RegExp, s: string): [number, number, number] => {
 };
 const clampAt = (t: [number, number, number], unit: number) => Math.min(t[2], Math.max(t[0], t[1] * unit));
 
-/** Constants parsed from the shipped v8 rules. */
+/** Constants parsed from the shipped v8/v8b rules. */
 const K = {
   dockFallback: num(/var\(--dock-h, calc\((\d+)px \+ env\(safe-area-inset-bottom\)\)\)/, stage),
   dockPadY: num(/\.lobby-dock \{ padding: (\d+)px 12px/, v8A) * 2,
   startRowGap: num(/\.lobby-dock \.lobby-start \{[^}]*gap: (\d+)px 8px/, v8A),
   startActionH: num(/\.lobby-dock \.lobby-start > \.primary\.big \{[^}]*min-height: (\d+)px/, v8A),
   leaveH: num(/\.lobby-dock \.leave-table-btn \{[^}]*min-height: (\d+)px/, v8A),
+  startBasis: num(/\.lobby-dock \.lobby-start > \.primary\.big \{[^}]*flex: 1 1 (\d+)px/, v8A),
+  waitBasis: num(/\.lobby-dock \.waiting-block \{[^}]*flex: 1 1 (\d+)px/, v8A),
+  leaveBasis: num(/\.lobby-dock \.leave-table-btn \{[^}]*flex: 0 1 (\d+)px/, v8A),
+  statusBasis: num(/\.lobby-dock \.lobby-status \{[^}]*flex: 1 1 (\d+)px/, v8A),
   barMarginTop: num(/\.dock-bar \{[^}]*margin: (\d+)px auto 0/, v8A),
   barH: num(/\.dock-bar \.av-btn, \.dock-spacer \{ height: (\d+)px;/, v8A),
   headMargin: num(/\.lobby-v3 \.lobby-head \{[^}]*margin-bottom: (\d+)px/, v8A),
@@ -74,6 +106,24 @@ const K = {
   railMax: num(/grid-template-columns: clamp\(\d+px, [\d.]+vw, (\d+)px\)/, v8B),
   dockPadYB: num(/\.lobby-dock \{[^}]*padding: (\d+)px 12px/, v8B) * 2,
   barBtnW: num(/\.dock-bar \.av-btn \{ flex: 0 0 (\d+)px; \}/, v8B),
+  /* v8b */
+  cardWideH: num(/\.seat-card \{ height: (\d+)px; \}/, v8bWide),
+  botStripWide: num(/\.seat-bot \{[^}]*height: (\d+)px/, v8bWide),
+  hitPadWide: num(/\.seat-hit \{ padding-bottom: (\d+)px; \}/, v8bWide),
+  chatRowH: num(/grid-template-rows: minmax\(0, 1fr\) (\d+)px/, v8bTier),
+  tierHeadMargin: num(/\.lobby-v3 \.lobby-head \{[^}]*margin-bottom: (\d+)px/, v8bTier),
+  tierStartGap: num(/\.lobby-main \.lobby-start \{[^}]*gap: (\d+)px 8px/, v8bTier),
+  tierActionH: num(/\.lobby-main \.lobby-start > \.primary\.big \{[^}]*min-height: (\d+)px/, v8bTier),
+  panelPadWide: num(/\.panel \{[^}]*padding: (\d+)px \d+px;/, styles),
+  panelPadXWide: num(/\.panel \{[^}]*padding: \d+px (\d+)px;/, styles),
+  chatInputPadY: (() => { const m = styles.match(/\.chat-input \{[^}]*padding: (\d+)px \d+px (\d+)px;/); if (!m) throw new Error('chat-input padding not found'); return parseFloat(m[1]!) + parseFloat(m[2]!); })(),
+  chatListMin: num(/\.lobby-chat \.chat-list \{[^}]*min-height: (\d+)px/, css),
+  chatInputH: num(/\.lobby-chat \.chat-input input \{ min-height: (\d+)px/, v8tap),
+  avBtnH: num(/\.av-btn \{[^}]*height: (\d+)px/, css),
+  seatTopZoneWide: num(/\.seat-top \{[^}]*min-height: (\d+)px/, css),
+  seatRingWide: num(/\.seat-ring \{[^}]*width: (\d+)px/, css),
+  hitTopWide: num(/\.seat-hit \{ all: unset;[^}]*padding: (\d+)px 4px 24px;/, css),
+  hitGapWide: num(/\.seat-hit \{ all: unset;[^}]*gap: (\d+)px;/, css),
 };
 /** v7 seat-stack constants (shared with seat-fit.test.ts's model). */
 const labelZone = clamp3(/\.seat-top \{[^}]*height: clamp\(([\d.]+)px, ([\d.]+)cqh, ([\d.]+)px\)/, stage);
@@ -90,40 +140,78 @@ const emptyRingFB = num(/\.seat-ring\.empty \{ width: min\(44px, ([\d.]+)cqh\)/,
 const HEAD_A = 72; // head row: share ticket (≤64) + margin, screens >719 tall
 const HEAD_A_COMPACT = 61; // after the ≤719px head trims
 const HEAD_B = 87; // rail head: title 24 + gap 10 + share ticket 53
-const META_TALL = 47; // status wrapped to 3 lines (13px font), ≤430px wide
-const META_COMPACT = 45; // status wrapped to 3 lines (12px font), ≤719 tall
-const META_LINE = 17; // status on one line (tablet portrait)
-const META_B = 30; // landscape start column: status wrapped to 2 lines
 const VENUE_PANEL = 130; // title + 44px select + 3-line blurb + panel padding
 const VENUE_REACH = 76; // title + select + padding: reachable with no scroll
 const LABEL_MIN = 46; // "SEAT 1" at the 9px floor font (~23px ink + 5px tracking) + team chip 14 + gap 4
+/** Dock meta-row model, measured on the prod re-sweep (768×1024 shot):
+ * the two team pills span ≈240px at the dock's 11.5px pill size; the
+ * status line "1 of 4 seated · waiting on 3 · Start fills with bots"
+ * spans ≈245px of ink at 13px (≈231 at the compact 12px). */
+const TEAMS_W = 248;
+const TEAMS_H = 24;
+const STATUS_W: Record<number, number> = { 13: 250, 12: 231 };
+const STATUS_LH: Record<number, number> = { 13: 17, 12: 16 };
+const SETTINGS_768 = 210; // venue panel ~124 + margin 18 + closed settings panel ~68
+const HEAD_TIER_ROW = 62; // one-row head in the 1024–1279 tier: the code ticket is the tall item
+const TEAMS_TIER = 40; // margin 12 + pill 24 + margin 4 (inside the table panel)
+const MEDIA_TIER = 56; // margin-top 8 + the 48px CAM/MIC row (inside the table panel)
+const START_MARGIN_TIER = 18;
+const STATUS_TIER_H = 20; // one status line at full column width
+const LC_HEAD = 30; // chat head: 13px line ≈17 + padding 12 + border 1
+const PLATE_WIDE = 22; // SIT HERE plate in wide: 12px line ≈14.4 + padding 6 + margin-top 2
 
 /**
+ * The meta row in ROW terms (v8b): teams and the status share a row when
+ * teams + gap + the status's flex basis fit the start block's content
+ * width; the status then wraps inside what is left. Otherwise the status
+ * wraps to its own row under the teams, at full width. Either way the
+ * ACTION row is separate and 48px — it can never become a height again
+ * (the pin below asserts the row fits: START basis + LEAVE basis + gap).
+ */
+function metaRow(contentW: number, font: 12 | 13) {
+  const ink = STATUS_W[font]!;
+  const lh = STATUS_LH[font]!;
+  if (TEAMS_W + 8 + K.statusBasis <= contentW) {
+    return Math.max(TEAMS_H, Math.ceil(ink / (contentW - TEAMS_W - 8)) * lh);
+  }
+  return TEAMS_H + K.startRowGap + Math.ceil(ink / contentW) * lh;
+}
+/**
  * Worst-state dock height (partnership host, seated): padding + meta row
- * + row gap + action row + bar margin + media bar (+ safe-area bottom).
- * The action row is START (48) beside LEAVE (48) — never two stacked rows.
+ * + row gap + action row (START beside LEAVE, each 48) + bar margin +
+ * media bar (+ safe-area bottom). Row model — no basis is a height.
  */
 function dockA(h: number, w: number, sbot: number) {
-  const meta = h <= 719 ? META_COMPACT : w <= 430 ? META_TALL : META_LINE;
-  return K.dockPadY + sbot + meta + K.startRowGap + Math.max(K.startActionH, K.leaveH) + K.barMarginTop + K.barH;
+  const font = (h <= 719 ? 12 : 13) as 12 | 13;
+  const contentW = Math.min(w - 24, 560);
+  return K.dockPadY + sbot + metaRow(contentW, font) + K.startRowGap + Math.max(K.startActionH, K.leaveH) + K.barMarginTop + K.barH;
 }
 /** Landscape dock: padding + (meta + gap + action row) beside the bar. */
-function dockB(sbot: number) {
-  return K.dockPadYB + sbot + META_B + K.startRowGap + K.startActionH;
+function dockB(w: number, sbot: number) {
+  const startW = w - 24 - 12 - (3 * K.barBtnW + 2 * 8);
+  return K.dockPadYB + sbot + metaRow(startW, 12) + K.startRowGap + K.startActionH;
 }
 
 const PORTRAIT = [
   { name: '375×667', w: 375, h: 667, sat: 20, sbot: 0 },
   { name: '390×844', w: 390, h: 844, sat: 47, sbot: 34 },
   { name: '430×932', w: 430, h: 932, sat: 59, sbot: 34 },
-  { name: '768×1024', w: 768, h: 1024, sat: 24, sbot: 0 },
 ] as const;
+const TABLET = [{ name: '768×1024', w: 768, h: 1024, sat: 24, sbot: 0 }] as const;
 const LANDSCAPE = [
   { name: '667×375', w: 667, h: 375, sat: 0, sbot: 0 },
   { name: '844×390', w: 844, h: 390, sat: 0, sbot: 21 },
   { name: '932×430', w: 932, h: 430, sat: 0, sbot: 21 },
 ] as const;
 const WIDE = ['1024×768', '1180×820', '1440×900', '1920×1080'] as const;
+const TIER = [
+  { name: '1024×768', w: 1024, h: 768 },
+  { name: '1180×820', w: 1180, h: 820 },
+] as const;
+const WIDE_FULL = [
+  { name: '1440×900', w: 1440, h: 900 },
+  { name: '1920×1080', w: 1920, h: 1080 },
+] as const;
 
 /** Portrait geometry: v7 stage with the v8 head row + compact dock. */
 function portraitFit(s: (typeof PORTRAIT)[number]) {
@@ -151,9 +239,30 @@ function portraitFit(s: (typeof PORTRAIT)[number]) {
   return { dock, stageH, feltH, rowH, cqh, openStack, cardH: Math.min(rowH, K.cardMaxH), cardW, dockTop: s.h - dock, panelBottom: top + stageH };
 }
 
+/** Tablet portrait (768–899 stack): settings row over a bounded stage. */
+function tabletFit(s: (typeof TABLET)[number]) {
+  const top = 64 + s.sat;
+  const dock = dockA(s.h, s.w, s.sbot);
+  const colsH = s.h - top - dock;
+  const mainH = colsH - SETTINGS_768 - 12;
+  const feltH = mainH - HEAD_A - K.panelPad;
+  const rowH = (feltH - K.feltBorder - K.feltPadY - K.rowGap) / 3;
+  const cqh = (feltH - K.feltBorder - K.feltPadY) / 100;
+  const openStack =
+    clampAt(hitPadTop, cqh) +
+    clampAt(labelZone, cqh) +
+    Math.min(52, emptyRingF * cqh) +
+    clampAt([9.5, 3, 12], cqh) * 1.15 + 2 * Math.min(1, 0.3 * cqh) +
+    K.hitPadBottom;
+  const contentW = Math.min(s.w, 560) - 32;
+  const feltInnerW = contentW - K.panelPad - K.feltBorder - 40;
+  const cardW = Math.min((feltInnerW - 2 * 6) / 3, 104);
+  return { dock, colsH, mainH, feltH, rowH, openStack, cardH: Math.min(rowH, K.cardMaxH), cardW, dockTop: s.h - dock, stackBottom: top + SETTINGS_768 + 12 + mainH };
+}
+
 /** Landscape geometry: rail + strip felt + two-column dock. */
 function landscapeFit(s: (typeof LANDSCAPE)[number]) {
-  const dock = dockB(s.sbot);
+  const dock = dockB(s.w, s.sbot);
   const stageH = s.h - (58 + s.sat) - dock;
   const feltH = stageH - K.panelPad;
   const rowH = feltH - K.feltBorder - K.feltPadYB;
@@ -172,9 +281,28 @@ function landscapeFit(s: (typeof LANDSCAPE)[number]) {
   return { dock, stageH, feltH, rowH, openStack, cardH: Math.min(rowH, K.cardMaxH), cardW, rail, settingsH, dockTop: s.h - dock, colsBottom: 58 + s.sat + stageH };
 }
 
+/** The 1024–1279 wide tier: one budgeted column (main over a 168px chat). */
+function tierFit(s: (typeof TIER)[number]) {
+  const colH = s.h - 72; // .lobby-v3 wide padding: 56 top + 16 bottom (safe-area 0 in the model)
+  const colW = s.w - 40 - 452 - 14; // v3 padding 20×2, settings rail 452, grid gap 14
+  const mainH = colH - 14 - K.chatRowH;
+  const chatList = K.chatRowH - K.panelPadWide * 2 - LC_HEAD - (K.chatInputPadY + K.chatInputH);
+  const fixed =
+    HEAD_TIER_ROW + K.tierHeadMargin +
+    START_MARGIN_TIER + STATUS_TIER_H + K.tierStartGap + K.tierActionH +
+    K.panelPadWide * 2 + TEAMS_TIER + MEDIA_TIER;
+  const feltH = mainH - fixed;
+  const feltMin = K.cardWideH + K.feltBorder + 20; // card + felt border + strip padding 10×2
+  const cardW = Math.min((colW - 4 - K.panelPadXWide * 2 - K.feltBorder - 28 - 4 * 8) / 5, 104);
+  return { colH, colW, mainH, chatList, feltH, feltMin, cardW };
+}
+
+/** The wide open-card stack (v8b): hit pad + label zone + ring + plate + strip. */
+const OPEN_STACK_WIDE = () => K.hitTopWide + 2 * K.hitGapWide + K.seatTopZoneWide + K.seatRingWide + PLATE_WIDE + K.botStripWide;
+
 describe('lobby v8 structure', () => {
   it('the dock is two wrapped rows + a bar, never a stack of full-width rows', () => {
-    expect(v8A).toContain('.lobby-dock .lobby-start { display: flex; flex-wrap: wrap;');
+    expect(v8A).toContain('.lobby-dock .lobby-start { display: flex; flex-direction: row; flex-wrap: wrap;');
     expect(v8A).toContain('.lobby-dock .leave-table-btn { order: 4;');
     expect(v8A).toContain('.lobby-dock .exit-divider { display: none; }');
     // the markup is untouched: divider, portal and dock testids all still ship
@@ -199,14 +327,15 @@ describe('lobby v8 structure', () => {
     expect(css).toContain('grid-template-areas: ". top ." "left center right" ". bottom ."');
   });
 
-  it('the wide layout is untouched (desktop PASSes today and must not regress)', () => {
+  it('the ≥1280 wide layout is untouched (desktop PASSes today and must not regress)', () => {
     expect(css).toContain('.lobby-cols { height: 100%; display: grid; grid-template-columns: minmax(420px, 1.25fr) minmax(320px, 1fr) minmax(300px, 360px); gap: 16px; }');
-    // every .lobby-dock rule in v8 lives inside the non-wide (A) or landscape (B) gates
+    // every .lobby-dock rule in v8/v8b lives inside the non-wide (A) or landscape (B) gates
     expect(v8tap).not.toContain('.lobby-dock');
+    expect(v8b).not.toContain('.lobby-dock');
     expect(WIDE).toHaveLength(4);
-    // no theme selectors in v8: geometry is theme-identical, Neon is color/glass only
-    expect(v8).not.toContain('data-theme');
-    expect(v8).not.toContain('html[');
+    // no theme selectors in v8/v8b: geometry is theme-identical, Neon is color/glass only
+    expect(v8all).not.toContain('data-theme');
+    expect(v8all).not.toContain('html[');
   });
 
   it('Find a Table is not styled from online.css (its chips live in social.css — flagged for the coordinator, not re-fixed here)', () => {
@@ -215,22 +344,52 @@ describe('lobby v8 structure', () => {
   });
 });
 
+describe('the dock direction pin — the pin that would have caught the balloon (v8b defect 1)', () => {
+  it('the base .lobby-start is a column flex (the trap), and the v8 tier overrides it to row, explicitly', () => {
+    // the shipped base: column — in a column every flex-basis is a height
+    expect(css).toContain('.lobby-start { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }');
+    // the v8 dock tier must declare row itself; inheriting is what ballooned
+    const startRule = v8A.match(/\.lobby-dock \.lobby-start \{[^}]*\}/)![0];
+    expect(startRule).toContain('flex-direction: row');
+    expect(startRule).toContain('flex-wrap: wrap');
+    // the landscape tier must not silently re-declare a direction — it inherits v8A's row
+    const landRule = v8B.match(/\.lobby-dock \.lobby-start \{[^}]*\}/)![0];
+    expect(landRule).not.toContain('flex-direction');
+    // and the 1024–1279 tier's in-column start block declares row for itself
+    const tierRule = v8bTier.match(/\.lobby-main \.lobby-start \{[^}]*\}/)![0];
+    expect(tierRule).toContain('flex-direction: row');
+  });
+
+  it('every dock flex child reads in row terms, and the action row fits the narrowest dock on one row', () => {
+    // bases are WIDTHS now: START and the waiting block share one slot value
+    expect(K.waitBasis).toBe(K.startBasis);
+    // START (grows from its basis) + LEAVE (shrinks from its basis) + the
+    // row gap must fit the 375px dock's content width (375 − 24 padding)
+    for (const s of [...PORTRAIT, ...TABLET]) {
+      const contentW = Math.min(s.w - 24, 560);
+      expect(K.startBasis + K.leaveBasis + 8, s.name).toBeLessThanOrEqual(contentW);
+    }
+    // the meta row's fit rule uses the status's parsed basis, not a height
+    expect(K.statusBasis).toBe(130);
+  });
+});
+
 describe('the dock reserves its space and stays a bar (D2 root mechanism)', () => {
   it('the fallback reserve covers the modelled worst-case dock at every size', () => {
-    for (const s of [...PORTRAIT]) {
+    for (const s of [...PORTRAIT, ...TABLET]) {
       expect(dockA(s.h, s.w, s.sbot), s.name).toBeLessThanOrEqual(K.dockFallback + s.sbot);
     }
     for (const s of [...LANDSCAPE]) {
-      expect(dockB(s.sbot), s.name).toBeLessThanOrEqual(K.dockFallback + s.sbot);
+      expect(dockB(s.w, s.sbot), s.name).toBeLessThanOrEqual(K.dockFallback + s.sbot);
     }
     // and Lobby still publishes the live height over the fallback
     expect(lobby).toContain("root.style.setProperty('--dock-h'");
   });
 
   it('the dock is a fraction of the screen it used to swallow (was 222px = 57% at 844×390)', () => {
-    for (const s of [...PORTRAIT]) expect(dockA(s.h, s.w, s.sbot) / s.h, s.name).toBeLessThanOrEqual(0.26);
-    for (const s of [...LANDSCAPE]) expect(dockB(s.sbot) / s.h, s.name).toBeLessThanOrEqual(0.3);
-    expect(dockB(21)).toBeLessThanOrEqual(120);
+    for (const s of [...PORTRAIT, ...TABLET]) expect(dockA(s.h, s.w, s.sbot) / s.h, s.name).toBeLessThanOrEqual(0.26);
+    for (const s of [...LANDSCAPE]) expect(dockB(s.w, s.sbot) / s.h, s.name).toBeLessThanOrEqual(0.3);
+    expect(dockB(932, 21)).toBeLessThanOrEqual(120);
   });
 
   it('the stage ends exactly where the dock begins — nothing under the dock, at every non-wide size', () => {
@@ -238,6 +397,12 @@ describe('the dock reserves its space and stays a bar (D2 root mechanism)', () =
       const f = portraitFit(s);
       expect(f.panelBottom, s.name).toBe(f.dockTop);
       expect(f.stageH, s.name).toBeGreaterThan(0);
+    }
+    for (const s of [...TABLET]) {
+      const f = tabletFit(s);
+      // the bounded cols stack: chrome + settings + gap + stage == dock top
+      expect(f.stackBottom, s.name).toBe(f.dockTop);
+      expect(f.mainH, s.name).toBeGreaterThan(0);
     }
     for (const s of [...LANDSCAPE]) {
       const f = landscapeFit(s);
@@ -280,6 +445,27 @@ describe('portrait budgets close (worst state: partnership host)', () => {
   });
 });
 
+describe('tablet portrait budgets close (768–899 stack, v8b defect 4)', () => {
+  it('the cols are height-bounded by the stage calc, so the stage ends at the dock top', () => {
+    expect(v8bTablet).toContain('grid-template-rows: minmax(0, auto) minmax(0, 1fr) 0px');
+    expect(v8bTablet).toContain('height: calc(100dvh - (64px + env(safe-area-inset-top)) - var(--dock-h, calc(200px + env(safe-area-inset-bottom))))');
+    expect(v8bTablet).toContain('height: calc(100dvh - (58px + env(safe-area-inset-top)) - var(--dock-h, calc(200px + env(safe-area-inset-bottom))))');
+    expect(v8bTablet).toContain('.lobby-main { height: auto; min-height: 0; }');
+  });
+
+  it('the felt and the open-card stack close inside the bounded stage', () => {
+    for (const s of [...TABLET]) {
+      const f = tabletFit(s);
+      expect(f.feltH, s.name).toBeGreaterThanOrEqual(190);
+      expect(f.rowH, s.name).toBeGreaterThanOrEqual(48);
+      expect(f.openStack, s.name).toBeLessThanOrEqual(f.cardH + 3);
+      expect(f.cardW - 8, s.name).toBeGreaterThanOrEqual(LABEL_MIN);
+      // the whole venue panel is visible in the settings row (it also scrolls in its own box)
+      expect(SETTINGS_768, s.name).toBeGreaterThanOrEqual(VENUE_PANEL);
+    }
+  });
+});
+
 describe('landscape budgets close (worst state: partnership host)', () => {
   it('the strip felt closes its seat stacks in one row', () => {
     for (const s of [...LANDSCAPE]) {
@@ -307,10 +493,62 @@ describe('landscape budgets close (worst state: partnership host)', () => {
   });
 });
 
+describe('the wide tier closes (v8b defects 2 + 3)', () => {
+  it('the + BOT strip is floored in wide too, with the same strip + reserve as the dock tier', () => {
+    expect(K.botStripWide).toBe(44);
+    expect(K.hitPadWide).toBe(K.botStripWide);
+    // the wide open stack (pad + label zone + ring + plate + strip) closes in the 148px card
+    expect(OPEN_STACK_WIDE()).toBeLessThanOrEqual(K.cardWideH);
+  });
+
+  it('the 1024–1279 column budget closes: head + table + start + chat + gaps ≤ the column height', () => {
+    // structure: the chat row is a definite height, main is a non-scrolling
+    // flex stage, the felt is a strip, the start block is two rows
+    expect(v8bTier).toContain('.lobby-main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }');
+    expect(v8bTier).toContain('grid-template-areas: "left top center right bottom"');
+    expect(v8bTier).toContain('.lobby-main .exit-divider { display: none; }');
+    for (const s of [...TIER]) {
+      const f = tierFit(s);
+      // the felt absorbs the slack and never drops below the open card's home
+      expect(f.feltH, s.name).toBeGreaterThanOrEqual(f.feltMin);
+      // the chat's internal rows itemize inside its 168px: panel pad 12 +
+      // head 30 + list + input row (padding + the 44px-floored input);
+      // the list keeps its 60px floor with room to spare
+      expect(f.chatList, s.name).toBeGreaterThanOrEqual(K.chatListMin);
+      expect(f.chatList, s.name).toBeGreaterThanOrEqual(60);
+      // seat cards keep their minimums in the strip
+      expect(f.cardW, s.name).toBeGreaterThanOrEqual(60);
+      expect(f.cardW - 8, s.name).toBeGreaterThanOrEqual(LABEL_MIN);
+    }
+  });
+
+  it('at ≥1280 the chat is its own full-height column — media and chat are column-disjoint', () => {
+    // DOM order in .lobby-cols is main · settings · chat (auto-placed 1·2·3)
+    const iMain = lobby.indexOf('className="lobby-main"');
+    const iSettings = lobby.indexOf('className="lobby-settings"');
+    const iChat = lobby.indexOf('<LobbyChat');
+    expect(iMain).toBeGreaterThan(-1);
+    expect(iMain).toBeLessThan(iSettings);
+    expect(iSettings).toBeLessThan(iChat);
+    // the tier gate stops at 1279, so ≥1280 keeps the three-column grid
+    expect(v8bTier).toContain('@media (min-width: 1024px) and (max-width: 1279px) and (min-height: 600px)');
+    expect(css).toContain('.lobby-chat.wide { display: flex; flex-direction: column; min-height: 0; height: 100%; margin: 0; padding: 0; }');
+    // chat internals itemize inside the full column height at both sizes
+    for (const s of [...WIDE_FULL]) {
+      const colH = s.h - 72;
+      const list = colH - K.panelPadWide * 2 - LC_HEAD - (K.chatInputPadY + K.chatInputH);
+      expect(list, s.name).toBeGreaterThanOrEqual(K.chatListMin);
+      // the media row (inside main's own column) is 8 margin + one button tall
+      expect(MEDIA_TIER, s.name).toBe(8 + K.avBtnH);
+    }
+  });
+});
+
 describe('tap floor — the online.css census (D4)', () => {
   const floor = (re: RegExp, s: string, label: string) => expect(num(re, s), label).toBeGreaterThanOrEqual(44);
   it('every census control in online.css reaches 44px', () => {
-    floor(/\.seat-bot \{[^}]*height: (\d+)px/, v8A, '+ BOT strip');
+    floor(/\.seat-bot \{[^}]*height: (\d+)px/, v8A, '+ BOT strip (non-wide)');
+    floor(/\.seat-bot \{[^}]*height: (\d+)px/, v8bWide, '+ BOT strip (wide)');
     floor(/\.seat-card \.seat-sub \{ min-height: (\d+)px/, v8A, 'seat sub-actions');
     floor(/\.lc-close \{ width: (\d+)px/, v8A, 'chat drawer close width');
     floor(/\.lc-close \{[^}]*height: (\d+)px/, v8A, 'chat drawer close');
