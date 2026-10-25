@@ -1369,6 +1369,26 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    that row is exact since the rogue-dock fix in the D1 block above: a
    slotted dock's rect IS its slot's rect.) */
 .wizard.step-home .wiz-dots { display: none; }
+/* Wizard-header fit II (2026-10-25): the rule above only unblocked the
+   HOME step. On the steps themselves the dots are VISIBLE by design and
+   the row cannot close: measured on the shipped build (Chromium, every
+   step, both themes) the children are nav 98.6 + dots 150 + right
+   cluster 155.4 = 404px against a 366px content box at 390 wide — the
+   gear and the dock slot ride off the right edge (slot 393–439 at
+   390×844, 433–479 at 430×932; the dock seats exactly in the slot, so
+   the sound button went with it). No element may shrink: both clusters
+   are 44–46px tap targets and the dots are the step progress. So at
+   portrait phone widths the bar wraps instead — nav + right cluster
+   share the first line (254px, closing with ~97px to spare at 375) and
+   the dots take a centered line of their own beneath it, full size.
+   Wider portrait and landscape keep the single row: there the row
+   closes (452px including the labelled Social button, against 643px+
+   of content box). Scoped off the home step — its header is a single
+   row by the home fit suite, and its dots are display:none regardless. */
+@media (orientation: portrait) and (max-width: 520px) {
+  .wizard:not(.step-home) .wiz-bar { flex-wrap: wrap; row-gap: 8px; }
+  .wizard:not(.step-home) .wiz-dots { order: 3; flex: 1 1 100%; justify-content: center; }
+}
 .table-screen.short .sound-dock.slotted.in-bug .dock-btn { font-size: 14px; }
 
 /* ---------- tips: tappable terms, Card basics, rings/tags over the cards a tip talks about ---------- */
