@@ -1,0 +1,34 @@
+{
+  "porch": {
+    "file": "rundown-01-the-porch.mp4",
+    "poster": "rundown-01-the-porch.jpg",
+    "durationSeconds": 35.83,
+    "variant": "first",
+    "voice": "lilcuz-f",
+    "text": "Okay, so — that's Uncle Ray and Miss Pat, and this porch is basically where I learned what cards even were. Don't let the lemonade fool you. Ray bids low on purpose and then books high just to watch you do the math out loud — and Pat? Pat remembers every bid you made three hands ago. And three years ago. They're not the fastest table on the route, and they're not trying to be. Play patient, count honest, and don't try to out-talk them. Nobody out-talks this porch. We just gotta out-book 'em."
+  },
+  "barbershop": {
+    "file": "rundown-02-the-barbershop.mp4",
+    "poster": "rundown-02-the-barbershop.jpg",
+    "durationSeconds": 35.31,
+    "variant": "first",
+    "voice": "lilcuz-f",
+    "text": "Mr. Coleman and Miss June. Fifty years in that shop, and everything in it is by the book — including the game. No jokers here, Ace Down, so the deck is honest and so are they. Coleman's a retired teacher: he plays textbook, every book accounted for, no gifts. June's the one to watch, though. Quiet, exact — she bids what the mirrors show her, and she does not guess. Beating them ain't about tricks. It's about doing the plain thing right, every single hand, till they respect it."
+  },
+  "rec-center": {
+    "file": "rundown-03-the-rec-center.mp4",
+    "poster": "rundown-03-the-rec-center.jpg",
+    "durationSeconds": 36.7,
+    "variant": "first",
+    "voice": "lilcuz-f",
+    "text": "Lil' Man and Trey. Yeah, those two. Lil' Man beat me one summer and I stopped coming around — that's the history, so let's just put it on the table. Here's the real scouting report: they're loud because loud works. Twenty seconds a move, all that yelling, and pretty soon you're playing fast just to keep up — and fast is where the mistakes live. Lil' Man bids like momentum is a card, and some games he's a world-beater and some games he just... isn't. Trey's the echo — whatever Lil' Man says, louder. Play your speed, not theirs. Breathe between tricks."
+  },
+  "cookout": {
+    "file": "rundown-04-the-cookout.mp4",
+    "poster": "rundown-04-the-cookout.jpg",
+    "durationSeconds": 40.32,
+    "variant": "first",
+    "voice": "lilcuz-f",
+    "text": "Keisha and Teisha — the Twins. And before you ask: yes, it's as weird as it looks. They finish each other's sentences, each other's bids, everything. Keisha bids for two people like she's holding one big hand, because far as she's concerned, she is. Teisha's quieter, meaner — she plays her sister's cards as careful as her own. This is the first table on the route that actually counts what you throw away, so nothing's free anymore. The test here ain't them, it's us: do we cover each other like they do? That's Mama's standard, and they grade on it."
+  }
+}
