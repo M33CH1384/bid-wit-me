@@ -693,3 +693,39 @@
 @media (min-width: 768px) and (max-width: 899px) and (min-height: 600px) and (max-height: 719px) {
   .lobby-cols { height: calc(100dvh - (58px + env(safe-area-inset-top)) - var(--dock-h, calc(200px + env(safe-area-inset-bottom)))); }
 }
+
+/* ---------- lobby v8c: the narrow-landscape head bound (design audit
+   2026-10-25, prod re-sweep #2 — the one pair v8b's model missed) ----------
+   In the phone-landscape stage the head lives in the left rail
+   (clamp(190px, 30vw, 280px) → 200px at 667 wide), but its share row —
+   the code ticket beside Social — is sized by its contents, not by the
+   rail: ticket ≈174px (its unbreakable floor is the 5-char code at
+   34px with .28em tracking ≈144px of ink + 30px of padding/border) +
+   10px gap + Social ≈95px ≈ 279px at EVERY landscape width (measured
+   on the re-sweep shots at 667/844/932 alike). At 932 the rail is
+   279.6px and the row just fits; at 844 the ≈27px spill lands in the
+   ≈82px of grid gap + panel/felt padding before the first seat card,
+   so the pair stays clean there; at 667 the rail is only 200px, the
+   spill is ≈73–79px, and after the 51px of gap/padding before the
+   first seat card the probe measured Social's last 18px (cutthroat) /
+   24px (partnership, the wider code) painted over that card's
+   Sit-here hit area for its full 44px height. The fix is scoped to narrow landscape only (the gate
+   below stops at 800px, so 844/932 are untouched by construction):
+   the ticket finally takes the compact code size the ≤719px tier
+   always intended (its 21px rule loses on specificity to the v3
+   34px rule) — 20px at .1em tracking — and both share-row items
+   shed their wide-screen side padding. New floor: code ink
+   5 × .51 × 20 + 5 × .1 × 20 + .28 × 20 ≈ 67 + ticket padding/border
+   18 + gap 10 + Social (8 + 18 icon + 6 gap + 47 label + 8) 87
+   ≈ 182px ≤ the 190px rail floor, so the row fits the rail at every
+   width in the gate, not just at 667. The ticket's height is
+   unchanged in the head model (its small print still wraps to two
+   lines at the narrower content width; the code line shrinks by
+   more than the wrap costs), so the rail stack — head over the
+   internally scrolling settings box — keeps the v8b budgets, and
+   no seat, felt or dock geometry moves. Geometry only. */
+@media (max-height: 599px) and (min-width: 560px) and (max-width: 800px) {
+  .lobby-v3 .lobby-head .share-code { padding: 3px 8px 2px; }
+  .lobby-v3 .lobby-head .share-code b { font-size: 20px; letter-spacing: .1em; }
+  .lobby-v3 .lobby-head .lobby-social { padding: 0 8px; }
+}

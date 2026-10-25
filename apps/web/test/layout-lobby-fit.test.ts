@@ -43,6 +43,15 @@ import { describe, expect, it } from 'vitest';
  *      by the settings row and the top seat met the dock's team pencil.
  *      The tier's cols are now height-bounded by the same calc and main
  *      flexes into its row — the stage ends at the dock top again.
+ *  (5) THE NARROW-LANDSCAPE HEAD (v8c, re-sweep #2): at 667×375 only,
+ *      the rail head's share row (code ticket + Social, ≈279px of
+ *      content-sized floor at every landscape width) overruns the
+ *      200px rail and Social paints 18–24px over the first seat's
+ *      Sit-here area. A narrow-landscape sub-tier (≤800px wide, so
+ *      844/932 are untouched) shrinks the ticket's code to the compact
+ *      20px and trims both items' side padding; the row's floor drops
+ *      to ≈182px ≤ the 190px rail floor. The pin below recomputes the
+ *      row from the shipped constants — it fails on the pre-v8c CSS.
  * These tests recompute every budget from the shipped CSS constants, in
  * the house idiom, for all 11 audit sizes × the worst states
  * (partnership host — team chips + badges + status present — unless a
@@ -50,6 +59,8 @@ import { describe, expect, it } from 'vitest';
  */
 const css = readFileSync(new URL('../src/online/online.css', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+const socialCss = readFileSync(new URL('../src/social/social.css', import.meta.url), 'utf8');
+const protocol = readFileSync(new URL('../../../packages/protocol/src/index.ts', import.meta.url), 'utf8');
 const lobby = readFileSync(new URL('../src/online/Lobby.tsx', import.meta.url), 'utf8');
 
 const v7 = css.slice(css.indexOf('lobby v7'));
@@ -64,6 +75,7 @@ const v8B = v8.slice(v8.indexOf('/* (3) phone landscape stage'));
 const v8bWide = v8b.slice(v8b.indexOf('@media (min-width: 1024px) and (min-height: 600px)'), v8b.indexOf('@media (min-width: 1024px) and (max-width: 1279px)'));
 const v8bTier = v8b.slice(v8b.indexOf('@media (min-width: 1024px) and (max-width: 1279px)'), v8b.indexOf('@media (min-width: 768px)'));
 const v8bTablet = v8b.slice(v8b.indexOf('@media (min-width: 768px)'));
+const v8c = css.slice(css.indexOf('lobby v8c'));
 
 const num = (re: RegExp, s: string) => {
   const m = s.match(re);
@@ -490,6 +502,120 @@ describe('landscape budgets close (worst state: partnership host)', () => {
   it('the media bar is three honest buttons wide (CAM · MIC · CHAT at 64px)', () => {
     expect(K.barBtnW).toBeGreaterThanOrEqual(44);
     expect(num(/\.dock-spacer \{ flex: 0 0 (\d+)px; \}/, v8B)).toBe(2 * K.barBtnW + 8);
+  });
+});
+
+describe('the narrow-landscape head is bound to the rail (v8c, re-sweep #2)', () => {
+  /* The share row's floor, recomputed from the shipped CSS. Measured
+   * constants (the house idiom — cf. TEAMS_W): on the prod re-sweep
+   * shots the Social button is 95px wide at every landscape size
+   * (24px padding + 18px icon + 6px gap + ≈47px of "Social" ink — the
+   * label is one unbreakable word, so natural width == min-content),
+   * the widest measured code (YRRM5) inks ≈144px at the shipped 34px /
+   * .28em (⇒ a .51 average advance factor, M included), the head title
+   * inks ≈130px at its compact 20px, and the rail head's share
+   * allowance in HEAD_B is 53px (HEAD_B 87 = title 24 + gap 10 + 53). */
+  const TITLE_W = 130;
+  const CODE_ADV = 0.51;
+  const SOCIAL_LABEL_W = 47;
+  const HEAD_SHARE_ALLOWANCE = HEAD_B - 24 - 10;
+  const em = (re: RegExp, s: string) => { const m = s.match(re); if (!m) throw new Error(`pattern not found: ${re}`); return parseFloat(m[1]!); };
+  const codeChars = num(/CODE_LENGTH = (\d+)/, protocol);
+  const shareGap = num(/\.lobby-share \{ display: flex; align-items: center; justify-content: center; gap: (\d+)px; \}/, css);
+  const codeLsEm = em(/\.room-code b \{[^}]*letter-spacing: ([\d.]+)em;/, css);
+  const codePadEm = em(/\.room-code b \{[^}]*padding-left: ([\d.]+)em; \}/, css);
+  const baseCodeFont = num(/\.lobby-v3 \.room-code b \{ font-size: (\d+)px; \}/, css);
+  const baseTicketPadX = num(/\.share-code \{ padding: 4px (\d+)px 2px; \}/, compact);
+  const socPadX = num(/\.social-btn \{[^}]*padding: 0 (\d+)px;/, socialCss);
+  const socGap = num(/\.social-btn \{[^}]*gap: (\d+)px;/, socialCss);
+  const socIcon = num(/\.social-btn \.social-ico \{ font-size: (\d+)px/, socialCss);
+  const socH = num(/\.social-btn \{[^}]*height: (\d+)px;/, socialCss);
+  const gateMaxC = num(/@media \(max-height: 599px\) and \(min-width: 560px\) and \(max-width: (\d+)px\)/, v8c);
+  const codeFontC = num(/\.share-code b \{ font-size: (\d+)px;/, v8c);
+  const codeLsC = em(/\.share-code b \{[^}]*letter-spacing: ([\d.]+)em; \}/, v8c);
+  const ticketPadXC = num(/\.share-code \{ padding: \d+px (\d+)px \d+px; \}/, v8c);
+  const ticketPadYC = (() => { const m = v8c.match(/\.share-code \{ padding: (\d+)px \d+px (\d+)px; \}/); if (!m) throw new Error('v8c ticket padding not found'); return parseFloat(m[1]!) + parseFloat(m[2]!); })();
+  const socialPadXC = num(/\.lobby-social \{ padding: 0 (\d+)px; \}/, v8c);
+  const feltMaxW = num(/\.mini-felt \{\s+height: auto;[^}]*max-width: (\d+)px;/, css);
+  const feltPadXB = num(/\.mini-felt \{[^}]*padding: 10px (\d+)px;/, v8B);
+  const smallFont = num(/\.share-code small \{ font-size: (\d+)px !important; \}/, compact);
+  const smallLsEm = em(/\.room-code small \{[^}]*letter-spacing: ([\d.]+)em;/, css);
+
+  const railAt = (w: number) => Math.min(K.railMax, Math.max(K.railMin, (K.railVw / 100) * w));
+  /** A code's ink: glyphs + one tracking step per char + the pad-left step. */
+  const codeInk = (font: number, lsEm: number) => codeChars * CODE_ADV * font + codeChars * lsEm * font + codePadEm * font;
+  const socialW = (padX: number) => padX * 2 + socIcon + socGap + SOCIAL_LABEL_W;
+  /** The share row's floor: the ticket cannot shrink below its code. */
+  const shareRow = (codeFont: number, lsEm: number, ticketPadX: number, socPad: number) =>
+    codeInk(codeFont, lsEm) + ticketPadX * 2 + 2 + shareGap + socialW(socPad);
+  const rowBase = shareRow(baseCodeFont, codeLsEm, baseTicketPadX, socPadX);
+  const rowC = shareRow(codeFontC, codeLsC, ticketPadXC, socialPadXC);
+  /** Where the strip's first seat card starts, measured from the head's left edge. */
+  const seatZoneFromHeadLeft = (w: number) => {
+    const contentW = Math.min(w, 900) - 32;
+    const panelInner = contentW - railAt(w) - 12 - K.panelPad;
+    const centering = Math.max(0, (panelInner - feltMaxW) / 2);
+    return railAt(w) + 12 + K.panelPad / 2 + K.feltBorder / 2 + feltPadXB + centering;
+  };
+
+  it('the sub-tier is scoped to narrow landscape only — 844/932 cannot be touched by it', () => {
+    expect(v8B).toContain('@media (max-height: 599px) and (min-width: 560px)');
+    expect(gateMaxC).toBe(800);
+    expect(gateMaxC).toBeLessThan(844);
+    expect(v8c).toContain('.lobby-v3 .lobby-head .share-code { padding: 3px 8px 2px; }');
+    expect(v8c).toContain('.lobby-v3 .lobby-head .lobby-social { padding: 0 8px; }');
+    // the felt, the seats, the dock and the grid itself do not move in this tier
+    for (const s of ['.seat-', '.mini-felt', '.lobby-dock', '.lobby-cols', 'grid-template']) {
+      expect(v8c, s).not.toContain(s);
+    }
+  });
+
+  it('the pre-v8c row reproduces the defect in the model — and only at 667', () => {
+    // at 932 the baseline row fits the rail outright (279.6px)
+    expect(rowBase, '932×430').toBeLessThanOrEqual(railAt(932));
+    // at 844 the row spills ≈27px past the rail but the first seat card
+    // sits ≈82px past it (gap + panel/felt padding + felt centering)
+    expect(rowBase, '844×390').toBeLessThanOrEqual(seatZoneFromHeadLeft(844));
+    // at 667 the same row reaches the first seat: the model overlap is
+    // at least the probe's smaller measured value (18px, cutthroat;
+    // the model carries the widest code, the probe's other room hit 24)
+    expect(rowBase - seatZoneFromHeadLeft(667), '667×375').toBeGreaterThanOrEqual(18);
+  });
+
+  it('the v8c row fits the rail at 667×375 — and at every width in its gate', () => {
+    for (const w of [560, 600, 667, 700, 800]) {
+      expect(rowC, `${w} wide`).toBeLessThanOrEqual(railAt(w));
+    }
+    // the head's other row fits too: the title alone in the rail
+    expect(TITLE_W).toBeLessThanOrEqual(railAt(667));
+    expect(TITLE_W).toBeLessThanOrEqual(K.railMin);
+    // and Social now ends ≈70px before the first seat card at 667
+    expect(rowC, '667×375').toBeLessThanOrEqual(seatZoneFromHeadLeft(667) - 44);
+  });
+
+  it('the head height is unchanged: the shrunk ticket still fits the HEAD_B share allowance', () => {
+    // the small print's single line ("TABLE CODE · TAP TO SHARE") wraps
+    // inside the ticket's new content width; the code line is 20px tall
+    const smallInk = 'TABLE CODE · TAP TO SHARE'.length * (0.4 * smallFont + smallLsEm * smallFont);
+    const contentC = railAt(667) - shareGap - socialW(socialPadXC) - ticketPadXC * 2 - 2;
+    const smallLines = Math.ceil(smallInk / contentC);
+    const ticketHC = 2 + ticketPadYC + smallLines * 11 + codeFontC * 1.15;
+    expect(smallLines).toBe(2);
+    expect(ticketHC).toBeLessThanOrEqual(HEAD_SHARE_ALLOWANCE);
+    expect(Math.max(ticketHC, socH)).toBeLessThanOrEqual(HEAD_SHARE_ALLOWANCE);
+    // so the rail stack keeps the v8b budgets: settings keep their reach
+    for (const s of [...LANDSCAPE]) {
+      const f = landscapeFit(s);
+      expect(f.settingsH, s.name).toBeGreaterThanOrEqual(VENUE_REACH);
+    }
+  });
+
+  it('both share-row controls keep the tap floor in the sub-tier', () => {
+    expect(socH).toBe(44);
+    expect(socialW(socialPadXC)).toBeGreaterThanOrEqual(44);
+    expect(num(/\.share-code \{ min-height: (\d+)px/, v8tap)).toBe(44);
+    // the ticket's own height in the tier (above) also clears the floor
+    expect(codeFontC).toBeGreaterThanOrEqual(20);
   });
 });
 
