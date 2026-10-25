@@ -368,8 +368,12 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
         ? new MeshPhysicalMaterial({ map: white, roughness: 0.55, clearcoat: 0.7, clearcoatRoughness: 0.2, color: def.railTint })
         : new MeshStandardMaterial({ map: white, roughness: 0.45, color: def.railTint });
   }
+  // The crystal table's BODY stays solid. A transparent apron let the venue floor bleed
+  // through the near wall (worst at the mansion, whose marble floor is bright), so the table
+  // read hollow around the player's seat (owner, 2026-10-25). The rail ring above keeps the
+  // crystal translucency; the body reads as frosted glass — same gloss, no see-through.
   const apron = def.rail === 'crystal'
-    ? new MeshPhysicalMaterial({ color: def.apron, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.4 })
+    ? new MeshPhysicalMaterial({ color: def.apron, roughness: 0.05, clearcoat: 1 })
     : def.rail === 'chrome' || def.rail === 'metal'
       ? new MeshStandardMaterial({ color: def.apron, metalness: 0.7, roughness: 0.3 })
       : new MeshStandardMaterial({ map: white, roughness: 0.6, color: def.apron });
