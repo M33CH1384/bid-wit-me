@@ -1,5 +1,10 @@
 /* accounts + sign-in */
-.acct-chip { height: 40px; padding: 0 14px; border: 0; display: inline-flex; align-items: center; gap: 8px; font-family: var(--display); font-weight: 700; font-size: 16px; letter-spacing: .06em; color: var(--ink);
+/* D4 tap-target floor (design audit 2026-10-24): every interactive rule in
+   this file carries an explicit height/min-height >= 44px on its small axis
+   (pinned in test/layout-account-fit.test.ts). Sub-elements that are not
+   targets themselves stay small: .acct-avatar.small (inside the chip
+   button), .acct-li-icon, .acct-switch (inside the notif row), glyphs. */
+.acct-chip { height: 44px; padding: 0 14px; border: 0; display: inline-flex; align-items: center; gap: 8px; font-family: var(--display); font-weight: 700; font-size: 16px; letter-spacing: .06em; color: var(--ink);
   background: var(--glass); box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb),.55); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); max-width: 52vw; }
 .acct-chip.signed-in { box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.5); padding-left: 6px; }
 .acct-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -16,7 +21,7 @@
 .brand-btn svg { width: 22px; height: 22px; flex: none; }
 .brand-btn:disabled { opacity: .5; }
 .brand-btn:active:not(:disabled) { transform: scale(.985); }
-.brand-btn.small { min-height: 42px; width: auto; flex: 1 1 calc(50% - 8px); font-size: 14px; gap: 8px; padding: 0 12px; }
+.brand-btn.small { min-height: 44px; width: auto; flex: 1 1 calc(50% - 8px); font-size: 14px; gap: 8px; padding: 0 12px; }
 .brand-google { background: #fff; color: #1f1f1f; box-shadow: inset 0 0 0 1px #dadce0; }
 .brand-discord { background: #5865F2; color: #fff; }
 .brand-x { background: #000; color: #fff; box-shadow: inset 0 0 0 1px #3a3a3a; }
@@ -27,16 +32,16 @@
 .pk-plus { font-size: 20px; line-height: 1; }
 .acct-or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 2px 0; }
 .acct-or::before, .acct-or::after { content: ''; flex: 1; height: 1px; background: rgba(var(--edge-rgb),.25); }
-.acct-guest { background: none; border: 0; color: var(--gold); font-family: var(--display); font-weight: 700; letter-spacing: .06em; font-size: 17px; padding: 10px; }
+.acct-guest { background: none; border: 0; color: var(--gold); font-family: var(--display); font-weight: 700; letter-spacing: .06em; font-size: 17px; padding: 10px; min-height: 44px; }
 .acct-err { margin: 0; text-align: center; color: var(--red); }
 .acct-username { display: flex; flex-direction: column; gap: 10px; }
-.acct-username input, .acct-body > input { font-size: 20px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--edge); background: rgba(0,0,0,.35); color: var(--ink); width: 100%; }
+.acct-username input, .acct-body > input { font-size: 20px; padding: 12px 14px; min-height: 44px; border-radius: 10px; border: 1px solid var(--edge); background: rgba(0,0,0,.35); color: var(--ink); width: 100%; }
 .acct-check { margin: 0; min-height: 20px; font-size: 14px; color: var(--muted); }
 .acct-check.ok { color: var(--green); }
 .acct-check.bad { color: var(--red); }
 .acct-name-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
 .acct-name { flex: 1; font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: .03em; overflow: hidden; text-overflow: ellipsis; }
-.acct-small { background: rgba(var(--edge-rgb),.14); border: 1px solid rgba(var(--edge-rgb),.45); color: var(--ink); border-radius: 8px; padding: 8px 12px; font-size: 14px; flex: none; }
+.acct-small { background: rgba(var(--edge-rgb),.14); border: 1px solid rgba(var(--edge-rgb),.45); color: var(--ink); border-radius: 8px; padding: 8px 12px; font-size: 14px; flex: none; min-height: 44px; }
 .acct-small:disabled { opacity: .4; }
 .acct-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .acct-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.2); }
@@ -45,7 +50,7 @@
 .acct-li-text { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .acct-li-text small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acct-link-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.acct-row-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 12px 14px; background: rgba(255,255,255,.04); border: 0; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.25); color: var(--ink); font-family: inherit; text-align: left; cursor: pointer; }
+.acct-row-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 12px 14px; min-height: 44px; background: rgba(255,255,255,.04); border: 0; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.25); color: var(--ink); font-family: inherit; text-align: left; cursor: pointer; }
 .acct-row-btn:active { transform: scale(.99); }
 .acct-row-text { display: flex; flex-direction: column; gap: 2px; }
 .acct-row-text b { font-size: 15px; font-weight: 700; }
@@ -54,10 +59,10 @@
 .acct-progress { display: flex; flex-direction: column; gap: 8px; }
 .acct-progress .acct-fine { text-align: left; }
 .acct-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 6px; border-top: 1px solid rgba(var(--edge-rgb),.2); padding-top: 6px; }
-.acct-danger { background: none; border: 1px solid rgba(255,77,109,.6); color: var(--red); border-radius: 8px; padding: 9px 14px; font-weight: 600; }
-.acct-danger.big { padding: 13px; font-size: 17px; background: rgba(255,77,109,.12); }
+.acct-danger { background: none; border: 1px solid rgba(255,77,109,.6); color: var(--red); border-radius: 8px; padding: 9px 14px; font-weight: 600; min-height: 44px; }
+.acct-danger.big { padding: 13px; font-size: 17px; background: rgba(255,77,109,.12); min-height: 44px; }
 .acct-danger:disabled { opacity: .4; }
-.acct-toast { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 1200; max-width: min(92vw, 460px); padding: 10px 16px; border-radius: 10px;
+.acct-toast { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 1200; max-width: min(92vw, 460px); padding: 10px 16px; min-height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px;
   background: var(--glass-strong); box-shadow: inset 0 0 0 1px var(--edge), 0 8px 30px rgba(0,0,0,.5); text-align: center; font-size: 15px; animation: sheet-up .3s both; }
 .acct-toast.ok { box-shadow: inset 0 0 0 1px rgba(92,255,176,.6), 0 8px 30px rgba(0,0,0,.5); }
 .acct-toast.error { box-shadow: inset 0 0 0 1px rgba(255,77,109,.7), 0 8px 30px rgba(0,0,0,.5); }
@@ -72,7 +77,7 @@
    note and the Enable notifications button). Never let it shrink; the sheet
    scrolls instead. Pinned in test/account-notif-css.test.ts. */
 .acct-dropdown { flex: none; border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 10px; margin: 8px 0; overflow: hidden; }
-.acct-dropdown-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: rgba(var(--edge-rgb),.08); border: none; color: var(--ink); font-size: 16px; cursor: pointer; text-align: left; }
+.acct-dropdown-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; min-height: 44px; background: rgba(var(--edge-rgb),.08); border: none; color: var(--ink); font-size: 16px; cursor: pointer; text-align: left; }
 .acct-dropdown-head:active { background: rgba(var(--edge-rgb),.14); }
 .acct-dropdown-title { flex: 1; font-weight: 600; }
 .acct-dropdown-state { font-size: 13px; color: var(--muted); }
@@ -87,7 +92,7 @@
    unusable. The regression test in test/account-notif-css.test.ts pins every
    class the notifications markup uses to a rule in this file. */
 .acct-notifs { display: flex; flex-direction: column; gap: 6px; }
-.acct-notif-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 12px; background: rgba(255,255,255,.04); border: 0; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.25); color: var(--ink); font-family: inherit; text-align: left; cursor: pointer; }
+.acct-notif-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 12px; min-height: 44px; background: rgba(255,255,255,.04); border: 0; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.25); color: var(--ink); font-family: inherit; text-align: left; cursor: pointer; }
 .acct-notif-row.off { opacity: .55; }
 .acct-switch { flex: none; width: 44px; height: 26px; border-radius: 999px; background: rgba(255,255,255,.14); position: relative; transition: background .15s; }
 .acct-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left .15s; }
