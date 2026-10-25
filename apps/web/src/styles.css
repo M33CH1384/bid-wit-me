@@ -4126,6 +4126,20 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .ess-barred > .setup-card[aria-label="Sound"] { grid-column: 3; grid-row: 3; }
 }
 
+/* S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Table menu"): on a
+   short landscape phone the ☰ table menu was one ~44px-per-row column taller
+   than the 393px stage, so 🚪 Leave table (the destructive action, always
+   last) sat below the fold. In --land-phone the items lay out in 3 columns
+   of equal rows and Leave table (plus the Social row) spans the full width
+   at the bottom, so the whole menu, Leave included, is on screen. Portrait
+   and tablets keep the single column (the query never matches). */
+@media (orientation: landscape) and (max-height: 540px) {
+  .game-menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(40px, auto); gap: 4px; width: min(640px, 75vw); max-height: calc(100dvh - 72px); overflow-y: auto; }
+  .game-menu > button { padding: 8px 10px; font-size: 13.5px; line-height: 1.2; }
+  .game-menu > .menu-social, .game-menu > button.danger { grid-column: 1 / -1; }
+  .game-menu > button.danger { text-align: center; box-shadow: inset 0 0 0 1.5px #ff4d6d; color: #ff4d6d; }
+}
+
 /* S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Chat open"): on a
    short landscape phone the open chat panel sat at right: 8px, i.e. UNDER
    the CHAT/CAM/MIC/Talk rail (.ctl-rail, 44px buttons at right: 8px), so the
@@ -4140,4 +4154,23 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 @media (orientation: landscape) and (max-height: 540px) {
   .table-screen .chat:not(.recap-chat),
   .table-screen.short .chat:not(.recap-chat) { width: min(330px, 42vw); }
+}
+
+/* S1 hand recap, 3 columns (design audit 2026-10-25, HANDOFF.md "Hand
+   recap"): the short-landscape tier above already takes the whole stage
+   with a record rail (TOP SCORES at the top, HANDS, callouts, tricks) and a
+   one-row action footer, but the two partnership side cards stacked in one
+   column ran past the fold (the second card's bar sliced at 852x393). Here
+   the side cards sit side by side, so the recap reads as rail | team | team
+   and both cards are whole on screen. Cutthroat keeps its 2x2 grid. Same
+   height gate as the tier, so portrait never enters. */
+@media (max-height: 560px) and (min-width: 560px) {
+  .tt-recap:not(.crowded) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 10px; }
+  .tt-foot.stack { min-height: 0; }
+}
+/* SE-width landscape: a narrower record rail leaves the two side cards
+   room for their bid/took lines */
+@media (max-height: 560px) and (min-width: 560px) and (max-width: 799px) {
+  .tt-body:has(.tt-recap:not(.crowded)) { grid-template-columns: minmax(176px, 200px) minmax(0, 1fr); column-gap: 10px; }
+  .tt-recap:not(.crowded) .tt-team { padding: 8px 10px 6px; }
 }
