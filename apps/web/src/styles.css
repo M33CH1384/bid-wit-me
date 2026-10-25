@@ -4100,3 +4100,28 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .wiz-crumb { display: none; }
   .wizard.step-table .seg button { font-size: 12px; }
 }
+
+/* S1 iPad landscape setup (design audit 2026-10-25, HANDOFF.md --land-tab):
+   the audit's blank green slab (.wizard.step-table::after) was already
+   retired in landscape by the 2026-10-25 table-step fix, but iPad landscape
+   still rendered a 560px phone column centred in a 1180px stage with the
+   fixed DEAL ME IN / CREATE TABLE bar floating over its foot. In --land-tab
+   the table step takes the stage width and lays its cards out in the same
+   3-column grid as --land-phone (#258): Team + Bots & score | Deck & venue |
+   commit bar (static, docked at the top of the last column) + Rules.
+   Portrait tablets and phones never match this query. */
+@media (orientation: landscape) and (min-height: 541px) and (min-width: 1000px) {
+  .wizard.step-table .wiz-step { max-width: min(1100px, 96vw); padding: 64px max(20px, env(safe-area-inset-right)) 20px max(20px, env(safe-area-inset-left)); }
+  .wizard.step-table:has(.setup-bar) .wiz-step { margin-bottom: 0; }
+  .wizard.step-table .ess.ess-barred { display: grid; grid-template-columns: 1.1fr 1fr 1fr; align-items: start; gap: 16px; padding-bottom: 0; width: 100%; }
+  .wizard.step-table .ess-barred > .setup-card { margin: 0; }
+  .wizard.step-table .ess-barred > .setup-card[aria-label="Your team"],
+  .wizard.step-table .ess-barred > .setup-card[aria-label="Table"] { grid-column: 1; grid-row: 1; }
+  .wizard.step-table .ess-barred > .setup-card[aria-label="Bots & score"] { grid-column: 1; grid-row: 2 / span 3; }
+  .wizard.step-table .ess-barred > .setup-card[aria-label="Bots & score"]:first-child { grid-row: 1 / span 4; }
+  .wizard.step-table .ess-barred > .setup-card[aria-label="Deck & venue"] { grid-column: 2; grid-row: 1 / span 4; }
+  .wizard.step-table .ess-barred > .setup-bar { grid-column: 3; grid-row: 1; position: static; transform: none; left: auto; bottom: auto; width: auto; padding: 0; background: none; }
+  .wizard.step-table .ess-barred > .setup-bar .setup-bar-summary { white-space: normal; text-align: left; }
+  .wizard.step-table .ess-barred > .setup-card[aria-label="Rules"] { grid-column: 3; grid-row: 2; }
+  .wizard.step-table .ess-barred > .setup-card[aria-label="Sound"] { grid-column: 3; grid-row: 3; }
+}
