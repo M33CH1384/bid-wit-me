@@ -3538,6 +3538,124 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-tricks-show { grid-area: tricks; justify-self: center; }
 }
 
+/* Hand recap in LANDSCAPE (owner, 2026-10-25: "This screen would make more
+ * sense if it utilized the whole screen in landscape" — his 932×430 shot
+ * showed the panel parked at the left with the right ~45% of the screen
+ * empty black, TOP SCORES row #2 sliced mid-height, and the Score pad
+ * heading with no pad under it). Mechanism, measured on the pre-fix tree
+ * (headless Chromium, seeded handOver saves, both modes):
+ *  - Width: below 900px the base column caps the sheet at 560px centered
+ *    (142px of black per side at 844); at 900–1023px the menu-rework
+ *    tablet-rail pin above (.tt at 452px, backdrop flex-start) still
+ *    governs — it was written for the wizard's table step, not the recap —
+ *    so at 932 the sheet is a 452px column against the left edge. Only
+ *    ≥1024px had a composed layout (the two-region grid above, which this
+ *    tier leaves in charge of tall screens).
+ *  - Height: the sheet is head (57) + a single scrolling column + a
+ *    190px STACKED footer. At 375–430px tall the body's visible window is
+ *    112–167px against 707px (partnership) / 1063px (cutthroat) of
+ *    column; TOP SCORES alone is 140/238px and starts 52px down (the old
+ *    landscape-phones block's 52px body top padding), so the window ends
+ *    mid-row-#2 — the owner's slice. The audit's CSS pass closed the
+ *    arithmetic on the column's TOTAL height; the composition was wrong.
+ * Fix, in the victory screen's D8 idiom (height-gated, so portrait —
+ * 667px+ tall — never enters and stays byte-identical): below 560px tall
+ * the sheet takes the whole stage (capped at the recap's own 1040px
+ * large-screen width, centered), the header spans the top, and the body
+ * becomes a two-column grid — TOP SCORES + HANDS (+ callouts) in a left
+ * rail, the side cards in the main column with the Run It / Review the
+ * tricks entries under them — while the footer turns into ONE action row
+ * (Score pad · Continue · Leave) pinned under the body, so no scrolling
+ * reaches any action. Card interiors compact (the name row goes inline,
+ * the .espn scores rows tighten at their own scope, paddings/gaps down)
+ * and cutthroat deals its four cards as a 2×2 grid. Measured on the
+ * fixed tree (same harness):
+ *   body = h − 142 (16 backdrop + 57 head + 69 action row)
+ *   667×375 -> 233 · 844×390 -> 248 · 932×430 -> 288
+ *   Partnership content = 282: the whole recap is on screen at 932×430;
+ *   at 390/375 every score, the strip, BOTH cards and the action row are
+ *   fully on screen and only the tricks pill's tail sits past the fold
+ *   (a 34/49px body scroll). TOP SCORES itself (109 partnership / 181
+ *   cutthroat; its rows are 30px here) fits the body at every landscape
+ *   size. Cutthroat at 932: all four cards visible (98px each, 2×2);
+ *   the HANDS strip's tail and the pill scroll. At 667 the cutthroat
+ *   cards narrow to ~154px and the columns scroll more (the sub-tier
+ *   below restacks their faces). A just-set (notice/sheet) card keeps
+ *   its full-fidelity tape lane and may scroll the same way — its cover,
+ *   stamp and time-of-death render unchanged in the main column.
+ *   Theme-agnostic: identical structure in Classic and Neon (parity
+ *   law). Pinned in layout-recap-landscape-fit.test.ts. */
+@media (max-height: 560px) and (min-width: 560px) {
+  .tt-backdrop { justify-content: center; }
+  .tt { width: min(1040px, 100%); }
+  .tt-head { padding: 6px 14px; padding-right: calc(54px + env(safe-area-inset-right)); }
+  .tt-title { font-size: 18px; }
+  .tt-body {
+    display: grid;
+    grid-template-columns: minmax(232px, 288px) minmax(0, 1fr);
+    grid-template-areas: "scores recap" "strip recap" "callouts recap" "callouts run" "callouts tricks";
+    grid-template-rows: auto auto auto auto auto;
+    align-content: start;
+    align-items: start;
+    justify-items: stretch;
+    column-gap: 18px;
+    row-gap: 6px;
+    padding: 8px 14px;
+  }
+  .tt-top-scores { grid-area: scores; width: 100%; }
+  /* the .espn scope out-specifies the plain selectors above (its striped
+     rows carry 5px of row padding and a 26px score numeral — portrait
+     room the landscape rail doesn't have), so the rail's compaction is
+     stated at the same scope */
+  .tt.espn .tt-top-scores { padding: 10px 14px 9px; }
+  .tt.espn .tt-top-scores h3 { margin-bottom: 6px; }
+  .tt.espn .tt-top-scores ol { gap: 6px; }
+  .tt.espn .tt-top-scores li { padding: 3px 8px; font-size: 16px; }
+  .tt.espn .tt-top-scores li b { font-size: 20px; }
+  .tt-strip { grid-area: strip; width: 100%; padding: 2px 2px 0; }
+  .tt-strip h3 { margin-bottom: 5px; }
+  .tt-strip .hands-strip { gap: 3px; }
+  .tt-callouts { grid-area: callouts; width: 100%; }
+  .tt-recap { grid-area: recap; width: 100%; justify-content: flex-start; gap: 10px; }
+  .tt-run { grid-area: run; width: 100%; margin: 0; }
+  .tt-run-show { grid-area: run; justify-self: start; }
+  .tt-tricks { grid-area: tricks; width: 100%; margin: 0; }
+  .tt-tricks-show { grid-area: tricks; justify-self: start; }
+  .tt-team { padding: 10px 14px 6px; }
+  .tt-face { gap: 3px 12px; }
+  .tt-team .tt-bar { margin-top: 2px; }
+  .tt-team-name { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .tt-team-name b { font-size: 19px; }
+  .tt-line { font-size: 16px; }
+  .tt-line b { font-size: 17px; }
+  .tt-recap.crowded { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; }
+  .tt-recap.crowded .tt-team { padding: 10px 12px 6px; }
+  .tt-recap.crowded .tt-team-name b { font-size: 17px; }
+  .tt-recap.crowded .tt-line { font-size: 14px; }
+  .tt-recap.crowded .tt-line b { font-size: 15px; }
+  .tt-foot.stack { flex-direction: row; align-items: center; gap: 10px; padding: 8px 14px; }
+  .tt-foot.stack .primary { flex: 1; width: auto; min-height: 48px; }
+  .tt-foot.stack .exit-divider { display: none; }
+  .tt-foot .quiet-row-btn { flex: none; }
+  .tt-foot .leave-red { flex: none; padding: 0 18px; }
+}
+
+/* Narrow landscape only: a cutthroat card is ~155px wide here, and the
+   inline name row strangles it (the name gets ~74px beside the bags
+   stat and wraps to three lines — a 211px card). Stacked name-over-badges
+   (the base face) fits the name on one line and the card drops to ~150.
+   At 800px+ the cards are wide enough that the inline row wins, so this
+   sub-tier stops there. */
+@media (max-height: 560px) and (min-width: 560px) and (max-width: 799px) {
+  .tt-recap.crowded .tt-team-name { flex-direction: column; align-items: flex-start; gap: 2px; }
+  /* and the face itself: at ~130px of content width the bags column
+     leaves the bid line ~54px and it wraps to three lines. Name and line
+     take full-width rows; the bags stat drops beside the players row.
+     Verdict cards keep the animfx face (their plaque row is the point
+     of that card) — hence :not(.has-verdict). */
+  .tt-recap.crowded .tt-face:not(.has-verdict) { grid-template-areas: "name name" "line line" "players bags" "bar bar"; }
+}
+
 /* Home story-resume row (2026-10-21): the row swaps its content, never its
    footprint — the facts chip holds one line at the right edge and the stop
    name shrinks inside its own space instead of pushing the chip off the
