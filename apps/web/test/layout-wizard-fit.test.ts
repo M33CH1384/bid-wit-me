@@ -6,12 +6,13 @@
  * step by taking the invisible dots out of the flow there — but on the
  * steps the dots are VISIBLE progress and the row never closed. Measured
  * on the shipped build (Chromium, every step, both themes): the bar's
- * children are nav 98.6 + dots 150 + right cluster 155.4 = 404px against
+ * children are nav 167.9 + dots 150 + right cluster 155.4 = 473px against
  * a 366px content box at 390 wide, so the gear and the dock slot rode
- * off the right edge — slot at 393–439 at 390×844, 378–424 at 375×667,
- * 433–479 at 430×932 (the dock seats exactly in its slot since a9518a15,
- * so the sound button went off-screen with it; the owner's door-step
- * screenshot shows Social clipped at the edge, gear + speaker gone).
+ * off the right edge — slot at 439–485 at every portrait phone width
+ * (110px past the edge at 375×667, 95px at 390×844, 55px at 430×932;
+ * the dock seats exactly in its slot since a9518a15, so the sound button
+ * went off-screen with it; the owner's door-step screenshot shows
+ * Social clipped at the edge, gear + speaker gone).
  *
  * THE FIX IS A WRAP, NOT A SQUEEZE. No element may shrink: both clusters
  * are 44–46px tap targets and the dots are the step progress. At
@@ -59,14 +60,15 @@ const stepCount = (setupSrc.match(/const ORDER: Step\[\] = \[([^\]]+)\]/)![1].ma
 const dotsTotal = (stepCount - 1) * dotW + dotOnW + (stepCount - 1) * dotGap;
 
 // Measured caps (Chromium on the shipped build, 2026-10-25): the nav
-// cluster rendered 98.6px and icon-only Social 47.4px in the sandbox's
-// fallback font; the caps below are deliberately generous — the back
-// chip's "BACK" is capped at 56px of text (12px+/glyph at 16px display
-// weight) so the budget also holds in the real Barlow Condensed.
-const backChipCap = 12 /* pad-l */ + 18 /* arrow svg (Setup.tsx) */ + 8 /* chip gap */ + 56 /* BACK, capped */ + 16 /* pad-r */;
+// cluster rendered 167.9px and icon-only Social 47.4px; the caps below
+// are deliberately generous — the back chip's "BACK" is capped at 64px
+// of text (the measured chip implies ~62px in the real Barlow
+// Condensed) so the budget holds with the real font, not just a
+// fallback's narrower metrics.
+const backChipCap = 12 /* pad-l */ + 18 /* arrow svg (Setup.tsx) */ + 8 /* chip gap */ + 64 /* BACK, capped */ + 16 /* pad-r */;
 const navCap = backChipCap + navGap + icon;
 const socialIconCap = 48; // measured 47.4, label hidden ≤520px (social.css)
-const socialLabelCap = 96; // measured 95.4 with the "Social" label shown
+const socialLabelCap = 96; // measured 94.3 with the "Social" label shown
 const rightIcon = socialIconCap + rightGap + icon + rightGap + slot;
 const rightLabel = socialLabelCap + rightGap + icon + rightGap + slot;
 

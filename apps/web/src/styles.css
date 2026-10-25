@@ -1372,19 +1372,25 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* Wizard-header fit II (2026-10-25): the rule above only unblocked the
    HOME step. On the steps themselves the dots are VISIBLE by design and
    the row cannot close: measured on the shipped build (Chromium, every
-   step, both themes) the children are nav 98.6 + dots 150 + right
-   cluster 155.4 = 404px against a 366px content box at 390 wide — the
-   gear and the dock slot ride off the right edge (slot 393–439 at
-   390×844, 433–479 at 430×932; the dock seats exactly in the slot, so
-   the sound button went with it). No element may shrink: both clusters
+   step, both themes) the children are nav 167.9 + dots 150 + right
+   cluster 155.4 = 473px against a 366px content box at 390 wide — the
+   gear and the dock slot ride off the right edge (slot at 439–485 at
+   every portrait phone width: 110px past the edge at 375×667, 95px at
+   390×844, 55px at 430×932; the dock seats exactly in the slot, so the
+   sound button went with it). No element may shrink: both clusters
    are 44–46px tap targets and the dots are the step progress. So at
    portrait phone widths the bar wraps instead — nav + right cluster
-   share the first line (254px, closing with ~97px to spare at 375) and
+   share the first line (323px, closing with ~28px to spare at 375) and
    the dots take a centered line of their own beneath it, full size.
    Wider portrait and landscape keep the single row: there the row
-   closes (452px including the labelled Social button, against 643px+
+   closes (520px including the labelled Social button, against 643px+
    of content box). Scoped off the home step — its header is a single
-   row by the home fit suite, and its dots are display:none regardless. */
+   row by the home fit suite, and its dots are display:none regardless.
+   (Measurement provenance: a garbled mid-run harness delivery briefly
+   put the nav at 98.6 / the row at 404 in this comment and in commit
+   6e78121a's message; the complete harness log is the authority —
+   nav 167.9, row 473, slot 439–485. The wrap was verified against the
+   true numbers: it closes line 1 with room to spare either way.) */
 @media (orientation: portrait) and (max-width: 520px) {
   .wizard:not(.step-home) .wiz-bar { flex-wrap: wrap; row-gap: 8px; }
   .wizard:not(.step-home) .wiz-dots { order: 3; flex: 1 1 100%; justify-content: center; }
