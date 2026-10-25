@@ -57,6 +57,13 @@ button:disabled { cursor: default; }
 .neg { color: var(--red); }
 .pos { color: var(--green); }
 .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* D10 (design audit 2026-10-24): the table's automation hand strip lives in an
+   .sr-only box, but white-space:nowrap laid its full-size buttons out in one
+   line (~600px of layout rects running under the header / first fan card), so
+   every geometry audit read them as HUD elements eating the fan's first card
+   and the speaker at EVERY size. Each button gets its own true sr-only box:
+   present for automation/AT, zero layout footprint beyond 1px. */
+[data-testid="hand"] > button { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* ---------- glass + slant primitives ---------- */
 .glass {
@@ -124,7 +131,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .toggle.on { background: var(--purple); box-shadow: 0 0 10px rgba(var(--purple-rgb),.7); }
 .toggle.on span { left: 21px; }
 .seg { display: inline-flex; background: rgba(255,255,255,.08); padding: 3px; gap: 3px; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
-.seg button { border: 0; background: none; padding: 7px 12px; font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+.seg button { border: 0; background: none; padding: 7px 12px; min-height: 44px; font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
 .seg button.on { background: var(--gold); color: #1d1204; }
 
 /* ---------- table screen ---------- */
@@ -255,10 +262,10 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .ctl-cluster { position: absolute; z-index: 12; right: calc(8px + env(safe-area-inset-right)); bottom: calc(23vh + 66px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
 .ctl-cluster > *, .ctl-cluster .av-btn { pointer-events: auto; }
 .ctl-cluster .av-bar { display: flex; flex-direction: inherit; gap: 6px; margin: 0; position: relative; pointer-events: none; }
-.ctl-cluster .av-btn { width: 42px; height: 42px; font-size: 16px; }
+.ctl-cluster .av-btn { width: 44px; height: 44px; font-size: 16px; }
 .ctl-cluster .av-btn small { font-size: 8px; margin-top: -10px; }
 .ctl-cluster .av-hint, .ctl-cluster .av-err { position: absolute; right: calc(100% + 8px); top: 0; white-space: normal; width: 150px; }
-.chat-toggle { position: relative; width: 42px; height: 38px; border: 0; font-size: 18px; background: var(--glass-strong); box-shadow: inset 0 0 0 1px var(--edge); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.chat-toggle { position: relative; width: 44px; height: 44px; border: 0; font-size: 18px; background: var(--glass-strong); box-shadow: inset 0 0 0 1px var(--edge); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .chat-toggle.open { background: var(--purple); }
 .unread { position: absolute; top: 2px; right: 4px; min-width: 16px; height: 16px; border-radius: 8px; background: var(--red); font-size: 10px; font-weight: 800; display: grid; place-items: center; padding: 0 3px; }
 .chat-ticker { position: absolute; right: calc(56px + env(safe-area-inset-right)); bottom: calc(23vh + 112px + env(safe-area-inset-bottom)); z-index: 11; max-width: 55%; font-size: 13px; padding: 6px 10px; background: var(--glass-strong); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35); clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); animation: ticker 5s ease forwards; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
@@ -282,9 +289,9 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .chat-line.system { color: var(--muted); font-size: 12px; font-style: italic; border-left: 2px solid rgba(var(--edge-rgb),.5); padding-left: 6px; }
 .chat-input { display: flex; gap: 6px; padding: 6px 10px 4px; }
 .chat-input input { flex: 1; min-width: 0; background: rgba(255,255,255,.07); border: 1px solid rgba(var(--edge-rgb),.3); color: var(--ink); padding: 7px 9px; font: inherit; font-size: 14px; }
-.chat-input button { border: 0; background: var(--purple); width: 36px; }
+.chat-input button { border: 0; background: var(--purple); width: 44px; min-height: 44px; }
 .emotes { display: flex; gap: 4px; padding: 0 10px 10px; }
-.emotes button { flex: 1; border: 0; background: rgba(255,255,255,.07); padding: 4px 0; font-size: 15px; }
+.emotes button { flex: 1; border: 0; background: rgba(255,255,255,.07); padding: 4px 0; min-height: 44px; font-size: 15px; }
 /* emoji reactions on chat lines (shared pieces in src/reactions.tsx) */
 .rx-add { border: 0; background: none; color: var(--muted); font-size: 13px; line-height: 1; padding: 8px 6px; margin: -6px -4px -6px 2px; opacity: .65; vertical-align: baseline; }
 .rx-add:active { opacity: 1; background: rgba(255,255,255,.08); border-radius: 8px; }
@@ -462,7 +469,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .table-screen.short .panel-title { font-size: 13px; }
 
 .table-screen.short .ctl-cluster { bottom: calc(8px + env(safe-area-inset-bottom)); top: auto; flex-direction: row; }
-.table-screen.short .ctl-cluster .av-btn, .table-screen.short .chat-toggle { width: 40px; height: 38px; }
+.table-screen.short .ctl-cluster .av-btn, .table-screen.short .chat-toggle { width: 44px; height: 44px; }
 .table-screen.short .ctl-cluster .av-btn { border-radius: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .table-screen.short .ctl-cluster .av-hint, .table-screen.short .ctl-cluster .av-err { top: auto; bottom: calc(100% + 54px); right: 0; }
 .table-screen.short .last-trick, .table-screen.short .last-trick.glass.slant { bottom: calc(54px + env(safe-area-inset-bottom)); max-width: 170px; padding: 2px 7px 4px; gap: 3px; }
@@ -616,6 +623,9 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    go flat (dividers, not nested glass), nothing overlaps, generous spacing. */
 .setup-card { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px 10px; background: rgba(255,255,255,.03);
   box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.18); clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px); }
+/* D3 (design audit 2026-10-24): while the deck browser is open inside this
+   card, the card stands its clip-path down — see the rule beside the deck
+   browser's own backdrop rule below. */
 .setup-card-h { margin: 0 0 6px; font-family: var(--display); font-weight: 800; font-size: 14px; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); }
 .setup-card .ess-row { background: transparent; box-shadow: none; clip-path: none; padding: 9px 0; min-height: 48px; }
 .setup-card .ess-row + .ess-row, .setup-card .quiet-row + .ess-row, .setup-card .ess-row + .quiet-row { border-top: 1px solid rgba(var(--edge-rgb),.14); }
@@ -640,7 +650,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 }
 @keyframes sheet-up { from { transform: translateY(40%); opacity: 0; } to { transform: none; opacity: 1; } }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid rgba(var(--edge-rgb),.2); }
-.sheet-head .icon-btn { width: 40px; height: 40px; font-size: 16px; }
+.sheet-head .icon-btn { width: 44px; height: 44px; font-size: 16px; }
 .sheet-body { padding-top: 4px; }
 .sheet-h { display: block; font-family: var(--display); letter-spacing: .1em; color: var(--gold); font-size: 15px; text-transform: uppercase; margin: 12px 0 0; }
 .tips-ask p { text-align: center; color: var(--muted); margin: 0; }
@@ -680,7 +690,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* ---------- always-visible sound dock (every screen, top-right) ---------- */
 .sound-dock { position: fixed; z-index: 70; top: calc(6px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); }
 .dock-btn {
-  position: relative; width: 40px; height: 40px; border: 0; display: grid; place-items: center; padding: 0; font-size: 17px;
+  position: relative; width: 44px; height: 44px; border: 0; display: grid; place-items: center; padding: 0; font-size: 17px;
   background: var(--glass-strong); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   -webkit-touch-callout: none; user-select: none; touch-action: manipulation;
@@ -742,7 +752,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .bc-suggest { font-family: var(--display); font-weight: 800; letter-spacing: .04em; color: var(--gold); font-size: 16px; }
 .bid-panel .bc-why, .bid-coach .bc-why, .bid-coach .bc-how { background: none !important; box-shadow: none !important; clip-path: none !important; padding: 2px 4px !important; font-size: 12.5px !important; color: var(--lav); text-decoration: underline; margin-left: auto; min-height: 0; }
 .bid-coach .bc-how { margin-left: 0; text-decoration: none; }
-.bid-coach .bc-close { margin-left: 4px; width: 30px; height: 30px; font-size: 13px; }
+.bid-coach .bc-close { margin-left: 4px; width: 44px; height: 44px; font-size: 13px; }
 .bc-body { margin-top: 4px; max-height: 38vh; overflow: auto; }
 .bc-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .bc-rows li { display: grid; grid-template-columns: 9.5em 1fr auto; gap: 8px; align-items: baseline; padding: 2px 0; }
@@ -856,7 +866,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .tt-live { display: flex; align-items: center; gap: 6px; color: #fff; background: var(--red); padding: 2px 10px 2px 8px; font-size: 13px; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
 .tt-live .live-dot { background: #fff; box-shadow: 0 0 6px #fff; }
 .tt-title { color: var(--gold); font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tt-chat-btn { position: relative; flex: none; margin-left: auto; width: 38px; height: 38px; border: 0; border-radius: 12px; font-size: 17px; line-height: 1; color: #fff; background: rgba(var(--purple-rgb),.92); box-shadow: 0 4px 10px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; pointer-events: auto; cursor: pointer; }
+.tt-chat-btn { position: relative; flex: none; margin-left: auto; width: 44px; height: 44px; border: 0; border-radius: 12px; font-size: 17px; line-height: 1; color: #fff; background: rgba(var(--purple-rgb),.92); box-shadow: 0 4px 10px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; pointer-events: auto; cursor: pointer; }
 .tt-chat-btn.on { background: rgba(40,24,64,.95); }
 .tt-chat-btn .unread { top: -6px; right: -6px; }
 .tt-count { margin-left: auto; font-size: 14px; color: var(--muted); white-space: nowrap; }
@@ -1055,7 +1065,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .tt-chat { display: flex; flex-direction: column; min-height: 170px; flex: 1; background: rgba(0,0,0,.25); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.25); border-radius: 6px; }
 .tt-chat .chat-list { max-height: 190px; min-height: 90px; }
 .tt-reacts { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
-.tt-reacts button { padding: 6px 10px; font-size: 14px; font-weight: 800; border: 0; border-radius: 16px; background: rgba(var(--edge-rgb),.2); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45); color: #fff; }
+.tt-reacts button { padding: 6px 10px; min-height: 44px; font-size: 14px; font-weight: 800; border: 0; border-radius: 16px; background: rgba(var(--edge-rgb),.2); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45); color: #fff; }
 .tt-reacts button:active { transform: scale(.94); }
 .tt-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 10px 16px 12px; border-top: 1px solid rgba(var(--edge-rgb),.25); }
 .tt-foot .primary { min-width: 160px; }
@@ -1123,17 +1133,17 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .bug-books { display: none; } /* the hand-1 rule is in the center banner and the score pad */
 }
 .tt-run { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
-.tt-run-show { align-self: center; margin: 0; padding: 6px 14px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
+.tt-run-show { align-self: center; margin: 0; padding: 6px 14px; min-height: 44px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
 /* Score-card trick browser (owner 2026-10-24): the recap's Review control —
    a pill in the Run It review's idiom that opens the trick browser (the
    table readout's own lt-* classes and stepping helpers) in the recap's
    flow, over the hand just played. */
 .tt-tricks { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
-.tt-tricks-show { align-self: center; margin: 0; padding: 6px 14px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
+.tt-tricks-show { align-self: center; margin: 0; padding: 6px 14px; min-height: 44px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
 .trick-browser { display: flex; flex-direction: column; gap: 5px; padding: 8px 12px; border-radius: 12px; background: rgba(16, 8, 30, .55); border: 1px solid rgba(var(--edge-rgb), .45); }
 .tb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tb-head .lt-label { width: auto; text-align: left; }
-.tb-x { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 15px; }
+.tb-x { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 15px; }
 .tb-cards { display: flex; flex-wrap: wrap; gap: 4px; }
 .tt-backdrop ~ .modal-backdrop { z-index: 50; }
 .tt-foot.bid-row { margin: 0; flex-wrap: nowrap; }
@@ -1146,7 +1156,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 }
 .chat.glass.slant.recap-chat.open { display: flex; }
 .chat.glass.slant.recap-chat::before { display: none; }
-.chat.recap-chat header .sheet-x { position: static; width: 32px; height: 32px; margin-left: 8px; flex: none; }
+.chat.recap-chat header .sheet-x { position: static; width: 44px; height: 44px; margin-left: 8px; flex: none; }
 .chat.recap-chat .chat-list { min-height: 120px; }
 /* ------------------------------------------------------------- modal stacking
  * Modals (Table Talk, game over, score pad, leave confirm) sit above everything on the table: name plates and video
@@ -1161,7 +1171,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 }
 .table-screen.modal-open .modal-backdrop { background: rgba(6,3,12,.35); }
 @media (prefers-reduced-motion: reduce) { .table-screen.modal-open > * { transition: none; } }
-.modal-x { position: absolute; top: 8px; right: 10px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45); font-size: 16px; line-height: 1; display: grid; place-items: center; z-index: 2; }
+.modal-x { position: absolute; top: 8px; right: 10px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45); font-size: 16px; line-height: 1; display: grid; place-items: center; z-index: 2; }
 .modal-x:hover { background: rgba(var(--purple-rgb),.35); }
 .modal.gameover { position: relative; }
 .modal.gameover .bid-row { flex-wrap: wrap; justify-content: center; }
@@ -1290,12 +1300,26 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
 }
 .wiz-right .icon-btn.gear { width: 46px; height: 46px; font-size: 21px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-.sound-dock.slotted { top: var(--dock-top) !important; right: var(--dock-right) !important; }
-.sound-dock.slotted .dock-btn { width: var(--dock-w) !important; height: var(--dock-h) !important; }
+/* D1 (design audit 2026-10-24): the dock renders INTO its slot (React portal in
+   SoundControls.tsx) instead of parking a fixed box on the slot's measured rect —
+   the measurement raced the app's transition transforms and landed stale,
+   overlapping the header's Social/gear buttons at every size. In-flow, the dock
+   fills its slot exactly and moves with the header's own layout. */
+.sound-dock.slotted { position: relative; width: 100%; height: 100%; display: block; }
+.sound-dock.slotted .dock-btn { width: 100% !important; height: 100% !important; }
 /* square, top of the scorebug slot: the slot's full height covered the recap's Save button */
-.sound-dock.slotted.in-bug { width: 40px; height: 40px; }
-.sound-dock.slotted.in-bug .dock-btn { width: 40px !important; height: 40px !important; background: var(--glass); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.sound-dock.slotted.in-bug { height: auto; aspect-ratio: 1; }
+.sound-dock.slotted.in-bug .dock-btn { background: var(--glass); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
 .sound-dock.slotted.in-bug .dock-btn { font-size: 16px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+/* The slot span itself stays visibility:hidden (it reserves the space); the
+   portaled dock inside it is the visible control. */
+.dock-slot > .sound-dock { visibility: visible; }
+/* D1: while a modal sheet, the Social panel (a .modal-backdrop), the versus /
+   table-loading hold, or the victory screen is up, the dock stands down
+   entirely — it never paints over those layers. The recap (.tt-backdrop) is
+   deliberately NOT in this list: the recap reserves dock room in its header
+   and the dock stays reachable over it (pinned in scorecard-espn.test.ts). */
+#root:has(.bwm-loading) .sound-dock, #root:has(.modal-backdrop) .sound-dock, #root:has(.victory-screen) .sound-dock { display: none; }
 .table-screen.short .sound-dock.slotted.in-bug .dock-btn { font-size: 14px; }
 
 /* ---------- tips: tappable terms, Card basics, rings/tags over the cards a tip talks about ---------- */
@@ -1594,7 +1618,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 
 /* ---- Talk trash quick chat ---- */
 .trash-wrap { position: relative; display: flex; flex-direction: column; align-items: flex-end; }
-.trash-btn { display: flex; align-items: center; justify-content: center; width: 42px; height: 38px; font-size: 18px; padding: 0; border-radius: 999px; border: 1.5px solid rgba(255,255,255,.55); background: linear-gradient(135deg, rgba(255,79,216,.85), rgba(120,60,255,.85)); color: #fff; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.trash-btn { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; font-size: 18px; padding: 0; border-radius: 999px; border: 1.5px solid rgba(255,255,255,.55); background: linear-gradient(135deg, rgba(255,79,216,.85), rgba(120,60,255,.85)); color: #fff; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
 .trash-btn span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
 .trash-btn.cooling { opacity: .55; }
 .table-screen.short .trash-btn span { display: none; }
@@ -1731,14 +1755,18 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .lobby .rules-summary { text-align: left; padding: 6px 2px 0; }
 
 /* Branded hold: covers the table from join/start until the cloth is dressed and the first state is in. */
-.bwm-loading { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+.bwm-loading { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; overflow-y: auto; padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
   background:
     radial-gradient(90% 60% at 50% 38%, rgba(var(--purple-rgb), .28), transparent 62%),
     radial-gradient(70% 50% at 50% 80%, rgba(var(--gold-rgb), .12), transparent 70%),
     #0c0712;
   transition: opacity .36s ease; }
 .bwm-loading.leaving { opacity: 0; pointer-events: none; }
-.bwm-loading-card { width: min(100%, 360px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
+/* margin:auto is the safe-centering half of the D5 fix: with the shell
+   scrollable, an auto margin centers the card when it fits and collapses to 0
+   when it doesn't, so the top of the stack is always reachable by scrolling
+   (place-items:center alone clips the overflow at BOTH ends, unreachably). */
+.bwm-loading-card { width: min(100%, 360px); margin: auto; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
 .bwm-loading-mark { width: min(78%, 280px); height: auto; filter: drop-shadow(0 0 18px rgba(var(--purple-rgb), .65)) drop-shadow(0 6px 12px rgba(0, 0, 0, .6)); }
 .bwm-loading-room { margin-top: 6px; font: 700 12px/1 var(--display); letter-spacing: .18em; text-transform: uppercase; color: #ffe9b0; opacity: .92; }
 .bwm-loading-line { margin: 0; min-height: 1.2em; font-family: var(--display); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 15px; color: var(--gold); text-shadow: 0 0 12px rgba(var(--gold-rgb), .45); }
@@ -1887,6 +1915,42 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .versus-shake, .versus-side, .versus-quad, .versus-vs, .versus-flash, .versus-tape, .versus-row, .versus-story-row, .versus-story-line, .versus-pot.only, .versus-skip { animation: none !important; }
   .versus-flash { opacity: 0 !important; }
 }
+/* D5 (design audit 2026-10-24): short-height compact variant for the loading /
+   versus shell — phone landscape is 375–430px tall, where the stock stacks
+   (~465px versus, ~382px standard) overflowed a non-scrolling shell and were
+   clipped at both ends. The shell now scrolls with safe centering (above), and
+   this variant shrinks the stacks to fit whole: versus ≈285px, standard
+   ≈285px against 351px of usable height at 667×375 (375 − 12 − 12 padding).
+   Faces are inline-styled by VersusIntro, so the shrink needs !important.
+   Budgets pinned in layout-loading-fit.test.ts. */
+@media (max-height: 560px) {
+  .bwm-loading { padding: calc(12px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom)); }
+  .bwm-loading-card { gap: 8px; }
+  .bwm-loading-mark { width: min(46%, 180px); }
+  .bwm-loading-room { margin-top: 2px; }
+  .bwm-loading-tip { min-height: 3.6em; }
+  .bwm-seat-facebox { height: 48px; }
+  .bwm-seat-facebox .story-face, .bwm-seat-face-circle { width: 48px; height: 48px; font-size: 20px; }
+  .bwm-seat-plate { height: 48px; }
+  .versus-shake { gap: 8px; }
+  .versus-stage { min-height: 108px; }
+  .versus-stage.solo { min-height: 148px; }
+  .versus-side { gap: 4px; }
+  .versus-quad { gap: 3px; }
+  .versus-face { width: 52px !important; height: 52px !important; }
+  .versus-face .avatar-circle, .versus-face > span { width: 52px !important; height: 52px !important; font-size: 22px !important; }
+  .versus-vs { font-size: 34px; }
+  .versus-flash { width: 160px; height: 160px; }
+  .versus-tape { padding: 8px 10px 6px; }
+  .versus-tape-title { margin-bottom: 5px; }
+  .versus-pot { margin-bottom: 5px; }
+  .versus-row { padding: 3px 2px; }
+  .versus-cell { font-size: 15px; }
+  .versus-track { margin-top: 8px; }
+  .versus-story-line.stakes { padding: 0 2px 3px; }
+  .versus-story-line.threat { padding-top: 4px; }
+  .versus-story-row { padding: 3px 2px; }
+}
 /* Pre-deal setup window (online): the table is live, the first deal is held by the room */
 .predeal-note { position: absolute; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 10px 18px; border-radius: 14px; background: rgba(10, 6, 18, .82); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .35), 0 12px 28px rgba(0,0,0,.5); text-align: center; pointer-events: none; }
@@ -1915,6 +1979,28 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* Resumed hand, on screen before WebGL. Buttons work immediately; the canvas face fills in one card per frame. */
 /* No filter or opacity on the fan. A parent filter would dim every card, legal ones included. */
 .felt-hand { position: absolute; z-index: 7; left: 0; right: 0; bottom: calc(15vh + env(safe-area-inset-bottom)); height: 132px; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; filter: none; opacity: 1; }
+/* D10 (design audit 2026-10-24): fan vs HUD pills, two tiers.
+   Short heights (phone landscape): the fan's rotated edge cards dipped onto
+   the me-plate's view/turn-up chips (fixed bottom-left in short mode;
+   measured 81px wide × 3–11px tall) — raising the fan 16px clears the deepest
+   measured dip with margin; and on the table's short layout the fan keeps a
+   104px right reserve so its right end clears the bottom-right control rail
+   (trash-talk measured 16×38px there).
+   Tall wide screens (tablet/desktop): the plate lives in the .me flow at
+   23vh and the 120×168 fan's top edge ran under its chips for their full
+   20px height at every size from 768×1024 up — the fan drops to a 12px
+   anchor, putting its top edge (12 + 168 card + ~22 of rotation/lift ≈ 202px)
+   below the plate row at every audited size (the last-trick readout at
+   23vh + 64px stays above the dropped fan: ≥240px at 768px tall).
+   Portrait phones are deliberately untouched: the founder's plate rule parks
+   the plate clear of the fan there, and no chip pairs were measured. */
+@media (max-height: 560px) {
+  .felt-hand { bottom: calc(15vh + 16px + env(safe-area-inset-bottom)); }
+  .table-screen.short .felt-hand { right: 104px; }
+}
+@media (min-width: 601px) and (min-height: 561px) {
+  .felt-hand { bottom: calc(12px + env(safe-area-inset-bottom)); }
+}
 /* The 3D fan is up. The flat cards would paint a second face behind it and catch the tap. */
 .table-screen.hand-3d .felt-hand,
 .table-screen.hand-3d .felt-hand button,
@@ -2064,7 +2150,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .sound-fields .vol-row { margin: -2px 0; }
 
 .sheet-head { display: flex; align-items: center; justify-content: space-between; }
-.sheet-x { border: 0; background: rgba(255,255,255,.08); color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 16px; }
+.sheet-x { border: 0; background: rgba(255,255,255,.08); color: #fff; width: 44px; height: 44px; border-radius: 50%; font-size: 16px; }
 .sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .mute-all.big { min-height: 44px; font-size: 14px; padding: 8px 10px; }
 .info-note { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 4px; }
@@ -2073,8 +2159,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* the lobby: table music panel */
 .lobby-music { display: flex; flex-direction: column; gap: 8px; }
 .lobby-music .panel-title small { color: var(--muted); font-weight: 600; letter-spacing: .04em; }
-.lobby-music .hm-tabs button, .lobby-music .hm-beats button, .lobby-music .hm-btn { min-height: 40px; font-size: 13px; }
-.setup-music select, .setup-music input { width: 100%; min-height: 40px; }
+.lobby-music .hm-tabs button, .lobby-music .hm-beats button, .lobby-music .hm-btn { min-height: 44px; font-size: 13px; }
+.setup-music select, .setup-music input { width: 100%; min-height: 44px; }
 .setup-music { flex-direction: column; align-items: stretch; gap: 6px; }
 .setup-music .ess-label small { color: var(--muted); font-weight: 600; }
 /* narrow portrait phones: no logo column, so the tiny BETA tag would sit on the series chip */
@@ -2129,8 +2215,20 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    clears the chat ticker whose right edge sits 56px in. Short landscape keeps the same
    anchor with the compact button sizing the short cluster rules already define. */
 .ctl-rail, .table-screen.short .ctl-rail { top: auto; bottom: calc(23vh + 8px + env(safe-area-inset-bottom)); right: calc(8px + env(safe-area-inset-right)); flex-direction: column; align-items: center; gap: 6px; padding: 6px 0; border-radius: 16px; background: rgba(var(--glass-strong-rgb),.88); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35), 0 8px 22px rgba(0,0,0,.5); }
+/* D10 (design audit 2026-10-24): on portrait phones and portrait tablets the
+   rail's bottom item — the trash-talk button — sat ON the fan's right-end
+   cards (measured overlaps up to 42px wide × 33px tall at 375×667, 8×38 at
+   768×1024; taller than the 28px sr-only strip, so these are the real fan
+   cards' rotated AABBs). The rail rises 48px on sub-900px screens, clearing
+   the deepest measured encroachment by 15px; the plate layout engine reads
+   the rail's live rect as an obstacle, so plates re-avoid it automatically.
+   Short landscape keeps the anchor above (its trash clearance comes from the
+   fan's right reserve in the D10 fan tiers below), and ≥900px is untouched. */
+@media (max-width: 899px) {
+  .ctl-rail { bottom: calc(23vh + 56px + env(safe-area-inset-bottom)); }
+}
 .ctl-rail .av-bar { flex-direction: column; }
-.ctl-rail .chat-toggle { width: 42px; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 17px; line-height: 1; clip-path: none; border-radius: 10px; pointer-events: auto; }
+.ctl-rail .chat-toggle { width: 44px; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 17px; line-height: 1; clip-path: none; border-radius: 10px; pointer-events: auto; }
 .ctl-rail .chat-toggle small { font-family: var(--display); font-weight: 800; font-size: 8px; letter-spacing: .1em; color: var(--muted); margin-top: 2px; }
 .ctl-rail .chat-toggle.open small { color: #fff; }
 .ctl-rail .chat-toggle .unread { top: -5px; right: -5px; }
@@ -2166,7 +2264,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .run-review { display: flex; flex-direction: column; gap: 8px; }
 .run-review-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .run-review-head .lt-label { width: auto; font-size: 18px; letter-spacing: .08em; color: var(--gold); }
-.run-review-x { width: 32px; height: 32px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 15px; }
+.run-review-x { width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 15px; }
 .run-review-sub { margin: 0; font-size: 13px; line-height: 1.35; color: var(--muted); font-family: var(--body, inherit); font-weight: 600; font-style: normal; letter-spacing: 0; }
 .run-hand { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; background: rgba(255,255,255,.04); }
 .run-hand.claimer { box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb),.85); background: rgba(var(--gold-rgb),.08); }
@@ -2201,7 +2299,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .pad-board-total { font-size: 30px; font-weight: 800; font-family: var(--display); font-variant-numeric: tabular-nums; line-height: 1; color: var(--gold); }
 .pad-board-bags { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pad-board-sets { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.pad-x { position: absolute; top: 8px; right: 10px; width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 16px; z-index: 2; }
+.pad-x { position: absolute; top: 8px; right: 10px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 16px; z-index: 2; }
 .pad-rules.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; margin: 8px 0 4px; }
 .pad-cols.v2 { position: static; background: transparent; }
 .rule-chip { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 12px; background: rgba(var(--edge-rgb),.16); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.4); color: var(--ink); white-space: nowrap; }
@@ -2337,7 +2435,7 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .profile-view .soc-coin-chip { font-size: 15px; padding: 6px 10px; letter-spacing: -.02em; white-space: nowrap; }
 .profile-view .soc-coin-chip svg { width: 19px; height: 19px; }
 .prof-tabs { display: flex; gap: 4px; margin-bottom: 14px; overflow-x: auto; }
-.prof-tabs button { position: relative; flex: 1; border: 0; background: none; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; padding: 10px 6px; border-bottom: 2px solid transparent; white-space: nowrap; }
+.prof-tabs button { position: relative; flex: 1; min-height: 44px; border: 0; background: none; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; padding: 10px 6px; border-bottom: 2px solid transparent; white-space: nowrap; }
 .prof-tabs button.on { color: var(--gold); border-bottom-color: var(--gold); }
 .tab-dot { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--red); color: #fff; font-size: 11px; display: grid; place-items: center; font-style: normal; }
 .prof-body h3 { font-family: var(--display); letter-spacing: .06em; text-transform: uppercase; font-size: 15px; color: var(--muted); margin: 16px 0 8px; }
@@ -2384,6 +2482,28 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .unlock-row b { flex: 1; }
 .unlock-row small { color: var(--muted); font-size: 12px; }
 .equipped-tag { font-size: 11px; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: .06em; }
+/* ---------- Design audit D9 + D4, profile page host (2026-10-24) ----------
+   D9: the page had NO large-screen tier — the 720px cap left 50% of a
+   1440px display and 31% of a 1920px display as dead margins while the
+   story shell steps 560 → 760 → 1120. Same idiom as story's ≥1100px
+   step: the page composes at 1120px with 32px side padding, and the
+   internals use the room — achievements step 3 → 4 columns (the ≥560px
+   3-column hook above is the same grid), unlocks go two-up; rank cards
+   (exactly two) and the stat tables are full-width flow and stretch
+   with the column by construction. Nothing goes full-bleed; portrait
+   and tablet geometry is untouched (the step starts at 1100px).
+   D9 P2: on the PAGE host the Rep-ranks row may wrap — the .profile-view
+   nowrap variant overflowed ~15–30px once a coin balance reached 6–7
+   digits (row ≈344px+ vs 343px at 375px). Equal specificity to the
+   .profile-view rule, later in the file, page-scoped only: the panel
+   and modal chip variants are untouched. A wrapped coin chip drops to
+   a second line inside the Rep block instead of clipping off the edge. */
+@media (min-width: 1100px) {
+  .profile-page { max-width: 1120px; padding-left: 32px; padding-right: 32px; }
+  .profile-page .ach-grid { grid-template-columns: repeat(4, 1fr); }
+  .profile-page .unlock-list { grid-template-columns: 1fr 1fr; }
+}
+.profile-page .soc-rep-ranks { flex-wrap: wrap; }
 .prof-loading, .prof-error { text-align: center; padding: 60px 20px; color: var(--muted); }
 .muted { color: var(--muted); }
 
@@ -2439,7 +2559,7 @@ button.avatar-tap:focus-visible { outline: 2px solid var(--gold); outline-offset
 .prof-edit-toggle { margin: 0 0 12px; }
 .prof-pic-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
 .prof-pic-note { font-size: 13px; color: var(--muted); }
-.prof-pic-btn { border: 1px solid rgba(255,255,255,.25); background: var(--glass-strong); color: #fff; border-radius: 10px; padding: 8px 12px; font: 700 13px/1 var(--display); letter-spacing: .04em; cursor: pointer; }
+.prof-pic-btn { min-height: 44px; border: 1px solid rgba(255,255,255,.25); background: var(--glass-strong); color: #fff; border-radius: 10px; padding: 8px 12px; font: 700 13px/1 var(--display); letter-spacing: .04em; cursor: pointer; }
 .prof-pic-btn:disabled { opacity: .5; cursor: default; }
 .prof-pic-btn.ghost { background: none; }
 .prof-pic-err { color: #ff9d9d; font-size: 13px; }
@@ -2449,19 +2569,19 @@ button.avatar-tap:focus-visible { outline: 2px solid var(--gold); outline-offset
 .prof-tagline a { color: var(--gold); text-decoration: underline; }
 .prof-tag-row { display: grid; gap: 6px; margin: 0 0 12px; }
 .prof-tag-edit { display: flex; gap: 8px; align-items: center; }
-.prof-tag-edit input { flex: 1; min-width: 0; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; color: #fff; padding: 9px 12px; font: inherit; font-size: 14px; }
+.prof-tag-edit input { flex: 1; min-width: 0; min-height: 44px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); border-radius: 10px; color: #fff; padding: 9px 12px; font: inherit; font-size: 14px; }
 .prof-tag-count { color: var(--muted); font-size: 11px; }
 
 /* social links (Demetrius 2026-10-20): tappable platform chips on profile views */
 .social-links { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
-.social-link-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 36px; padding: 6px 12px; border-radius: 999px; background: rgba(var(--gold-rgb),.12); border: 1px solid rgba(var(--gold-rgb),.35); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; }
+.social-link-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 6px 12px; border-radius: 999px; background: rgba(var(--gold-rgb),.12); border: 1px solid rgba(var(--gold-rgb),.35); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; }
 .social-link-chip:active { background: rgba(var(--gold-rgb),.25); }
 .social-link-glyph { font-weight: 900; }
 /* profile page: social-links editor */
 .prof-links-edit { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
 .prof-link-row { display: flex; align-items: center; gap: 10px; }
 .prof-link-name { flex: 0 0 108px; font-size: 13px; font-weight: 700; color: #fff; }
-.prof-link-row input { flex: 1 1 auto; min-width: 0; min-height: 40px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.25); color: #fff; font-size: 14px; }
+.prof-link-row input { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.25); color: #fff; font-size: 14px; }
 .prof-link-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .prof-link-saved { color: #9fe6a0; font-size: 13px; }
 .prof-links-none { color: var(--muted); font-size: 13px; }
@@ -3248,6 +3368,28 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .vic-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; width: 100%; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .vic-foot .confirm-actions { flex: none; width: 100%; }
 
+/* D8 (design audit 2026-10-24): short-height composition — in phone landscape
+   (375–430px tall) the stacked column crushed the winner spotlight to a ~100px
+   scroll window and the placements region to ~0–15px. Below 560px tall the
+   screen becomes a two-column grid: the head spans the top, the spotlight
+   scrolls in the wider left cell and the foot panel (placements scroll +
+   pinned Rematch/Home) fills the right cell, so BOTH regions get the full
+   inner height — 321px at 667×375 (375 − 10 − 10 padding − ~26 head − 8 gap)
+   instead of ~100px / ~0px. Winner frames are height-capped so a 2-up grid
+   shows whole frames without scrolling at the audited sizes. Portrait is
+   untouched (portrait phones are 667px+ tall) — its arithmetic still closes
+   by the same 7px at 375×667. Pinned in layout-victory-fit.test.ts. */
+@media (max-height: 560px) {
+  .victory-screen { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 8px 14px; align-items: stretch; padding: calc(10px + env(safe-area-inset-top)) 12px calc(10px + env(safe-area-inset-bottom)); }
+  .victory-screen .vic-head { grid-column: 1 / -1; justify-self: center; }
+  .victory-screen .victory-spot { width: 100%; max-width: none; }
+  .victory-screen .vic-foot { width: 100%; }
+  .victory-screen .vs-frame { max-height: 34vh; }
+  .victory-screen .vs-card { min-height: 96px; }
+  .victory-screen .vs-title { font-size: clamp(22px, 6vh, 34px); }
+  .victory-screen .vs-sub { font-size: clamp(13px, 2.6vh, 17px); }
+}
+
 /* ---------- recap header vs the sound dock (owner 2026-10-21: "The chat button is
    hiding behind audio setting button") ----------
    The speaker dock paints over the recap's top-right corner (fixed/slotted,
@@ -3430,8 +3572,18 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
    picker markup is gone; its CSS remains for the pin tests).
    =============================================================== */
 .setup-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; width: min(560px, 100%); z-index: 15;
-  padding: 26px 18px calc(10px + env(safe-area-inset-bottom));
-  background: linear-gradient(180deg, transparent, rgba(12,7,18,.93) 34%, rgba(12,7,18,.98)); }
+  padding: 12px 18px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(12,7,18,.94), rgba(12,7,18,.98) 42%); }
+/* D3 (design audit 2026-10-24): top padding 26px -> 12px and an opaque-from-the-top
+   gradient (it faded in from transparent, so the summary line printed over the deck
+   tiles beneath it). Bar height is now 12 + 16 summary + 8 + 52 .go + 24 sticky-note
+   + 10 = 122px (+ safe-area), and .ess-barred's 138px reserve clears it by exactly
+   the required 16px; ticker-on (bar lifted 38px, reserve 176px) keeps the same 16px:
+   176 - (122 + 38) = 16. Arithmetic pinned in layout-setupbar-fit.test.ts. */
+/* While any modal sheet is open (deck/venue browsers, gear sheet, sign-in), the
+   commit bar stands down: a sheet's end-of-scroll is fully reachable and nothing
+   of the bar paints over the sheet. */
+body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .setup-bar-summary { margin: 0 0 8px; text-align: center; font-family: var(--display); font-weight: 700; font-size: 13px;
   letter-spacing: .05em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .setup-bar-actions { display: flex; flex-direction: column; }
@@ -3467,6 +3619,13 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   font-weight: 800; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
 
 .db-backdrop { z-index: 30; }
+/* D3 (design audit 2026-10-24): this backdrop renders INSIDE .setup-card (and
+   inside the gear sheet, for the settings Deck row), and an ancestor
+   clip-path both confines a fixed descendant to the ancestor's box and clips
+   it — the browser painted sliced inside the card with the commit bar over
+   its rows. While the browser is open the host stands its clip down (the
+   backdrop's own dim covers the host's corners, so nothing visual changes). */
+.setup-card:has(.db-backdrop), .sheet:has(.db-backdrop) { clip-path: none; }
 .deck-browser { width: min(680px, 100%); max-height: min(92dvh, 920px); display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .db-head { display: flex; gap: 14px; align-items: flex-start; padding: 16px 16px 8px; }
 .db-hero { position: relative; width: 96px; height: 122px; flex: none; }
@@ -3479,7 +3638,7 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .db-tag { margin: 3px 0 0; font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); }
 .db-blurb { margin: 7px 0 0; font-size: 13.5px; line-height: 1.5; }
 .db-lock { margin: 7px 0 0; font-size: 12.5px; font-weight: 600; color: var(--gold); }
-.db-close { flex: none; width: 40px; height: 40px; border: 0; border-radius: 10px; background: rgba(255,255,255,.07); color: var(--ink); font-size: 15px; cursor: pointer; }
+.db-close { flex: none; width: 44px; height: 44px; border: 0; border-radius: 10px; background: rgba(255,255,255,.07); color: var(--ink); font-size: 15px; cursor: pointer; }
 .db-body { overflow-y: auto; padding: 2px 16px 14px; flex: 1; }
 .db-sec { margin: 12px 0 8px; font-family: var(--display); font-weight: 800; font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); }
 .db-grid { display: grid; gap: 8px; }
@@ -3491,7 +3650,7 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .db-foot { display: flex; align-items: center; gap: 12px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(var(--edge-rgb),.18); }
 .db-foot-hint { flex: 1; color: var(--muted); font-size: 12.5px; }
 .db-allcards { flex: 1; text-align: left; background: none; border: 0; color: var(--gold); font: inherit; font-weight: 700; cursor: pointer; padding: 10px 0; }
-.db-use { flex: none; min-width: 168px; }
+.db-use { flex: none; min-width: 168px; min-height: 44px; }
 .db-use:disabled { opacity: .55; cursor: not-allowed; }
 
 /* Clean index face for cards a deck ships no art for (painted at the table). */
@@ -3542,7 +3701,7 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
    stays MOUNTED, so folding never unmounts a control or loses its state,
    and a folded group leaves the tab order via visibility. Reduced motion
    (the OS setting the app already honors) makes the fold instant. */
-.set-group-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 34px; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
+.set-group-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
 .set-chev { flex: none; color: var(--gold); font-size: 12px; line-height: 1; transform: rotate(-90deg); transition: transform .25s ease; }
 .set-chev.open { transform: rotate(0deg); }
 .set-group-body { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows .28s ease, visibility 0s linear .28s; }

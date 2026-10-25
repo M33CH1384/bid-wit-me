@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { sound, useSoundSettings } from './audio';
 import { speakerAriaLabel } from './audioSession';
 import { requestSettingsSheet } from './settingsSheet';
@@ -125,8 +126,11 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
 }
 
 /**
- * Always-visible speaker: it parks on the screen's .dock-slot (the home top bar, the
- * in-game scorebug) and floats at the top-right corner where a screen has no slot.
+ * Always-visible speaker: it renders INTO the screen's .dock-slot (the home top bar,
+ * the in-game scorebug) via a portal, so it sits in the header's own flow and can
+ * never drift onto a neighbouring button; where a screen has no slot it floats at
+ * the top-right corner, and CSS stands it down entirely under modal sheets, the
+ * Social panel, the versus/loading hold and the victory screen (design audit D1).
  * Tap: opens the ONE Settings sheet (settingsSheet.ts), landed on the Sound & music
  * group — the speaker has no settings surface of its own anymore (owner, 2026-10-20).
  * The same tap resumes or rebuilds a suspended AudioContext and primes music inside
@@ -137,57 +141,36 @@ export function SoundFields({ compact = false }: { compact?: boolean }) {
 export function SoundDock() {
   const s = useSoundSettings();
   const [flash, setFlash] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
   const press = useRef<{ timer: number | null; long: boolean; lastTap: number; down: number }>({ timer: null, long: false, lastTap: -Infinity, down: 0 });
-  // sit exactly on the screen's .dock-slot (next to the gear / scorebug buttons) so the pair lines up and matches
+  // Sit IN the screen's .dock-slot (next to the gear / scorebug buttons) so the pair lines up and matches.
+  // The dock used to park a position:fixed box on the slot's MEASURED viewport rect; that measurement raced
+  // the app's own transition transforms (spray / fan / deal) and only re-synced on mutation, resize, scroll or
+  // a 1s tick, so the box landed stale — measured overlapping the header's Social/gear buttons by 15–45px at
+  // every size in the 2026-10-24 design audit (D1), and floating over the versus/loading layer where the
+  // screen renders no slot at all. Rendering into the slot removes the measurement entirely: layout is the
+  // header's own, at every size, in both themes. Slot identity is tracked (not geometry) via MutationObserver,
+  // with resize + a 1s tick as backstops for late layout (fonts, safe areas).
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
-    let raf = 0;
-    const sync = () => {
-      raf = 0;
-      const el = ref.current;
-      if (!el) return;
-      const slot = [...document.querySelectorAll<HTMLElement>('.dock-slot')].find((x) => x.getBoundingClientRect().width > 0);
-      // in the scorebug, the slot takes its neighbour's width so the whole cluster is one size
-      let nb = slot?.classList.contains('bug-btn') ? (slot.previousElementSibling as HTMLElement | null) : null;
-      while (nb && nb.getBoundingClientRect().width === 0) nb = nb.previousElementSibling as HTMLElement | null;
-      // only ever borrow a sibling BUTTON's width: borrowing the score block's width (it became the slot's neighbour when
-      // the ?/📋/HQ buttons moved into the menu) made the slot swallow the bug, which shrank, re-synced, and so on: the
-      // header flickered, the score text vanished and the (blurred) speaker button grew to the score block's size
-      if (nb && !(nb.classList.contains('bug-btn') && nb.tagName === 'BUTTON')) nb = null;
-      if (slot && nb) { const nw = `${nb.getBoundingClientRect().width}px`; if (nb.getBoundingClientRect().width > 0 && slot.style.getPropertyValue('width') !== nw) slot.style.setProperty('width', nw, 'important'); }
-      const r = slot?.getBoundingClientRect();
-      if (!slot || !r) { el.classList.remove('slotted', 'in-bug'); return; }
-      el.classList.add('slotted');
-      const inBug = slot.classList.contains('bug-btn');
-      el.classList.toggle('in-bug', inBug);
-      const box = speakerSlotBox({ top: r.top, right: r.right, width: r.width, height: r.height }, window.innerWidth, inBug);
-      const v = { '--dock-top': `${box.top}px`, '--dock-right': `${box.right}px`, '--dock-w': `${box.width}px`, '--dock-h': `${box.height}px` };
-      for (const [k, x] of Object.entries(v)) if (el.style.getPropertyValue(k) !== x) el.style.setProperty(k, x);
+    const find = () => {
+      const next = [...document.querySelectorAll<HTMLElement>('.dock-slot')].find((x) => x.getBoundingClientRect().width > 0) ?? null;
+      setSlot((prev) => (prev === next ? prev : next));
     };
-    const kick = () => { if (!raf) raf = requestAnimationFrame(sync); };
-    sync();
-    const mo = new MutationObserver(kick);
+    find();
+    const mo = new MutationObserver(find);
     mo.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener('resize', kick);
-    // The dock is position:fixed parked on VIEWPORT coordinates measured
-    // from its in-flow slot, so scrolling moves the slot without any
-    // mutation or resize — on the long document-flow screens (the story
-    // map/tape/outros above all) the parked speaker lagged up to a second
-    // behind the scroll, then snapped to wherever the slot had gone,
-    // including off the top edge. Track scroll itself (capture: scroll
-    // does not bubble out of nested scrollers, but it does pass through
-    // window in the capture phase), rAF-throttled by the same kick.
-    window.addEventListener('scroll', kick, { passive: true, capture: true });
-    const iv = window.setInterval(kick, 1000); // late layout shifts (fonts, safe areas)
-    return () => { mo.disconnect(); window.removeEventListener('resize', kick); window.removeEventListener('scroll', kick, true); clearInterval(iv); if (raf) cancelAnimationFrame(raf); };
+    window.addEventListener('resize', find);
+    const iv = window.setInterval(find, 1000);
+    return () => { mo.disconnect(); window.removeEventListener('resize', find); clearInterval(iv); };
   }, []);
+  const inBug = !!slot && slot.classList.contains('bug-btn');
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(null), 1300); return () => clearTimeout(t); }, [flash]);
   const muteAll = () => { const muted = sound.toggleMuteAll(); setFlash(muted ? 'MUTED' : 'SOUND ON'); };
   const allOff = !s.on && !s.music;
   const playing = s.music && s.musicStatus === 'playing';
   const needsTap = s.needsRestore;
-  return (
-    <div className="sound-dock" ref={ref}>
+  const dock = (
+    <div className={`sound-dock${slot ? ' slotted' : ''}${inBug ? ' in-bug' : ''}`}>
       <button
         type="button" className={`dock-btn ${allOff ? 'muted' : ''} ${playing ? 'playing' : ''} ${needsTap ? 'needs-tap' : ''}`}
         aria-label={speakerAriaLabel(needsTap, allOff)} data-testid="sound-button" data-needs-tap={needsTap ? 'true' : 'false'}
@@ -221,6 +204,9 @@ export function SoundDock() {
       {flash && <div className="dock-flash" role="status">{flash}</div>}
     </div>
   );
+  // In-slot where the screen provides one; the fixed corner float otherwise (and
+  // CSS hides the float — and the dock — under modal/immersive layers, D1).
+  return slot ? createPortal(dock, slot) : dock;
 }
 
 let npShown = false; // once per page load, ever
