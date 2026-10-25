@@ -487,7 +487,7 @@ describe('last trick pill: the phone corner (owner 2026-10-21)', () => {
  * and the right plate's right edge IS its anchor (styles.css:
  * .seat-anchor.side-right > .plate { transform: translate(-100%, -50%) }). The
  * old anchor — width - 8 - safeR — is also the rail's right edge (the rail sits
- * at right: calc(8px + safe-area) with 42px buttons: a 50px footprint, see the
+ * at right: calc(8px + safe-area) with 44px buttons: a 50px footprint, see the
  * .ctl-rail note in styles.css), so the plate's last 42px lay under the rail
  * wherever the vertical bands met — and at the 0.43H (0.36H for 3P) anchor
  * height they always meet. The anchor now stops 58px in: the rail's footprint
@@ -541,12 +541,17 @@ describe('short landscape: the right plate clears the controls rail (owner 2026-
     }
   });
 
-  it("Scene.tsx carries the 58px anchor; the rail keeps its 42px button in its 50px footprint", () => {
+  it("Scene.tsx carries the 58px anchor; the rail keeps its 44px button in its 50px footprint", () => {
     expect(scene).toContain('size.width - 58 - safe.r');
     expect(scene).not.toContain('size.width - 8 - safe.r');
     const railRule = css.slice(css.indexOf('.ctl-rail,'), css.indexOf('.ctl-rail .av-bar'));
     expect(railRule).toContain('right: calc(8px + env(safe-area-inset-right))');
     const toggle = css.slice(css.indexOf('.ctl-rail .chat-toggle'), css.indexOf('.ctl-rail .chat-toggle') + 60);
-    expect(toggle).toContain('width: 42px');
+    // Design audit D4 (2026-10-24): the chat-toggle grew 42 → 44px for the
+    // tap-target floor. The protected invariant is unchanged — railRect
+    // above models the rail by its 50px FOOTPRINT (right: 8px + 50px),
+    // which the wider button still sits inside (44 ≤ 50, centered), so
+    // every clearance assertion in this describe stands as written.
+    expect(toggle).toContain('width: 44px');
   });
 });

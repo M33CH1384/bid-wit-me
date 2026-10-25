@@ -109,9 +109,16 @@ describe('story dock slot + targets', () => {
     expect(tiers).toContain('.story-reset .btn { min-height: 44px; }');
   });
 
-  it('the sound dock tracks its slot on scroll (capture + passive), and unlistens on cleanup', () => {
-    expect(sound).toContain("addEventListener('scroll', kick, { passive: true, capture: true })");
-    expect(sound).toContain("removeEventListener('scroll', kick, true)");
+  it('the sound dock tracks its slot on scroll — structurally: it renders INTO the slot (portal), so it scrolls with it; slot identity is MutationObserver-tracked, no scroll listener remains', () => {
+    // Design audit D1 (2026-10-24) replaced the measured-rect parking +
+    // scroll-listener mechanism this test originally pinned: the dock is
+    // now a DOM child of its .dock-slot (createPortal), so tracking on
+    // scroll is by construction (stronger than a listener — nothing to
+    // drift, nothing to leak on cleanup). Pin the new mechanism and the
+    // absence of the old one so the change stays deliberate.
+    expect(sound).toContain('createPortal(dock, slot)');
+    expect(sound).toContain('new MutationObserver');
+    expect(sound).not.toContain("addEventListener('scroll'");
   });
 });
 
