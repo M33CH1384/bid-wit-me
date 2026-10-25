@@ -2445,6 +2445,46 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .tt-backdrop { justify-content: flex-start; }
   .tt { width: 452px; flex: none; }
 }
+/* Wizard TABLE step, landscape (owner 2026-10-25, screenshot + "this bot
+   room setup screen is still trash in landscape"; "actually it's the same
+   for online"): three shipped rules collide on this step in landscape.
+   (1) The PR-E rail above turns the wizard into a 452px + 1fr grid and
+   paints a ::after felt slab into the second column — but the slab is a
+   static gradient with NO content in either branch (vs-bots setup and
+   online create-table render no preview element at this step, and the
+   gradient never reflects the chosen deck/venue/seats), so it only steals
+   width: at 932x430 the form column is 404px and the setup cards crush to
+   197px, their seg rows wrapping and clipping. At short heights the slab
+   also starts at the wizard's top edge, under the header cluster (the
+   short-tier header is absolutely positioned, out of the grid flow).
+   (2) The form itself is 1,047–1,553px tall at phone-landscape sizes
+   (measured) against a 375–430px viewport. (3) The stage has no height
+   discipline in landscape: the page scrolls under the viewport-fixed
+   commit bar, so at rest the bar slices the form mid-card — measured
+   visible window header->bar-top is 258px at 932x430, the Bots seg struck
+   through by the summary line, content ghosting under the bar.
+   Fix, the stage discipline the lobby/recap fixes established: in
+   landscape the slab YIELDS (display:none + the wizard returns to flex —
+   there is no preview for it to hold), the step becomes a bounded
+   scrollport (100dvh stage, overflow-y auto, top-aligned), and the
+   scrollport's bottom edge is bound to the commit bar's top edge via a
+   122px margin (the D3 bar budget; the ticker-on lift and the wizard's
+   bottom padding carry the same 38px/safe-area terms on both sides, so a
+   flat 122 keeps the edges coincident in both ticker states). The D3
+   end-of-scroll reserve inside the scroll is then redundant — the bound
+   provides the clearance — and drops to the contract's 16px. The online
+   lobby view shares .step-table but has no bar: no margin (:has gate),
+   it gets the bounded stage + full width only. Portrait is untouched
+   (this block is landscape-only; the PR-E rail still governs portrait
+   tablets). Placed AFTER the PR-E block so it wins where both queries
+   match (932px-wide short landscape). */
+@media (orientation: landscape) {
+  .wizard.step-table { display: flex; height: 100dvh; }
+  .wizard.step-table::after { display: none; }
+  .wizard.step-table .wiz-step { justify-content: flex-start; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+  .wizard.step-table:has(.setup-bar) .wiz-step { margin-bottom: 122px; }
+  .wizard.step-table .ess-barred { padding-bottom: 16px; }
+}
 /* Menu rework PR-C + PR-D: settings sheet + score/leave exit discipline (shared sheet-close). */
 .sheet-close { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.06); color: #f3ead2; font: 800 12px/1 'Barlow Condensed', sans-serif; letter-spacing: .12em; cursor: pointer; }
 .value-chip { display: inline-block; margin-left: 8px; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #f3ead2; font: 700 12px/1 'Barlow Condensed', sans-serif; letter-spacing: .06em; }
