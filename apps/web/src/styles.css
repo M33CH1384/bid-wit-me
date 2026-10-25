@@ -3742,6 +3742,26 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-foot .leave-red { flex: none; padding: 0 18px; }
 }
 
+/* Recap rail fit at SE landscape (owner via Yoda, 2026-10-25: no scrolling
+   for core content): at 667x375 the record rail (TOP SCORES, HANDS, the
+   streak callout and "Review the tricks") ran ~40px past the body, so the
+   pill sat below the fold. Below 400px tall the rail tightens: score rows
+   and HANDS rows lose padding, the callout stays on one line, and the pill
+   drops to a 36px face with a 44px hit area kept by ::after. */
+@media (orientation: landscape) and (max-height: 400px) {
+  .tt-body { row-gap: 4px; }
+  .tt.espn .tt-top-scores { padding: 7px 12px 6px; }
+  .tt.espn .tt-top-scores h3 { margin-bottom: 4px; font-size: 12px; }
+  .tt.espn .tt-top-scores ol { gap: 3px; }
+  .tt.espn .tt-top-scores li { padding: 0 8px; font-size: 15px; line-height: 1.05; }
+  .tt.espn .tt-top-scores li b { font-size: 18px; }
+  .tt-strip h3 { margin-bottom: 1px; font-size: 12px; }
+  .tt-strip .hs-row { font-size: 12px; line-height: 1.05; }
+  .tt-callouts .tt-callout { padding: 1px 8px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .tt-tricks-show, .tt-run-show { position: relative; min-height: 36px; padding: 4px 12px; font-size: 14px; }
+  .tt-tricks-show::after, .tt-run-show::after { content: ''; position: absolute; inset: -4px 0; }
+}
+
 /* Narrow landscape only: a cutthroat card is ~155px wide here, and the
    inline name row strangles it (the name gets ~74px beside the bags
    stat and wraps to three lines — a 211px card). Stacked name-over-badges
