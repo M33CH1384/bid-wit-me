@@ -4124,4 +4124,19 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .ess-barred > .setup-bar .setup-bar-summary { white-space: normal; text-align: left; }
   .wizard.step-table .ess-barred > .setup-card[aria-label="Rules"] { grid-column: 3; grid-row: 2; }
   .wizard.step-table .ess-barred > .setup-card[aria-label="Sound"] { grid-column: 3; grid-row: 3; }
+
+/* S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Chat open"): on a
+   short landscape phone the open chat panel sat at right: 8px, i.e. UNDER
+   the CHAT/CAM/MIC/Talk rail (.ctl-rail, 44px buttons at right: 8px), so the
+   rail covered the Send button and clipped the right edge of the messages.
+   The panel now clears the rail: rail inset 8 + rail 44 + 8 gap = 60px, plus
+   the 8px panel gap. The recap's Table Talk chat (.recap-chat) keeps its own
+   placement. The same overlap reproduced in portrait (393x852: the rail
+   covered Send there too), so the offset applies in every orientation;
+   only the 330px/42vw width is landscape-only. */
+.table-screen .chat:not(.recap-chat),
+.table-screen.short .chat:not(.recap-chat) { right: calc(var(--rail-w, 60px) + 8px + env(safe-area-inset-right)); }
+@media (orientation: landscape) and (max-height: 540px) {
+  .table-screen .chat:not(.recap-chat),
+  .table-screen.short .chat:not(.recap-chat) { width: min(330px, 42vw); }
 }
