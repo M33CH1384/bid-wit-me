@@ -1281,6 +1281,117 @@ html[data-theme="neon"] .story-you-face {
   .story-room-av { font-size: 27px; }
 }
 
+/* ---- the landscape stage (design audit D7, 2026-10-24) ----
+   In phone landscape the column stage's fixed shares (hero min 100 +
+   share min 48 + stops ~89 + chips + actions) exceed the 355–389px
+   content heights BEFORE the felt's 240px floor — the felt computed
+   to −19…+19px and the ≤560px flow fallback took over, leaving
+   ~236–288px of scroll with Ready/Leave ~290px below the fold on a
+   screen whose whole design goal is "no scroll needed".
+   At short heights on a wide-enough viewport the stage therefore
+   composes as a two-pane grid instead of a column: a 280px rail
+   (hero, share ticket, the room's line) beside the felt, which spans
+   the stage's full main height; the stops become ONE horizontal bar
+   (heading · thread · route caption · the host's chips scrolling
+   sideways inside their share) and the actions stay pinned in the
+   stage flow on the last row. The felt's floor drops to 180px and
+   its seats step down with it (smaller face clamp, tighter seat
+   type) so a seat block still fits its row. The narrow-short flow
+   fallback above still covers short heights under 600px wide.
+   Same cqh budget idiom, same container structure; portrait,
+   tablet and desktop never enter this query (their heights clear
+   560px), so their budgets close exactly as before. The arithmetic
+   is pinned in story-room-lobby-fit.test.ts. Layout only — the
+   Neon story overrides stay color-only, as everywhere in story. */
+@media (max-height: 560px) and (min-width: 600px) {
+  .story-room-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+    gap: 4px 10px;
+    max-width: none;
+    padding-left: 12px; padding-right: 12px;
+    height: 100dvh; min-height: 0;
+    container-type: size;
+    overflow: hidden;
+  }
+  .story-room-hero {
+    grid-column: 1; grid-row: 1;
+    height: auto; min-height: 0; max-height: none;
+    padding: 4px 14px;
+    margin-bottom: 0;
+  }
+  .story-room-hero .story-crumb { font-size: 10.5px; }
+  .story-room-hero .story-title { font-size: 19px; }
+  .story-room-hero .story-sub { font-size: 11.5px; }
+  .story-room-share {
+    grid-column: 1; grid-row: 2;
+    height: auto; min-height: 46px; max-height: none;
+    margin: 0;
+  }
+  .story-room-code { font-size: 18px; }
+  .story-room-line {
+    grid-column: 1; grid-row: 3;
+    margin: 0;
+    text-align: left;
+    font-size: 12px;
+  }
+  /* Waiting and awareness lines never co-fire in the shipped states
+     (awareness needs a bound pair's context; the waiting line shows
+     only before a partner binds) — if both ever rendered, the second
+     line offsets inside the same rail row instead of overlapping the
+     first line's glyphs. */
+  .story-room-shell > .story-room-line:nth-of-type(2) { margin-top: 20px; }
+  .story-room-table {
+    grid-column: 2; grid-row: 1 / 5;
+    min-height: 180px;
+    margin: 0;
+    padding: 6px;
+  }
+  .story-room-table .story-face.room-face,
+  .story-room-table .story-room-av,
+  .story-room-table .story-room-seat-none { width: clamp(32px, 16.5cqh, 56px); height: clamp(32px, 16.5cqh, 56px); }
+  .story-room-seat-name { font-size: clamp(11.5px, 4.4cqh, 13px); }
+  .story-room-seat-role { font-size: clamp(9px, 3.3cqh, 10px); }
+  .story-room-stops {
+    grid-column: 1 / -1; grid-row: 5;
+    display: flex; align-items: center; gap: 10px;
+    margin: 0;
+  }
+  .story-room-stops .story-coop-h { flex: none; margin: 0; font-size: 13px; }
+  .story-room-stops .story-gate-thread { flex: 1 0 auto; min-width: 0; }
+  .story-room-route-line { flex: 0 1 250px; margin: 0; text-align: left; font-size: 10.5px; }
+  .story-room-stoprow { flex: 1 1 140px; min-width: 72px; margin-top: 0; padding-bottom: 0; }
+  .story-room-shell .story-room-actions {
+    grid-column: 1 / -1; grid-row: 6;
+    margin-top: 0; padding-top: 4px;
+  }
+}
+
+/* ---- tap-target floor (design audit D4, story.css portion) ----
+   The story button family already floors at 44px inside .story-shell,
+   but several story controls reached that floor only by inheritance —
+   and one host sits outside the shell entirely (the in-game concede
+   cluster on .story-room-game, whose buttons are the global .btn).
+   These pins make the floor explicit on every story action the census
+   flagged, so a future family edit can't silently drop one below
+   44px. All of these controls live in flow rows or in the room
+   stage's share row (48px portrait / 46px landscape — both still
+   clear the 44px buttons inside them), so no budget re-opens. */
+.story-topbar .btn,
+.story-script-actions .btn,
+.story-outro-actions .btn,
+.story-intro-actions .btn,
+.story-mode-toggle .btn,
+.story-room-share .btn,
+.story-room-stoprow .btn,
+.story-room-actions .btn,
+.story-room-concede .btn,
+.story-coop-share-row .btn,
+.story-coop-friend .btn,
+.story-finale-choice .btn { min-height: 44px; }
+.story-hotspot { min-width: 44px; min-height: 44px; }
+
 /* The King's proposal choice (Phase 4): the terms stated plainly, the
    pair's standing answers under them. Warm story register, like the
    rest of the room — no broadcast chrome. */
