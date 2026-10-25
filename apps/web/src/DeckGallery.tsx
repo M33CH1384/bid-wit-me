@@ -21,8 +21,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { Card } from '@spades/rules';
-import { DECKS, deckArtUrl, deckById, deckThumbUrl, type DeckDef } from './decks';
-import { deckBackUrl } from './three/cardTextures';
+import { DECKS, deckArtUrl, deckBackUrl, deckById, deckThumbUrl, type DeckDef } from './decks';
 import { deckUnlockLine, deckUnlocked, useClearedStoryStops } from './storyDecks';
 import { DECK_CARD_ORDER, cardLabel, deckCardFact, deckLore } from './deckLore';
 import { useEscapeClose } from './useEscapeClose';

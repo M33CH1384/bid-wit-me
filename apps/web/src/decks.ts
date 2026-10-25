@@ -74,6 +74,19 @@ export function deckThumbUrl(deck: string): string {
   return `/assets/decks/${deck}/KS.${deckById(deck)?.artExt ?? 'jpg'}`;
 }
 
+/* ---------- per-deck card backs (founder-approved image set) ----------
+ * One back per deck. The URL helper lives HERE, with the deck registry,
+ * not in three/cardTextures: light surfaces (the setup gallery, the deck
+ * viewer) need the URL without statically importing three — the entry
+ * graph must stay three-free (entry-graph.test.ts; that download was the
+ * blank-screen stall). cardTextures re-exports it for its old callers. */
+const BACK_NAMES: Record<string, string> = { base: 'Base', classic: 'Classic', afrofuturist: 'Afrofuturist', harlem: 'Harlem', hiphop: 'Hip-hop', mali: 'Mali', egypt: 'Egypt', greek: 'Greek', porchlight: 'PorchLight', revolutionaries: 'Revolutionaries', blacktop: 'Blacktop', cookout: 'Cookout', corner: 'Corner', stainedglass: 'StainedGlass', rooftopdusk: 'RooftopDusk', penthouse: 'Penthouse', pjs: 'Pjs', legends: 'Legends', madeitout: 'MadeItOut' };
+/** Story-pack backs ship as WebP (the founder set is PNG); keyed by deck id. */
+const BACK_EXT: Record<string, string> = { porchlight: 'webp', revolutionaries: 'webp', blacktop: 'webp', cookout: 'webp', corner: 'webp', stainedglass: 'webp', rooftopdusk: 'webp', penthouse: 'webp', pjs: 'webp', legends: 'webp', madeitout: 'webp' };
+export function deckBackUrl(deck: string): string {
+  return `/assets/card-backs/${BACK_NAMES[deck] ?? 'Base'}-back.${BACK_EXT[deck] ?? 'png'}`;
+}
+
 let active = 'classic';
 export function getActiveDeck(): string { return active; }
 

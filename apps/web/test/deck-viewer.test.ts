@@ -22,9 +22,8 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeckViewer } from '../src/DeckGallery';
-import { deckArtUrl, deckById, type DeckDef } from '../src/decks';
+import { deckArtUrl, deckBackUrl, deckById, type DeckDef } from '../src/decks';
 import { DECK_CARD_ORDER } from '../src/deckLore';
-import { deckBackUrl } from '../src/three/cardTextures';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

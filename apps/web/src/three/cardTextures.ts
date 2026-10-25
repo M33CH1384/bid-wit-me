@@ -1,7 +1,7 @@
 import { CanvasTexture, SRGBColorSpace, type Texture } from 'three';
 import type { Card } from '@spades/rules';
 import { drawBack, paintFace, paintedFaceKeys, repaintFace, loadLogo, onLogoLoad } from '../cardArt';
-import { getActiveDeck, onDeckArtLoad } from '../decks';
+import { deckBackUrl, getActiveDeck, onDeckArtLoad } from '../decks';
 import { noteDiag } from '../diagnostics';
 
 const cache = new Map<string, Texture>();
@@ -34,13 +34,11 @@ export function faceTexture(card: Card, res: 'high' | 'low', badge: boolean, ani
  * from Settings.deck, so your backs, opponents' backs and the deck pile all match).
  * Loaded like the wordmark: cached image + persistent waiters repainting on arrival.
  * Fallback chain: selected deck's back -> Base-back -> the old procedural back, which
- * now only ever paints while an image is still loading (or if every image failed). */
-const BACK_NAMES: Record<string, string> = { base: 'Base', classic: 'Classic', afrofuturist: 'Afrofuturist', harlem: 'Harlem', hiphop: 'Hip-hop', mali: 'Mali', egypt: 'Egypt', greek: 'Greek', porchlight: 'PorchLight', revolutionaries: 'Revolutionaries', blacktop: 'Blacktop', cookout: 'Cookout', corner: 'Corner', stainedglass: 'StainedGlass', rooftopdusk: 'RooftopDusk', penthouse: 'Penthouse', pjs: 'Pjs', legends: 'Legends', madeitout: 'MadeItOut' };
-/** Story-pack backs ship as WebP (the founder set is PNG); keyed by deck id. */
-const BACK_EXT: Record<string, string> = { porchlight: 'webp', revolutionaries: 'webp', blacktop: 'webp', cookout: 'webp', corner: 'webp', stainedglass: 'webp', rooftopdusk: 'webp', penthouse: 'webp', pjs: 'webp', legends: 'webp', madeitout: 'webp' };
-export function deckBackUrl(deck: string): string {
-  return `/assets/card-backs/${BACK_NAMES[deck] ?? 'Base'}-back.${BACK_EXT[deck] ?? 'png'}`;
-}
+ * now only ever paints while an image is still loading (or if every image failed).
+ * The URL helper itself lives in ../decks (the registry) so light surfaces can
+ * use it without statically importing three; it is re-exported here so this
+ * module's existing importers keep their path. */
+export { deckBackUrl } from '../decks';
 const backImages = new Map<string, HTMLImageElement>();
 const backFailed = new Set<string>();
 const backWaiters = new Map<string, Set<() => void>>();
