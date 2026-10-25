@@ -38,7 +38,9 @@ import { fixedRevealMs, revealDurationMs } from './ScriptPlayer';
 import { setStoryVoiceScope, speakBot, spokenClipDurationMs, talkPrefs, useTalkPrefs } from '../talkPrefs';
 import { sound } from '../audio';
 import { cancelActiveSpeech } from '../audioSession';
-import { useReduceEffects } from '../fx';
+import { fx, useReduceEffects } from '../fx';
+import DeeRundownVideo from './DeeRundownVideo';
+import { pickRundownVideo } from './rundownVideo';
 
 /** The panel's line: both rundown sets (solo + co-op pair) have this shape. */
 export interface RundownPanelLine { stopId: string; variant: string; text: string }
@@ -48,14 +50,15 @@ const SEEN_KEY = 'bwm.rundownSeen.v1';
 function seenKeys(): string[] {
   try { return JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]') as string[]; } catch { return []; }
 }
-function markSeen(key: string) {
+export function rundownSeen(key: string): boolean { return seenKeys().includes(key); }
+export function markSeen(key: string) {
   try {
     const keys = seenKeys();
     if (!keys.includes(key)) localStorage.setItem(SEEN_KEY, JSON.stringify([...keys, key]));
   } catch { /* private mode: the panel just replays next time */ }
 }
 
-export default function DeeRundownPanel({ rundown, track, autoplay = true }: {
+export function DeeRundownTextPanel({ rundown, track, autoplay = true }: {
   rundown: RundownPanelLine;
   track: string;
   /** true on the sit-down / play path; false from the map's "Meet them" (tap-to-play). */
@@ -222,6 +225,44 @@ export default function DeeRundownPanel({ rundown, track, autoplay = true }: {
                   : <button type="button" className="btn ghost" data-testid="dee-rundown-play" onClick={() => startPlayback(clipMs)}>{clipMs ? 'Hear Dee read it' : 'Read Dee’s rundown'}</button>}
             </div>
           )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The panel Dee's rundown mounts (StoryTape, from StoryHome's map and
+ * sit-down arrivals and StoryRoom's co-op tape). First-visit solo lines
+ * with a playable film in rundowns.json show the FILM (DeeRundownVideo);
+ * everything else — and any film that fails to load — is the text +
+ * recorded-voice panel above, unchanged. Both share one heard store.
+ */
+export default function DeeRundownPanel({ rundown, track, autoplay = true }: {
+  rundown: RundownPanelLine;
+  track: string;
+  autoplay?: boolean;
+}) {
+  const reduceFx = useReduceEffects();
+  const prefs = useTalkPrefs();
+  const [failed, setFailed] = useState(false);
+  const entry = useRef(pickRundownVideo(rundown)).current;
+  const seenKey = `${track}|${rundown.stopId}|${rundown.variant}`;
+  const [heard, setHeard] = useState(() => rundownSeen(seenKey));
+  if (!entry || failed) return <DeeRundownTextPanel rundown={rundown} track={track} autoplay={autoplay && !failed} />;
+  const voicesOff = !prefs.voices || !sound.settings.on || sound.settings.volume <= 0 || sound.voiceMuted('Dee');
+  return (
+    <section className="dee-rundown has-video" data-testid="dee-rundown" data-mode="video" aria-label={rundown.text}>
+      <div className="dee-rundown-body">
+        <p className="dee-rundown-head">DEE’S RUNDOWN <span className="dee-rundown-byline">· Dee, your guide</span></p>
+        <DeeRundownVideo
+          entry={entry}
+          autoplayPath={autoplay}
+          reduced={reduceFx || fx.osReducedMotion}
+          heard={heard}
+          voicesOff={voicesOff}
+          onHeard={() => { setHeard(true); markSeen(seenKey); }}
+          onFail={() => setFailed(true)}
+        />
       </div>
     </section>
   );
