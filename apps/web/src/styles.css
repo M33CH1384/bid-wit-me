@@ -4113,6 +4113,7 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .game-menu > button { padding: 8px 10px; font-size: 13.5px; line-height: 1.2; }
   .game-menu > .menu-social, .game-menu > button.danger { grid-column: 1 / -1; }
   .game-menu > button.danger { text-align: center; box-shadow: inset 0 0 0 1.5px #ff4d6d; color: #ff4d6d; }
+}
 
 /* S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Chat open"): on a
    short landscape phone the open chat panel sat at right: 8px, i.e. UNDER
