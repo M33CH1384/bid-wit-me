@@ -61,7 +61,7 @@ import { fireCue, fx, useReduceEffects } from './fx';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { feltHandVisible } from './three/cardFace';
-import { newCrowdCue, stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue } from './three/kingRailLayout';
+import { newCrowdCue, stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue } from './three/crowdCue';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading, type LoadingSeat } from './TableLoading';
