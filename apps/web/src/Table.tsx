@@ -736,6 +736,28 @@ export function kingGunSeatFor(story: Props['story']): number | null {
   return story?.scene?.stop.id === 'king' && story.scene.facts.doublePending ? 1 : null;
 }
 
+/**
+ * The King's rail, standing at the table (owner, 2026-10-26: "I didnt see
+ * anyone at the table at all"). The rail cast was always correct as DATA —
+ * railCastForAttempt deals the full neighborhood at the King, the session
+ * checkpoints it, resume restores it — but the cast's only visual rendering
+ * was the ScriptPlayer strip in the intro/outro scenes, and resume skips
+ * the intro by design; during play the cast existed only as chat voices,
+ * and the King's own moment rules (cap 3, quiet after hand 3) leave a
+ * resumed Hand 4+ table with at most one witness line. Presence itself is
+ * the statement at the finale, so the faces stand at the table for the
+ * whole match. The derivation mirrors the scene channel's exactly (a
+ * resumed match's saved cast wins; the attempt's drawn cast next; the
+ * local draw last), so the faces shown are the very faces that can speak.
+ * King only: every other stop's rail stays scene-only, as designed.
+ */
+export function kingRailCastFor(story: Props['story']): string[] {
+  if (story?.scene?.stop.id !== 'king') return [];
+  const cast = story.saveCtx?.initialSession?.railCast ?? story.saveCtx?.railCast
+    ?? railCastForAttempt('king', (story.saveCtx?.attemptsAtStart ?? story.scene.facts.attempts) + 1);
+  return cast.filter((id) => !!STORY_CHARACTERS[id]);
+}
+
 export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer, story }: Props) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // Tappable faces (Demetrius 2026-10-20): while a table is mounted, avatar taps anywhere
@@ -2424,6 +2446,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // The deal beat hands the fan back to the live hand, which the deal flight deals out.
   const gathering = redeal?.phase === 'gather';
   const fanHand = misdealFanHand(gathering, redeal?.heldHand ?? null, display.hand);
+  // The King's full rail, standing at the table for the whole match
+  // (kingRailCastFor): the drawn cast's faces, split down the pool order —
+  // the earlier stops on the left rail, the later stops on the right.
+  const kingRail = kingRailCastFor(story);
+  const kingRailHalf = Math.ceil(kingRail.length / 2);
   // The quick-load hand is on screen before WebGL. During a deal it may only show the cards that have left the deck.
   const feltShown = useDealtSlots(dealing, {
     speedK: k,
@@ -2559,6 +2586,25 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         {/* the always-visible sound dock (main.tsx) sits on this slot */}
         <span className="bug-btn dock-slot" aria-hidden />
       </header>
+
+      {/* The King's rail (owner, 2026-10-26): the full neighborhood stands
+          at the table for the whole finale — pure presence (pointer-events
+          off, under every control layer), so a player who resumed past the
+          intro still walks into a watched table. Same cast the chime-in
+          channel speaks from; restored identically on resume. */}
+      {kingRail.length > 0 && (
+        <div className="king-rail" data-testid="king-rail" aria-label="The whole neighborhood is on the rail, watching">
+          {[kingRail.slice(0, kingRailHalf), kingRail.slice(kingRailHalf)].map((side, si) => (
+            <div key={si} className={`king-rail-side ${si === 0 ? 'left' : 'right'}`}>
+              {side.map((id) => (
+                <span key={id} className="king-rail-one" data-testid={`king-rail-face-${id}`}>
+                  <StoryFace characterId={id} name={STORY_CHARACTERS[id]!.name} className="king-rail-face" />
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
       {(piles.length > 0 || !!runHands) && (() => {
