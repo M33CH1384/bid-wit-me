@@ -3,7 +3,7 @@
  * the both-ready phase machine, Dee covering a vacated seat, concede, and the
  * witnessed game-over — with NO regular game record ever written.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Card, GameState } from '@spades/rules';
 import { GUIDE_FINALE, chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
@@ -263,6 +263,15 @@ describe('the King finale (Phase 4, spec §6)', () => {
   });
 
   it('a human winning the cutthroat pays the double (played out)', () => {
+    // Pin the room's randomness so the played-out game is reproducible: the
+    // deal seed comes from secureSeed() (crypto.getRandomValues) and bot bid
+    // leans / talk from Math.random. Unpinned, about 1 run in 40 the deal + leans
+    // set the host on hand 1 (Shot = out) and the double is (correctly) lost.
+    let x = 0x2f6b1d;
+    const next = () => (x = (Math.imul(x, 1664525) + 1013904223) >>> 0);
+    const spy = vi.spyOn(Math, 'random').mockImplementation(() => next() / 2 ** 32);
+    const cspy = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(a: T): T => { const u = a as unknown as Uint32Array; for (let i = 0; i < u.length; i++) u[i] = next(); return a; });
+    try {
     const { env } = finaleRoom();
     toFinale(env);
     agree(env, 'cutthroat');
@@ -280,6 +289,7 @@ describe('the King finale (Phase 4, spec §6)', () => {
     const lines = guideLines(env);
     expect(lines.some((t) => t === GUIDE_FINALE[10] || t === GUIDE_FINALE[11])).toBe(true); // her resolution read
     expect(lines.length).toBeLessThanOrEqual(4); // the finale budget, start to resolution
+    } finally { spy.mockRestore(); cspy.mockRestore(); }
   });
 
   it('placements map to outcomes: a human 2nd banks the clear; both humans 3rd/4th loses it', () => {
