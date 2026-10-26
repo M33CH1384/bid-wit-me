@@ -182,3 +182,8 @@ Bot voices: generated with Kokoro-82M by hexgrad (Apache-2.0), https://huggingfa
 Clips in `apps/web/public/voices/` (Opus/WebM + AAC/M4A), made locally with kokoro-onnx (MIT) from Kokoro's built-in
 synthetic voices (no cloned or real-person voices). Line map: `apps/web/src/voices/manifest.json`. Lines without a clip
 use the browser's Web Speech voice.
+
+## Dee's Rundown films (Story mode)
+- The 11 first-visit "Dee's Rundown" videos (`apps/web/public/story/rundowns/`) were generated with Grok Imagine from Dee's portrait and the venue art.
+- The voiceover is Dee's own cast recording (the `lilcuz-f` voice set). No speech synthesis was used.
+- The score is the game's own music (already credited above).

@@ -1285,10 +1285,20 @@ class Engine {
     return c;
   }
 
+  /** Held while a story film (Dee's Rundown video) plays with sound: the
+   *  master bus rests at 0 and returns when released. Not persisted — a
+   *  reload never inherits it — and nothing else about the engine moves. */
+  private videoHold = false;
+  holdForVideo(on: boolean) {
+    if (this.videoHold === on) return;
+    this.videoHold = on;
+    this.applyGain();
+  }
+  get videoHeld(): boolean { return this.videoHold; }
   private applyGain() {
     if (!this.master || !this.ctx) return;
     const v = this.settings.on ? this.settings.volume ** 1.6 : 0; // perceptual curve
-    this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.03);
+    this.master.gain.setTargetAtTime(this.videoHold ? 0 : v, this.ctx.currentTime, 0.03);
     // Category volumes apply LIVE (Phase 8): moving a slider mid-game updates the running buses,
     // including a venue bed that is already playing (syncVenue alone would early-return).
     const cats = normalizeCategoryVolumes(this.settings.volumes);
