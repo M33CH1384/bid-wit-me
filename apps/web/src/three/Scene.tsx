@@ -6,6 +6,8 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import KingGun from './KingGun';
+import KingRail from './KingRail';
+import type { CrowdCue } from './kingRailLayout';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
@@ -133,6 +135,16 @@ export interface SceneProps {
    *  Table keys it to the live double-pending state, so a resume into the
    *  decider shows it too). Null/absent = no gun, ever. */
   kingGunSeat?: number | null;
+  /** The King's rail cast (character ids) standing around the table as
+   *  3D figures — King story tables only; empty/absent everywhere else. */
+  kingRailCast?: readonly string[];
+  /** Per-seat seated figures (character id or null, by seat): at the
+   *  King table the seated story characters render in the scene. */
+  seatedFigures?: readonly (string | null)[];
+  /** The crowd cue channel (stirs + speakers), stamped by the table. */
+  crowdCue?: CrowdCue;
+  /** False under reduced effects: figures render at rest, static. */
+  crowdAnimate?: boolean;
   /** camera view: standing (default) or sitting (lower/closer) */
   view?: 'standing' | 'sitting';
   /** Turn up (slam mode): Standing drags slam at max only when this is on. */
@@ -1626,6 +1638,19 @@ export default function Scene(props: SceneProps) {
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
       {showTable && <Cards key={props.dealEpoch ?? 0} {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
+      {showTable && props.crowdCue && ((props.kingRailCast?.length ?? 0) > 0 || (props.seatedFigures ?? []).some(Boolean)) && (
+        <KingRail
+          cast={props.kingRailCast ?? []}
+          seated={props.seatedFigures ?? []}
+          positions={props.positions}
+          n={props.n}
+          turnSeat={props.turnSeat ?? -1}
+          cue={props.crowdCue}
+          animate={props.crowdAnimate ?? false}
+          aspect={aspect}
+          short={!!props.short}
+        />
+      )}
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
       <AfterTable quality={props.quality} tableUp={textured} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}

@@ -61,6 +61,7 @@ import { fireCue, fx, useReduceEffects } from './fx';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { feltHandVisible } from './three/cardFace';
+import { newCrowdCue, stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue } from './three/kingRailLayout';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading, type LoadingSeat } from './TableLoading';
@@ -186,6 +187,14 @@ export interface OnlineBinding {
    *  keyed to the room's finale-game phase instead of the solo story prop.
    *  Null/absent = no gun. */
   kingGunSeat?: number | null;
+  /** Story co-op at the King stop: the rail cast standing around the 3D
+   *  table (character ids). Solo derives its own from the story prop;
+   *  this carries the co-op room's cast. King only. */
+  kingRailCast?: string[];
+  /** Story co-op at the King stop: per-LOCAL-seat seated figures
+   *  (character id or null) — the King + Ringer bot seats render in
+   *  the scene; human seats keep their photo plates. */
+  seatedFigures?: (string | null)[];
   /** Story co-op: the pair's narrative line for this stop (attempts/clears from
    *  the pair context), shown as the viewer side's headline on the versus card. */
   versusPairNote?: string | null;
@@ -881,6 +890,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       const tp = talkStore.get();
       const seatIx = names.findIndex((nm) => nm === l.name);
       const seatPos = seatIx >= 0 ? pos[seatIx] : undefined;
+      // A seated character's figure leans with their talk (Part 2).
+      if (seatIx >= 0) noteSeatSpeech(seatIx, performance.now());
       const muted = sound.voiceMuted(l.name);
       // Story tables never take the AI catalog voice for a seat (one-timbre
       // rule, 2026-10-21): catalog clips are persona-bucket recordings, a
@@ -1635,6 +1646,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       }, (bt, delayMs) => {
         const name = nameOf(bt);
         const seatIx = names.indexOf(name);
+        // A seated character's figure leans with their line (Part 2).
+        if (seatIx >= 0) noteSeatSpeech(seatIx, performance.now() + delayMs);
         // Mix hierarchy (density pass): a scripted line owns the room
         // while it plays — generic talk may only tail-overlap its last
         // 3 s, never replace it (offlineTalk's voiceBusyUntil drop rule).
@@ -1696,6 +1709,17 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       let finalHandNow = false;
       if (snap.historyLen > S.prev.historyLen && snap.lastHand) {
         const handNo = snap.historyLen;
+        // THE CROWD STIRS (owner, 2026-10-26): the rail reacts to the
+        // same real moments its chime-ins key on — a set, a shot-out,
+        // a made or busted Nil, a big swing. One stamp, biggest wins;
+        // the figures ripple it down the rail. (The nuke stirs them
+        // over the fx bus, inside KingRail.)
+        const lhEnd = snap.lastHand;
+        const shotOutNow = snap.phase === 'gameOver' && (st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set');
+        if (shotOutNow) stampStir(crowdCue, performance.now(), 1.3);
+        else if (lhEnd.mySet || lhEnd.theirSet) stampStir(crowdCue, performance.now(), 1);
+        else if (lhEnd.nilMade || lhEnd.nilBusted) stampStir(crowdCue, performance.now(), 0.8);
+        else if (evs.includes('bigSwing')) stampStir(crowdCue, performance.now(), 0.8);
         // living level between hands: the stop's own exchange, early hands
         // always, later hands every other — short, and never over a decision
         if (handNo <= 3 || handNo % 2 === 1) {
@@ -1771,6 +1795,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             // the seated player's answer (their own name, their seat).
             const railSide = moment.kind === 'solo' || ix !== 1;
             const name = STORY_CHARACTERS[l.speaker]?.name ?? l.speaker;
+            // THE FIGURES ANSWER THE VOICES (owner, 2026-10-26): a
+            // railbird's figure leans while their chime-in lands; a
+            // seated player's figure leans with their reply.
+            if (railSide) stampSpeaker(crowdCue, l.speaker, performance.now() + delayMs);
+            else { const sx = names.indexOf(name); if (sx >= 0) noteSeatSpeech(sx, performance.now() + delayMs); }
             // Rail speech is higher-priority than generic talk (mix
             // hierarchy): mark its window so chatter can't replace it.
             if (!sound.voiceMuted(name)) {
@@ -2065,6 +2094,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         if (ix === 2 && durations[2] != null && 900 + offsets[2]! + durations[2]! > 5200) return;
         window.setTimeout(() => {
           push(l.name, showLine(l.text), false, 0, true);
+          noteSeatSpeech(l.seat, performance.now());
           offlineTalk.noteDelivered(l);
           offlineTalk.maybeAnswer(l, {}); // banter is generic-layer speech: the room may answer it
           if (!sound.voiceMuted(l.name)) speakBot(l.name, l.text, l.persona, l.line, l.bid, pos[l.seat], n);
@@ -2304,14 +2334,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     // Tappable faces (Demetrius 2026-10-20): a seated human with an account gets a profile
     // tap on their plate face — bots and account-less guests keep a plain face (no-op).
     const seatProfile = profileTargetOf({ id: seatUid, name: names[seat] ?? '', bot: isBotSeat(seat) });
+    // Seated-figure seats (King table, Part 2): the face lives in the 3D
+    // scene now — the plate keeps every datum (name, chips, BOOKS/TOOK,
+    // seat extras) as an info strip with no medallion.
+    const figSeat = !!seatedFigureIds?.[seat];
     return (
-      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${platePersona(names[seat]!)}` : undefined} data-persona={isBotSeat(seat) ? platePersona(names[seat]!) : undefined}>
-        {seatProfile ? (
+      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}${figSeat ? ' plate--fig' : ''}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${platePersona(names[seat]!)}` : undefined} data-persona={isBotSeat(seat) ? platePersona(names[seat]!) : undefined}>
+        {!figSeat && (seatProfile ? (
           <button type="button" className="plate-face-tap" data-testid={`plate-profile-${seat}`} aria-label={`View ${names[seat]}'s profile`}
             onClick={() => openPlayerProfile({ id: seatUid, name: names[seat] ?? '' }, { atTable: true })}>
             <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} bot={isBotSeat(seat)} />
           </button>
-        ) : <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} bot={isBotSeat(seat)} />}
+        ) : <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} bot={isBotSeat(seat)} />)}
         <div className="plate-body">
           <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
           <div className="plate-stats" key={st.handNo}>
@@ -2444,11 +2478,40 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // The deal beat hands the fan back to the live hand, which the deal flight deals out.
   const gathering = redeal?.phase === 'gather';
   const fanHand = misdealFanHand(gathering, redeal?.heldHand ?? null, display.hand);
-  // The King's full rail, standing at the table for the whole match
-  // (kingRailCastFor): the drawn cast's faces, split down the pool order —
-  // the earlier stops on the left rail, the later stops on the right.
-  const kingRail = kingRailCastFor(story);
-  const kingRailHalf = Math.ceil(kingRail.length / 2);
+  // The King's rail + seated three live in the 3D scene now (owner,
+  // 2026-10-26: standing figures around the table, not face coins —
+  // three/KingRail.tsx renders kingRailFigures(kingRail)). Solo: the
+  // cast from kingRailCastFor. Co-op: OnlineTable passes its cast +
+  // seated figures through the online object (there is no story prop).
+  const kingRail: string[] = (() => {
+    const solo = kingRailCastFor(story);
+    return solo.length > 0 ? solo : (online?.kingRailCast ?? []);
+  })();
+  // Seated figures at the King table (Part 2): SOLO seats the stop's
+  // pair + Dee (storySeatIds: pair[0] left, Dee top, pair[1] right);
+  // co-op seats only the two bot seats via the online object.
+  const seatedFigureIds: Record<number, string> | null = (() => {
+    if (story?.scene?.stop.id === 'king' && storySeatIds) return { ...storySeatIds };
+    if (online?.seatedFigures) {
+      const rec: Record<number, string> = {};
+      online.seatedFigures.forEach((id, seat) => { if (id) rec[seat] = id; });
+      return Object.keys(rec).length > 0 ? rec : null;
+    }
+    return null;
+  })();
+  const seatedFiguresArr: (string | null)[] | undefined = seatedFigureIds
+    ? Array.from({ length: n }, (_, seat) => seatedFigureIds[seat] ?? null)
+    : undefined;
+  // The crowd cue channel (three/kingRailLayout.ts): the table stamps
+  // real match moments + speakers here; the 3D figures read it inside
+  // useFrame. A plain mutable ref — stamping never re-renders.
+  const crowdCueRef = useRef<CrowdCue | null>(null);
+  if (!crowdCueRef.current) crowdCueRef.current = newCrowdCue();
+  const crowdCue = crowdCueRef.current;
+  const noteSeatSpeech = (seat: number, at: number) => {
+    const id = seatedFigureIds?.[seat];
+    if (id) stampSeatSpeaker(crowdCue, id, at);
+  };
   // The quick-load hand is on screen before WebGL. During a deal it may only show the cards that have left the deck.
   const feltShown = useDealtSlots(dealing, {
     speedK: k,
@@ -2522,6 +2585,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           dealEpoch={dealEpoch}
           dealFlight={redeal?.phase === 'deal'}
           kingGunSeat={kingGunSeatFor(story) ?? online?.kingGunSeat ?? null}
+          kingRailCast={kingRail}
+          seatedFigures={seatedFiguresArr}
+          crowdCue={crowdCue}
+          crowdAnimate={!reduceFx && !fx.osReducedMotion}
           landCue={landCue}
           short={vp.short}
           safe={vp.safe}
@@ -2585,24 +2652,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         <span className="bug-btn dock-slot" aria-hidden />
       </header>
 
-      {/* The King's rail (owner, 2026-10-26): the full neighborhood stands
-          at the table for the whole finale — pure presence (pointer-events
-          off, under every control layer), so a player who resumed past the
-          intro still walks into a watched table. Same cast the chime-in
+      {/* The King's rail lives in the 3D scene (three/KingRail.tsx):
+          the full neighborhood stands around the table as figures for
+          the whole finale, so a player who resumed past the intro
+          still walks into a watched table. Same cast the chime-in
           channel speaks from; restored identically on resume. */}
-      {kingRail.length > 0 && (
-        <div className="king-rail" data-testid="king-rail" aria-label="The whole neighborhood is on the rail, watching">
-          {[kingRail.slice(0, kingRailHalf), kingRail.slice(kingRailHalf)].map((side, si) => (
-            <div key={si} className={`king-rail-side ${si === 0 ? 'left' : 'right'}`}>
-              {side.map((id) => (
-                <span key={id} className="king-rail-one" data-testid={`king-rail-face-${id}`}>
-                  <StoryFace characterId={id} name={STORY_CHARACTERS[id]!.name} className="king-rail-face" />
-                </span>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* last-trick readout. After a resolved 'Run it!' the same chip opens every hand the tornado cleared. */}
       {(piles.length > 0 || !!runHands) && (() => {
