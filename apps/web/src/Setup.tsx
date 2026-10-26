@@ -14,6 +14,7 @@ import { loadName, saveName } from './online/identity';
 import { navigate } from './online/nav';
 import { deckName } from './decks';
 import { DeckGallery } from './DeckGallery';
+import { SetupPreview } from './SetupPreview';
 import { VENUE_DEFS, savePendingVenue, type VenueChoice } from './venues';
 import { VenueSelect } from './VenueSelect';
 import GearIcon from './GearIcon';
@@ -438,6 +439,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
               {summary}
               {tipsRow}
             </SetupCard>
+            <SetupPreview deck={s.deck} venue={s.venue ?? 'classic'} />
             <SetupBar summary={setupBarSummary(s, true)}><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></SetupBar>
           </div>
         ) : (

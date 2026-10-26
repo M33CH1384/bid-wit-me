@@ -293,6 +293,10 @@ export function DeckGallery({ value, onChange }: { value: string; onChange: (v: 
           );
         })}
       </div>
+      {/* S2 (HANDOFF Bots setup --land-phone): the compact row shows ~3 deck thumbs; this
+          "+N decks" chip pages the slider on to the rest. Hidden outside phone landscape. */}
+      <button type="button" className="dg-more" data-testid="deck-more"
+        onClick={() => { const l = listRef.current; if (l) l.scrollBy({ left: l.clientWidth, behavior: 'smooth' }); }}>+{Math.max(0, DECKS.length - 3)} decks</button>
       {browseDeck && (
         <DeckBrowser deck={browseDeck} selected={value === browseDeck.id}
           locked={!deckUnlocked(browseDeck, cleared)}
