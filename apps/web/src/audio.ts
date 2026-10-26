@@ -356,6 +356,9 @@ const FILES: Record<string, string[]> = {
   // Spray-paint transition: a real can's rattle-ball shake + aerosol hiss (CREDITS.md).
   // Same fetch/decode path, so warmEffects has both decoded before the first spray.
   'spray-shake': ['spray-shake'], 'spray-hiss': ['spray-hiss'],
+  // Lightning-reveal thunder: a real close strike + rolling rumble (CREDITS.md).
+  // Same fetch/decode path, decoded long before any King-table reveal.
+  thunder: ['thunder'],
 };
 
 type Ctx = AudioContext;
@@ -1990,6 +1993,30 @@ class Engine {
       g.exponentialRampToValueAtTime(0.0001, t + fade);
       nodes.src.stop(t + fade + 0.05);
     } catch { /* context already rebuilt: the old nodes died with it */ }
+  }
+
+  /**
+   * The lightning reveal's thunder (owner, 2026-10-26): a REAL
+   * recording — one close strike with its rolling rumble (see
+   * CREDITS.md for the source + license) — never a synth. It ARRIVES
+   * after the flash (light before sound): the caller passes the lag
+   * in seconds and the strike's crack, ~0.15s into the shipped cut,
+   * lands inside it. Out the sfx bus at a present-but-not-jump-scare
+   * level, so mute and the SFX volume apply like every other effect.
+   */
+  thunderRoll(delayS = 0): void {
+    const eng = this.settings;
+    if (!eng.on || !this.unlocked || !this.ctx || this.ctx.state !== 'running' || !this.sfxBus) return;
+    const buf = this.buffers.get('thunder');
+    if (!buf) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const g = this.ctx.createGain();
+    g.gain.value = 0.55;
+    src.connect(g);
+    g.connect(this.sfxBus);
+    src.start(this.ctx.currentTime + Math.max(0, delayS));
+    this.played.thunder = (this.played.thunder ?? 0) + 1;
   }
 
   /**

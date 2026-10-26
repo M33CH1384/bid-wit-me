@@ -527,3 +527,203 @@ describe('the King table in the DOM: no coins, plates become info strips', () =>
     expect(table).toContain("? { 1: story.scene.stop.pair[0], 2: 'dee', 3: story.scene.stop.pair[1] }");
   });
 });
+
+/* ------------------------------------------- the apparition (ghost) */
+/*
+ * THE APPARITION (owner, 2026-10-26, evening): "can we try some sort
+ * of 3d video that has people coming and going like force ghost
+ * dropping quotes" — the standing ring reads as furniture, so Uncle
+ * Ray (the first railbird ever named) leaves it and only VISITS: a
+ * silent video presence materializes a beat before his line, the line
+ * lands, he dissolves. Plus his second staging idea the same
+ * evening: "the lights going out and lightning revealing someone
+ * with a message at times" — a RARE lightning tier on the heaviest
+ * moments only. These pins cover the choreography math (windows,
+ * envelopes, flash safety), the caps/gates at the table source, the
+ * ring split, the reduced-effects still path, and the thunder's
+ * license credit.
+ */
+import { statSync } from 'node:fs';
+import {
+  GHOST_AFTERGLOW_MS, GHOST_CLIP, GHOST_DIP_MS, GHOST_HOLD_MS, GHOST_ID, GHOST_LEAD_MS,
+  GHOST_LINE_LAG_MS, GHOST_PEAK, GHOST_STRIKE_MS, ambientGhostVisit, ghostIsLightning,
+  ghostPresenceAt, ghostStrikesEndMs, stampApparition, stampLightning,
+} from '../src/three/kingRailLayout';
+
+const assetSize = (rel: string): number => {
+  const p = [`apps/web/${rel}`, rel].find((c) => { try { statSync(c); return true; } catch { return false; } })!;
+  return statSync(p).size;
+};
+
+describe('the apparition — Uncle Ray visits, he does not stand', () => {
+  const T0 = 1_000_000;
+
+  it('sample clip assets exist inside the story-video caps', () => {
+    expect(GHOST_CLIP.src).toBe('/assets/story/videos/ray-apparition.mp4');
+    expect(GHOST_CLIP.poster).toBe('/assets/story/videos/ray-apparition-poster.webp');
+    expect(assetSize('public/assets/story/videos/ray-apparition.mp4')).toBeLessThanOrEqual(800 * 1024);
+    expect(assetSize('public/assets/story/videos/ray-apparition-poster.webp')).toBeLessThanOrEqual(120 * 1024);
+    expect(assetSize('public/assets/sfx/thunder.mp3')).toBeGreaterThan(0);
+  });
+
+  it('warm window: materializes BEFORE the line, lingers, dissolves AFTER', () => {
+    const cue = newCrowdCue();
+    const lineAt = T0 + GHOST_LEAD_MS;
+    stampApparition(cue, lineAt - GHOST_LEAD_MS, lineAt + GHOST_HOLD_MS);
+    expect(ghostPresenceAt(lineAt - GHOST_LEAD_MS - 1, cue).opacity).toBe(0);
+    expect(ghostPresenceAt(lineAt - GHOST_LEAD_MS + 375, cue).opacity).toBeGreaterThan(0.2); // mid fade-in
+    expect(ghostPresenceAt(lineAt, cue).opacity).toBeCloseTo(GHOST_PEAK, 5); // full presence as the line lands
+    expect(ghostPresenceAt(lineAt + 2000, cue).opacity).toBeCloseTo(GHOST_PEAK, 5); // the linger
+    expect(ghostPresenceAt(lineAt + GHOST_HOLD_MS - 200, cue).opacity).toBeLessThan(GHOST_PEAK * 0.4); // dissolving
+    expect(ghostPresenceAt(lineAt + GHOST_HOLD_MS + 1, cue).opacity).toBe(0);
+    // a warm visit never touches the venue
+    expect(ghostPresenceAt(lineAt, cue).exposureK).toBe(1);
+    expect(ghostPresenceAt(lineAt, cue).strikeK).toBe(0);
+    expect(ghostIsLightning(cue)).toBe(false);
+  });
+
+  it('windows merge: an exchange comeback extends the SAME visit', () => {
+    const cue = newCrowdCue();
+    stampApparition(cue, T0, T0 + 4700);
+    stampApparition(cue, T0 + 3000, T0 + 3000 + 4700);
+    expect(cue.apparitionAt).toBe(T0); // never re-materializes
+    expect(cue.apparitionUntil).toBe(T0 + 7700); // one continuous presence
+    stampApparition(cue, T0 + 20000, T0 + 24700); // after it closed: a fresh visit
+    expect(cue.apparitionAt).toBe(T0 + 20000);
+  });
+
+  it('lightning reveal: dip → strike → after-glow → gone as the lights settle', () => {
+    const cue = newCrowdCue();
+    const L = T0;
+    const lineAt = L + ghostStrikesEndMs(1) + GHOST_LINE_LAG_MS;
+    stampLightning(cue, L, lineAt + GHOST_AFTERGLOW_MS, 1);
+    expect(ghostIsLightning(cue)).toBe(true);
+    const dip = ghostPresenceAt(L + GHOST_DIP_MS * 0.6, cue);
+    expect(dip.exposureK).toBeLessThan(0.6); // the lights are dying…
+    expect(dip.opacity).toBe(0); // …and he is NOT there yet
+    const flash = ghostPresenceAt(L + GHOST_DIP_MS + GHOST_STRIKE_MS / 2, cue);
+    expect(flash.exposureK).toBeGreaterThan(1.5);
+    expect(flash.strikeK).toBe(1);
+    expect(flash.opacity).toBeGreaterThan(0.9); // standing there, lit stark
+    expect(flash.brightK).toBeGreaterThan(1.5);
+    const glow = ghostPresenceAt(lineAt, cue); // the line lands in the after-glow
+    expect(glow.opacity).toBeGreaterThan(0.3);
+    expect(glow.exposureK).toBeLessThan(1.2);
+    const done = ghostPresenceAt(lineAt + GHOST_AFTERGLOW_MS + 1, cue);
+    expect(done.opacity).toBe(0);
+    expect(done.exposureK).toBe(1); // the venue is itself again
+  });
+
+  it('flash safety is structural: at most 2 pulses, each one strike long, never a strobe', () => {
+    for (const strikes of [1, 2]) {
+      const cue = newCrowdCue();
+      stampLightning(cue, T0, T0 + 4000, strikes);
+      let brightMs = 0; let pulses = 0; let wasBright = false;
+      for (let d = 0; d <= 4000; d += 10) {
+        const bright = ghostPresenceAt(T0 + d, cue).exposureK > 1.3;
+        if (bright) { brightMs += 10; if (!wasBright) pulses++; }
+        wasBright = bright;
+      }
+      expect(pulses).toBe(strikes);
+      expect(brightMs).toBeLessThanOrEqual(strikes * GHOST_STRIKE_MS + 20);
+    }
+  });
+
+  it('double strike belongs to the heaviest beats only — pinned at the table source', () => {
+    const table = readSrc('src/Table.tsx');
+    expect(table).toContain('const strikes = shotOutNow ? 2 : 1;');
+    expect(table).toContain("e.kind === 'mega' ? 2 : 1");
+  });
+
+  it('ambient visits: seeded, sparse, and never on the final hand', () => {
+    expect(ambientGhostVisit(1, 1, true)).toBeNull();
+    const v = ambientGhostVisit(1, 1, false);
+    expect(v).not.toBeNull(); // attempt 1, hand 1: the known roll fires
+    expect(v!.delayMs).toBeGreaterThanOrEqual(5000);
+    expect(v!.delayMs).toBeLessThan(12000);
+    expect(v!.holdMs).toBeGreaterThan(4000);
+    let fired = 0;
+    for (let seed = 1; seed <= 60; seed++) for (let hand = 1; hand <= 6; hand++) if (ambientGhostVisit(seed, hand, false)) fired++;
+    expect(fired / (60 * 6)).toBeGreaterThan(0.2);
+    expect(fired / (60 * 6)).toBeLessThan(0.5);
+  });
+
+  it('tier discipline at the table source: caps, gates, reduced suppression', () => {
+    const table = readSrc('src/Table.tsx');
+    expect(table).toContain('if (G.reveals >= 2) return false;'); // hard cap: 2 per match
+    expect(table).toContain('if (gate.handNo <= G.lastRevealHand) return false;'); // never back-to-back
+    expect(table).toContain('lightningAt - G.lastRevealAt < 20000'); // …and a real pause between
+    expect(table).toContain('if (gate.selected) return false;'); // never over the player's own card motion
+    expect(table).toContain('if (gate.reduced) return false;'); // reduced effects: warm visits only
+    expect(table).toContain('const ghostSoloKing = !online && kingRail.includes(GHOST_ID);'); // solo King only
+    expect(table).toContain('sound.thunderRoll('); // the real thunder, on the sfx bus
+  });
+
+  it('event mapping at the table source: only the heavy set reveals; everything else visits warm', () => {
+    const table = readSrc('src/Table.tsx');
+    expect(table).toContain("wantRail === 'nilMade' || wantRail === 'nilBusted'");
+    expect(table).toContain("wantRail === 'finalHand'");
+    expect(table).toContain("evs.includes('bigSwing')");
+    expect(table).toContain('snap.lastHand.mySet || snap.lastHand.theirSet || shotOutNow');
+    expect(table).toContain("e.kind !== 'nuke' && e.kind !== 'mega'");
+  });
+
+  it('Ray leaves the standing ring ONLY under the ghost gate; the other 19 + seated are untouched', () => {
+    const kr = readSrc('src/three/KingRail.tsx');
+    expect(kr).toContain('figures.filter((f) => f.id !== GHOST_ID)');
+    expect(kr).toContain('ghost ? figures.find((f) => f.id === GHOST_ID) : undefined');
+    expect(kr).toContain('<GhostFigure');
+    expect(kr).toContain('standing.map((f) => <CrowdFigure');
+    expect(kr).toContain('seatedFigs.map((f) => (f ? <SeatedFigure3D');
+    // the layout still deals all 20 slots — Ray's slot is his visit spot
+    const cast = railCastForAttempt('king', 1);
+    const figs = kingRailFigures(cast, 1);
+    expect(figs).toHaveLength(20);
+    expect(figs.find((f) => f.id === GHOST_ID)).toBeDefined();
+    expect(kingRailFigures(cast, 1)).toEqual(figs); // deterministic — approval keeps every slot
+    const scene = readSrc('src/three/Scene.tsx');
+    expect(scene).toContain('ghost={props.ghostRail ?? false}');
+    const table = readSrc('src/Table.tsx');
+    expect(table).toContain('ghostRail={ghostSoloKing}');
+  });
+
+  it('reduced effects: the still-frame path — poster, no video, ticker-driven fades', () => {
+    const kr = readSrc('src/three/KingRail.tsx');
+    expect(kr).toContain("if (!animate || typeof document === 'undefined') return null;");
+    expect(kr).toContain('const tex = animate && !videoDead ? videoTex : poster;');
+    expect(kr).toContain('{!animate && ghostFig && <GhostTicker cue={cue} />}');
+    expect(kr).toContain('GHOST_CLIP.poster');
+    expect(kr).toContain('function GhostDirector');
+  });
+
+  it('no input lock: the apparition takes no pointer path (source)', () => {
+    const kr = readSrc('src/three/KingRail.tsx');
+    const ghost = kr.slice(kr.indexOf('function GhostFigure'), kr.indexOf('export interface KingRailProps'));
+    expect(ghost).not.toContain('onPointer');
+    expect(ghost).not.toContain('onClick');
+    expect(ghost).not.toContain('raycast');
+    const table = readSrc('src/Table.tsx');
+    const gate = table.slice(table.indexOf('const tryGhostLightning'), table.indexOf('// THE STORM ALSO ANSWERS'));
+    expect(gate).not.toContain('setPointerCapture');
+  });
+
+  it('the thunder is credited with its license in both credit surfaces', () => {
+    // repo-root CREDITS.md — whichever candidate this checkout's cwd serves
+    const cand = ['CREDITS.md', 'apps/web/../CREDITS.md', '../CREDITS.md', '../../CREDITS.md'];
+    const hit = cand.find((c) => { try { readFileSync(c, 'utf8'); return true; } catch { return false; } })!;
+    const credits = readFileSync(hit, 'utf8');
+    expect(credits).toContain('thunder.mp3');
+    expect(credits).toContain('InspectorJ');
+    expect(credits).toContain('CC-BY 3.0');
+    const ui = readSrc('src/Credits.tsx');
+    expect(ui).toContain('InspectorJ');
+    expect(ui).toContain('CC-BY 3.0');
+  });
+
+  it('the audio engine carries the thunder on the sfx bus', () => {
+    const audio = readSrc('src/audio.ts');
+    expect(audio).toContain("thunder: ['thunder'],");
+    expect(audio).toContain('thunderRoll(delayS = 0)');
+    expect(audio).toContain('g.connect(this.sfxBus);');
+  });
+});

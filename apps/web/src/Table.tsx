@@ -61,7 +61,11 @@ import { fireCue, fx, useReduceEffects } from './fx';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { feltHandVisible } from './three/cardFace';
-import { newCrowdCue, stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue } from './three/crowdCue';
+import {
+  GHOST_AFTERGLOW_MS, GHOST_DIP_MS, GHOST_HOLD_MS, GHOST_ID, GHOST_LEAD_MS, GHOST_LINE_LAG_MS,
+  ambientGhostVisit, cueHash01, ghostStrikesEndMs, newCrowdCue, stampApparition, stampLightning,
+  stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue,
+} from './three/crowdCue';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading, type LoadingSeat } from './TableLoading';
@@ -1744,6 +1748,24 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         // landed resolves here too, so the talk rides real moments.
         if (!beatFired && buzzAt('handEnd')) beatFired = true;
       }
+      // AMBIENT VISITATIONS (apparition pass): once per hand, a
+      // seeded roll may drift Ray in wordlessly — the coming-and-
+      // going texture between his lines. Never on the final hand
+      // (the endgame quiet is the King's; the witness line there is
+      // scripted), never over a window already running or scheduled.
+      if (ghostSoloKing && snap.handNo !== ghostRef.current.hand) {
+        ghostRef.current.hand = snap.handNo;
+        if (finalHandNow) ghostRef.current.final = true;
+        const visit = ambientGhostVisit(
+          (story?.saveCtx?.attemptsAtStart ?? facts.attempts) + 1,
+          snap.handNo,
+          ghostRef.current.final || snap.phase === 'gameOver',
+        );
+        if (visit) {
+          const at = performance.now() + visit.delayMs;
+          if (crowdCue.apparitionUntil < at) stampApparition(crowdCue, at, at + visit.holdMs);
+        }
+      }
       // RAILBIRDS: this attempt's drawn background cast, chiming in from
       // the rail — sparse, event-keyed, rate-capped (storyRail.ts), and
       // NEVER stacked on a scripted beat from this same state change.
@@ -1774,6 +1796,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           if (moment.kind === 'exchange') S.railExchanges++;
           S.lastRailHand = snap.handNo;
           const lines = moment.kind === 'solo' ? [moment.line] : moment.lines;
+          // Apparition heaviness, computed here (S.prev narrowing
+          // doesn't survive into the scheduling callback below).
+          const handEndedNow = snap.historyLen > S.prev.historyLen;
+          const shotOutNow = snap.phase === 'gameOver'
+            && (st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set');
           for (const l of lines) S.railSaid.push(l.line);
           const baseDelay = finalHandNow && stop.id === 'king' ? 7200 : 1100;
           // Same pacing rule as deliver() (story/beatPacing.ts): an
@@ -1800,6 +1827,41 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             // seated player's figure leans with their reply.
             if (railSide) stampSpeaker(crowdCue, l.speaker, performance.now() + delayMs);
             else { const sx = names.indexOf(name); if (sx >= 0) noteSeatSpeech(sx, performance.now() + delayMs); }
+            // THE APPARITION (owner, 2026-10-26, evening): when the
+            // rail speaker is Ray, his line rides a visitation — he
+            // materializes a beat before it lands and dissolves
+            // after. The HEAVIEST moments upgrade the visit to a
+            // lightning reveal (this mapping is the owner's dial):
+            //   · a Nil MADE or BUSTED (the rail only speaks Nil
+            //     lines when the game is in reach — it is on the line)
+            //   · big-swing drama sharing this beat
+            //   · the hand that just ended closed on a SET, or the
+            //     shot-out itself (the reveal's only double strike)
+            //   · the final-hand witness stretch and the NUKE arm /
+            //     detonation ride their own silent reveals (fx bus)
+            // tryGhostLightning holds the caps + gates — a refusal
+            // simply means he visits warm instead.
+            if (railSide && l.speaker === GHOST_ID && ghostSoloKing) {
+              const lineAt = performance.now() + delayMs;
+              const heavy = wantRail === 'nilMade' || wantRail === 'nilBusted'
+                || wantRail === 'finalHand'
+                || evs.includes('bigSwing')
+                || (handEndedNow && !!snap.lastHand
+                  && (snap.lastHand.mySet || snap.lastHand.theirSet || shotOutNow));
+              const strikes = shotOutNow ? 2 : 1;
+              const lightningAt = lineAt - (ghostStrikesEndMs(strikes) + GHOST_LINE_LAG_MS);
+              if (heavy && tryGhostLightning(lightningAt)) {
+                stampLightning(crowdCue, lightningAt, lineAt + GHOST_AFTERGLOW_MS, strikes);
+                scheduleThunder(lightningAt);
+              } else {
+                // a comeback line extending a running reveal keeps
+                // the reveal's shorter tail; a plain visit lingers
+                const inReveal = crowdCue.lightningAt > -1e8
+                  && crowdCue.lightningAt >= crowdCue.apparitionAt - 1000
+                  && crowdCue.lightningAt < crowdCue.apparitionUntil;
+                stampApparition(crowdCue, lineAt - GHOST_LEAD_MS, lineAt + (inReveal ? GHOST_AFTERGLOW_MS : GHOST_HOLD_MS));
+              }
+            }
             // Rail speech is higher-priority than generic talk (mix
             // hierarchy): mark its window so chatter can't replace it.
             if (!sound.voiceMuted(name)) {
@@ -2508,6 +2570,67 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const crowdCueRef = useRef<CrowdCue | null>(null);
   if (!crowdCueRef.current) crowdCueRef.current = newCrowdCue();
   const crowdCue = crowdCueRef.current;
+  // THE APPARITION (owner, 2026-10-26, evening): at the SOLO King table
+  // Uncle Ray leaves the standing ring and only VISITS — his rail
+  // moments stamp a presence window on the cue (materialize → line →
+  // dissolve), ambient seeded visits drift him in wordlessly, and the
+  // heaviest moments may escalate to a lightning reveal. Co-op keeps
+  // the ring exactly as shipped (its table stamps no windows).
+  const ghostSoloKing = !online && kingRail.includes(GHOST_ID);
+  // Per-match apparition discipline. Refs, not state: a re-render must
+  // never reset the caps, and stamping never re-renders.
+  const ghostRef = useRef({ hand: -1, final: false, reveals: 0, lastRevealAt: -1e9, lastRevealHand: -1 });
+  // Live gates for the fx-bus path (closures there would go stale):
+  // mirrored every render — card raised, reduced effects, current hand.
+  const ghostGateRef = useRef({ selected: false, reduced: false, handNo: 1 });
+  ghostGateRef.current = { selected: selected !== null, reduced: reduceFx || fx.osReducedMotion, handNo: st.handNo };
+  /**
+   * Book a lightning reveal whose lights begin dipping at
+   * `lightningAt` — or refuse it (the caller falls back to a warm
+   * visit). ALL the tier's discipline lives here: reduced effects
+   * never get it; hard cap 2 per match; never back-to-back (a later
+   * hand AND a real pause since the last); never while the player's
+   * own card is raised — their motion is theirs, the storm waits.
+   */
+  const tryGhostLightning = (lightningAt: number): boolean => {
+    const G = ghostRef.current;
+    const gate = ghostGateRef.current;
+    if (gate.reduced) return false;
+    if (G.reveals >= 2) return false;
+    if (gate.handNo <= G.lastRevealHand) return false;
+    if (lightningAt - G.lastRevealAt < 20000) return false;
+    if (gate.selected) return false;
+    G.reveals += 1;
+    G.lastRevealAt = lightningAt;
+    G.lastRevealHand = gate.handNo;
+    return true;
+  };
+  /** The thunder arrives AFTER the flash (light before sound): the
+   *  shipped cut's crack sits ~0.15s in, so the clip starts 0.15–1.35s
+   *  after the first strike and the crack lands 0.3–1.5s behind it. */
+  const scheduleThunder = (lightningAt: number) => {
+    const flashAt = lightningAt + GHOST_DIP_MS;
+    const clipLagS = 0.15 + cueHash01(Math.round(lightningAt)) * 1.2;
+    const delayS = (flashAt + clipLagS * 1000 - performance.now()) / 1000;
+    sound.thunderRoll(Math.max(0, delayS));
+  };
+  // THE STORM ALSO ANSWERS THE NUKE: the arm and the detonation are
+  // the room's heaviest beats, and a SILENT Ray reveal may ride them
+  // (same caps; the ☢ callout itself is the message). Subscribed on
+  // the fx bus like KingRail's own stir listener.
+  useEffect(() => {
+    if (!ghostSoloKing) return;
+    return fx.on((e) => {
+      if (e.kind !== 'nuke' && e.kind !== 'mega') return;
+      const strikes = e.kind === 'mega' ? 2 : 1;
+      const lightningAt = performance.now() + 250;
+      if (!tryGhostLightning(lightningAt)) return;
+      const lineAt = lightningAt + ghostStrikesEndMs(strikes) + GHOST_LINE_LAG_MS;
+      stampLightning(crowdCue, lightningAt, lineAt + GHOST_AFTERGLOW_MS, strikes);
+      scheduleThunder(lightningAt);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ghostSoloKing, crowdCue]);
   const noteSeatSpeech = (seat: number, at: number) => {
     const id = seatedFigureIds?.[seat];
     if (id) stampSeatSpeaker(crowdCue, id, at);
@@ -2589,6 +2712,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           seatedFigures={seatedFiguresArr}
           crowdCue={crowdCue}
           crowdAnimate={!reduceFx && !fx.osReducedMotion}
+          ghostRail={ghostSoloKing}
           landCue={landCue}
           short={vp.short}
           safe={vp.safe}
