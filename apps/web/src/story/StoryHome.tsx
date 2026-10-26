@@ -42,7 +42,7 @@ import { livingMoodFor } from './storyLiving';
 import { SceneAudio } from './SceneAudio';
 import StoryTape from './StoryTape';
 import StoryFace from './StoryFace';
-import StoryBadges, { badgeFactsOf } from './StoryBadges';
+import StoryBadges, { StoryBadgeReveal, badgeFactsOf } from './StoryBadges';
 import { FindDetail, SetAnimDetail } from './StoryDetailSheet';
 import './story.css';
 
@@ -1027,7 +1027,7 @@ export default function StoryHome() {
           const before = new Set(storyBadgesFor(badgeFactsOf(progressBeforeRef.current)).filter((b) => b.earned).map((b) => b.id));
           const after = storyBadgesFor(badgeFactsOf(r ?? progress));
           const fresh = new Set(after.filter((b) => b.earned && !before.has(b.id)).map((b) => b.id));
-          return <StoryBadges facts={badgeFactsOf(r ?? progress)} highlight={fresh} title="Badges" celebrate />;
+          return <>{fresh.size > 0 && <StoryBadgeReveal facts={badgeFactsOf(r ?? progress)} fresh={fresh} />}<StoryBadges facts={badgeFactsOf(r ?? progress)} highlight={fresh} title="Badges" celebrate /></>;
         })()}
         </div>
         <ScriptPlayer
@@ -1106,7 +1106,7 @@ export default function StoryHome() {
             <p className="story-dee-line">Your partner for the whole route. She starts green and levels up stop to stop — by the Pj&apos;s, she calls shots. You&apos;re not just running a route. You&apos;re making it out — together.</p>
           </div>
         </div>
-        <StoryBadges facts={badgeFactsOf(progress)} />
+        <StoryBadges facts={badgeFactsOf(progress)} variant="strip" />
         <ol className="story-route">
           {STORY_STOPS.map((stop) => {
             const state = stateFor(stop);

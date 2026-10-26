@@ -553,6 +553,73 @@ html[data-theme="neon"] .story-stage-one.active .story-stage-face {
 .story-badge-detail-about { margin: 0; font-size: 14.5px; line-height: 1.55; }
 .story-badge-detail-how { margin: 8px 0 0; font-size: 13.5px; line-height: 1.5; opacity: 0.88; }
 
+/* Story badges redesign (S2, boards/story-badges.md). §1 the map's compact
+   strip; §2 the full collection sheet; §3 the outro's new-badge reveal. */
+.story-badges.strip { display: flex; align-items: center; gap: 10px; min-height: 84px; padding: 10px 12px; border-radius: 14px; border-color: rgba(238, 201, 106, 0.28); background: rgba(20, 13, 32, 0.85); }
+.story-badges-strip-main { flex: 1; min-width: 0; }
+.story-badges.strip .story-badges-head { margin: 0 0 7px; gap: 8px; }
+.story-badges.strip .story-badges-title { font-family: var(--display); font-weight: 800; font-size: 16px; text-transform: uppercase; white-space: nowrap; }
+.story-badges.strip .story-badges-count { color: var(--gold); opacity: 1; white-space: nowrap; }
+.story-badges-prog { display: block; height: 6px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.story-badges-prog > i { display: block; height: 100%; background: linear-gradient(90deg, #c9962a, #ffd969); }
+.story-badges-recent { display: flex; gap: 4px; flex: none; }
+.story-badges-recent .story-medal { --medal-size: 38px; }
+.story-badges-recent .story-medal-glyph { font-size: 18px; }
+@media (max-width: 399px) { .story-badges-recent-medal:nth-child(3) { display: none; } }
+.story-badges-all { flex: none; position: relative; min-height: 36px; }
+.story-badges-all::after { content: ''; position: absolute; inset: -4px; }
+
+.story-badges-sheet { position: fixed; inset: 0; z-index: 19; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; background: rgba(10, 5, 18, 0.97); padding: max(14px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+.sbs-head { display: flex; align-items: center; gap: 12px; flex: none; }
+.sbs-head-main { flex: 1; min-width: 0; }
+.sbs-title { margin: 0 0 6px; display: flex; align-items: baseline; gap: 10px; font-family: var(--display); font-weight: 800; text-transform: uppercase; }
+.sbs-title b { color: var(--gold); font-size: 22px; }
+.sbs-title span { font-size: 18px; }
+.sbs-x.icon-btn { width: 44px; height: 44px; flex: none; font-size: 18px; }
+.sbs-hint { margin: 0; flex: none; font-size: 12.5px; color: var(--muted); }
+.story-badges-sheet .story-badges-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-content: start; }
+.story-badges-sheet .story-badge { height: 128px; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; padding: 10px 6px 6px; text-align: center; border: 0; border-radius: 12px; opacity: 1; filter: none;
+  background: linear-gradient(160deg, rgba(54, 36, 20, 0.55), rgba(20, 11, 34, 0.9)); box-shadow: inset 0 0 0 1px rgba(245, 197, 66, 0.35);
+  }
+.story-badges-sheet .story-badge .story-medal { --medal-size: 46px; }
+.story-badges-sheet .story-badge .story-medal-glyph { font-size: 21px; }
+.story-badges-sheet .story-badge-name { font-family: var(--display); font-weight: 800; font-size: 14px; letter-spacing: 0.03em; line-height: 1.05; text-transform: uppercase; }
+.story-badge-line { font-size: 10.5px; line-height: 1.25; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.story-badges-sheet .story-badge.earned .story-badge-line { color: var(--gold); }
+.story-badges-sheet .story-badge.locked { background: rgba(20, 13, 32, 0.85); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), 0.2); }
+.story-badges-sheet .story-badge.locked .story-badge-name { color: #b9aecf; }
+.story-badge-lock { position: absolute; top: 6px; right: 8px; font-size: 11px; opacity: 0.85; }
+.story-badges-sheet .story-badge.new { box-shadow: inset 0 0 0 2px var(--gold-hi); background: linear-gradient(160deg, rgba(120, 84, 20, 0.6), rgba(30, 16, 40, 0.9)); }
+.story-badges-sheet .story-badge-new { top: 6px; left: 6px; right: auto; border-radius: 0; font-family: var(--display); font-size: 11px; padding: 1px 6px; background: var(--gold); color: #1c1206; }
+.story-badges-sheet .story-badge.remainder { grid-column: span 2; justify-content: center; cursor: default; background: rgba(20, 13, 32, 0.6); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), 0.25); }
+.story-badge.remainder b { font-family: var(--display); font-weight: 800; font-size: 22px; text-transform: uppercase; color: var(--gold); }
+.story-badges-sheet .story-badge:not(.remainder) { animation: story-reward-in 0.5s cubic-bezier(0.2, 1.35, 0.4, 1) both; animation-delay: calc(var(--i, 0) * 35ms); }
+@media (orientation: landscape) and (max-height: 540px) {
+  .sbs-hint { display: none; }
+  .story-badges-sheet .story-badges-row { flex: 1; min-height: 0; grid-template-columns: repeat(7, 1fr); grid-template-rows: 1fr 1fr; }
+  .story-badges-sheet .story-badge { height: auto; min-height: 0; }
+  .story-badges-sheet .story-badge.remainder { grid-column: auto; }
+}
+@media (min-width: 720px) and (min-height: 541px) {
+  .story-badges-sheet .story-badges-row { grid-template-columns: repeat(7, 1fr); }
+  .story-badges-sheet .story-badge { height: auto; aspect-ratio: 1 / 1.1; }
+  .story-badges-sheet .story-badge.remainder { grid-column: auto; }
+}
+
+.story-badge-reveal { border-radius: 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 16px 12px 14px; margin-bottom: 12px; background: rgba(20, 13, 32, 0.85); box-shadow: inset 0 0 0 1px rgba(245, 197, 66, 0.35); }
+.sbr-medal .story-medal { --medal-size: 120px; box-shadow: 0 0 40px rgba(245, 197, 66, 0.65); }
+.sbr-medal .story-medal-glyph { font-size: 54px; }
+.sbr-kicker { margin: 6px 0 0; font-family: var(--display); font-weight: 800; font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); }
+.sbr-name { margin: 0; font-family: var(--display); font-weight: 800; font-size: 34px; line-height: 1; text-transform: uppercase; }
+.sbr-about { margin: 0; font-size: 14px; color: var(--muted); max-width: 34ch; }
+.sbr-chip { font-size: 12px; font-weight: 700; padding: 4px 10px; background: rgba(var(--purple-rgb), 0.14); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), 0.35); }
+.sbr-dots { display: flex; gap: 6px; }
+.sbr-dots i { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
+.sbr-dots i.on { background: var(--gold); }
+.story-badge-reveal .sbr-nice { width: 100%; min-height: 52px; margin-top: 6px; }
+.story-badge-reveal .sbr-all { width: 100%; min-height: 44px; }
+@media (prefers-reduced-motion: reduce) { .story-badges-sheet .story-badge:not(.remainder) { animation: none; } }
+
 /* ---- the rail: background cast, present but never in the way ---- */
 .story-rail {
   display: flex; align-items: center; gap: 8px;
