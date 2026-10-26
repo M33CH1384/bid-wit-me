@@ -99,6 +99,35 @@ button:disabled { cursor: default; }
 .danger { background: linear-gradient(180deg, #ff6b88, #c2183c); color: white; }
 button:active:not(:disabled) { transform: scale(.97); }
 .big { width: 100%; padding: 14px; font-size: 20px; }
+/* S2 button system, slice 2 (HANDOFF.md "Button system"): ONE gold
+   Primary for every .primary.big — 52px, the 10px chevron, the shared
+   gold gradient + inset highlight, ink #1C1206, Barlow 800 caps .07em.
+   Scoped OUT of the bidding panel, game over (victory + rewards), the
+   seated online lobby and Story surfaces, which keep their own looks. */
+.primary.big:not(:is(.bid-panel, .bid-row, .victory-screen, .rw-actions, .rewards-page, .lobby, .story-shell) *) {
+  min-height: 52px; clip-path: var(--btn-chevron); background: var(--btn-gold-grad); color: var(--btn-ink);
+  font-family: var(--display); font-weight: 800; letter-spacing: .07em; box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+}
+.primary.big:not(:is(.bid-panel, .bid-row, .victory-screen, .rw-actions, .rewards-page, .lobby, .story-shell) *):is(:hover, :focus-visible):not(:disabled) { filter: brightness(1.08); }
+.primary.big:not(:is(.bid-panel, .bid-row, .victory-screen, .rw-actions, .rewards-page, .lobby, .story-shell) *):focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.primary.big:not(:is(.bid-panel, .bid-row, .victory-screen, .rw-actions, .rewards-page, .lobby, .story-shell) *):active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+.primary.big:not(:is(.bid-panel, .bid-row, .victory-screen, .rw-actions, .rewards-page, .lobby, .story-shell) *):disabled { opacity: .4; box-shadow: none; pointer-events: none; }
+/* Secondary: the same chevron, a 1.5px gold outline (outer gold layer +
+   inner #1A0F2C fill at inset 1.5px), gold text. Applied to: the score
+   pad's Continue (was a flat ghost rect — same button, same handler, so
+   no flow changes), Join with a code (was a purple square), the wizard's
+   team-name Save, and (account.css) Create an account / guest links. */
+.score-pad .quiet-continue, .setup .join-row .micro-action, .wizard .micro-action, .wizard .team-name-edit button {
+  position: relative; isolation: isolate; border: 0; border-radius: 0; clip-path: var(--btn-chevron);
+  background: var(--gold); color: var(--gold); font-family: var(--display); font-weight: 800; letter-spacing: .07em; text-transform: uppercase; min-height: 44px; cursor: pointer;
+}
+.score-pad .quiet-continue::before, .setup .join-row .micro-action::before, .wizard .micro-action::before, .wizard .team-name-edit button::before {
+  content: ''; position: absolute; inset: 1.5px; z-index: -1; clip-path: var(--btn-chevron); background: var(--btn-fill);
+}
+.score-pad .quiet-continue { min-height: 48px; }
+.score-pad .quiet-continue:is(:hover, :focus-visible), .wizard .micro-action:is(:hover, :focus-visible), .wizard .team-name-edit button:is(:hover, :focus-visible) { filter: brightness(1.08); }
+.score-pad .quiet-continue:focus-visible, .wizard .micro-action:focus-visible, .wizard .team-name-edit button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.wizard .micro-action:disabled { opacity: .4; }
 .link { background: none; border: 0; color: var(--gold); padding: 10px 0; font-weight: 700; font-family: var(--display); letter-spacing: .06em; font-size: 16px; }
 
 /* ---------- setup ---------- */

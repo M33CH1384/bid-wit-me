@@ -118,3 +118,16 @@ html[data-theme="neon"] .acct-list li {
   background: rgba(var(--glass-rgb), .45);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 0 0 1px rgba(var(--edge-rgb), .16);
 }
+
+/* S2 button system, slice 2: Sign in with a passkey is the gold Primary
+   chevron; Create an account and Play as guest / Keep playing as guest
+   are Secondary (gold outline chevron; the guest links at the xs size). */
+.brand-btn.brand-passkey:not(.ghost) { border-radius: 0; clip-path: var(--btn-chevron); background: var(--btn-gold-grad); color: var(--btn-ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.7); font-family: var(--display); font-weight: 800; letter-spacing: .07em; text-transform: uppercase; min-height: 52px; }
+.brand-btn.brand-passkey.ghost, .acct-guest { position: relative; isolation: isolate; border: 0; border-radius: 0; clip-path: var(--btn-chevron); background: var(--gold); color: var(--gold); box-shadow: none; font-family: var(--display); font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+/* social.css's `button.ghost { background: transparent !important }` would
+   erase the gold outline layer; out-rank it by specificity. */
+button.brand-btn.brand-passkey.ghost { background: var(--gold) !important; }
+.brand-btn.brand-passkey.ghost::before, .acct-guest::before { content: ''; position: absolute; inset: 1.5px; z-index: -1; clip-path: var(--btn-chevron); background: var(--btn-fill); }
+.acct-guest { align-self: center; min-height: 44px; padding: 0 16px; font-size: 13px; }
+.brand-btn.brand-passkey:is(:hover, :focus-visible), .acct-guest:is(:hover, :focus-visible) { filter: brightness(1.08); }
+.brand-btn.brand-passkey:focus-visible, .acct-guest:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
