@@ -342,9 +342,11 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   } else if (step === 'door') {
     body = (
       <>
-        <p className="wiz-crumb">Play</p>
-        <h2 className="wiz-title">What are we playing?</h2>
-        <p className="wiz-stepno">Step 1 of 3</p>
+        <div className="wiz-head">
+          <p className="wiz-crumb">Play</p>
+          <h2 className="wiz-title">What are we playing?</h2>
+          <p className="wiz-stepno">Step 1 of 3</p>
+        </div>
         <div className="decision-cards">
           <DecisionCard testid="door-team" title="TEAM GAME" sub="2v2 — partners across from each other" emblem="PARTNERS" onPick={() => go('branch', path, 'team')} />
           <DecisionCard testid="door-cutthroat" title="CUTTHROAT" sub="4 players — every player for themselves" emblem="SOLO" onPick={() => { set('mode', 'cutthroat4'); go('opponent', path, 'cut'); }} />
@@ -354,9 +356,11 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   } else if (step === 'branch' && kind === 'team') {
     body = (
       <>
-        <p className="wiz-crumb">Team Game</p>
-        <h2 className="wiz-title">Team Game — which kind?</h2>
-        <p className="wiz-stepno">Step 2 of 3</p>
+        <div className="wiz-head">
+          <p className="wiz-crumb">Team Game</p>
+          <h2 className="wiz-title">Team Game — which kind?</h2>
+          <p className="wiz-stepno">Step 2 of 3</p>
+        </div>
         <div className="decision-cards">
           <DecisionCard testid="mode-joker" title="JOKERS" sub="Joker Spades — jokers high, partners" emblem="JOKERS HIGH" onPick={() => { set('mode', 'joker'); go('opponent'); }} />
           <DecisionCard testid="mode-aceDown" title="ACE DOWN" sub="Ace Down — aces lead, partners" emblem="ACES LEAD" onPick={() => { set('mode', 'aceDown'); go('opponent'); }} />
@@ -366,9 +370,11 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   } else if (step === 'opponent' || step === 'branch') {
     body = (
       <>
-        <p className="wiz-crumb">{MODE_CRUMB[s.mode]}</p>
-        <h2 className="wiz-title">Who are you playing?</h2>
-        <p className="wiz-stepno">{kind === 'cut' ? 'Step 2 of 2' : 'Step 3 of 3'}</p>
+        <div className="wiz-head">
+          <p className="wiz-crumb">{MODE_CRUMB[s.mode]}</p>
+          <h2 className="wiz-title">Who are you playing?</h2>
+          <p className="wiz-stepno">{kind === 'cut' ? 'Step 2 of 2' : 'Step 3 of 3'}</p>
+        </div>
         <div className="decision-cards">
           <DecisionCard testid="play-online" title="PLAY ONLINE" sub="Open tables, create or join with a code" emblem="TABLES" onPick={() => go('table', 'online')} />
           <DecisionCard testid="play-bots" title="VS BOTS" sub="Solo table — no seating step" emblem="SOLO TABLE" onPick={() => go('table', 'bots')} />
@@ -405,8 +411,10 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     );
     body = (
       <>
-        <p className="wiz-crumb">{MODE_CRUMB[s.mode]} · {path === 'online' ? 'Play Online' : 'Vs Bots'}</p>
-        <h2 className="wiz-title">{path === 'online' ? (view === 'create' ? 'Create a table' : 'Find a table') : 'Your Table'}<small>{mode.title}</small></h2>
+        <div className="wiz-head">
+          <p className="wiz-crumb">{MODE_CRUMB[s.mode]} · {path === 'online' ? 'Play Online' : 'Vs Bots'}</p>
+          <h2 className="wiz-title">{path === 'online' ? (view === 'create' ? 'Create a table' : 'Find a table') : 'Your Table'}<small>{mode.title}</small></h2>
+        </div>
         {path === 'bots' ? (
           <div className="ess ess-barred">
             {!cut && (
