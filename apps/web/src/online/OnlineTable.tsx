@@ -8,7 +8,7 @@ import { sideOf } from '@spades/rules';
 import { TurnCountdown } from '../TurnRing';
 import Table from '../Table';
 import { TableLoading, type LoadingSeat } from '../TableLoading';
-import { platePersona } from '@spades/bots';
+import { platePersona, railCastForAttempt, STORY_STOPS } from '@spades/bots';
 import { SEAT_COLORS } from '../overlay';
 import { type Settings, loadSettings, saveSettings } from '../settings';
 import type { ConnState, TableConnection } from './connection';
@@ -209,6 +209,24 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
           // The King's finale cutthroat (story co-op, Phase 4): the revolver
           // stays on the felt by his seat (server seat 1) for the whole game.
           kingGunSeat: room.story?.stopId === 'king' && room.story.phase === 'finale-game' ? rot.L(1) : null,
+          // The King's rail + seated figures in co-op (owner, 2026-10-26):
+          // at the King stop the whole neighborhood stands around the 3D
+          // table (railCastForAttempt deals the full pool at the King for
+          // any attempt — the identical cast the pair's scene channel
+          // derives), and the King + Ringer bot seats (server seats 1/3,
+          // the stop's pair) render as seated figures. Human seats keep
+          // their photo plates; Dee-as-guide is not seated. Both hold
+          // through the finale cutthroat (stopId stays 'king').
+          kingRailCast: room.story?.stopId === 'king' ? railCastForAttempt('king', 1) : undefined,
+          seatedFigures: room.story?.stopId === 'king'
+            ? localSeats.map((L) => {
+                const srv = rot.R(L);
+                if ((srv === 1 || srv === 3) && room.seats[srv]?.kind === 'bot') {
+                  return STORY_STOPS.find((s) => s.id === 'king')!.pair[srv === 1 ? 0 : 1];
+                }
+                return null;
+              })
+            : undefined,
           versusPairNote: versusPairNote ?? null,
           victory: (winners, losers, title, sub) => {
             const sp = (L: number) => {
