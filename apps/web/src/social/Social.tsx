@@ -233,7 +233,7 @@ function SocialPanel() {
               </span>
             )}
           </span>
-          <button type="button" className="sheet-close" aria-label="Close" data-testid="social-close" onClick={() => social.close()}>CLOSE</button>
+          <button type="button" className="sheet-close" aria-label="Close" data-testid="social-close" onClick={() => social.close()}>✕</button>
         </header>
         <nav className="soc-tabs" role="tablist" ref={tabsRef}>
           <span className="soc-tab-glide" aria-hidden="true" />

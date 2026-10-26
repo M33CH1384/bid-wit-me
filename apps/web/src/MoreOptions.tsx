@@ -120,7 +120,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
       <div className="sheet glass slant" role="dialog" aria-label="Settings" onClick={(e) => e.stopPropagation()} data-testid="more-options">
         <header className="sheet-head">
           <span className="panel-title">SETTINGS</span>
-          <button type="button" className="sheet-close" aria-label="Close" onClick={onClose}>CLOSE</button>
+          <button type="button" className="sheet-close" aria-label="Close" onClick={onClose}>✕</button>
         </header>
         <div className="scroll sheet-body">
           <SectionGroup label="House rules" open={isOpen('house')} onToggle={() => toggleSection('house')}>

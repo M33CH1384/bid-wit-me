@@ -120,7 +120,7 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
       <div className="modal glass slant score-pad v2 espn" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
         <div className="scroll pad2">
           <header className="pad-sticky">
-            <button type="button" className="sheet-close pad-close-btn" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>CLOSE</button>
+            <button type="button" className="sheet-close pad-close-btn" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>✕</button>
             <div className="panel-title big">SCORE PAD</div>
             <p className="pad-playing" data-testid="pad-target">Playing to {r.targetScore}</p>
             <div className="pad-board" style={{ ['--sides' as string]: sides.length }} data-testid="pad-board">

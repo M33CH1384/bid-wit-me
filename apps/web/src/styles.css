@@ -2500,6 +2500,45 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 }
 /* Menu rework PR-C + PR-D: settings sheet + score/leave exit discipline (shared sheet-close). */
 .sheet-close { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.06); color: #f3ead2; font: 800 12px/1 'Barlow Condensed', sans-serif; letter-spacing: .12em; cursor: pointer; }
+/* ===============================================================
+   S2 button system, slice 1 (design audit 2026-10-25, HANDOFF.md
+   "Button system", boards/buttons.html): shared tokens + the two roles
+   this slice applies — the 44x44 ICON button (the sheet close: ✕ replaces
+   the round CLOSE pill on Settings, Social, Account and the score pad)
+   and the DESTRUCTIVE outline (Leave on the hand recap, score pad and the
+   leave-confirm step, where it is filled red). Shape: the 10px chevron
+   (top-left + bottom-right cut); icons use an 8px cut. The game-over
+   "Change mode" keeps its old look (game over is out of scope).
+   =============================================================== */
+:root {
+  --btn-cut: 10px;
+  --btn-icon-cut: 8px;
+  --btn-gold-grad: linear-gradient(180deg, #ffe48a, #f5c542 45%, #c9962a);
+  --btn-ink: #1c1206;
+  --btn-fill: #1a0f2c;
+  --btn-chevron: polygon(var(--btn-cut) 0, 100% 0, 100% calc(100% - var(--btn-cut)), calc(100% - var(--btn-cut)) 100%, 0 100%, 0 var(--btn-cut));
+  --btn-icon-chevron: polygon(var(--btn-icon-cut) 0, 100% 0, 100% calc(100% - var(--btn-icon-cut)), calc(100% - var(--btn-icon-cut)) 100%, 0 100%, 0 var(--btn-icon-cut));
+}
+.sheet-close { position: relative; isolation: isolate; flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; border: 0; border-radius: 0; clip-path: var(--btn-icon-chevron); background: rgba(var(--edge-rgb), .55); color: #f3ead2; font: 700 18px/1 system-ui, sans-serif; letter-spacing: 0; }
+.sheet-close::before { content: ''; position: absolute; inset: 1.5px; z-index: -1; clip-path: var(--btn-icon-chevron); background: var(--btn-fill); }
+.sheet-close:hover, .sheet-close:focus-visible { filter: brightness(1.08); }
+.sheet-close:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.sheet-close:active { transform: translateY(1px); }
+.tt-foot .leave-red, .score-pad .leave-red, [data-testid="confirm-leave"] .leave-red {
+  position: relative; isolation: isolate; min-height: 44px; padding: 0 18px; border: 0; border-radius: 0;
+  clip-path: var(--btn-chevron); background: var(--red); color: var(--red);
+  font: 800 15px 'Barlow Condensed', sans-serif; letter-spacing: .08em; text-transform: uppercase;
+}
+.tt-foot .leave-red::before, .score-pad .leave-red::before, [data-testid="confirm-leave"] .leave-red::before {
+  content: ''; position: absolute; inset: 1.5px; z-index: -1; clip-path: var(--btn-chevron); background: var(--btn-fill);
+}
+/* the confirm step is the one place destructive is FILLED */
+[data-testid="confirm-leave"] .leave-red { color: #fff; }
+[data-testid="confirm-leave"] .leave-red::before { display: none; }
+.tt-foot .leave-red:hover, .score-pad .leave-red:hover, [data-testid="confirm-leave"] .leave-red:hover,
+.tt-foot .leave-red:focus-visible, .score-pad .leave-red:focus-visible, [data-testid="confirm-leave"] .leave-red:focus-visible { filter: brightness(1.08); }
+.tt-foot .leave-red:focus-visible, .score-pad .leave-red:focus-visible, [data-testid="confirm-leave"] .leave-red:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.tt-foot .leave-red:active, .score-pad .leave-red:active, [data-testid="confirm-leave"] .leave-red:active { transform: translateY(1px); }
 .value-chip { display: inline-block; margin-left: 8px; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #f3ead2; font: 700 12px/1 'Barlow Condensed', sans-serif; letter-spacing: .06em; }
 .gold-tab-row { position: relative; overflow: hidden; }
 /* (The 22px gold corner-fold that used to ride this row's top-right via ::after is
