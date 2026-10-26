@@ -281,3 +281,103 @@ describe('home structure under both themes', () => {
     expect(c.querySelector('.wiz-bar .wiz-dots')).toBeTruthy();
   });
 });
+
+describe('home backdrop art: the Neon layer covers the stage (owner, 2026-10-26)', () => {
+  // The owner, with the composition fix already live: "The photo in the
+  // background should cover the white space here." The grid above
+  // distributes the stage's air, but the Neon emblem layer was boxed
+  // into a 252px medallion at the hero — so the distributed breath
+  // between the tagline and the actions read as a dead band of bare
+  // page (art over at ~40% of the screen, buttons at ~62%). The layer
+  // is now the stage's backdrop. These pins hold the coverage from the
+  // shipped CSS, in the same stage accounting as the grid suite.
+  const beforeRule = () => {
+    const m = css.match(/html\[data-theme="neon"\] \.wiz-home::before \{([^}]*)\}/);
+    expect(m, 'the neon home ::before rule exists').toBeTruthy();
+    return m![1];
+  };
+
+  it('the art box spans the whole stage, not a hero medallion', () => {
+    const rule = beforeRule();
+    expect(rule).toContain('inset: 0');
+    expect(rule).not.toContain('width: min(62vw, 252px)');
+    expect(rule).not.toContain('contain');
+    // decoration contract unchanged: behind everything, never a target
+    expect(rule).toContain('pointer-events: none');
+  });
+
+  it('the painting covers hero + breath and reaches into the actions zone', () => {
+    const rule = beforeRule();
+    const sizeM = rule.match(/\/ auto (\d+(?:\.\d+)?)%/);
+    expect(sizeM, 'the emblem paints height-driven off the stage box').toBeTruthy();
+    const pct = parseFloat(sizeM![1]);
+    const posM = rule.match(/no-repeat 50% -(\d+(?:\.\d+)?)px/);
+    const lift = posM ? parseFloat(posM[1]) : 0;
+    const tracks = parseStageTracks();
+    // the phone portrait matrix from the grid suite (stage height,
+    // splash height, actions height per state)
+    const CASES: [string, number, number, number][] = [
+      ['plain 375×667', 541, 109.1, 149], ['story 375×667', 541, 109.1, 235],
+      ['plain 390×844', 718, 112.3, 149], ['story 390×844', 718, 112.3, 235],
+      ['full 390×844', 718, 112.3, 332],
+      ['story 430×932', 806, 121, 235], ['full 430×932', 806, 121, 332],
+    ];
+    for (const [label, homeH, splashH, actionsH] of CASES) {
+      const sizes = resolveFlex(tracks, homeH - splashH - actionsH);
+      const actionsTop = sizes[0] + splashH + sizes[2];
+      const paintedBottom = (pct / 100) * homeH - lift;
+      // the art must paint PAST the top of the actions block — the
+      // whole breath is art-covered, and the fade (mask, below) is
+      // what ends it inside the actions zone, never a bare gap
+      expect(paintedBottom, `${label}: painted art bottom vs actions top`).toBeGreaterThan(actionsTop + 24);
+    }
+  });
+
+  it('the mask grades the art out inside the stage: strong core, gone before the bottom', () => {
+    const rule = beforeRule();
+    const maskM = rule.match(/mask-image: radial-gradient\(ellipse (\d+(?:\.\d+)?)% (\d+(?:\.\d+)?)% at 50% (\d+(?:\.\d+)?)%, #000 (\d+(?:\.\d+)?)%, transparent (\d+(?:\.\d+)?)%\)/);
+    expect(maskM, 'the backdrop keeps its radial grade').toBeTruthy();
+    const [, , , centerY, solid, clear] = maskM!.map(Number);
+    // anchored on the hero (center in the top third), opaque through
+    // the hero and the breath's start, fully transparent before the
+    // stage's bottom edge — no hard cutoff anywhere
+    expect(centerY).toBeLessThanOrEqual(30);
+    expect(solid).toBeGreaterThanOrEqual(50);
+    expect(clear).toBeLessThanOrEqual(90);
+  });
+
+  it('wide screens bleed the backdrop past the centered column, mask completing inside', () => {
+    const wide = css.match(/@media \(min-width: 700px\) \{([\s\S]*?)\n\}/);
+    expect(wide, 'a wide-screen backdrop regime exists').toBeTruthy();
+    expect(wide![1]).toContain('.wiz-home::before');
+    expect(wide![1]).toContain('width: min(1200px, 100vw)');
+    expect(wide![1]).toContain('background-size: cover');
+  });
+
+  it('landscape phones re-seat the art behind the splash column, fully feathered', () => {
+    const land = css.match(/@media \(orientation: landscape\) and \(max-height: 520px\) \{([\s\S]*?)\n\}/);
+    expect(land, 'the short-landscape block exists').toBeTruthy();
+    const seg = land![1].match(/\.wiz-home::before \{([^}]*)\}/);
+    expect(seg, 'landscape re-seats the backdrop').toBeTruthy();
+    // the old medallion width must not come back (it would break the
+    // stage-spanning box), and the landscape mask must finish fading
+    // well inside the stage so no image edge shows against the page
+    expect(seg![1]).not.toContain('width: 148px');
+    const maskM = seg![1].match(/transparent (\d+(?:\.\d+)?)%/);
+    expect(maskM).toBeTruthy();
+    expect(parseFloat(maskM![1])).toBeLessThanOrEqual(80);
+    // the ace accent sits in the splash column, not over the actions
+    expect(land![1]).toMatch(/\.wiz-home::after \{[^}]*right: calc\(50% \+ 8px\)/);
+  });
+
+  it('the art layer is Neon-only: Classic carries no home art layer to strand', () => {
+    // every .wiz-home::before/::after rule in the stylesheet is scoped
+    // to the Neon theme — Classic's backdrop is the wizard's own
+    // full-stage gradient, which has no "art ends here" edge
+    const selectors = [...css.matchAll(/([^{}]+)\{[^{}]*\}/g)]
+      .map((m) => m[1])
+      .filter((s) => s.includes('.wiz-home::before') || s.includes('.wiz-home::after'));
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const s of selectors) expect(s).toContain('html[data-theme="neon"]');
+  });
+});

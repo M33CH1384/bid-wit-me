@@ -125,7 +125,7 @@ describe('home art dressing CSS (parity pass: decoration is CSS-only)', () => {
     expect(sec).toContain("url('/assets/neon/ace-card.webp')");
     // the art still melts into the page via the same radial masks, and the
     // card's idle float is still killed by reduced motion
-    expect(sec).toContain('mask-image: radial-gradient(ellipse 74% 74% at 50% 47%, #000 66%, transparent 88%)');
+    expect(sec).toContain('mask-image: radial-gradient(ellipse 96% 64% at 50% 24%, #000 54%, transparent 88%)');
     expect(sec).toContain('@keyframes wiz-art-float');
     expect(sec).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*html\[data-theme="neon"\] \.wiz-home::after \{ animation: none; \}/);
   });

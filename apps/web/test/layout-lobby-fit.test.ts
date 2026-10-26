@@ -52,6 +52,26 @@ import { describe, expect, it } from 'vitest';
  *      20px and trims both items' side padding; the row's floor drops
  *      to ≈182px ≤ the 190px rail floor. The pin below recomputes the
  *      row from the shipped constants — it fails on the pre-v8c CSS.
+ *  (6) THE SETTINGS SELECTS AT REST (v8d, the audit's last lobby
+ *      remainder — re-sweeps #2/#3: every remaining P0 was this one
+ *      signature): in the page-flow composition the settings column
+ *      starts 18px below a stage that ends at the dock's top edge, so
+ *      at scroll 0 the venue and timer selects sit inside the dock's
+ *      band (21–44px underlaps vs START / LEAVE / MIC / CHAT / the
+ *      team pencil); in the landscape stage the settings box ends at
+ *      the dock's top edge but its taller content's rects report
+ *      their layout positions, and the timer select's rect crossed
+ *      the box's bottom edge by 5–30px into the action row. The
+ *      owner's call (2026-10-25) was to fix it anyway, accepting the
+ *      flow hole the audit flagged: the page-flow settings column
+ *      now starts one live dock-height below the stage's end (=
+ *      exactly the viewport's bottom edge at scroll 0), and in the
+ *      landscape stage the two settings panels stop stacking and
+ *      sit in a two-column grid, each stretched to the box's height
+ *      and scrolling internally, so both selects rest at their
+ *      panels' tops inside the box. The v8d pins below model both,
+ *      with the pre-fix constants reproducing the overlap as the
+ *      negative control.
  * These tests recompute every budget from the shipped CSS constants, in
  * the house idiom, for all 11 audit sizes × the worst states
  * (partnership host — team chips + badges + status present — unless a
@@ -75,7 +95,10 @@ const v8B = v8.slice(v8.indexOf('/* (3) phone landscape stage'));
 const v8bWide = v8b.slice(v8b.indexOf('@media (min-width: 1024px) and (min-height: 600px)'), v8b.indexOf('@media (min-width: 1024px) and (max-width: 1279px)'));
 const v8bTier = v8b.slice(v8b.indexOf('@media (min-width: 1024px) and (max-width: 1279px)'), v8b.indexOf('@media (min-width: 768px)'));
 const v8bTablet = v8b.slice(v8b.indexOf('@media (min-width: 768px)'));
-const v8c = css.slice(css.indexOf('lobby v8c'));
+const v8c = css.slice(css.indexOf('lobby v8c'), css.indexOf('lobby v8d'));
+const v8d = css.slice(css.indexOf('lobby v8d'));
+const v8dPage = v8d.slice(0, v8d.indexOf('@media (max-height: 599px) and (min-width: 560px)'));
+const v8dStage = v8d.slice(v8d.indexOf('@media (max-height: 599px) and (min-width: 560px)'));
 
 const num = (re: RegExp, s: string) => {
   const m = s.match(re);
@@ -666,6 +689,151 @@ describe('the wide tier closes (v8b defects 2 + 3)', () => {
       expect(list, s.name).toBeGreaterThanOrEqual(K.chatListMin);
       // the media row (inside main's own column) is 8 margin + one button tall
       expect(MEDIA_TIER, s.name).toBe(8 + K.avBtnH);
+    }
+  });
+});
+
+describe('the settings selects clear the dock at rest (v8d, the D2 remainder — owner call 2026-10-25)', () => {
+  /* Where the two selects sit inside the settings flow (model constants
+   * from the shipped rules): the venue select's bottom edge is
+   * VENUE_REACH (76) into the flow; the timer select lives in the
+   * settings panel's summary, after the venue panel — its bottom edge
+   * is venue panel (130) + the panel's trailing margin (18, styles.css
+   * .panel) + the summary's top padding (6) + the select's own 44px. */
+  const panelMargin = num(/\.panel \{[^}]*margin-bottom: (\d+)px/, styles);
+  const summaryPad = num(/\.settings-panel > summary \{[^}]*padding: (\d+)px 0/, css);
+  const TIMER_BOTTOM_OFF = VENUE_PANEL + panelMargin + summaryPad + 44;
+  const settingsMarginPre = num(/\.lobby-settings \{ margin-top: (\d+)px; \}/, stage);
+
+  it('structure: the reserve reads the same live dock height the stage subtracts, and touches nothing else', () => {
+    // the cure's margin is the --dock-h reserve itself, fallback included
+    expect(v8dPage).toContain(`.lobby-settings { margin-top: calc(var(--dock-h, calc(${K.dockFallback}px + env(safe-area-inset-bottom)))); }`);
+    // the pre-fix flow had a flat 18px margin (the negative control below)
+    expect(settingsMarginPre).toBe(18);
+    // the section changes no dock, seat, felt or COLS-grid geometry,
+    // and is theme-free (the stage part grids .lobby-settings' OWN
+    // columns only — pinned in the landscape structure test below)
+    for (const s of ['.lobby-dock', '.seat-', '.mini-felt', 'data-theme', 'html[']) {
+      expect(v8d, s).not.toContain(s);
+    }
+    expect(v8dPage).not.toContain('grid-template');
+  });
+
+  it('the page-flow gate matches only the page-flow composition', () => {
+    const gate = v8dPage.slice(0, v8dPage.indexOf('{'));
+    // portrait phones + the 900–1023 page-flow widths + short sub-560 screens
+    expect(gate).toContain('(max-width: 767px) and (min-height: 600px)');
+    expect(gate).toContain('(min-width: 900px) and (max-width: 1023px) and (min-height: 600px)');
+    expect(gate).toContain('(max-width: 559px) and (max-height: 599px)');
+    // never a bare non-wide clause: that would leak into the 768–899
+    // bounded tier (whose settings row already ends at the dock's top
+    // edge) and into the landscape stage (its own box, part 2 below)
+    expect(gate).not.toContain('(max-width: 1023px),');
+    expect(gate).not.toContain('768px');
+  });
+
+  it('portrait: at scroll 0 the settings column starts exactly at the viewport bottom edge', () => {
+    for (const s of [...PORTRAIT]) {
+      const dock = dockA(s.h, s.w, s.sbot);
+      const dockTop = s.h - dock;
+      // stage bottom == dock top (pinned above); the reserve adds one
+      // full live dock height, so the settings start at the viewport's
+      // bottom edge and every settings rect is disjoint from every
+      // dock control (all control rects end at or above s.h)
+      const settingsTop = dockTop + dock;
+      expect(settingsTop, s.name).toBe(s.h);
+      expect(settingsTop + (VENUE_REACH - 44), s.name).toBeGreaterThanOrEqual(s.h); // venue select top
+      expect(settingsTop + (TIMER_BOTTOM_OFF - 44), s.name).toBeGreaterThanOrEqual(s.h); // timer select top
+    }
+  });
+
+  it('portrait negative control: the pre-fix 18px margin reproduces the underlap in the model', () => {
+    for (const s of [...PORTRAIT]) {
+      const dock = dockA(s.h, s.w, s.sbot);
+      const dockTop = s.h - dock;
+      const font = (s.h <= 719 ? 12 : 13) as 12 | 13;
+      const contentW = Math.min(s.w - 24, 560);
+      const startTop = dockTop + K.dockPadY / 2 + metaRow(contentW, font) + K.startRowGap;
+      const venueTop = dockTop + settingsMarginPre + (VENUE_REACH - 44);
+      const venueBottom = dockTop + settingsMarginPre + VENUE_REACH;
+      // venue select × START, pre-fix: a real overlap at every size
+      // (production measured 21–44px deep across the two room kinds)
+      expect(Math.min(venueBottom, startTop + K.startActionH) - Math.max(venueTop, startTop), s.name).toBeGreaterThan(0);
+      // and at the two taller sizes the timer select's rect also starts
+      // inside the dock's band (production caught it against the MIC /
+      // CHAT row at all three; at 375×667 the model's 3-line-blurb
+      // venue constant puts its start a few px past the fold instead —
+      // the venue pair above carries the control at that size)
+      if (s.h > 700) {
+        expect(dockTop + settingsMarginPre + (TIMER_BOTTOM_OFF - 44), s.name).toBeLessThan(s.h);
+      }
+    }
+  });
+
+  /* The landscape grid, parsed from the shipped v8d stage rules. In
+   * the pre-fix series stack the timer's bottom edge sits
+   * TIMER_BOTTOM_OFF into the settings flow; the stage box is only
+   * 80–144px tall (landscapeFit), so in series the timer's rect
+   * crossed the box's bottom — and the dock — at every size. The
+   * grid puts both selects at their panels' tops instead: the venue
+   * select's bottom edge is the panel's top padding + the ≈19px
+   * title line + the pick's top margin + its own 44px; the timer's
+   * is the settings panel's top padding + the summary's top padding
+   * + its own 44px. Both offsets are constants of the shipped rules,
+   * independent of how tall the panels' remaining content runs. */
+  const panelPadTop = num(/\.panel \{[^}]*padding: (\d+)px/, styles);
+  const venuePadNew = num(/\.lobby-venue-panel \{[^}]*padding-top: (\d+)px/, v8dStage);
+  const pickMarginNew = num(/\.venue-pick \{ margin-top: ([\d.]+)(?:px)?[; }]/, v8dStage);
+  const summaryPadNew = num(/> summary \{ padding-top: (\d+)px/, v8dStage);
+  const VENUE_BOTTOM_OFF = venuePadNew + 19 + pickMarginNew + 44;
+  const TIMER_BOTTOM_GRID = panelPadTop + summaryPadNew + 44;
+
+  it('landscape structure: the two panels sit in a grid inside the stage gate, uncapped', () => {
+    const gate = v8dStage.slice(0, v8dStage.indexOf('{'));
+    expect(gate).toContain('@media (max-height: 599px) and (min-width: 560px)');
+    // no max-width cap (unlike v8c): 844 and 932 underlapped too (21–30px)
+    expect(gate).not.toContain('max-width');
+    // the settings region's OWN columns — the only grid-template the
+    // v8d section may touch; the cols grid (rail/table) is untouched
+    expect(v8dStage).toContain('.lobby-settings { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 8px; }');
+    expect(v8dStage).not.toContain('.lobby-cols { grid-template');
+    // each panel is stretched to the box and scrolls its own overflow
+    expect(v8dStage).toContain('.lobby-settings > * { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; }');
+    // a lone panel (the guest's venue-only rail) spans both columns
+    expect(v8dStage).toContain('.lobby-settings > :only-child { grid-column: 1 / -1; }');
+    // the ONE display:none in the section: the summary's mode line in
+    // this gate — the same mode title reads on the felt's center, and
+    // hiding it is what lets the timer rest on the summary's first row
+    expect(v8dStage.match(/display: none/g)).toHaveLength(1);
+    expect(v8dStage).toContain('.lobby-settings .settings-panel .sr-mode { display: none; }');
+    expect(lobby).toContain('{modeTitle(r)}');
+  });
+
+  it('landscape: both selects rest inside the box, above the dock, at internal scroll 0', () => {
+    // the panels end at the box's bottom edge == the dock's top edge,
+    // so a select is disjoint from every dock control iff its bottom
+    // edge (a constant offset from its panel's top == the box's top)
+    // fits inside the box's height
+    for (const s of [...LANDSCAPE]) {
+      expect(landscapeFit(s).settingsH - VENUE_BOTTOM_OFF, s.name).toBeGreaterThanOrEqual(0);
+      expect(landscapeFit(s).settingsH - TIMER_BOTTOM_GRID, s.name).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('landscape negative control: in the pre-fix series stack the timer rect crosses the box', () => {
+    // production measured timer × START 5–14px deep at 667×375, timer
+    // × LEAVE 21–30px at 844×390, timer × LEAVE 22px and timer × the
+    // team pencil 14px at 932×430 — the series offset against the
+    // box height is the model's form of the same crossing
+    for (const s of [...LANDSCAPE]) {
+      expect(TIMER_BOTTOM_OFF - landscapeFit(s).settingsH, s.name).toBeGreaterThan(0);
+    }
+  });
+
+  it('landscape: the venue select is still fully visible at rest inside its box', () => {
+    expect(VENUE_BOTTOM_OFF).toBeLessThan(VENUE_REACH);
+    for (const s of [...LANDSCAPE]) {
+      expect(landscapeFit(s).settingsH, s.name).toBeGreaterThanOrEqual(VENUE_BOTTOM_OFF);
     }
   });
 });

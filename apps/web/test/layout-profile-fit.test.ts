@@ -12,6 +12,11 @@
  * D9 (§2a): the profile page gains story's ≥1100px tier (1120px), and
  * the page-host Rep-ranks row may wrap at 6–7-digit coin balances.
  * D4: every interactive rule W2 raised to the 44px floor is pinned.
+ * Remainder (b) (owner call 2026-10-25, "Apply the grid fix"): the one
+ * panel/page state D6's one line could not close — the friend-request
+ * state (Accept request + Decline) — takes the modal's 3-column grid,
+ * scoped by :has() on the Accept button; every other state keeps the
+ * one line pinned above.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -104,6 +109,70 @@ describe('D6 panel + page hosts: ONE line, tightened until the locked worst case
 
   it('buttons stay 44px tall on the one line', () => {
     expect(num(rule, /min-height: (\d+)px/, 'min-height')).toBe(44);
+  });
+});
+
+describe('Remainder (b): the panel/page friend-request state takes the modal grid', () => {
+  /* Audit-basis label totals as upper bounds: for labels the audit
+   * measured, max(audit §3e, a 2026-10-25 Chromium re-measure on the
+   * shipped font stack); Accept/Decline exist only in this state and
+   * come from that re-measure alone (rounded up). Same basis as LABELS:
+   * 12px totals incl. the old 16px chrome. */
+  const LABELS2 = { message: 71, invite: 66, challenge: 122, challengeOpen: 91, accept: 124, decline: 58, block: 47, report: 55 };
+  const gridSel = '.soc-panel .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]), .profile-page .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]) {';
+  const grid = block(social, gridSel);
+  const gridGap = num(grid, /gap: (\d+)px/, 'grid gap');
+  const btn = block(social, '.soc-panel .soc-prof-head .soc-prof-acts button, .profile-page .soc-prof-head .soc-prof-acts button {');
+  const sidePad = num(btn, /padding: \d+px (\d+)px/, 'side padding');
+  const font = num(btn, /font-size: ([\d.]+)px/, 'font');
+  const rowGap = num(block(social, '.soc-panel .soc-prof-head .soc-prof-acts, .profile-page .soc-prof-head .soc-prof-acts {'), /gap: (\d+)px/, 'row gap');
+  const w = (total: number) => textOf(total) * (font / 12) + (2 * sidePad + 2);
+  const gridTotal = (order: number[]) => {
+    const cols = [0, 1, 2].map((c) => Math.max(...order.filter((_, i) => i % 3 === c).map(w)));
+    return cols.reduce((a, b) => a + b, 0) + 2 * gridGap;
+  };
+  const oneLine = (order: number[]) => order.reduce((a, t) => a + w(t), 0) + (order.length - 1) * rowGap;
+  const IN6 = [LABELS2.message, LABELS2.challenge, LABELS2.accept, LABELS2.decline, LABELS2.block, LABELS2.report];
+  const IN7 = [LABELS2.message, LABELS2.invite, LABELS2.challenge, LABELS2.accept, LABELS2.decline, LABELS2.block, LABELS2.report];
+
+  it('the grid is scoped to the Accept state, in the panel and page hosts only', () => {
+    expect(grid).toContain('display: grid');
+    expect(grid).toContain('grid-template-columns: repeat(3, auto)');
+    expect(grid).toContain('justify-content: space-between');
+    // the anchor the :has() hangs on is rendered by ProfileView itself
+    const view = readFileSync(new URL('../src/profile/ProfileView.tsx', import.meta.url), 'utf8');
+    expect(view).toContain('data-testid="profile-accept"');
+    expect(view).toContain('data-testid="profile-decline"');
+    // the base one-line rule still ships for every other state
+    expect(social).toContain('.soc-prof-acts { display: flex; flex-wrap: nowrap; gap: 5px; align-items: center; }');
+  });
+
+  it('one line is arithmetically impossible for this state — the departure is forced, not chosen', () => {
+    expect(oneLine(IN6)).toBeCloseTo(428.1, 0);
+    expect(oneLine(IN7)).toBeCloseTo(487.0, 0);
+    for (const vw of [375, 390, 430]) {
+      expect(oneLine(IN6), `vw ${vw}`).toBeGreaterThan(panelContent(vw));
+      expect(oneLine(IN7), `vw ${vw}`).toBeGreaterThan(pageContent(vw));
+    }
+  });
+
+  it('the grid closes the state at 351px panel and 343px page content, with slack', () => {
+    expect(gridTotal(IN6)).toBeCloseTo(293.8, 0);
+    expect(gridTotal(IN7)).toBeCloseTo(289.0, 0);
+    for (const vw of [375, 390, 430]) {
+      expect(gridTotal(IN6), `vw ${vw}`).toBeLessThanOrEqual(pageContent(vw));
+      expect(gridTotal(IN7), `vw ${vw}`).toBeLessThanOrEqual(pageContent(vw));
+    }
+    // the unlocked Challenge label is narrower — the grid only gains room
+    const in7open = [LABELS2.message, LABELS2.invite, LABELS2.challengeOpen, LABELS2.accept, LABELS2.decline, LABELS2.block, LABELS2.report];
+    expect(gridTotal(in7open)).toBeLessThanOrEqual(pageContent(375));
+  });
+
+  it('rows stay on the 44px floor: 6 buttons = 2 rows (94px), 7 = 3 rows (144px)', () => {
+    const mh = num(btn, /min-height: (\d+)px/, 'min-height');
+    expect(mh).toBe(44);
+    expect(Math.ceil(IN6.length / 3) * mh + (Math.ceil(IN6.length / 3) - 1) * gridGap).toBe(94);
+    expect(Math.ceil(IN7.length / 3) * mh + (Math.ceil(IN7.length / 3) - 1) * gridGap).toBe(144);
   });
 });
 

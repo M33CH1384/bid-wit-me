@@ -729,3 +729,68 @@
   .lobby-v3 .lobby-head .share-code b { font-size: 20px; letter-spacing: .1em; }
   .lobby-v3 .lobby-head .lobby-social { padding: 0 8px; }
 }
+
+/* ---------- lobby v8d: the settings selects clear the dock AT REST
+   (design audit D2 remainder — the one signature the re-sweeps left;
+   the owner took the call 2026-10-25: fix it, hole and all) ----------
+   Two compositions, two mechanisms, one invariant: at scroll 0 no
+   settings select's rect meets any dock control's rect.
+   (1) THE SCROLLING PAGE (portrait phones and the other page-flow
+   widths): the stage ends exactly at the dock's top edge and the
+   settings column flows after it, so at scroll 0 the venue select
+   (~28px into the settings flow) and the timer select (after the
+   venue panel) both sit INSIDE the dock's band — the re-sweeps'
+   21–44px underlaps. The cure the audit specified (w4b, flagged not
+   forced): reserve the dock's height inside the settings flow. The
+   settings column now starts one live dock-height below the stage's
+   end — at scroll 0 that is exactly the viewport's bottom edge, so
+   every settings rect begins at or below it, disjoint from every
+   dock control by construction, in every state (the margin reads
+   the same live --dock-h the stage subtracts, so host/guest/playing
+   track together). The cost is the one the owner accepted: a
+   dock-height of page flow between the stage and the settings,
+   scrolled through on the way down; the page's existing bottom
+   reserve (--dock-h + 6) still lands the settings' tail fully
+   clear of the dock, so nothing becomes unreachable. The gate's
+   shape is the scoping: it matches only the page-flow composition —
+   never the wide grid (no dock), never the 768–899 bounded tier
+   (its settings row already ends at the dock's top edge), never
+   the landscape stage (its settings live in their own box; part 2).
+   (2) THE LANDSCAPE STAGE: the rail's settings box already ends at
+   the dock's top edge, but its content is much taller than the box
+   (measured on the live lobby: ~236px of panels in an 80–144px
+   box), and a scrolled-out row's rect still reports its layout
+   position — the timer select's rect crossed the box's bottom by
+   60–140px (re-sweep #3 depths of 5–30px are just its intersection
+   with the dock's action row). No spacing diet closes a gap that
+   size, and in series the SECOND panel's select lands in the
+   dock's band no matter the order. So in this gate only the two
+   panels stop stacking: .lobby-settings becomes a two-column grid
+   (venue 1.3fr, settings 1fr), each panel stretched to the box's
+   own height and scrolling internally, so both selects sit at
+   their panels' tops — inside the box, above the dock — at rest.
+   Every row of both panels stays reachable: each panel scrolls
+   its own overflow, exactly as the one box scrolled the stack
+   before. The summary's mode line (.sr-mode) is the one element
+   not rendered in this gate: it wraps to two lines in the narrow
+   column and would push the timer back down; the same mode title
+   already reads on the felt's center, and the target score stays
+   one Edit tap away in the panel body. A lone panel (the guest's
+   venue-only rail) spans both columns. Geometry only — no theme
+   selectors. */
+@media (max-width: 767px) and (min-height: 600px), (min-width: 900px) and (max-width: 1023px) and (min-height: 600px), (max-width: 559px) and (max-height: 599px) {
+  .lobby-settings { margin-top: calc(var(--dock-h, calc(200px + env(safe-area-inset-bottom)))); }
+}
+@media (max-height: 599px) and (min-width: 560px) {
+  .lobby-cols { gap: 4px 12px; }
+  .lobby-v3 .lobby-head { gap: 4px; }
+  .lobby-settings { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 8px; }
+  .lobby-settings > * { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+  .lobby-settings > :only-child { grid-column: 1 / -1; }
+  .lobby-settings .lobby-venue-panel { padding-top: 3px; padding-bottom: 3px; margin-bottom: 0; }
+  .lobby-settings .lobby-venue-panel .venue-pick { margin-top: 0; }
+  .lobby-settings .lobby-venue-panel .venue-pick small { margin-top: 2px; }
+  .lobby-settings .settings-panel { margin-bottom: 0; }
+  .lobby-settings .settings-panel > summary { padding-top: 2px; padding-bottom: 2px; }
+  .lobby-settings .settings-panel .sr-mode { display: none; }
+}
