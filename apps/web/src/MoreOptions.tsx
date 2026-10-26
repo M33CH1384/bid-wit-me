@@ -44,12 +44,14 @@ export function Seg<T extends string | number>({ value, options, onChange, label
  *  the header is a toggle (chevron affordance, aria-expanded); the body
  *  stays MOUNTED and folds on the .set-group-body height track, so folding
  *  never unmounts a control or loses its state — presentation only. */
-export function SectionGroup({ label, open, onToggle, groupRef, testId, children }: {
+export function SectionGroup({ label, open, onToggle, groupRef, testId, children, railActive }: {
   label: string; open: boolean; onToggle: () => void;
   groupRef?: Ref<HTMLElement>; testId?: string; children: ReactNode;
+  /** S2 landscape tab rail: this group is the rail's selected tab (CSS shows only it, unfolded). */
+  railActive?: boolean;
 }) {
   return (
-    <section className="set-group" aria-label={label} ref={groupRef} data-testid={testId}>
+    <section className={`set-group${railActive ? ' rail-active' : ''}`} aria-label={label} ref={groupRef} data-testid={testId}>
       <h3 className="sheet-h">
         <button type="button" className="set-group-toggle" aria-expanded={open} onClick={onToggle}>
           <span>{label}</span>
@@ -62,6 +64,8 @@ export function SectionGroup({ label, open, onToggle, groupRef, testId, children
     </section>
   );
 }
+
+const RAIL_TABS: [SettingsSectionId, string][] = [['house', 'House rules'], ['play', 'Play'], ['sound', 'Sound & music'], ['look', 'Look & effects'], ['beta', 'Feedback']];
 
 export const TALK_HINT: Record<Settings['talkIntensity'], string> = {
   family: 'Family Friendly: clean, light jokes only',
@@ -103,6 +107,10 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
     saveSectionOpen(next);
     if (forced === id) setForced(null);
   };
+  // S2 landscape tab rail (HANDOFF "Settings sheet"): one section at a time on the right.
+  // Presentation only — portrait keeps the accordion, and every group stays mounted.
+  const [tab, setTab] = useState<SettingsSectionId>(() => (initialSection === 'sound' ? 'sound' : 'house'));
+  useEffect(() => { if (initialSection === 'sound') setTab('sound'); }, [initialSection, anchorSeq]);
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => onChange({ ...s, [k]: v });
   const rules = settingsToRules(s);
   const isJokerDeck = rules.deck === 'joker54';
@@ -122,8 +130,13 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <span className="panel-title">SETTINGS</span>
           <button type="button" className="sheet-close" aria-label="Close" onClick={onClose}>✕</button>
         </header>
+        <nav className="set-rail" role="tablist" aria-label="Settings sections" data-testid="settings-rail">
+          {RAIL_TABS.map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} data-testid={`settings-tab-${id}`} onClick={() => setTab(id)}>{label}</button>
+          ))}
+        </nav>
         <div className="scroll sheet-body">
-          <SectionGroup label="House rules" open={isOpen('house')} onToggle={() => toggleSection('house')}>
+          <SectionGroup railActive={tab === 'house'} label="House rules" open={isOpen('house')} onToggle={() => toggleSection('house')}>
               <Row label="First hand: books bid themselves" hint="No bidding in hand 1 · 10 points per book">
                 <Toggle label="First hand: books bid themselves" value={s.firstHandBidsItself !== false} onChange={(v) => set('firstHandBidsItself', v)} />
               </Row>
@@ -192,7 +205,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
               </Row>}
               <Row label="10 for 200"><Toggle value={s.tenForTwoHundred} onChange={(v) => set('tenForTwoHundred', v)} /></Row>
           </SectionGroup>
-          <SectionGroup label="Play" open={isOpen('play')} onToggle={() => toggleSection('play')}>
+          <SectionGroup railActive={tab === 'play'} label="Play" open={isOpen('play')} onToggle={() => toggleSection('play')}>
           <Row label="Tips while you play" hint="Coach marks + bid coach, until you turn them off">
             <Toggle label="Tips" value={tips.on} onChange={(on) => { const t = { on, asked: true }; saveTips(t); onTips(t); }} />
           </Row>
@@ -208,13 +221,13 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
             <Seg label="Trash talk intensity" value={s.talkIntensity ?? 'cookout'} options={[['family', 'Family'], ['cookout', 'Cookout'], ['nomercy', 'No Mercy']]} onChange={(v) => set('talkIntensity', v)} />
           </Row>
           </SectionGroup>
-          <SectionGroup label="Sound & music" open={isOpen('sound')} onToggle={() => toggleSection('sound')} groupRef={soundGroupRef} testId="settings-sound-group">
+          <SectionGroup railActive={tab === 'sound'} label="Sound & music" open={isOpen('sound')} onToggle={() => toggleSection('sound')} groupRef={soundGroupRef} testId="settings-sound-group">
           <SoundQuickActions />
           <SoundFields />
           <ChatSoundsRow />
           <BotTrashTalkRow />
           </SectionGroup>
-          <SectionGroup label="Look & effects" open={isOpen('look')} onToggle={() => toggleSection('look')}>
+          <SectionGroup railActive={tab === 'look'} label="Look & effects" open={isOpen('look')} onToggle={() => toggleSection('look')}>
           <Row label="Appearance" hint="Neon Royale is the midnight-navy theme">
             <ThemeToggle />
           </Row>
@@ -231,7 +244,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <NukeIntensityRow />
           <SetAnimRow value={s.setAnim ?? 'auto'} onChange={(v) => set('setAnim', v)} />
           </SectionGroup>
-          <SectionGroup label="Beta feedback & support" open={isOpen('beta')} onToggle={() => toggleSection('beta')}>
+          <SectionGroup railActive={tab === 'beta'} label="Beta feedback & support" open={isOpen('beta')} onToggle={() => toggleSection('beta')}>
           <AboutRow onFeedback={() => setFeedback(true)} />
           <button type="button" className="link sheet-h gold-tab-row" onClick={() => setCredits(true)}>Credits &amp; licenses</button>
           </SectionGroup>
