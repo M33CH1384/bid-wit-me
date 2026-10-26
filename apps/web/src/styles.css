@@ -651,6 +651,22 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .decision-card .dc-main b { font-family:var(--display); font-weight:800; font-size:30px; letter-spacing:.03em; line-height:1; }
 .decision-card .dc-main small { color:var(--muted); font-size:14.5px; }
 .dc-emblem { font-family:var(--display); font-weight:800; font-size:12.5px; letter-spacing:.14em; color:var(--gold); border:1px solid rgba(var(--gold-rgb),.55); padding:7px 9px; white-space:nowrap; }
+/* S2 wizard door steps (boards/HANDOFF.md "Wizard door steps"; wizard-home.png,
+   after/wiz-l.html; AUDIT 10–13). Landscape: the door cards sit side by side as equal
+   tiles (1fr 1fr; a 3rd option would make 3 columns) that fill the height — title 34px
+   + sub on top, the emblem as a chip bottom-left and a gold → bottom-right. Portrait
+   keeps the stacked 440px column. */
+@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 1000px) {
+  .wiz-step:has(> .decision-cards) { max-width: none; padding: 4px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); }
+  .wiz-step > .decision-cards { flex: 1; min-height: 0; max-width: none; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 14px; }
+  .wiz-step > .decision-cards > .decision-card { position: relative; min-height: 0; flex-direction: column; align-items: stretch; justify-content: space-between; padding: 18px 20px; }
+  .wiz-step > .decision-cards .dc-main b { font-size: 34px; }
+  .wiz-step > .decision-cards .dc-main small { font-size: 15px; }
+  .wiz-step > .decision-cards .dc-emblem { align-self: flex-start; height: 36px; display: inline-flex; align-items: center; padding: 0 14px; border: 0; font-size: 14px; letter-spacing: .04em; text-transform: none; color: var(--lav, #cdb8ff); background: rgba(var(--purple-rgb),.14); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35); clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
+  .wiz-step > .decision-cards > .decision-card::before { content: '→'; position: absolute; right: 22px; bottom: 18px; font-family: var(--display); font-weight: 800; font-size: 26px; line-height: 36px; color: var(--gold); }
+  .wiz-step > .decision-cards > .decision-card:hover { filter: brightness(1.08); }
+  .wiz-step > .decision-cards > .decision-card:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: -2px; }
+}
 .quiet-row { position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; border:0; padding:14px 16px; min-height:52px;
   background:rgba(255,255,255,.045); color:var(--ink); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.22);
   font-family:var(--display); font-weight:700; font-size:18px; letter-spacing:.06em; text-transform:uppercase; touch-action:manipulation;
