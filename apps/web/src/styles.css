@@ -614,6 +614,25 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .splash .tagline { color: var(--gold); font-family: var(--display); font-size: 18px; text-transform: uppercase; letter-spacing: .28em; font-weight: 700; margin: 14px 0 0; text-shadow: 0 0 12px rgba(var(--gold-rgb),.45); animation: fade-up .8s ease .5s both; }
 @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .wiz-actions { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 440px; margin: 0 auto; animation: fade-up .7s ease .65s both; }
+/* S2 desktop / iPad-landscape home (boards/HANDOFF.md "Home (desktop and --land-tab)";
+   wizard-home.png, after/home-desk.html). --land-tab = landscape, ≥541px tall, ≥1000px
+   wide. Two columns 1.1fr | 1fr, vertically centred, padding 0 120px 80px: the logo
+   (min(560px,100%)) + tagline on the left, the actions (max 460px) on the right. PLAY is
+   the gold Primary at 72px (system chevron, gradient, ink). Phones (portrait and short
+   landscape) are untouched. The Story tile is left as-is (waits for the Story/badges PR). */
+@media (orientation: landscape) and (min-height: 541px) and (min-width: 1000px) {
+  .wizard.step-home .wiz-step { max-width: none; padding: 0; justify-content: center; }
+  .wiz-home { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); grid-template-rows: none; align-items: center; gap: 60px; padding: 0 120px 80px; }
+  .wiz-home .splash, .wiz-home .wiz-actions { grid-row: auto; }
+  .wiz-home .splash-logo { width: min(560px, 100%); }
+  .wiz-home .splash-logo-wrap .beta-tag { right: max(4%, calc(50% - 300px)); }
+  .wiz-home .splash .tagline { font-size: 24px; letter-spacing: .35em; }
+  .wiz-home .wiz-actions { max-width: 460px; margin: 0; gap: 16px; }
+  .wiz-home .hero-btn.gold { min-height: 72px; justify-content: center; padding: 0 26px; background: var(--btn-gold-grad); color: var(--btn-ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.7); clip-path: var(--btn-chevron); }
+  .wiz-home .hero-btn.gold b { font-size: 32px; }
+  .wiz-home .hero-btn:hover { filter: brightness(1.08); }
+  .wiz-home .hero-btn:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+}
 .big-choice {
   display: flex; align-items: center; gap: 16px; border: 0; padding: 18px 20px; min-height: 84px; text-align: left;
   clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
