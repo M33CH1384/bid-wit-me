@@ -20,9 +20,8 @@
  * height-gated tier — max-height 560px, so portrait phones (667px+ tall)
  * never enter — where the sheet spans the stage (min(1040px, 100%),
  * centered), the body is a two-column grid (rail: TOP SCORES + HANDS +
- * callouts + the tricks entry; main: the side cards, the Run It review
- * full-width beneath), and the footer is ONE action row pinned under
- * the body.
+ * callouts; main: the side cards), and the footer is ONE action row
+ * pinned under the body.
  *
  * Content parity extension (owner, same day, second walk — the same
  * hand-2 story recap in both orientations): portrait carries TOP
@@ -32,10 +31,20 @@
  * 286px body — whole, but it pushed the second card and the tricks
  * entry off the stage. The tier compacts the set states instead of
  * amputating them (notice padding/lane, hole re-anchor, verdict
- * plaque, sheet padding), and with the tricks entry in the rail the
- * owner's exact state renders at 932×430 with ZERO body scroll in both
- * themes (measured in Chromium against a crafted state matching his
- * screenshots: story partnership, hand 2, set side, 2-in-a-row streak).
+ * plaque, sheet padding), and the owner's exact state renders at
+ * 932×430 with ZERO body scroll in both themes (measured in Chromium
+ * against a crafted state matching his screenshots: story partnership,
+ * hand 2, set side, 2-in-a-row streak).
+ *
+ * Trick-review consolidation (owner, 2026-10-26): the Review-the-tricks
+ * entry moved OUT of this grid entirely, into the recap header (his
+ * Hand 5 shot showed the rail's last row — the pill — clipped at the
+ * rail's edge), and the recap's Run It review entry was removed. The
+ * header's arithmetic is unchanged: the pill's 44px is the header's
+ * existing content height (6px padding + 44 + 6px padding + border =
+ * HEAD 57), so every budget below closes exactly as before, the rail
+ * simply ends at the callouts now, and reaching trick review takes
+ * zero scroll at every size by construction.
  *
  * Budgets below recompute from the shipped CSS constants plus measured
  * render constants (the house idiom — cf. layout-lobby-fit's TEAMS_W):
@@ -46,7 +55,9 @@
  *   NOTICE 163 (the SHOT card at the tier's set-state compaction, ≥800px)
  *   STRIP 53 / 88 (HANDS tracker, partnership / cutthroat)
  *   CALLOUT 21 (a one-line streak banner in the rail)
- *   PILL 44   (the Review-the-tricks entry, at the tap floor)
+ *   PILL 44   (the Review-the-tricks entry, at the tap floor — since
+ *              2026-10-26 it sits in the header, whose 57 = 6 + 44 + 6
+ *              + border already prices it in)
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -101,13 +112,15 @@ describe('landscape recap: the tier and its composition', () => {
     expect(css.indexOf('/* Hand recap in LANDSCAPE')).toBeGreaterThan(css.indexOf('.tt { width: 452px; flex: none; }'));
   });
 
-  it('the body is the two-column grid: rail of scores/strip/callouts/tricks, main of cards, run beneath', () => {
-    expect(land).toContain('grid-template-areas: "scores recap" "strip recap" "callouts recap" "tricks recap" "run run";');
+  it('the body is the two-column grid: rail of scores/strip/callouts, main of cards — no review rows', () => {
+    expect(land).toContain('grid-template-areas: "scores recap" "strip recap" "callouts recap";');
     expect(land).toContain('.tt-top-scores { grid-area: scores; width: 100%; }');
     expect(land).toContain('.tt-recap { grid-area: recap; width: 100%;');
-    expect(land).toContain('.tt-tricks { grid-area: tricks; width: 100%; margin: 0; }');
-    expect(land).toContain('.tt-tricks-show { grid-area: tricks; justify-self: start; }');
-    expect(land).toContain('.tt-run { grid-area: run; width: 100%; margin: 0; }');
+    // the rail reflows clean after the pill: no tricks/run area, no leftover rule
+    expect(land).not.toContain('grid-area: tricks');
+    expect(land).not.toContain('grid-area: run');
+    expect(land).not.toContain('.tt-tricks');
+    expect(land).not.toContain('.tt-run');
     // both columns inside the viewport at the narrowest landscape size:
     // panel 651 = 667 − 16 backdrop; rail capped, main takes the rest
     const railMax = num(/grid-template-columns: minmax\(\d+px, (\d+)px\)/, land);
@@ -116,6 +129,16 @@ describe('landscape recap: the tier and its composition', () => {
     const main = 651 - bodyPadX * 2 - railMax - colGap;
     expect(main).toBe(317);
     expect(main).toBeGreaterThanOrEqual(300);
+  });
+
+  it('the tricks entry sits in the header — priced into HEAD, zero scroll to reach', () => {
+    // Intermission renders the entry inside the header, ahead of the body
+    expect(tsx.indexOf('{trickReview}')).toBeGreaterThan(tsx.indexOf('tt-head'));
+    expect(tsx.indexOf('{trickReview}')).toBeLessThan(tsx.indexOf('tt-body'));
+    // the pill is 44px; the header's content height is already 44 (the chat
+    // button), so HEAD does not grow: 6 + 44 + 6 + 1 border = 57
+    expect(6 + PILL + 6 + 1).toBe(HEAD);
+    expect(css).toContain('.tt-head { flex-wrap: wrap; }');
   });
 
   it('the footer is ONE pinned action row (Score pad · Continue · Leave), never a 190px stack', () => {
@@ -146,7 +169,7 @@ describe('landscape recap: budgets close (measured constants)', () => {
     for (const h of [375, 390, 430]) {
       expect(padTop + cardStack, `cards @${h}`).toBeLessThanOrEqual(body(h));
     }
-    const rail = scoresH(2) + STRIP_P + CALLOUT + PILL + 3 * GAP;
+    const rail = scoresH(2) + STRIP_P + CALLOUT + 2 * GAP;
     expect(rail).toBeLessThanOrEqual(body(430));
   });
 
@@ -182,9 +205,9 @@ describe('landscape recap: content parity for the set states (owner, second walk
   });
 
   it('the owner’s exact state fits whole at 932×430 — both columns, no scroll', () => {
-    // rail: scores + HANDS + HEAT CHECK + the review pill
-    const rail = scoresH(2) + STRIP_P + CALLOUT + PILL + 3 * GAP;
-    expect(rail).toBe(237);
+    // rail: scores + HANDS + HEAT CHECK (the review entry rides the header now)
+    const rail = scoresH(2) + STRIP_P + CALLOUT + 2 * GAP;
+    expect(rail).toBe(187);
     expect(rail).toBeLessThanOrEqual(body(430));
     // main: the SHOT card + the other side's card
     const main = NOTICE + CARD + num(/\.tt-recap \{[^}]*gap: (\d+)px/, land);
@@ -203,7 +226,7 @@ describe('landscape recap: portrait and tablet do not regress', () => {
   });
 
   it('tablet landscape (768px+ tall) stays with the ≥1024 two-region grid', () => {
-    expect(css).toContain('grid-template-areas: "scores recap" "strip recap" "callouts recap" "run run" "tricks tricks";');
+    expect(css).toContain('grid-template-areas: "scores recap" "strip recap" "callouts recap";');
     expect(768).toBeGreaterThan(560); // outside this tier's gate by construction
   });
 });

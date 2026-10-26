@@ -1230,14 +1230,38 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .bug-meta > .learn-badge { min-width: 0; }
   .bug-books { display: none; } /* the hand-1 rule is in the center banner and the score pad */
 }
-.tt-run { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
-.tt-run-show { align-self: center; margin: 0; padding: 6px 14px; min-height: 44px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
 /* Score-card trick browser (owner 2026-10-24): the recap's Review control —
    a pill in the Run It review's idiom that opens the trick browser (the
-   table readout's own lt-* classes and stepping helpers) in the recap's
-   flow, over the hand just played. */
+   table readout's own lt-* classes and stepping helpers) over the hand
+   just played. Since 2026-10-26 it renders in the recap's HEADER (the
+   rules right below), not the sheet's flow. */
 .tt-tricks { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
 .tt-tricks-show { align-self: center; margin: 0; padding: 6px 14px; min-height: 44px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
+/* The tricks entry rides the recap HEADER (owner, 2026-10-26: "move the
+   review the tricks to the top of the ui so there's no need to scroll in
+   landscape" — it sat at the foot of the body's flow, the landscape
+   rail's last row, clipped at the rail's edge in his Hand 5 shot). The
+   header wraps: on wide sheets the pill sits in the title row, inside
+   the header's existing 44px content height, so no landscape budget
+   moves; on phone-width sheets it takes its own full-width line under
+   the title row. The open browser always takes a full-width header
+   line, measure-capped at the same 520px its in-flow siting had, and
+   closing hands the header back. The recap's old second review entry —
+   the Run It cleared-hands pill (the .tt-run* rules, removed with it) —
+   is gone entirely: the recap keeps exactly this one door, and the
+   tornado's cleared hands stay reachable from the table's RUN IT! chip
+   once play resumes. */
+.tt-head { flex-wrap: wrap; }
+.tt-head > .tt-tricks-show { flex: none; }
+.tt-head > .tt-tricks { flex: 1 1 100%; width: 100%; margin: 2px 0 4px; display: flex; justify-content: center; order: 2; }
+.tt-head > .tt-tricks > .trick-browser { flex: none; width: min(520px, 100%); }
+@media (max-width: 560px) {
+  /* phone widths: the chat button keeps the title row (flex order puts it
+     ahead of the full-width pill line — greedy line-breaking would
+     otherwise strand it on a third line under the pill) */
+  .tt-head .tt-chat-btn { order: 1; }
+  .tt-head > .tt-tricks-show { flex: 1 1 100%; margin-top: 2px; order: 2; }
+}
 .trick-browser { display: flex; flex-direction: column; gap: 5px; padding: 8px 12px; border-radius: 12px; background: rgba(16, 8, 30, .55); border: 1px solid rgba(var(--edge-rgb), .45); }
 .tb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tb-head .lt-label { width: auto; text-align: left; }
@@ -3795,8 +3819,8 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-body {
     display: grid;
     grid-template-columns: minmax(290px, 370px) minmax(0, 1fr);
-    grid-template-areas: "scores recap" "strip recap" "callouts recap" "run run" "tricks tricks";
-    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-areas: "scores recap" "strip recap" "callouts recap";
+    grid-template-rows: auto auto 1fr;
     align-content: start;
     align-items: start;
     justify-items: stretch;
@@ -3806,10 +3830,6 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-strip { grid-area: strip; width: 100%; }
   .tt-callouts { grid-area: callouts; }
   .tt-recap { grid-area: recap; width: 100%; }
-  .tt-run { grid-area: run; width: 100%; }
-  .tt-run-show { grid-area: run; justify-self: center; }
-  .tt-tricks { grid-area: tricks; width: 100%; }
-  .tt-tricks-show { grid-area: tricks; justify-self: center; }
 }
 
 /* Hand recap in LANDSCAPE (owner, 2026-10-25: "This screen would make more
@@ -3837,8 +3857,7 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
  * the sheet takes the whole stage (capped at the recap's own 1040px
  * large-screen width, centered), the header spans the top, and the body
  * becomes a two-column grid — TOP SCORES + HANDS (+ callouts) in a left
- * rail, the side cards in the main column with the Run It / Review the
- * tricks entries under them — while the footer turns into ONE action row
+ * rail, the side cards in the main column — while the footer turns into ONE action row
  * (Score pad · Continue · Leave) pinned under the body, so no scrolling
  * reaches any action. Card interiors compact (the name row goes inline,
  * the .espn scores rows tighten at their own scope, paddings/gaps down)
@@ -3848,8 +3867,10 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
  *   667×375 -> 233 · 844×390 -> 248 · 932×430 -> 288
  *   Partnership content = 282: the whole recap is on screen at 932×430;
  *   at 390/375 every score, the strip, BOTH cards and the action row are
- *   fully on screen and only the tricks pill's tail sits past the fold
- *   (a 34/49px body scroll). TOP SCORES itself (109 partnership / 181
+ *   fully on screen (in this build the tricks pill's tail was the one
+ *   thing past the fold, a 34/49px body scroll — it rides the header
+ *   since 2026-10-26, so nothing of it sits in this grid anymore).
+ *   TOP SCORES itself (109 partnership / 181
  *   cutthroat; its rows are 30px here) fits the body at every landscape
  *   size. Cutthroat at 932: all four cards visible (98px each, 2×2);
  *   the HANDS strip's tail and the pill scroll. At 667 the cutthroat
@@ -3867,16 +3888,20 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
  * second card and the tricks entry off the stage. The set-state
  * compaction inside the tier (notice padding/lane/hole re-anchor,
  * verdict plaque, sheet padding — see the rules below) brings it to
- * 163px, and the tricks entry moves into the rail under the callouts:
- * at 932×430 the owner's state now renders with ZERO body scroll —
- * scores (101), HANDS (53), HEAT CHECK (21) and the review pill (44)
- * in the rail; the 163px SHOT card and the 100px card in the main
- * column — in both themes. The sheet (finale) state fits its card,
- * time of death and ON FIRE banner the same way with a 30px scroll
- * for the last card at 932; cutthroat at 932 shows all four score
- * rows, the tracker, the banner and all four cards, with the pill a
- * short scroll down. At 844/667 every section still renders whole —
- * the smaller stages scroll, they never amputate. */
+ * 163px: at 932×430 the owner's state renders with ZERO body scroll —
+ * scores (101), HANDS (53), HEAT CHECK (21) in the rail; the 163px
+ * SHOT card and the 100px card in the main column — in both themes.
+ * (In this build the tricks entry sat in the rail under the callouts;
+ * on 2026-10-26 the owner moved it to the header — the top of the
+ * sheet — after his Hand 5 shot showed it clipped at the rail's edge,
+ * and the recap's Run It review entry was removed in the same pass.
+ * The rail is now scores/strip/callouts only, and the budgets above
+ * close without the pill's 44.) The sheet (finale) state fits its
+ * card, time of death and ON FIRE banner the same way with a 30px
+ * scroll for the last card at 932; cutthroat at 932 shows all four
+ * score rows, the tracker, the banner and all four cards. At 844/667
+ * every section still renders whole — the smaller stages scroll, they
+ * never amputate. */
 @media (max-height: 560px) and (min-width: 560px) {
   .tt-backdrop { justify-content: center; }
   .tt { width: min(1040px, 100%); }
@@ -3885,8 +3910,8 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-body {
     display: grid;
     grid-template-columns: minmax(232px, 288px) minmax(0, 1fr);
-    grid-template-areas: "scores recap" "strip recap" "callouts recap" "tricks recap" "run run";
-    grid-template-rows: auto auto auto auto auto;
+    grid-template-areas: "scores recap" "strip recap" "callouts recap";
+    grid-template-rows: auto auto auto;
     align-content: start;
     align-items: start;
     justify-items: stretch;
@@ -3911,10 +3936,6 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-callouts { grid-area: callouts; width: 100%; }
   .tt-callouts .tt-callout { padding: 2px 10px; font-size: 13.5px; }
   .tt-recap { grid-area: recap; width: 100%; justify-content: flex-start; gap: 10px; }
-  .tt-run { grid-area: run; width: 100%; margin: 0; }
-  .tt-run-show { grid-area: run; justify-self: start; }
-  .tt-tricks { grid-area: tricks; width: 100%; margin: 0; }
-  .tt-tricks-show { grid-area: tricks; justify-self: start; }
   .tt-team { padding: 10px 14px 6px; }
   .tt-face { gap: 3px 12px; }
   .tt-team .tt-bar { margin-top: 2px; }
@@ -3979,8 +4000,6 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .tt-strip h3 { margin-bottom: 1px; font-size: 12px; }
   .tt-strip .hs-row { font-size: 12px; line-height: 1.05; }
   .tt-callouts .tt-callout { padding: 1px 8px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .tt-tricks-show, .tt-run-show { position: relative; min-height: 36px; padding: 4px 12px; font-size: 14px; }
-  .tt-tricks-show::after, .tt-run-show::after { content: ''; position: absolute; inset: -4px 0; }
 }
 
 /* Narrow landscape only: a cutthroat card is ~155px wide here, and the

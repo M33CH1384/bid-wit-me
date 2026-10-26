@@ -12,13 +12,29 @@
  * the hand just played — opens on the newest trick, steps back to trick 1,
  * forward to the newest, clamps at both ends, and an absolute selection
  * never slides when the hand's array grows under it.
+ *
+ * Consolidation (owner, 2026-10-26, with his annotated Hand 5 landscape
+ * shot: "Remove the review last trick button and move the review the
+ * tricks to the top of the ui so there's no need to scroll in
+ * landscape"): the pill now renders in the recap's HEADER — the top of
+ * the sheet — instead of the foot of the flow / the landscape rail's
+ * last row, where his shot showed it clipped at the rail's edge. And
+ * the recap's OTHER review entry — the Run It pill ("Review last
+ * trick", the cleared-hands sheet) — is REMOVED: the recap keeps
+ * exactly one review door, this one, which opens on the last trick
+ * anyway. The tornado's cleared hands stay reachable from the table's
+ * RUN IT! chip once play resumes; the recap itself has no door to
+ * them anymore, and the negative pins below keep it that way.
  */
 import { createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { act } from 'react';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Trick } from '@spades/rules';
+import { applyAction, makeRules, newGame, pendingTurn, viewFor, type GameState, type Trick } from '@spades/rules';
+import { chooseBotAction } from '@spades/bots';
+import { Intermission } from '../src/Intermission';
 import { RecapTrickReview, TrickBrowserPanel } from '../src/TrickBrowser';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -149,6 +165,37 @@ describe('stepping the hand just played', () => {
   });
 });
 
+describe('the rendered recap (a real hand played to handOver)', () => {
+  function toHandOver(seed: string): GameState {
+    let st = newGame(makeRules('joker'), seed);
+    for (let g = 0; g < 8000 && st.phase !== 'handOver' && st.phase !== 'gameOver'; g++) {
+      const t = pendingTurn(st);
+      if (!t) break;
+      st = applyAction(st, chooseBotAction(viewFor(st, t.seat), 'pro')!);
+    }
+    return st;
+  }
+
+  it('carries exactly one review entry, inside the header — and no Run It pill anywhere', () => {
+    const st = toHandOver('recap-trick-top');
+    expect(st.phase).toBe('handOver');
+    expect(st.tricks.length).toBeGreaterThan(0);
+    // the node Table passes, over the hand just played (piles at handOver)
+    const html = renderToStaticMarkup(createElement(Intermission, {
+      st, names: NAMES, mySide: 0, secs: null, online: false, unread: 0, chatOpen: false,
+      onReady: () => {}, onScorePad: () => {}, onChat: () => {}, onLeave: () => {},
+      trickReview: createElement(RecapTrickReview, { tricks: st.tricks, face }),
+    }));
+    const head = html.slice(html.indexOf('tt-head'), html.indexOf('tt-body'));
+    expect(head).toContain('data-testid="recap-tricks-show"');
+    expect(head).toContain('Review the tricks');
+    // exactly one review entry on the whole sheet
+    expect(html.split('recap-tricks-show').length - 1).toBe(1);
+    expect(html).not.toContain('Review last trick');
+    expect(html).not.toContain('talk-run');
+  });
+});
+
 describe('wiring — one browser, both doors', () => {
   const panel = src('TrickBrowser.tsx');
   const table = src('Table.tsx');
@@ -169,22 +216,46 @@ describe('wiring — one browser, both doors', () => {
     expect(panel).toContain('className="lt-nav" data-testid="trick-next"');
   });
 
-  it('the recap receives the browser from the table, over the hand just played', () => {
+  it('the recap receives the browser from the table, over the hand just played — exactly one mount', () => {
     expect(table).toContain("import { RecapTrickReview } from './TrickBrowser';");
     expect(table).toContain('trickReview={<RecapTrickReview key={st.handNo} tricks={piles} face={face} />}');
-    // the slot renders in the recap's scroll, after the Run It review, and the
-    // Run It pill itself is untouched (its label is pinned by review-label.e2e.ts)
-    expect(intermission).toContain('{runReview}');
-    expect(intermission).toContain('{trickReview}');
-    expect(intermission.indexOf('{runReview}')).toBeLessThan(intermission.indexOf('{trickReview}'));
-    expect(table).toContain('>Review last trick</button>');
+    // one door only: the import plus the single mount, never a second entry
+    expect(table.split('RecapTrickReview').length - 1).toBe(2);
   });
 
-  it('the recap styling mirrors the Run It review idiom and takes the desktop grid row', () => {
+  it('the entry renders in the recap HEADER — the top of the sheet, ahead of the body', () => {
+    expect(intermission).toContain('{trickReview}');
+    expect(intermission.indexOf('{trickReview}')).toBeGreaterThan(intermission.indexOf('tt-head'));
+    expect(intermission.indexOf('{trickReview}')).toBeLessThan(intermission.indexOf('tt-body'));
+    // and never in the body's flow again (the bottom siting is what clipped)
+    expect(intermission.slice(intermission.indexOf('tt-body'))).not.toContain('{trickReview}');
+  });
+
+  it('the removed Run It recap pill cannot creep back (owner 2026-10-26)', () => {
+    expect(intermission).not.toContain('runReview');
+    expect(table).not.toContain('Review last trick');
+    expect(table).not.toContain('talk-run');
+    expect(table).not.toContain('clearedOpen');
+    expect(css).not.toMatch(/\.tt-run(-show)?\s*\{/);
+  });
+
+  it('the header siting is styled: the header wraps, the pill keeps the tap floor, the browser keeps its measure', () => {
+    expect(css).toContain('.tt-head { flex-wrap: wrap; }');
+    expect(css).toContain('.tt-head > .tt-tricks-show { flex: none; }');
+    expect(css).toContain('.tt-head > .tt-tricks { flex: 1 1 100%;');
+    expect(css).toContain('.tt-head > .tt-tricks > .trick-browser { flex: none; width: min(520px, 100%); }');
+    // phone widths: the pill takes its own full-width line under the title row,
+    // and flex order keeps the chat button on the title row beside the title
+    expect(css).toContain('.tt-head > .tt-tricks-show { flex: 1 1 100%; margin-top: 2px; order: 2; }');
+    expect(css).toContain('.tt-head .tt-chat-btn { order: 1; }');
+    expect(css).toContain('justify-content: center; order: 2; }');
+    // the pill's own rules are byte-identical to its in-flow siting (44px floor)
     expect(css).toContain('.tt-tricks { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }');
     expect(css).toContain('.tt-tricks-show { align-self: center;');
-    expect(css).toContain('.tt-tricks { grid-area: tricks; width: 100%; }');
-    expect(css).toContain('.tt-tricks-show { grid-area: tricks; justify-self: center; }');
-    expect(css).toContain('"run run" "tricks tricks"');
+    expect(css).toContain('.tt-tricks-show { align-self: center; margin: 0; padding: 6px 14px; min-height: 44px;');
+    // neither body grid carries a tricks/run area anymore — the rail reflows clean
+    expect(css).not.toContain('grid-area: tricks');
+    expect(css).not.toContain('grid-area: run');
+    expect(css).not.toContain('"run run"');
   });
 });

@@ -10,7 +10,7 @@ import { browsedTrick, stepTrickIndex, trickPositionLabel } from './lastTrickBro
  * readout's glanceable size. There is ONE stepping implementation —
  * lastTrickBrowse.ts — behind both doors: the table chip renders it in
  * place on the felt; the hand recap (the score card) renders this panel in
- * its flow. Review only: the state is local, and no game action is ever
+ * its header. Review only: the state is local, and no game action is ever
  * taken from here — closing returns the player exactly where they were.
  */
 export function TrickBrowserPanel({ tricks, face, onClose }: {
@@ -52,8 +52,10 @@ export function TrickBrowserPanel({ tricks, face, onClose }: {
 /**
  * The score-card door (owner, 2026-10-24: the recap's review control "should
  * allow u to use forward and back buttons to see previous tricks").
- * Collapsed it is a pill in the recap's flow — the Run It review's idiom —
- * and open it is the trick browser over the hand just played: back through
+ * Collapsed it is a pill in the recap's HEADER — the top of the sheet
+ * (owner, 2026-10-26: moved up from the foot of the recap's flow, where
+ * landscape clipped it at the rail's edge, so it needs no scroll to
+ * reach) — and open it is the trick browser over the hand just played: back through
  * every trick of that hand to the first, forward again to the last. The
  * range is that hand only: completed hands keep no play-by-play anywhere
  * (HandRecord holds counts, not plays), so there is nothing older to show.

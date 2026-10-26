@@ -57,14 +57,18 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
 }
 
 export function Intermission({
-  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, runReview, trickReview, setAnimCtx,
+  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, trickReview, setAnimCtx,
 }: {
   /** rematch series chip */
   series?: ReactNode;
-  /** cleared hands from a Run it!, in the scroll — never a full-screen scrim over the recap */
-  runReview?: ReactNode;
   /** the trick browser over the hand just played (the score card's Review
-   *  control, owner 2026-10-24), in the scroll beside the Run It review */
+   *  control, owner 2026-10-24), rendered in the HEADER — the top of the
+   *  sheet — so it is visible and tappable with no scroll in every
+   *  orientation (owner, 2026-10-26; it used to sit at the foot of the
+   *  scroll, where the landscape rail clipped it at its edge). The recap's
+   *  ONLY review entry: the Run It cleared-hands pill that used to sit
+   *  beside it was removed by the same order — the tornado's cleared
+   *  hands stay reachable from the table's RUN IT! chip once play resumes. */
   trickReview?: ReactNode;
   /** Set-animation context (owner, 2026-10-21): the story stop this match is
    *  played at (the house — its animation plays here earned or not), the
@@ -195,6 +199,7 @@ export function Intermission({
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
           {series}
           {secs !== null && !decided && <span className={`tt-count ${secs <= 5 ? 'hot' : ''}`} data-testid="talk-count">Next deal {secs}s</span>}
+          {trickReview}
           {/* Chat lives IN the header row (owner 2026-10-20: the old fixed
               corner button floated over the TOP SCORES card — "out of place
               and an eye sore"). In-flow, right end of the header: it can
@@ -355,8 +360,6 @@ export function Intermission({
               );
             })}
           </div>
-          {runReview}
-          {trickReview}
         </div>
 
         <footer className="tt-foot stack">

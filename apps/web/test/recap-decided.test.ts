@@ -40,7 +40,7 @@ describe('hand recap: top scores, spacing, and the decided-game flow', () => {
     expect(firstRow).toContain(`data-testid="recap-top-${leader.side}"`);
     expect(firstRow.indexOf(`recap-top-${leader.side}`)).toBeLessThan(firstRow.indexOf('recap-top-', firstRow.indexOf(`recap-top-${leader.side}`) + 10) === -1 ? Infinity : firstRow.indexOf('recap-top-', firstRow.indexOf(`recap-top-${leader.side}`) + 10));
     // kept elements
-    for (const kept of ['Score pad', 'Review last trick'.slice(0, 0) || 'Score pad', 'data-testid="recap-leave"', 'data-testid="talk-ready"']) expect(html).toContain(kept);
+    for (const kept of ['Score pad', 'data-testid="recap-leave"', 'data-testid="talk-ready"']) expect(html).toContain(kept);
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     expect(css).toContain('.tt-top-scores');
     expect(css).toMatch(/\.tt-recap \{[^}]*gap: 24px/);

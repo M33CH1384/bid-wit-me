@@ -390,8 +390,8 @@ describe('scorecard shot covers (tape/sheet facts; the visuals retired 2026-10-2
     expect(css).toContain('animation-delay: 400ms');
     expect(css).not.toContain('top: -8px');
     expect(css).not.toContain('right: -8px');
-    expect(css).toMatch(/\.tt-run-show \{[^}]*background:/);
-    expect(css).toMatch(/\.tt-run-show \{[^}]*appearance:\s*none/);
+    expect(css).toMatch(/\.tt-tricks-show \{[^}]*background:/);
+    expect(css).toMatch(/\.tt-tricks-show \{[^}]*appearance:\s*none/);
     expect(css).not.toContain('rotate(-12deg)');
     expect(css).not.toContain('rotate(12deg)');
     expect(css).not.toContain('ff6a1a');
@@ -439,7 +439,11 @@ describe('scorecard shot covers (tape/sheet facts; the visuals retired 2026-10-2
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain("(st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !shotRecapAck");
     expect(table).toContain('setShotRecapAck(true)');
-    expect(table).toContain('Review last trick');
+    // the recap's old Run It pill is REMOVED (owner 2026-10-26) — its label
+    // and testid must never come back; the recap's one review entry is the
+    // header's "Review the tricks" (recap-trick-review.test.ts pins it)
+    expect(table).not.toContain('Review last trick');
+    expect(table).not.toContain('talk-run-show');
     expect(table).not.toContain('Run it — cleared hands');
     const recapSrc = readFileSync(new URL('../src/Intermission.tsx', import.meta.url), 'utf8');
     expect(recapSrc).toContain("haptic([30], 'shot-hole')");
