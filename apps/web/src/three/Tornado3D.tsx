@@ -1,14 +1,17 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
-import { AdditiveBlending, BufferAttribute, BufferGeometry, ExtrudeGeometry, Group, Mesh, MeshPhysicalMaterial, NormalBlending, Points, PointsMaterial, ShaderMaterial, Shape, SphereGeometry, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
+import { AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, DataTexture, ExtrudeGeometry, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, Points, PointsMaterial, SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, Vector3, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
 import { fx } from '../fx';
 import { HAPTIC, cancelHaptics, haptic } from '../haptics';
+import { COW_SPEC, cowLegFoot, cowPatch, cowPose } from './cowPath';
+import { SENSOR_BALL_R, SENSOR_COUNT, SENSOR_FIN, SENSOR_LED_EVERY, sensorPose } from './sensorPath';
 import { slipperPose } from './slipperPath';
 
 /**
  * 'Run it!' funnel over the table centre: swirling dust / wind streaks (grey-violet, normal blend) plus brighter
  * debris flecks (additive), rising and widening up the cone; it spins up, then bursts outward and fades with the fling.
- * Riding inside it: a pair of ruby slippers (see slipperPath), tumbling around the funnel wall as a pair.
+ * Riding inside it: a pair of ruby slippers (see slipperPath), a cow (see cowPath) and a stream of little
+ * tracker sensors (see sensorPath), all tumbling around the funnel wall on the funnel's own clock.
  * Reads fx.tornado every frame (no React state), hidden otherwise. Not drawn under Reduce effects.
  */
 const vert = /* glsl */ `
@@ -128,6 +131,130 @@ function buildSlipper(): SlipperRig {
 /** Kept alive so the slipper material's program stays in the table renderer's cache after the warm pass. */
 const warmedSlippers: SlipperRig[] = [];
 
+/** The cow's hide: a small procedural texture sampled from cowPatch — white with black blobs. */
+function cowHideTexture(): DataTexture {
+  const W = 128, H = 64;
+  const data = new Uint8Array(W * H * 4);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const black = cowPatch(x / W, y / H) > 0.5;
+      const o = (y * W + x) * 4;
+      data[o] = black ? 24 : 247;
+      data[o + 1] = black ? 21 : 243;
+      data[o + 2] = black ? 21 : 238;
+      data[o + 3] = 255;
+    }
+  }
+  const t = new DataTexture(data, W, H);
+  t.colorSpace = SRGBColorSpace;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** A cylinder strut between two points (legs, tail) — axis along the strut, centred on its middle. */
+function limb(from: readonly [number, number, number], to: readonly [number, number, number], r: number, mat: MeshStandardMaterial): Mesh {
+  const a = new Vector3(from[0], from[1], from[2]);
+  const b = new Vector3(to[0], to[1], to[2]);
+  const dir = b.clone().sub(a);
+  const mesh = new Mesh(new CylinderGeometry(r, r, dir.length(), 8), mat);
+  mesh.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  mesh.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), dir.normalize());
+  return mesh;
+}
+
+interface CowRig { group: Group; roll: Group; mats: MeshStandardMaterial[] }
+
+/**
+ * The cow, built from primitives to COW_SPEC: a patched ellipsoid body and head, a pink
+ * muzzle and udder, four rigid legs stuck straight out (dark hooves at the ends), ears,
+ * eyes, and a tail with a dark tuft. The parts sit in a roll group centred on the body,
+ * so the slow tumble turns around the cow's spine, not its belly.
+ */
+function buildCow(): CowRig {
+  const hide = new MeshStandardMaterial({ map: cowHideTexture(), roughness: 0.62, metalness: 0, transparent: true, opacity: 0 });
+  const white = new MeshStandardMaterial({ color: 0xf7f3ec, roughness: 0.62, metalness: 0, transparent: true, opacity: 0 });
+  const pink = new MeshStandardMaterial({ color: 0xd69aa0, roughness: 0.58, metalness: 0, transparent: true, opacity: 0 });
+  const dark = new MeshStandardMaterial({ color: 0x211d1d, roughness: 0.55, metalness: 0, transparent: true, opacity: 0 });
+  const ball = new SphereGeometry(1, 24, 18);
+  const part = (c: readonly [number, number, number], r: readonly [number, number, number], mat: MeshStandardMaterial) => {
+    const m = new Mesh(ball, mat);
+    m.position.set(c[0], c[1], c[2]);
+    m.scale.set(r[0], r[1], r[2]);
+    return m;
+  };
+  const roll = new Group();
+  roll.add(part(COW_SPEC.body.c, COW_SPEC.body.r, hide));
+  roll.add(part(COW_SPEC.head.c, COW_SPEC.head.r, hide));
+  roll.add(part(COW_SPEC.muzzle.c, COW_SPEC.muzzle.r, pink));
+  roll.add(part(COW_SPEC.udder.c, COW_SPEC.udder.r, pink));
+  for (const sz of [-1, 1]) {
+    roll.add(part([COW_SPEC.ear.c[0], COW_SPEC.ear.c[1], sz * COW_SPEC.ear.c[2]], COW_SPEC.ear.r, white));
+    const eye = new Mesh(ball, dark);
+    eye.position.set(COW_SPEC.eye.c[0], COW_SPEC.eye.c[1], sz * COW_SPEC.eye.c[2]);
+    eye.scale.setScalar(COW_SPEC.eye.r);
+    roll.add(eye);
+    for (const front of [true, false]) {
+      const [footX, footY] = cowLegFoot(front);
+      const ax = front ? COW_SPEC.leg.attach[0] : -COW_SPEC.leg.attach[0];
+      const az = sz * COW_SPEC.leg.attach[2];
+      roll.add(limb([ax, COW_SPEC.leg.attach[1], az], [footX, footY, az], COW_SPEC.leg.r, white));
+      const hoof = new Mesh(ball, dark);
+      hoof.position.set(footX, footY, az);
+      hoof.scale.set(COW_SPEC.hoof.r, COW_SPEC.hoof.r * 0.62, COW_SPEC.hoof.r);
+      roll.add(hoof);
+    }
+  }
+  roll.add(limb(COW_SPEC.tail.base, COW_SPEC.tail.end, COW_SPEC.tail.r, white));
+  const tuft = new Mesh(ball, dark);
+  tuft.position.set(COW_SPEC.tail.end[0], COW_SPEC.tail.end[1], COW_SPEC.tail.end[2]);
+  tuft.scale.setScalar(COW_SPEC.tail.tuft);
+  roll.add(tuft);
+  const group = new Group();
+  group.add(roll);
+  group.visible = false;
+  return { group, roll, mats: [hide, white, pink, dark] };
+}
+
+/** Kept alive so the cow material programs stay in the table renderer's cache after the warm pass. */
+const warmedCows: CowRig[] = [];
+
+interface SensorRig { group: Group; fin: Group; mat: MeshStandardMaterial; led: MeshBasicMaterial | null }
+
+/**
+ * One tracker sensor: a small metallic ball with a finned cap — a short mast topped with
+ * two crossed blades that whir as it climbs. Every few sensors carry a tiny blinking light.
+ */
+function buildSensor(i: number): SensorRig {
+  const mat = new MeshStandardMaterial({ color: 0xd4dae1, metalness: 0.85, roughness: 0.35, transparent: true, opacity: 0 });
+  const group = new Group();
+  group.add(new Mesh(new SphereGeometry(SENSOR_BALL_R, 14, 10), mat));
+  const fin = new Group();
+  fin.position.y = SENSOR_BALL_R;
+  const mast = new Mesh(new CylinderGeometry(SENSOR_FIN.mastR, SENSOR_FIN.mastR, SENSOR_FIN.mastH, 6), mat);
+  mast.position.y = SENSOR_FIN.mastH / 2;
+  fin.add(mast);
+  const bladeGeo = new BoxGeometry(SENSOR_FIN.span, 0.003, 0.013);
+  for (const rot of [0, Math.PI / 2]) {
+    const blade = new Mesh(bladeGeo, mat);
+    blade.position.y = SENSOR_FIN.bladeY;
+    blade.rotation.y = rot;
+    fin.add(blade);
+  }
+  group.add(fin);
+  let led: MeshBasicMaterial | null = null;
+  if (i % SENSOR_LED_EVERY === 0) {
+    led = new MeshBasicMaterial({ color: 0xff5545, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false });
+    const dot = new Mesh(new SphereGeometry(0.007, 8, 6), led);
+    dot.position.set(SENSOR_BALL_R * 0.92, 0.006, 0);
+    group.add(dot);
+  }
+  group.visible = false;
+  return { group, fin, mat, led };
+}
+
+/** Kept alive so the sensor material programs stay in the table renderer's cache after the warm pass. */
+const warmedSensors: SensorRig[] = [];
+
 function tornadoParts(hi: boolean) {
   return {
     dust: cloud(hi ? 1400 : 450),
@@ -159,6 +286,18 @@ export async function warmTornado(gl: WebGLRenderer, camera: Camera, quality: 'h
   warmSlip.body.opacity = 1;
   warmedSlippers.push(warmSlip);
   group.add(warmSlip.group);
+  // …and the cow's and a sensor's standard-material programs
+  const warmCow = buildCow();
+  warmCow.group.visible = true;
+  for (const m of warmCow.mats) m.opacity = 1;
+  warmedCows.push(warmCow);
+  group.add(warmCow.group);
+  const warmSensor = buildSensor(0);
+  warmSensor.group.visible = true;
+  warmSensor.mat.opacity = 1;
+  if (warmSensor.led) warmSensor.led.opacity = 1;
+  warmedSensors.push(warmSensor);
+  group.add(warmSensor.group);
   const target = new WebGLRenderTarget(4, 4);
   const prev = gl.getRenderTarget();
   try {
@@ -177,6 +316,9 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
   const parts = useMemo(() => tornadoParts(hi), [hi]);
   // the ruby slippers ride the funnel — same clock, same show flag, both run kinds
   const slippers = useMemo(() => [buildSlipper(), buildSlipper()], []);
+  // …and so do the cow and the tracker sensors — same stage, same suppression
+  const cow = useMemo(() => buildCow(), []);
+  const sensors = useMemo(() => Array.from({ length: SENSOR_COUNT }, (_, i) => buildSensor(i)), []);
   const dust = useRef<Points>(null), debris = useRef<Points>(null);
   const spun = useRef(false);
   const hit = useRef(false);
@@ -189,9 +331,13 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     if (debris.current) debris.current.visible = show;
     // the funnel is suppressed (Reduce effects), so are the slippers — they have no life of their own
     if (!show) for (const s of slippers) s.group.visible = false;
+    // …and the cow and the sensors are suppressed with it too
+    if (!show) { cow.group.visible = false; for (const s of sensors) s.group.visible = false; }
     // checks (e2e): the funnel is actually being drawn this frame
     (window as unknown as { __bwmTornadoDrawn?: boolean }).__bwmTornadoDrawn = show;
     (window as unknown as { __bwmSlippersDrawn?: boolean }).__bwmSlippersDrawn = false;
+    (window as unknown as { __bwmCowDrawn?: boolean }).__bwmCowDrawn = false;
+    (window as unknown as { __bwmSensorsDrawn?: boolean }).__bwmSensorsDrawn = false;
     if (!T) { spun.current = false; hit.current = false; skipped.current = false; return; }
     if (T.reduced) {
       if (!skipped.current) { skipped.current = true; cancelHaptics('tornado-skipped'); }
@@ -220,6 +366,30 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
       s.spark.opacity = pose.glint;
     });
     (window as unknown as { __bwmSlippersDrawn?: boolean }).__bwmSlippersDrawn = slipDrawn;
+    // the cow: one slow spine roll inside its heading — deadpan at funnel speed
+    const cp = cowPose(u);
+    cow.group.visible = cp.alpha > 0.02;
+    if (cow.group.visible) {
+      cow.group.position.set(cp.x, cp.y, cp.z);
+      cow.group.rotation.set(0, cp.ry, cp.rz);
+      cow.roll.rotation.x = cp.rx;
+      for (const m of cow.mats) m.opacity = cp.alpha;
+    }
+    (window as unknown as { __bwmCowDrawn?: boolean }).__bwmCowDrawn = cow.group.visible;
+    // the sensors: a staggered stream spiralling up inside the wall
+    let sensorsDrawn = false;
+    sensors.forEach((s, i) => {
+      const pose = sensorPose(u, i);
+      s.group.visible = pose.alpha > 0.02;
+      if (!s.group.visible) return;
+      sensorsDrawn = true;
+      s.group.position.set(pose.x, pose.y, pose.z);
+      s.group.rotation.set(pose.rx, pose.ry, pose.rz);
+      s.fin.rotation.y = pose.fin;
+      s.mat.opacity = pose.alpha;
+      if (s.led) s.led.opacity = pose.blink;
+    });
+    (window as unknown as { __bwmSensorsDrawn?: boolean }).__bwmSensorsDrawn = sensorsDrawn;
     invalidate();
   });
   return (
@@ -228,6 +398,10 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
       <points ref={debris} geometry={parts.debris} material={parts.debrisMat} frustumCulled={false} visible={false} renderOrder={6} />
       <primitive object={slippers[0]!.group} />
       <primitive object={slippers[1]!.group} />
+      <primitive object={cow.group} />
+      {sensors.map((s, i) => (
+        <primitive key={i} object={s.group} />
+      ))}
     </group>
   );
 }
