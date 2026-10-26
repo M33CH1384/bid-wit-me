@@ -139,6 +139,8 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
               })}
             </div>
           </header>
+          {/* S2: the by-hand column (its own scroller in landscape; display:contents in portrait) */}
+          <div className="pad-hands">
           <HandsStrip history={st.history} sides={sides} label={sideName} color={(s) => sideColor(r, s)} testId="pad-strip" />
           <div className="pad-cols v2" aria-hidden>
             <span>{r.partnerships ? 'Team' : 'Player'}</span><span>Bid</span><span>Took</span><span>Points</span><span>Total</span>
@@ -173,13 +175,17 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
               })}
             </section>
           )}
+          </div>
         </div>
         <details className="locked-details" data-testid="locked-rules-details">
           <summary>🔒 House rules for this game</summary>
           <div className="pad-rules chips" data-testid="pad-rules">{rulesChips(r).map((c) => <span key={c} className="rule-chip">{c}</span>)}</div>
           {showLocked ? locked : null}
         </details>
-        <button type="button" className="big quiet-continue" data-testid="pad-continue" onClick={onContinue ?? onClose}>Continue</button>
+        {/* S2: the pad's single Primary. Plain close → "Back to table"; opened from the
+            hand recap (onContinue advances to the next hand) it keeps "Continue" so
+            the label never misstates what the tap does. Handler unchanged. */}
+        <button type="button" className="primary big pad-primary" data-testid="pad-continue" onClick={onContinue ?? onClose}>{onContinue ? 'Continue' : 'Back to table'}</button>
         {onLeave && <><div className="exit-divider" aria-hidden="true" /><button type="button" className="big leave-red" data-testid="recap-leave" onClick={onLeave}>Leave game</button></>}
       </div>
     </div>
