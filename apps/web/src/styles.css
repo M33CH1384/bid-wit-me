@@ -162,15 +162,18 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .seg { display: inline-flex; background: rgba(255,255,255,.08); padding: 3px; gap: 3px; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
 .seg button { border: 0; background: none; padding: 7px 12px; min-height: 44px; min-width: 44px; font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
 .seg button.on { background: var(--gold); color: #1d1204; }
-/* S2 button system, slice 3 (HANDOFF "Chips & segmented pickers"): every
-   segmented picker is 36px purple glass — a glass track holding 36px
-   segments, the selected one gold (gradient + ink). The track's 4px
-   padding keeps each segment's tap row at 44px. Off: muted text on clear;
-   hover: faint purple wash; focus: 2px gold-hi ring. */
-.seg { padding: 4px; gap: 4px; background: rgba(var(--purple-rgb),.16); box-shadow: inset 0 0 0 1px rgba(var(--purple-rgb),.45), inset 0 1px 0 rgba(255,255,255,.08); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-.seg button { min-height: 36px; padding: 0 12px; clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px); }
-.seg button:not(.on):not(:disabled):hover { background: rgba(var(--purple-rgb),.28); color: var(--ink); }
-.seg button.on { background: var(--btn-gold-grad); color: var(--btn-ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.6); }
+/* S2 button system, slice 3/3b (HANDOFF.md "Button system" → Chip; boards/
+   button-system.png): a segmented picker is a plain dark track —
+   rgba(0,0,0,.25) + a faint 1px rgba(var(--edge-rgb),.2) edge, square corners —
+   holding flush 36px square segments (no gaps). Selected = a flat gold fill
+   (no shadow). Each segment's invisible ::after pads its tap band to 44px
+   (the track is no longer clipped, so the band isn't cut off). Neon's own
+   .seg overrides further down still apply. */
+.seg { padding: 0; gap: 0; clip-path: none; background: rgba(0,0,0,.25); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.2); }
+.seg button { position: relative; min-height: 36px; padding: 0 12px; clip-path: none; }
+.seg button::after { content: ''; position: absolute; inset: -4px 0; }
+.seg button:not(.on):not(:disabled):hover { background: rgba(var(--purple-rgb),.14); color: var(--ink); }
+.seg button.on { background: var(--gold); color: var(--btn-ink); box-shadow: none; }
 .seg button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: -2px; }
 .seg button:disabled { opacity: .4; }
 
