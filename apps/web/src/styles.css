@@ -3180,29 +3180,44 @@ html[data-theme="neon"] .table-screen :is(.glass, .panel, .modal, .sheet, .decis
    it doesn't sit at all. */
 html[data-theme="neon"] .wiz-home { position: relative; }
 html[data-theme="neon"] .wiz-home > * { position: relative; z-index: 1; }
+/* Backdrop coverage (2026-10-26, owner screenshot): the emblem used to be
+   boxed into a 252px medallion at the hero — when the stage grid (d3523e95)
+   distributed the home's air, the distributed breath between the tagline
+   and the actions read as a dead band of bare page: the art simply ended
+   ~40% down the screen. The owner: "the photo in the background should
+   cover the white space here." So the layer is now the stage's BACKDROP:
+   the box spans .wiz-home edge to edge and the emblem paints cover-style
+   off it — height-driven (92% of the stage), centered on the spade, its
+   width overflowing the column so no image edge ever shows — while the
+   radial mask (center raised to 24%, stops pulled in) keeps the hero at
+   full strength, carries the art through the whole breath, then grades
+   it down across the actions zone and out before the ticker. One
+   backdrop, no seam, no stretched picture; still pure decoration behind
+   the shared tree (z-index 0 under the z-index 1 children), still
+   pointer-events: none. The old drop-shadow went with the medallion: a
+   full-stage layer's silhouette shadow is a second giant blob, and the
+   artwork carries its own glow. */
 html[data-theme="neon"] .wiz-home::before {
   content: '';
   position: absolute;
+  inset: 0;
   z-index: 0;
-  left: 50%;
-  top: -18px;
-  transform: translateX(-50%);
-  width: min(62vw, 252px);
-  aspect-ratio: 690 / 770;
-  background: url('/assets/neon/spade-emblem.webp') center / contain no-repeat;
-  -webkit-mask-image: radial-gradient(ellipse 74% 74% at 50% 47%, #000 66%, transparent 88%);
-  mask-image: radial-gradient(ellipse 74% 74% at 50% 47%, #000 66%, transparent 88%);
+  background: url('/assets/neon/spade-emblem.webp') no-repeat 50% -16px / auto 92%;
+  -webkit-mask-image: radial-gradient(ellipse 96% 64% at 50% 24%, #000 54%, transparent 88%);
+  mask-image: radial-gradient(ellipse 96% 64% at 50% 24%, #000 54%, transparent 88%);
   opacity: .5;
-  filter: drop-shadow(0 14px 30px rgba(var(--purple-rgb), .35));
   pointer-events: none;
 }
 html[data-theme="neon"] .wiz-home::after {
   content: '';
   position: absolute;
   z-index: 0;
-  top: 128px;
-  right: max(2px, calc(50% - 176px));
-  width: min(34vw, 140px);
+  /* with the emblem at backdrop scale the card re-seats to the spade's
+     lower right (its spot in the owner's screenshot) instead of hiding
+     behind the logotype */
+  top: 200px;
+  right: max(2px, calc(50% - 182px));
+  width: min(36vw, 152px);
   aspect-ratio: 1;
   background: url('/assets/neon/ace-card.webp') center / contain no-repeat;
   -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 62%, transparent 85%);
@@ -3219,9 +3234,41 @@ html[data-theme="neon"] .wiz-home::after {
 @media (prefers-reduced-motion: reduce) {
   html[data-theme="neon"] .wiz-home::after { animation: none; }
 }
+/* Wide screens: the stage column caps at 560px and centers, so a
+   column-bound backdrop would end ON-screen at the column's edges — a
+   straight tonal step in the page margins (visible in the desktop
+   render). From 700px up the layer bleeds to min(1200px, 100vw),
+   paints cover, and takes a wider-ellipse mask whose fade completes
+   inside the bleed — the art dissolves into the page on every side and
+   no image or box edge ever shows. (overflow-x is hidden at the root,
+   so the bleed cannot scroll the page.) */
+@media (min-width: 700px) {
+  html[data-theme="neon"] .wiz-home::before {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(1200px, 100vw);
+    background-size: cover;
+    -webkit-mask-image: radial-gradient(ellipse 62% 64% at 50% 24%, #000 50%, transparent 82%);
+    mask-image: radial-gradient(ellipse 62% 64% at 50% 24%, #000 50%, transparent 82%);
+  }
+}
 @media (orientation: landscape) and (max-height: 520px) {
-  html[data-theme="neon"] .wiz-home::before { width: 148px; }
-  html[data-theme="neon"] .wiz-home::after { width: 92px; top: 74px; }
+  /* landscape: the stage is a row (splash left, actions right) — the
+     backdrop's spade re-seats behind the splash column instead of the
+     seam (the box still spans the stage; only the painting moves), and
+     the mask re-centers on the painting so every image edge feathers
+     inside the splash zone — no straight image edge against the page */
+  html[data-theme="neon"] .wiz-home::before {
+    background-position: 10% -8px; background-size: auto 108%;
+    -webkit-mask-image: radial-gradient(ellipse 30% 58% at 25% 46%, #000 40%, transparent 70%);
+    mask-image: radial-gradient(ellipse 30% 58% at 25% 46%, #000 40%, transparent 70%);
+  }
+  /* the card's portrait seat lands over the actions column here (a
+     fragment peeking above PLAY at wide sizes) — in landscape it sits
+     at the splash column's lower right, under the tagline, like the
+     portrait composition's lower-right accent */
+  html[data-theme="neon"] .wiz-home::after { width: 92px; top: 168px; right: calc(50% + 8px); }
 }
 
 /* ================= Settings overhaul (2026-10-20) =================
