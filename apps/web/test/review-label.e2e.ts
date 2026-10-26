@@ -1,4 +1,7 @@
-/** Hand Recap pill: reads "Review last trick" and still opens the cleared-hands review (WebKit 390). */
+/** Hand Recap review consolidation (owner 2026-10-26): after a Run It the
+ * recap's ONE review entry is "Review the tricks" in the HEADER — the old
+ * "Review last trick" pill (the Run It cleared-hands sheet) is removed and
+ * must not come back (WebKit 390). */
 import { makeRules, newGame, canRunIt, type Card, type GameState } from '@spades/rules';
 import { webkit } from 'playwright-core';
 import { DEFAULT_SETTINGS } from '../src/settings';
@@ -32,16 +35,24 @@ function fixture(): string {
     await p.getByTestId('run-it').waitFor({ timeout: 45000 });
     await p.mouse.click(195, 300);
     await p.getByTestId('run-it').click();
-    const pill = p.getByTestId('talk-run-show');
+    // the recap arrives: its only review entry is the tricks pill
+    const pill = p.getByTestId('recap-tricks-show');
     await pill.waitFor({ timeout: 30000 });
     const text = (await pill.textContent())?.trim();
     console.log(`pill text: "${text}"`);
-    if (text !== 'Review last trick') throw new Error(`pill reads "${text}"`);
-    await p.screenshot({ path: `${SHOTS}/recap-review-last-trick-390.png` });
+    if (text !== 'Review the tricks ‹ ›') throw new Error(`pill reads "${text}"`);
+    if (await p.getByTestId('talk-run-show').count()) throw new Error('the removed "Review last trick" pill is back');
+    // the pill lives in the header — the top of the sheet — so it is
+    // reachable with no scroll: its box sits inside the header's box
+    const box = await pill.boundingBox();
+    const headBox = await p.locator('.tt-head').boundingBox();
+    if (!box || !headBox) throw new Error('no geometry for the pill or the header');
+    if (box.y < headBox.y - 1 || box.y + box.height > headBox.y + headBox.height + 1) throw new Error('tricks pill is not inside the header');
+    console.log(`pill in header: pill y ${Math.round(box.y)}–${Math.round(box.y + box.height)} of header ${Math.round(headBox.y)}–${Math.round(headBox.y + headBox.height)}`);
+    await p.screenshot({ path: `${SHOTS}/recap-review-tricks-top-390.png` });
     await pill.click();
-    await p.waitForTimeout(800);
-    const opened = await p.locator('.cleared-sheet, [data-testid="cleared-sheet"]').count();
-    console.log(`review opened: ${opened > 0 ? 'sheet shown' : 'check screenshot'}`);
+    await p.getByTestId('trick-browser').waitFor({ timeout: 10000 });
+    console.log('trick browser opened from the header pill');
     await p.screenshot({ path: `${SHOTS}/recap-review-open-390.png` });
     await p.close();
   } finally { await b.close(); }

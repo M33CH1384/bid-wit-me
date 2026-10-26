@@ -98,12 +98,13 @@ describe('large screens: the recap centers and opens into two regions', () => {
     expect(block).toContain('.tt { width: min(1040px, 100%); }');
   });
 
-  it('lays the body out as scores rail + side cards, run review full-width', () => {
-    expect(block).toContain('grid-template-areas: "scores recap" "strip recap" "callouts recap" "run run"');
+  it('lays the body out as scores rail + side cards (review entries live in the header, not the grid)', () => {
+    expect(block).toContain('grid-template-areas: "scores recap" "strip recap" "callouts recap"');
     expect(block).toContain('.tt-top-scores { grid-area: scores;');
     expect(block).toContain('.tt-strip { grid-area: strip;');
     expect(block).toContain('.tt-recap { grid-area: recap;');
-    expect(block).toContain('.tt-run { grid-area: run;');
+    expect(block).not.toContain('.tt-run');
+    expect(block).not.toContain('grid-area: tricks');
   });
 
   it('is theme-agnostic (same structure in Classic and Neon — parity law)', () => {

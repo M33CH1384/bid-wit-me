@@ -1,4 +1,5 @@
-/** Hand Recap pill: reads "Review last trick" and still opens the cleared-hands review (WebKit 390). */
+/** Hand Recap Leave flow: leaving from the recap offers the Save & quit /
+ * Leave choice, and Quit drops the save (WebKit 390). */
 import { makeRules, newGame, canRunIt, type Card, type GameState } from '@spades/rules';
 import { webkit } from 'playwright-core';
 import { DEFAULT_SETTINGS } from '../src/settings';
@@ -32,7 +33,6 @@ function fixture(): string {
     await p.getByTestId('run-it').waitFor({ timeout: 45000 });
     await p.mouse.click(195, 300);
     await p.getByTestId('run-it').click();
-    await p.getByTestId('talk-run-show').waitFor({ timeout: 30000 });
     const leaveBtn = p.getByTestId('recap-leave');
     await leaveBtn.waitFor({ timeout: 30000 });
     await p.screenshot({ path: `${SHOTS}/recap-leave-game-390.png` });

@@ -816,8 +816,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // previous hand's tricks never leak into this hand's browser.
   const [ltIdx, setLtIdx] = useState<number | null>(null);
   const toggleLt = useCallback(() => { setLtOpen((v) => !v); setLtIdx(null); }, []);
-  const [clearedOpen, setClearedOpen] = useState(false);
-  useEffect(() => { setClearedOpen(false); }, [st.handNo]);
   useEffect(() => { setLtIdx(null); }, [st.handNo]);
   // One-time trump-order popup for Joker modes (replaces the old persistent strip).
   const trumpKey = trumpSeenKey(r);
@@ -2821,21 +2819,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           unread={unread}
           chatOpen={chatOpen}
           onChat={() => setChatOpen(!chatOpen)}
-          runReview={runHands && runClaimer !== null ? (
-            clearedOpen ? (
-              <div className="tt-run" data-testid="talk-run">
-                <RunItReview
-                  hands={runHands}
-                  claimer={runClaimer}
-                  labels={runHands.map((_, seat) => face(seat))}
-                  r={r}
-                  onClose={() => setClearedOpen(false)}
-                />
-              </div>
-            ) : (
-              <button type="button" className="tt-run-show" data-testid="talk-run-show" onClick={() => setClearedOpen(true)}>Review last trick</button>
-            )
-          ) : null}
           trickReview={<RecapTrickReview key={st.handNo} tricks={piles} face={face} />}
         />
       )}

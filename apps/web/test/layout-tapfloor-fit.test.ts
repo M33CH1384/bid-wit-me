@@ -24,7 +24,7 @@
  *   .me-tools .icon-btn    .sheet-head .icon-btn                      40
  *   .db close              .db-close (deck browser)                   40
  *   .quick-reacts (34)     .tt-reacts button + .emotes button         ~29–34
- *   .replay-btn (40)       .tt-run-show / .tt-tricks-show pills       ~30–40
+ *   .replay-btn (40)       .tt-tricks-show pill                        ~30–40
  *   .hm / setup-music      .hm-tabs/.hm-beats/.hm-btn, setup-music   40
  *   .prof-link input       .prof-link-row input                       40
  *
@@ -83,7 +83,6 @@ const MIN_HEIGHTS: Array<[string, number]> = [
   ['.seg button', 44],
   ['.tt-reacts button', 44],
   ['.emotes button', 44],
-  ['.tt-run-show', 44],
   ['.tt-tricks-show', 44],
   ['.set-group-toggle', 44],
   ['.db-use', 44],
