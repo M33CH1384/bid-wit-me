@@ -31,6 +31,7 @@
  */
 import { Vector3 } from 'three';
 import { FELT, RAIL, edgePoint, seatDir, type SeatPos } from './layout';
+import type { CrowdCue } from './crowdCue';
 
 /** The venue floor, 0.9 below the felt plane (mirrors Venue3D FLOOR_Y). */
 export const RAIL_FLOOR_Y = -0.9;
@@ -134,10 +135,12 @@ export function kingRailFigures(cast: readonly string[], ringScale = 1): RailFig
 /* The cue channel                                                     */
 /* ------------------------------------------------------------------ */
 
-// The cue channel lives in ./crowdCue (three-free, so Table.tsx can stamp it
-// without pulling three into the first-load bundle); re-exported here.
-export { newCrowdCue, stampStir, stampSpeaker, stampSeatSpeaker, type CrowdCue } from './crowdCue';
-import type { CrowdCue } from './crowdCue';
+/**
+ * The crowd's cue channel lives in ./crowdCue (three-free, so Table.tsx
+ * can stamp it without pulling three.js into the entry graph); it is
+ * re-exported here for the scene-side consumers.
+ */
+export { newCrowdCue, stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue } from './crowdCue';
 
 /* ------------------------------------------------------------------ */
 /* Poses                                                               */
