@@ -220,8 +220,12 @@ describe('the engine and CSS carry the fix', () => {
   });
 
   it('the last-trick chip clears the controls rail (its box ends left of the rail footprint)', () => {
-    const base = css.indexOf('right: calc(8px + env(safe-area-inset-right))');
-    const fix = css.indexOf('right: calc(58px + env(safe-area-inset-right))');
+    // Anchor on the .last-trick rules themselves: other rules (e.g. the King's
+    // rail, .king-rail-side.right) legitimately reuse the same right: calc(...)
+    // values earlier in the file, so a bare value search finds the wrong rule.
+    const base = css.indexOf('.last-trick, .last-trick.glass.slant { position: absolute; right: calc(8px + env(safe-area-inset-right))');
+    const fix = css.indexOf('.last-trick, .last-trick.glass.slant { right: calc(58px + env(safe-area-inset-right))');
+    expect(fix).toBeGreaterThan(-1);
     expect(base).toBeGreaterThan(-1);
     expect(fix).toBeGreaterThan(base); // the override lands after the base rule and wins
   });
