@@ -1,7 +1,14 @@
-/** Home Screen / PWA icons: the site logo (white spade on #0c0712) as PNGs.
- *  iOS ignores the SVG favicon for Home Screen installs, so index.html must
- *  carry an apple-touch-icon and the manifest must list real PNG icons —
- *  without these, an installed web app falls back to a screenshot tile. */
+/** Home Screen / PWA icons: since 2026-10-26 (owner: "use that image as
+ *  the app icon") the PNGs are crops of the Neon spade-emblem artwork —
+ *  the same image the home backdrop paints (public/assets/neon/
+ *  spade-emblem.webp) — full-bleed on the art's own dark ground, fully
+ *  opaque (iOS renders transparency as black). favicon.svg (the white
+ *  spade mark) stays as the vector favicon and the spray's geometry
+ *  source; index.html additionally links the PNG so the emblem is the
+ *  tab icon wherever PNG wins. iOS ignores the SVG favicon for Home
+ *  Screen installs, so index.html must carry an apple-touch-icon and
+ *  the manifest must list real PNG icons — without these, an installed
+ *  web app falls back to a screenshot tile. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -20,6 +27,8 @@ describe('app icons', () => {
     const html = read('../index.html');
     expect(html).toContain('<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />');
     expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />');
+    // the emblem PNG is a favicon too — the app icon is the tab icon
+    expect(html).toContain('<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />');
   });
 
   it('manifest lists PNG icons (192 any, 512 any, 512 maskable) alongside the SVG', () => {
@@ -38,5 +47,16 @@ describe('app icons', () => {
     expect(pngSize(readBuf('../public/icon-192.png'))).toEqual({ w: 192, h: 192 });
     expect(pngSize(readBuf('../public/icon-512.png'))).toEqual({ w: 512, h: 512 });
     expect(pngSize(readBuf('../public/icon-512-maskable.png'))).toEqual({ w: 512, h: 512 });
+  });
+
+  it('the icon PNGs are fully opaque (IHDR color type 2 = RGB, no alpha)', () => {
+    // iOS shows a transparent Home Screen icon on black — the emblem
+    // icons are composed full-bleed on the art's own dark ground, so
+    // none of them may carry an alpha channel (color type 6 = RGBA).
+    for (const p of ['../public/apple-touch-icon.png', '../public/icon-192.png', '../public/icon-512.png', '../public/icon-512-maskable.png']) {
+      const buf = readBuf(p);
+      pngSize(buf); // asserts the PNG signature + IHDR framing
+      expect(buf[25], p).toBe(2);
+    }
   });
 });

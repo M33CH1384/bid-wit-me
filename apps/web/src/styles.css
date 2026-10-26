@@ -3187,7 +3187,10 @@ html[data-theme="neon"] .wiz-home > * { position: relative; z-index: 1; }
    ~40% down the screen. The owner: "the photo in the background should
    cover the white space here." So the layer is now the stage's BACKDROP:
    the box spans .wiz-home edge to edge and the emblem paints cover-style
-   off it — height-driven (92% of the stage), centered on the spade, its
+   off it — height-driven (80% of the stage; shipped at 92% and dialed
+   down a step the same day at the owner's word — at 92% the emblem read
+   slightly too big — the smaller painting still covers the breath end
+   to end), centered on the spade, its
    width overflowing the column so no image edge ever shows — while the
    radial mask (center raised to 24%, stops pulled in) keeps the hero at
    full strength, carries the art through the whole breath, then grades
@@ -3202,7 +3205,7 @@ html[data-theme="neon"] .wiz-home::before {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: url('/assets/neon/spade-emblem.webp') no-repeat 50% -16px / auto 92%;
+  background: url('/assets/neon/spade-emblem.webp') no-repeat 50% -16px / auto 80%;
   -webkit-mask-image: radial-gradient(ellipse 96% 64% at 50% 24%, #000 54%, transparent 88%);
   mask-image: radial-gradient(ellipse 96% 64% at 50% 24%, #000 54%, transparent 88%);
   opacity: .5;
@@ -3237,8 +3240,10 @@ html[data-theme="neon"] .wiz-home::after {
 /* Wide screens: the stage column caps at 560px and centers, so a
    column-bound backdrop would end ON-screen at the column's edges — a
    straight tonal step in the page margins (visible in the desktop
-   render). From 700px up the layer bleeds to min(1200px, 100vw),
-   paints cover, and takes a wider-ellipse mask whose fade completes
+   render). From 700px up the layer bleeds to min(1056px, 100vw)
+   (1200px at the coverage ship, dialed down with the other regimes so
+   the emblem reads the same smaller scale here), paints cover, and
+   takes a wider-ellipse mask whose fade completes
    inside the bleed — the art dissolves into the page on every side and
    no image or box edge ever shows. (overflow-x is hidden at the root,
    so the bleed cannot scroll the page.) */
@@ -3247,7 +3252,7 @@ html[data-theme="neon"] .wiz-home::after {
     left: 50%;
     right: auto;
     transform: translateX(-50%);
-    width: min(1200px, 100vw);
+    width: min(1056px, 100vw);
     background-size: cover;
     -webkit-mask-image: radial-gradient(ellipse 62% 64% at 50% 24%, #000 50%, transparent 82%);
     mask-image: radial-gradient(ellipse 62% 64% at 50% 24%, #000 50%, transparent 82%);
@@ -3260,7 +3265,7 @@ html[data-theme="neon"] .wiz-home::after {
      the mask re-centers on the painting so every image edge feathers
      inside the splash zone — no straight image edge against the page */
   html[data-theme="neon"] .wiz-home::before {
-    background-position: 10% -8px; background-size: auto 108%;
+    background-position: 10% -8px; background-size: auto 94%;
     -webkit-mask-image: radial-gradient(ellipse 30% 58% at 25% 46%, #000 40%, transparent 70%);
     mask-image: radial-gradient(ellipse 30% 58% at 25% 46%, #000 40%, transparent 70%);
   }

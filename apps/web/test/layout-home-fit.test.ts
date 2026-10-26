@@ -350,7 +350,7 @@ describe('home backdrop art: the Neon layer covers the stage (owner, 2026-10-26)
     const wide = css.match(/@media \(min-width: 700px\) \{([\s\S]*?)\n\}/);
     expect(wide, 'a wide-screen backdrop regime exists').toBeTruthy();
     expect(wide![1]).toContain('.wiz-home::before');
-    expect(wide![1]).toContain('width: min(1200px, 100vw)');
+    expect(wide![1]).toContain('width: min(1056px, 100vw)');
     expect(wide![1]).toContain('background-size: cover');
   });
 
