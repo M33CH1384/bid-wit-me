@@ -235,7 +235,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    single row per corner, under the short scorebug, clear of the top
    plate's seat and (right side) pulled in from the control cluster. */
 .table-screen.short .king-rail-side { top: calc(106px + env(safe-area-inset-top)); flex-direction: row; width: auto; flex-wrap: nowrap; }
-.table-screen.short .king-rail-side.right { right: calc(58px + env(safe-area-inset-right)); }
+.table-screen.short .king-rail-side.right { right: calc(60px + env(safe-area-inset-right)); }
 .table-screen.short .king-rail .story-face.king-rail-face { width: 20px; height: 20px; }
 /* Wide stages have the room: bigger faces, same stand. */
 @media (min-width: 900px) {
