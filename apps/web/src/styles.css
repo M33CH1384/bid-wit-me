@@ -1367,6 +1367,21 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
 }
 .wiz-right .icon-btn.gear { width: 46px; height: 46px; font-size: 21px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+/* S2 slice 4 (HANDOFF "Button system" → Icon; boards/button-system.png):
+   Social, gear and sound are ONE top-right cluster of identical 44×44
+   icons — 8px corner cut, dark glass rgba(20,11,34,.85) + 1px edge inset,
+   6px apart. Social drops its "Social" word here (the unread dot/badge
+   stay); the in-game scorebug dock and the lobby keep their own sizes. */
+.wiz-right { gap: 6px; }
+.wiz-right .dock-slot { width: 44px !important; height: 44px; }
+.wiz-right .icon-btn.gear, .wiz-right .social-btn, .wiz-right .dock-btn {
+  width: 44px; height: 44px; min-width: 44px; padding: 0; justify-content: center; font-size: 18px; color: var(--ink);
+  background: rgba(20,11,34,.85); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.55);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.wiz-right .social-btn .social-lbl { display: none; }
+.wiz-right :is(.icon-btn.gear, .social-btn, .dock-btn):hover { filter: brightness(1.08); }
+.wiz-right :is(.icon-btn.gear, .social-btn, .dock-btn):focus-visible { outline: 2px solid var(--gold-hi); outline-offset: -2px; }
 /* D1 (design audit 2026-10-24): the dock renders INTO its slot (React portal in
    SoundControls.tsx) instead of parking a fixed box on the slot's measured rect —
    the measurement raced the app's transition transforms and landed stale,
@@ -4092,6 +4107,11 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .db-blurb { margin: 7px 0 0; font-size: 13.5px; line-height: 1.5; }
 .db-lock { margin: 7px 0 0; font-size: 12.5px; font-weight: 600; color: var(--gold); }
 .db-close { flex: none; width: 44px; height: 44px; border: 0; border-radius: 10px; background: rgba(255,255,255,.07); color: var(--ink); font-size: 15px; cursor: pointer; }
+/* S2 slice 4: the deck browser/viewer close is the system ✕ icon — 44×44,
+   8px corner cut, dark glass + edge inset (same as .sheet-close). */
+.db-close { border-radius: 0; background: rgba(20,11,34,.85); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.55); font-size: 18px; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.db-close:hover { filter: brightness(1.08); }
+.db-close:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: -2px; }
 .db-body { overflow-y: auto; padding: 2px 16px 14px; flex: 1; }
 .db-sec { margin: 12px 0 8px; font-family: var(--display); font-weight: 800; font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); }
 .db-grid { display: grid; gap: 8px; }
