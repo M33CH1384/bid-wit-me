@@ -183,6 +183,18 @@ describe('the King finale (Phase 4, spec §6)', () => {
     }
     return false;
   }
+  /** Pin the room's randomness for a played-out game so it is reproducible (#271):
+   *  the deal seed comes from secureSeed() (crypto.getRandomValues) and bot bid
+   *  leans / talk from Math.random. Unpinned, a few runs in 100 the deal + leans
+   *  set the human side (e.g. Shot = out on hand 1) and the asserted outcome
+   *  (correctly) doesn't happen. Returns the restore function — call it in finally. */
+  function pinRandom(seed: number): () => void {
+    let x = seed >>> 0;
+    const next = () => (x = (Math.imul(x, 1664525) + 1013904223) >>> 0);
+    const spy = vi.spyOn(Math, 'random').mockImplementation(() => next() / 2 ** 32);
+    const cspy = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(a: T): T => { const u = a as unknown as Uint32Array; for (let i = 0; i < u.length; i++) u[i] = next(); return a; });
+    return () => { spy.mockRestore(); cspy.mockRestore(); };
+  }
   function playOut(env: FakeEnv, cap = 40000) {
     for (let i = 0; i < cap && env.room.data.phase === 'playing'; i++) {
       if (!playMinBid(env, ['a', 'c'])) env.advance(100);
@@ -263,14 +275,7 @@ describe('the King finale (Phase 4, spec §6)', () => {
   });
 
   it('a human winning the cutthroat pays the double (played out)', () => {
-    // Pin the room's randomness so the played-out game is reproducible: the
-    // deal seed comes from secureSeed() (crypto.getRandomValues) and bot bid
-    // leans / talk from Math.random. Unpinned, about 1 run in 40 the deal + leans
-    // set the host on hand 1 (Shot = out) and the double is (correctly) lost.
-    let x = 0x2f6b1d;
-    const next = () => (x = (Math.imul(x, 1664525) + 1013904223) >>> 0);
-    const spy = vi.spyOn(Math, 'random').mockImplementation(() => next() / 2 ** 32);
-    const cspy = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(a: T): T => { const u = a as unknown as Uint32Array; for (let i = 0; i < u.length; i++) u[i] = next(); return a; });
+    const restore = pinRandom(0x2f6b1d);
     try {
     const { env } = finaleRoom();
     toFinale(env);
@@ -289,7 +294,7 @@ describe('the King finale (Phase 4, spec §6)', () => {
     const lines = guideLines(env);
     expect(lines.some((t) => t === GUIDE_FINALE[10] || t === GUIDE_FINALE[11])).toBe(true); // her resolution read
     expect(lines.length).toBeLessThanOrEqual(4); // the finale budget, start to resolution
-    } finally { spy.mockRestore(); cspy.mockRestore(); }
+    } finally { restore(); }
   });
 
   it('placements map to outcomes: a human 2nd banks the clear; both humans 3rd/4th loses it', () => {
@@ -361,6 +366,8 @@ describe('the King finale (Phase 4, spec §6)', () => {
   });
 
   it('an in-room leg-1 win routes the outro to the proposal — full scene', () => {
+    const restore = pinRandom(0x2f6b1d);
+    try {
     const { env } = storyRoom('king'); // no mark yet: this room plays leg 1 itself
     toGame(env);
     const g = env.room.data.game!;
@@ -376,6 +383,7 @@ describe('the King finale (Phase 4, spec §6)', () => {
     readyBoth(env); // the outro pair readies → the proposal, full form
     expect(s.phase).toBe('finale');
     expect(s.finale).toMatchObject({ short: false });
+    } finally { restore(); }
   });
 });
 
