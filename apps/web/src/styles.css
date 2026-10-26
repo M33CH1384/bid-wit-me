@@ -117,16 +117,15 @@ button:active:not(:disabled) { transform: scale(.97); }
    pad's Continue (was a flat ghost rect — same button, same handler, so
    no flow changes), Join with a code (was a purple square), the wizard's
    team-name Save, and (account.css) Create an account / guest links. */
-.score-pad .quiet-continue, .setup .join-row .micro-action, .wizard .micro-action, .wizard .team-name-edit button {
+.setup .join-row .micro-action, .wizard .micro-action, .wizard .team-name-edit button {
   position: relative; isolation: isolate; border: 0; border-radius: 0; clip-path: var(--btn-chevron);
   background: var(--gold); color: var(--gold); font-family: var(--display); font-weight: 800; letter-spacing: .07em; text-transform: uppercase; min-height: 44px; cursor: pointer;
 }
-.score-pad .quiet-continue::before, .setup .join-row .micro-action::before, .wizard .micro-action::before, .wizard .team-name-edit button::before {
+.setup .join-row .micro-action::before, .wizard .micro-action::before, .wizard .team-name-edit button::before {
   content: ''; position: absolute; inset: 1.5px; z-index: -1; clip-path: var(--btn-chevron); background: var(--btn-fill);
 }
-.score-pad .quiet-continue { min-height: 48px; }
-.score-pad .quiet-continue:is(:hover, :focus-visible), .wizard .micro-action:is(:hover, :focus-visible), .wizard .team-name-edit button:is(:hover, :focus-visible) { filter: brightness(1.08); }
-.score-pad .quiet-continue:focus-visible, .wizard .micro-action:focus-visible, .wizard .team-name-edit button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.wizard .micro-action:is(:hover, :focus-visible), .wizard .team-name-edit button:is(:hover, :focus-visible) { filter: brightness(1.08); }
+.wizard .micro-action:focus-visible, .wizard .team-name-edit button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
 .wizard .micro-action:disabled { opacity: .4; }
 .link { background: none; border: 0; color: var(--gold); padding: 10px 0; font-weight: 700; font-family: var(--display); letter-spacing: .06em; font-size: 16px; }
 
@@ -2520,6 +2519,50 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .pad-row.v2 .lbl { display: block; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 }
 .score-pad.v2 > .primary.big { width: 100%; margin-top: 10px; }
+/* S2 score pad (boards/HANDOFF.md "Score pad"; boards/score-pad.png, after/scorepad-l.html).
+   Portrait keeps the one-column flow: the by-hand wrapper is display:contents.
+   Footer: ONE Primary ("Back to table", or "Continue" from the recap). */
+.pad-hands { display: contents; }
+.score-pad.v2 > .pad-primary { margin-top: 4px; }
+@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 1000px) {
+  /* landscape: grid 1fr | 1.5fr — left the two stacked team cards (name, bags/sets, big 44px total
+     on the right), right the by-hand table (its own scroller) + House rules; footer right-aligned. */
+  .modal.score-pad.v2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); grid-template-rows: minmax(0, 1fr) auto auto; gap: 8px 10px; max-height: calc(100dvh - 20px); padding: 12px 14px; }
+  .score-pad.v2 > .pad2 { grid-column: 1 / -1; grid-row: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 10px; }
+  .score-pad.v2 .pad-sticky { position: static; box-shadow: none; background: none; padding: 0; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  .score-pad.v2 .pad-sticky .panel-title.big { text-align: left; font-size: 20px; line-height: 1.1; margin: 0; padding: 0 56px 0 0; }
+  .score-pad.v2 .pad-playing { text-align: left; margin: -6px 0 0; font-size: 13px; color: var(--muted); }
+  .score-pad.v2 .pad-close-btn { position: absolute; top: 10px; right: 10px; z-index: 5; }
+  .score-pad.v2 .pad-board { grid-template-columns: 1fr; flex: 1; grid-auto-rows: 1fr; gap: 10px; }
+  .score-pad.v2 .pad-board-side { grid-template-columns: 4px minmax(0, 1fr) auto; grid-template-rows: auto auto auto; align-content: center; column-gap: 12px; row-gap: 2px; padding: 6px 14px 6px 0; background: rgba(255,255,255,.035); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.16); }
+  .score-pad.v2 .pad-board-side .pad-bar { grid-column: 1; grid-row: 1 / -1; width: 4px; border-radius: 0; }
+  .score-pad.v2 .pad-board-name { grid-column: 2; grid-row: 1; font-family: var(--display); letter-spacing: .04em; }
+  .score-pad.v2 .pad-board-bags { grid-column: 2; grid-row: 2; }
+  .score-pad.v2 .pad-board-sets { grid-column: 2; grid-row: 3; }
+  .score-pad.v2 .pad-board-total { grid-column: 3; grid-row: 1 / -1; font-size: 44px; line-height: 1; color: var(--ink); }
+  .score-pad.v2 .pad-hands { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px; background: rgba(255,255,255,.035); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.16); }
+  .score-pad.v2 > .locked-details { grid-column: 2; grid-row: 2; margin: 0; }
+  .score-pad.v2 > .primary.big.pad-primary { grid-column: 2; grid-row: 3; justify-self: end; width: auto; min-width: 220px; height: 52px; min-height: 52px; margin: 0; padding: 0 24px; font-size: 18px; }
+  .score-pad.v2 > .exit-divider { display: none; }
+  .score-pad.v2 .pad-hands { margin-top: 52px; } /* the header row above it holds the ✕ */
+  .score-pad.v2 > .big.leave-red { grid-column: 1; grid-row: 3; justify-self: start; align-self: center; width: auto; height: 44px; min-height: 44px; margin: 0; padding: 0 20px; font-size: 15px; }
+}
+@media (orientation: landscape) and (max-height: 540px) {
+  /* phone landscape: the by-hand column is ~400px, so its rows use the phone stacked form
+     (name on top, Bid / Took / Points / Total below) instead of squeezing six columns */
+  .score-pad.v2 .pad-hands .pad-cols.v2 { display: none; }
+  .score-pad.v2 .pad-hands .pad-row.v2 { grid-template-columns: 6px repeat(4, minmax(0, 1fr)); row-gap: 2px; padding: 5px 6px 5px 0; }
+  .score-pad.v2 .pad-hands .pad-row.v2 .pad-bar { grid-row: span 2; }
+  .score-pad.v2 .pad-hands .pad-row.v2 .pad-team { grid-column: 2 / -1; flex-direction: row; align-items: center; gap: 6px; }
+  .score-pad.v2 .pad-hands .pad-row.v2 .pad-cell b { white-space: nowrap; }
+  .score-pad.v2 .pad-hands .pad-row.v2 .lbl { display: block; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .score-pad.v2 .pad-hands .pad-row.v2 .pad-total b { font-size: 20px; }
+}
+/* House rules = a Secondary xs (gold outline chevron) in both orientations. */
+.score-pad.v2 .locked-details > summary { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; position: relative; isolation: isolate; list-style: none; clip-path: var(--btn-chevron); background: var(--gold); color: var(--gold); font-family: var(--display); font-weight: 800; font-size: 13px; letter-spacing: .07em; text-transform: uppercase; }
+.score-pad.v2 .locked-details > summary::-webkit-details-marker { display: none; }
+.score-pad.v2 .locked-details > summary::before { content: ''; position: absolute; inset: 1.5px; z-index: -1; clip-path: var(--btn-chevron); background: var(--btn-fill); }
+.score-pad.v2 .locked-details > summary::after { content: ''; position: absolute; inset: -4px 0; }
 /* header fix: the in-game speaker slot is a fixed square at the right edge; the dock never animates its position */
 .scorebug .dock-slot { flex: 0 0 auto; width: 40px !important; min-width: 40px; max-width: 46px; }
 .scorebug .bug { min-width: 0; flex: 1 1 auto; }
