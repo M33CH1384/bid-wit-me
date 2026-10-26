@@ -337,6 +337,14 @@ html[data-theme="neon"] .soc-wire-byline { color: #5BDFFF; }
 .ot-filters { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .ot-filters button { flex: none; padding: 5px 11px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 14px; border: 1px solid rgba(var(--edge-rgb),.35); background: rgba(255,255,255,.04); color: var(--ink); font-size: 13px; font-weight: 600; }
 .ot-filters button.on { background: rgba(var(--edge-rgb),.28); border-color: rgba(var(--edge-rgb),.85); }
+/* S2 slice 3: the Open tables filters are chips — 36px purple glass, gold
+   when on (same look as the .seg segments). The row's 4px vertical padding
+   keeps each chip's tap band at 44px. */
+.ot-filters { padding-block: 4px; }
+.ot-filters button { min-height: 36px; border-radius: 0; border: 0; background: rgba(var(--purple-rgb),.16); box-shadow: inset 0 0 0 1px rgba(var(--purple-rgb),.45); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.ot-filters button:not(.on):hover { background: rgba(var(--purple-rgb),.28); }
+.ot-filters button.on { background: var(--btn-gold-grad); color: var(--btn-ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.6); }
+.ot-filters button:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: -2px; }
 .ot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .ot-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(20,11,34,.78); border: 1px solid rgba(var(--edge-rgb),.25); }
 .ot-row.waiting { border-color: rgba(61,220,132,.45); }
