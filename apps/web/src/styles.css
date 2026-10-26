@@ -4202,7 +4202,7 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    under the text is the tile's declared bottom padding. The full unlock
    line still lives in the tile's aria-label and in the deck browser. */
 .deck-gallery { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 6px 2px 10px; width: 100%; align-items: flex-start; }
-.dg-cover { flex: 0 0 auto; width: 132px; scroll-snap-align: center; border: 0; border-radius: 12px; padding: 8px 8px 10px;
+.dg-cover { flex: 0 0 auto; width: 132px; width: var(--dg-w, 132px); max-width: var(--dg-max, none); scroll-snap-align: center; border: 0; border-radius: 12px; padding: 8px 8px 10px;
   background: rgba(255,255,255,.05); color: var(--ink); display: flex; flex-direction: column; gap: 6px; align-items: stretch;
   text-align: center; position: relative; cursor: pointer; touch-action: manipulation; }
 .dg-cover img { width: 100%; aspect-ratio: 5/7; object-fit: cover; display: block; border-radius: 7px; }
@@ -4212,6 +4212,21 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .dg-cover.on { box-shadow: inset 0 0 0 2px var(--gold), 0 0 18px rgba(var(--gold-rgb),.35); background: rgba(var(--gold-rgb),.14); }
 .dg-cover.locked img { filter: grayscale(.9); opacity: .6; }
 .dg-cover.locked .dg-tag { color: var(--gold); }
+/* S2 deck thumbs + live preview (boards/HANDOFF.md "Bots setup / Create table"; bots-setup.png,
+   after/bots-l, bots-se-l, bots-ipad-l). The "+N decks" chip and the preview only show in
+   their landscape layouts below; portrait keeps the full slider and no preview. */
+.dg-more { display: none; }
+.setup-preview { display: none; }
+.setup-preview { margin: 0; position: relative; flex-direction: column; min-height: 0; overflow: hidden; background: #0c0712 var(--sp-bg) center / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.setup-preview .sp-stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 18px; background: linear-gradient(180deg, rgba(12,7,18,.15), rgba(12,7,18,.55)); }
+.setup-preview .sp-table { position: relative; width: min(92%, 440px); aspect-ratio: 16 / 10; border-radius: 50%; background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--sp-felt) 82%, white), var(--sp-felt) 70%); box-shadow: 0 0 0 10px var(--sp-rail), 0 0 0 12px rgba(0,0,0,.45), 0 24px 40px rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+.setup-preview .sp-card { width: 24%; aspect-ratio: 5 / 7; object-fit: cover; border-radius: 6px; box-shadow: 0 6px 14px rgba(0,0,0,.55); position: relative; }
+.setup-preview .sp-card.l { transform: translateX(18%) rotate(-11deg); }
+.setup-preview .sp-card.face { z-index: 1; transform: translateY(-4%); }
+.setup-preview .sp-card.r { transform: translateX(-18%) rotate(11deg); }
+.setup-preview figcaption { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px 12px; background: rgba(12,7,18,.82); }
+.setup-preview figcaption small { font-family: var(--display); font-weight: 800; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+.setup-preview figcaption b { font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: .03em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dg-inuse { position: absolute; top: 14px; right: 14px; background: var(--gold); color: #1a0f24; font-family: var(--display);
   font-weight: 800; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
 
@@ -4427,6 +4442,15 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .ess-barred > .setup-card[aria-label="Sound"] { grid-column: 3; grid-row: 3; }
   .wizard.step-table .ess-barred > .setup-card[aria-label="Table"] ~ .setup-card[aria-label="Deck & venue"] { grid-row: 1 / span 4; }
   .wizard.step-table .ess-barred > .setup-bar .setup-bar-summary { white-space: normal; text-align: left; font-size: 12px; }
+  /* S2 deck thumbs (--land-phone): a compact row of ~3 thumbs (name only, no tag line,
+     max 96px wide) plus a "+N decks" chip that pages the slider; the long label shortens. */
+  .wizard.step-table .ess-barred .deck-gallery{ gap: 8px; padding: 4px 2px 6px; }
+  .wizard.step-table .ess-barred .deck-gallery{ --dg-w: calc((100% - 16px) / 3); --dg-max: 96px; }
+  .wizard.step-table .ess-barred .dg-cover{ padding: 5px 5px 6px; }
+  .wizard.step-table .ess-barred .dg-cover .dg-name { font-size: 12px; }
+  .wizard.step-table .ess-barred .dg-cover .dg-tag, .wizard.step-table .ess-barred .dg-cover .dg-inuse { display: none; }
+  .wizard.step-table .ess-barred .dg-more { display: inline-flex; align-items: center; align-self: flex-start; position: relative; height: 30px; padding: 0 12px; margin: 0 0 6px; border: 0; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .04em; color: var(--lav, #cdb8ff); background: rgba(var(--purple-rgb),.14); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35); clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
+  .wizard.step-table .ess-barred .dg-more::after { content: ''; position: absolute; inset: -7px 0; }
 }
 @media (orientation: landscape) and (max-height: 540px) and (max-width: 700px) {
   .wizard.step-table .wiz-crumb { display: none; }
@@ -4456,6 +4480,23 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .ess-barred > .setup-bar .setup-bar-summary { white-space: normal; text-align: left; }
   .wizard.step-table .ess-barred > .setup-card[aria-label="Rules"] { grid-column: 3; grid-row: 2; }
   .wizard.step-table .ess-barred > .setup-card[aria-label="Sound"] { grid-column: 3; grid-row: 3; }
+}
+/* S2 --land-tab bots setup (HANDOFF: grid 1.25fr 1fr; left a 2×2 — Team | Bots, then Deck &
+   venue spanning both with large thumbs (max-height 330px); right the live venue/deck preview
+   (flex:1) with the summary + House rules + Primary docked under it). Bots step only (it is the
+   one that renders .setup-preview); the online create step keeps the #261 layout. */
+@media (orientation: landscape) and (min-height: 541px) and (min-width: 1000px) {
+  .wizard.step-table .ess.ess-barred:has(> .setup-preview) { grid-template-columns: minmax(0, .625fr) minmax(0, .625fr) minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; align-items: stretch; gap: 16px; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Your team"] { grid-column: 1; grid-row: 1; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Bots & score"] { grid-column: 2; grid-row: 1; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Bots & score"]:first-child { grid-column: 1 / 3; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Deck & venue"] { grid-column: 1 / 3; grid-row: 2 / span 3; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-preview { display: flex; grid-column: 3; grid-row: 1 / span 2; min-height: 260px; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Rules"] { grid-column: 3; grid-row: 4; align-self: start; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-bar { grid-column: 3; grid-row: 3; align-self: start; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) .deck-gallery{ --dg-w: 120px; --dg-max: none; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) .setup-preview .sp-stage { padding: 14px; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) .setup-preview .sp-table { width: min(80%, 360px); }
 }
 
 /* S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Table menu"): on a
