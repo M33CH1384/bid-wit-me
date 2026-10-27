@@ -31,11 +31,7 @@
  */
 import { Vector3 } from 'three';
 import { FELT, RAIL, edgePoint, seatDir, type SeatPos } from './layout';
-import {
-  GHOST_DIP_MS, GHOST_FADE_IN_MS, GHOST_FADE_OUT_MS, GHOST_PEAK,
-  GHOST_RETURN_MS, GHOST_STRIKE_GAP_MS, GHOST_STRIKE_MS,
-  ghostStrikesEndMs, type CrowdCue,
-} from './crowdCue';
+import type { CrowdCue } from './crowdCue';
 
 /** The venue floor, 0.9 below the felt plane (mirrors Venue3D FLOOR_Y). */
 export const RAIL_FLOOR_Y = -0.9;
@@ -144,7 +140,7 @@ export function kingRailFigures(cast: readonly string[], ringScale = 1): RailFig
  * can stamp it without pulling three.js into the entry graph); it is
  * re-exported here for the scene-side consumers.
  */
-export { GHOST_AFTERGLOW_MS, GHOST_DIP_MS, GHOST_FADE_IN_MS, GHOST_FADE_OUT_MS, GHOST_HOLD_MS, GHOST_ID, GHOST_LEAD_MS, GHOST_LINE_LAG_MS, GHOST_PEAK, GHOST_RETURN_MS, GHOST_STRIKE_GAP_MS, GHOST_STRIKE_MS, ambientGhostVisit, cueHash01, ghostStrikesEndMs, newCrowdCue, stampApparition, stampLightning, stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue, type GhostVisit } from './crowdCue';
+export { newCrowdCue, stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue } from './crowdCue';
 
 /* ------------------------------------------------------------------ */
 /* Poses                                                               */
@@ -403,110 +399,3 @@ export function seatedFaceCorners(f: SeatedFigure, inflate = false): Vector3[] {
 }
 
 export { FELT, RAIL };
-
-/* ------------------------------------------------------------------ */
-/* The apparition (owner, 2026-10-26, evening): the standing ring     */
-/* reads as furniture — the rail should be VISITATIONS. One rail      */
-/* character (this pass: Uncle Ray, the first railbird ever named)    */
-/* leaves the ring and only VISITS: a short video presence            */
-/* materializes at his rail slot, drops his line, and dissolves.      */
-/* Two tiers: the WARM visitation (default — he fades in golden,      */
-/* speaks, lingers, fades out) and the LIGHTNING REVEAL (rare — the   */
-/* venue lights die, one strike (two for the very heaviest moments)   */
-/* shows him standing there lit stark, his message lands in the       */
-/* after-glow while the lights flicker back, and he is gone before    */
-/* they settle). All of it is pure functions of the cue, so the       */
-/* choreography is unit-testable frame by frame.                      */
-/* ------------------------------------------------------------------ */
-
-/** Ray's apparition clip — silent by construction (the encode has no
- *  audio stream at all), produced from his shipped portrait via the
- *  big-stop image-to-video pattern: ambient motion only, mouth
- *  closed, identity-gated. His cast recordings play over it. The
- *  choreography constants themselves live in ./crowdCue (three-free,
- *  so the table can stamp windows without importing three). */
-export const GHOST_CLIP = {
-  src: '/assets/story/videos/ray-apparition.mp4',
-  poster: '/assets/story/videos/ray-apparition-poster.webp',
-} as const;
-
-const smooth01 = (x: number): number => {
-  const c = Math.max(0, Math.min(1, x));
-  return c * c * (3 - 2 * c);
-};
-
-export interface GhostPresence {
-  /** the figure plane's opacity: 0..GHOST_PEAK warm; up to ~1 lit by a strike */
-  opacity: number;
-  /** brightness multiplier on the figure's material colour: 1 at rest,
-   *  >1 while the strike lights him stark, <1 in the dip dark */
-  brightK: number;
-  /** venue exposure multiplier (1 = the renderer's standing exposure) */
-  exposureK: number;
-  /** the strike light's intensity, 0..1 (KingRail drives a point light) */
-  strikeK: number;
-}
-
-const NO_GHOST: GhostPresence = { opacity: 0, brightK: 1, exposureK: 1, strikeK: 0 };
-
-/** Is the cue's current presence window a lightning reveal? */
-export function ghostIsLightning(cue: CrowdCue): boolean {
-  return cue.lightningAt > -1e8
-    && cue.lightningAt >= cue.apparitionAt - 1000
-    && cue.lightningAt < cue.apparitionUntil;
-}
-
-/**
- * The apparition + venue-light state at time t. Warm window: a golden
- * fade in, a held presence, a fade out; the venue is untouched.
- * Lightning window: the venue dips to near-dark, the strike(s) hit —
- * he is THERE, lit stark — then the after-glow: lights flicker up,
- * his presence warms and thins, gone as they settle. Flash safety is
- * structural here: at most two pulses, each ≤ GHOST_STRIKE_MS, inside
- * one reveal — never a strobe.
- */
-export function ghostPresenceAt(t: number, cue: CrowdCue): GhostPresence {
-  if (t < cue.apparitionAt || t > cue.apparitionUntil) return { ...NO_GHOST };
-  if (!ghostIsLightning(cue)) {
-    const fadeIn = smooth01((t - cue.apparitionAt) / GHOST_FADE_IN_MS);
-    const fadeOut = smooth01((cue.apparitionUntil - t) / GHOST_FADE_OUT_MS);
-    return { opacity: GHOST_PEAK * Math.min(fadeIn, fadeOut), brightK: 1, exposureK: 1, strikeK: 0 };
-  }
-  const d = t - cue.lightningAt;
-  if (d < 0) return { ...NO_GHOST };
-  const strikes = Math.max(1, cue.lightningStrikes);
-  const s1End = GHOST_DIP_MS + GHOST_STRIKE_MS;
-  const s2At = s1End + GHOST_STRIKE_GAP_MS;
-  const sEnd = ghostStrikesEndMs(strikes);
-  const inS1 = d >= GHOST_DIP_MS && d < s1End;
-  const inGap = strikes >= 2 && d >= s1End && d < s2At;
-  const inS2 = strikes >= 2 && d >= s2At && d < sEnd;
-
-  let exposureK: number;
-  if (d < GHOST_DIP_MS) exposureK = 1 - 0.78 * smooth01(d / GHOST_DIP_MS);
-  else if (inS1) exposureK = 1.9;
-  else if (inGap) exposureK = 0.3;
-  else if (inS2) exposureK = 1.45;
-  else {
-    const r = (d - sEnd) / GHOST_RETURN_MS;
-    if (r >= 1) exposureK = 1;
-    else {
-      const base = 0.22 + 0.78 * smooth01(r);
-      const flick = Math.sin(r * 21.0) > 0.55 && r < 0.75 ? -0.18 : 0;
-      exposureK = Math.max(0.15, base + flick);
-    }
-  }
-  const strikeK = inS1 ? 1 : inS2 ? 0.65 : 0;
-
-  let opacity: number;
-  let brightK: number;
-  if (d < GHOST_DIP_MS) { opacity = 0; brightK = 1; }
-  else if (inS1) { opacity = 0.97; brightK = 1.9; }
-  else if (inGap) { opacity = 0.22; brightK = 0.35; }
-  else if (inS2) { opacity = 0.95; brightK = 1.6; }
-  else {
-    opacity = GHOST_PEAK * smooth01((cue.apparitionUntil - t) / GHOST_FADE_OUT_MS);
-    brightK = 1.2;
-  }
-  return { opacity, brightK, exposureK, strikeK };
-}

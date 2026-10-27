@@ -42,15 +42,12 @@ CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/ (no attribution requ
 | `siren.mp3` (RIP-sheet police wail) | "Whelen Wail" by Jefflix — https://freesound.org/people/Jefflix/sounds/157867/ — "Wail sound miked directly from the Whelen siren box" | CC0 1.0 |
 | `spray-shake.mp3` (spray-transition can shake) | "Spray Paint Can Shaking" by Beenjamone — https://freesound.org/people/Beenjamone/sounds/548623/ — a real spray paint can, shaken (the metal ball is audible), Blue Yeti | CC0 1.0 |
 | `spray-hiss.mp3` (spray-transition aerosol hiss) | "Spray Can Sound Effects (Shaking, Spraying)" by BorzSounds — https://freesound.org/people/BorzSounds/sounds/842753/ — a real spray can shaken and sprayed, Zoom H6 | CC0 1.0 |
-| `thunder.mp3` (lightning-reveal thunder) | "Thunder, Very Close, Rain, 01" by InspectorJ (www.jshaw.co.uk) — https://opengameart.org/content/thunder-very-close-rain-01 — a single close thunder strike with rain, recorded on a Zoom H1 (England, 2016) | CC-BY 3.0 |
 
 Kenney files were re-encoded from OGG to mono 64 kbps MP3 (plays on iOS Safari). `siren.mp3` is the same encoding: a 2.7 s slice of that Whelen wail (the rising sweep, from about 5.04 s), with a short fade-in and a half-sine fade-out over the last 0.65 s, peak-normalized to about −1.7 dBTP, mono 64 kbps MP3 at 44.1 kHz. CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/. The your-turn chime, cut/trump hit, spades-broken sting,
 whoosh, BID MADE / SET! / NIL! / BAG PENALTY stingers, win/lose jingles and the optional lounge ambience are
 synthesized at runtime with Web Audio (`apps/web/src/audio.ts`) — no files.
 
 The spray-transition sounds are cuts of those two recordings, stereo 112 kbps MP3 at 44.1 kHz, level-matched to the other SFX: `spray-shake.mp3` is the first 0.27 s of the Beenjamone take (the opening rattle — two-three ball strikes, short fades in/out), and `spray-hiss.mp3` is a 2 s seamless loop cut from the BorzSounds take's long steady spray (about 4.6–7.1 s in), crossfaded at the wrap so it can loop under a cover of any length.
-
-`thunder.mp3` is a cut of the InspectorJ recording: 5.45 s starting just before the strike's crack (about 0.95 s into the take) through the rolling rumble's decay, with a short fade-in and a 1.25 s fade-out, loudness-normalized (peak about −7 dB) and encoded stereo 128 kbps MP3 at 44.1 kHz. It plays once per lightning reveal, arriving a beat after the flash. CC-BY 3.0: https://creativecommons.org/licenses/by/3.0/ — attribution: "Thunder, Very Close, Rain, 01.wav" by InspectorJ (www.jshaw.co.uk).
 
 ## Music (`apps/web/public/audio/music/`, shuffled playlist, off by default)
 | File | Track | Artist / source | License |

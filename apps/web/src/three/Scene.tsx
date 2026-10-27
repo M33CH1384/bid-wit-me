@@ -145,9 +145,6 @@ export interface SceneProps {
   crowdCue?: CrowdCue;
   /** False under reduced effects: figures render at rest, static. */
   crowdAnimate?: boolean;
-  /** The apparition system is live at this table (solo King sample):
-   *  the ghost character leaves the standing ring and only visits. */
-  ghostRail?: boolean;
   /** camera view: standing (default) or sitting (lower/closer) */
   view?: 'standing' | 'sitting';
   /** Turn up (slam mode): Standing drags slam at max only when this is on. */
@@ -1650,7 +1647,6 @@ export default function Scene(props: SceneProps) {
           turnSeat={props.turnSeat ?? -1}
           cue={props.crowdCue}
           animate={props.crowdAnimate ?? false}
-          ghost={props.ghostRail ?? false}
           aspect={aspect}
           short={!!props.short}
         />

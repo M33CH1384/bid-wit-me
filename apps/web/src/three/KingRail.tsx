@@ -29,14 +29,14 @@
  * pose, zero per-frame cost — the crowd is scenery, still scenery.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AdditiveBlending, CanvasTexture, PlaneGeometry, SRGBColorSpace, TextureLoader, VideoTexture, type Group, type Mesh, type MeshBasicMaterial, type PointLight, type Texture } from 'three';
+import { CanvasTexture, PlaneGeometry, SRGBColorSpace, TextureLoader, type Group, type Mesh, type Texture } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { storyPortraitFor } from '@spades/bots';
 import { fx } from '../fx';
 import { edgePoint, seatDir, type SeatPos } from './layout';
 import {
-  BODY_H, BODY_W, GHOST_CLIP, GHOST_ID, GHOST_PEAK, RAIL_FLOOR_Y,
-  attentionYawFor, crowdPoseAt, ghostPresenceAt, kingRailFigures, restPose, ringScaleFor, seatedFigureFor, seatedPoseAt, stampStir,
+  BODY_H, BODY_W, RAIL_FLOOR_Y,
+  attentionYawFor, crowdPoseAt, kingRailFigures, restPose, ringScaleFor, seatedFigureFor, seatedPoseAt, stampStir,
   type CrowdCue, type RailFigure, type SeatedFigure,
 } from './kingRailLayout';
 
@@ -323,217 +323,6 @@ function CrowdTicker() {
 }
 
 /* ------------------------------------------------------------------ */
-/* The apparition (owner, 2026-10-26, evening): GHOST_ID no longer    */
-/* stands in the ring — he VISITS. A short silent video presence      */
-/* (clip in kingRailLayout) at his own rail slot: warm golden, edges  */
-/* dissolved, never solid; the lightning tier rides the same window   */
-/* through the cue (see GhostDirector). Pure decoration — no raycast, */
-/* no input, ever; the play space is untouched while he is present    */
-/* because he stands on the ring slot the layout already guarantees.  */
-/* ------------------------------------------------------------------ */
-
-let ghostAlphaCache: Texture | null = null;
-/** The feather for the apparition plane: a radial keep over the
- *  figure, dissolving to nothing at the frame's edges and foot —
- *  the same recipe as the standing figures' faded portraits, wider. */
-function ghostAlphaTexture(): Texture {
-  if (ghostAlphaCache) return ghostAlphaCache;
-  const S = 256;
-  const cv = document.createElement('canvas');
-  cv.width = S; cv.height = S;
-  const g = cv.getContext('2d')!;
-  const rg = g.createRadialGradient(S * 0.5, S * 0.40, S * 0.10, S * 0.5, S * 0.44, S * 0.55);
-  rg.addColorStop(0, '#ffffff');
-  rg.addColorStop(0.7, '#ffffff');
-  rg.addColorStop(1, '#000000');
-  g.fillStyle = rg;
-  g.fillRect(0, 0, S, S);
-  const lg = g.createLinearGradient(0, S * 0.52, 0, S * 0.99);
-  lg.addColorStop(0, 'rgba(0,0,0,0)');
-  lg.addColorStop(1, 'rgba(0,0,0,1)');
-  g.globalCompositeOperation = 'destination-out';
-  g.fillStyle = lg;
-  g.fillRect(0, S * 0.5, S, S * 0.5);
-  ghostAlphaCache = new CanvasTexture(cv);
-  return ghostAlphaCache;
-}
-
-let ghostGlowCache: Texture | null = null;
-/** A soft warm halo — the presence lights its own little patch of
- *  night air. */
-function ghostGlowTexture(): Texture {
-  if (ghostGlowCache) return ghostGlowCache;
-  const S = 256;
-  const cv = document.createElement('canvas');
-  cv.width = S; cv.height = S;
-  const g = cv.getContext('2d')!;
-  const rg = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-  rg.addColorStop(0, 'rgba(255,255,255,0.85)');
-  rg.addColorStop(0.45, 'rgba(255,255,255,0.32)');
-  rg.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = rg;
-  g.fillRect(0, 0, S, S);
-  ghostGlowCache = new CanvasTexture(cv);
-  return ghostGlowCache;
-}
-
-let ghostPosterCache: Texture | null | undefined;
-/** The clip's poster — the reduced-effects still frame, and the
- *  fallback whenever the video itself cannot play. */
-function ghostPoster(onReady: () => void): Texture | null {
-  if (ghostPosterCache !== undefined) return ghostPosterCache;
-  ghostPosterCache = null;
-  new TextureLoader().load(GHOST_CLIP.poster, (tex) => {
-    tex.colorSpace = SRGBColorSpace;
-    ghostPosterCache = tex;
-    onReady();
-  }, undefined, () => { /* stays null — the visit simply doesn't render */ });
-  return null;
-}
-
-/**
- * Ray's visitation, at his ring slot. Animated: the silent clip on a
- * feathered plane, opacity/brightness driven by ghostPresenceAt.
- * Reduced: the poster still on the same plane, opacity fade only —
- * same windows, same caps, no video motion (and lightning never
- * stamps under reduced effects, so the venue stays calm).
- */
-function GhostFigure({ fig, cue, animate }: { fig: RailFigure; cue: CrowdCue; animate: boolean }) {
-  const group = useRef<Group>(null);
-  const mat = useRef<MeshBasicMaterial>(null);
-  const glowMat = useRef<MeshBasicMaterial>(null);
-  const shadowMat = useRef<MeshBasicMaterial>(null);
-  const [, setArt] = useState(0);
-  const poster = ghostPoster(() => setArt((x) => x + 1));
-  const video = useMemo(() => {
-    if (!animate || typeof document === 'undefined') return null;
-    const v = document.createElement('video');
-    v.src = GHOST_CLIP.src;
-    v.muted = true;
-    v.loop = true;
-    v.playsInline = true;
-    v.preload = 'auto';
-    v.crossOrigin = 'anonymous';
-    return v;
-  }, [animate]);
-  const [videoDead, setVideoDead] = useState(false);
-  useEffect(() => {
-    if (!video) return;
-    const onErr = () => setVideoDead(true);
-    video.addEventListener('error', onErr);
-    void video.play().catch(() => { /* the poster carries the visit */ });
-    return () => { video.removeEventListener('error', onErr); video.pause(); };
-  }, [video]);
-  const videoTex = useMemo(() => (video ? new VideoTexture(video) : null), [video]);
-  useEffect(() => () => { videoTex?.dispose(); }, [videoTex]);
-  const tex = animate && !videoDead ? videoTex : poster;
-  const alpha = useMemo(() => ghostAlphaTexture(), []);
-  const glowTex = useMemo(() => ghostGlowTexture(), []);
-  const shadowTex = useMemo(() => contactShadow(), []);
-
-  // a presence, larger than life: his crown rides a touch above the
-  // height his standing figure held; the frame's crown (~4% down)
-  // lands on it, and the dissolved foot floats — he is visiting,
-  // not standing.
-  const H = fig.height * 1.1;
-  const pw = 0.8 * H / 1.74 * 1.3;
-  const ph = pw * (800 / 600);
-  const centerY = RAIL_FLOOR_Y + H - ph * 0.46;
-
-  // A visitation steps UP to the rail — across the table, on his own
-  // side. His standing slot is the near corner: behind the player's
-  // own shoulder, outside the camera's frustum in both views, where
-  // a visitation could never be seen delivering its line. So he
-  // manifests on the far rail (same side, mirrored depth), pulled in
-  // to the rail's inner edge, facing the table. (In the full
-  // conversion every character visits this way: far side, own side,
-  // stepped up — far-side standers simply keep their own depth.)
-
-  const r0 = Math.hypot(fig.x, fig.z);
-  const rStep = (fig.row === 0 ? r0 : r0 * (2.55 / 3.1)) * 0.92;
-  const k = r0 > 0 ? rStep / r0 : 1;
-  // Clamp into the far rail's visible arc: portrait's narrow frustum
-  // crops the side arcs entirely (34° keeps him in frame there),
-  // while landscape sees the whole far rail, so he keeps his natural
-  // mirrored angle (80° ≈ unclamped for every slot he could hold).
-  // A visit exists to be seen; his own side is kept either way.
-  const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
-  const VISIT_ARC = ((aspect < 1 ? 34 : 80) * Math.PI) / 180;
-  const rawAng = Math.atan2(fig.x * k, Math.abs(fig.z) * k);
-  const ang = Math.max(-VISIT_ARC, Math.min(VISIT_ARC, rawAng));
-  const gx = Math.sin(ang) * rStep;
-  const gz = -Math.cos(ang) * rStep;
-  const gyaw = -ang;
-
-  useFrame(() => {
-    const p = ghostPresenceAt(performance.now(), cue);
-    const vis = p.opacity > 0.004;
-    if (group.current) group.current.visible = vis;
-    if (!vis) return;
-    if (mat.current) {
-      mat.current.opacity = p.opacity;
-      mat.current.color.setRGB(p.brightK, 0.85 * p.brightK, 0.64 * p.brightK);
-    }
-    if (glowMat.current) glowMat.current.opacity = p.opacity * 0.32;
-    if (shadowMat.current) shadowMat.current.opacity = 0.5 * Math.min(1, p.opacity / GHOST_PEAK);
-  });
-
-  return (
-    <group ref={group} name="rail-apparition" position={[gx, 0, gz]} rotation={[0, gyaw, 0]} renderOrder={fig.row === 0 ? 2 : 1} visible={false}>
-      <mesh geometry={QUAD} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[pw * 1.5, pw * 1.15, 1]} renderOrder={0}>
-        <meshBasicMaterial ref={shadowMat} map={shadowTex} transparent opacity={0} depthWrite={false} color="#000000" />
-      </mesh>
-      <mesh geometry={QUAD} position={[0, centerY, -0.06]} scale={[pw * 1.9, ph * 1.25, 1]}>
-        <meshBasicMaterial ref={glowMat} map={glowTex} transparent opacity={0} blending={AdditiveBlending} depthWrite={false} color="#c07f2e" />
-      </mesh>
-      {tex && (
-        <mesh geometry={QUAD} position={[0, centerY, 0]} scale={[pw, ph, 1]}>
-          <meshBasicMaterial ref={mat} map={tex} alphaMap={alpha} transparent opacity={0} depthWrite={false} />
-        </mesh>
-      )}
-    </group>
-  );
-}
-
-/**
- * Drives the venue through a lightning reveal: the renderer's
- * exposure (the dip, the strike spike, the flickering return) and a
- * cool strike light over the felt. Owns the exposure only while a
- * reveal runs — ghostPresenceAt returns exposureK 1 at rest — and
- * restores the standing exposure on unmount.
- */
-function GhostDirector({ cue }: { cue: CrowdCue }) {
-  const gl = useThree((s) => s.gl);
-  const light = useRef<PointLight>(null);
-  const base = useRef<number | null>(null);
-  useFrame(() => {
-    if (base.current === null) base.current = gl.toneMappingExposure;
-    const p = ghostPresenceAt(performance.now(), cue);
-    const target = base.current * p.exposureK;
-    if (Math.abs(gl.toneMappingExposure - target) > 0.002) gl.toneMappingExposure = target;
-    if (light.current) light.current.intensity = p.strikeK * 55;
-  });
-  useEffect(() => () => { if (base.current !== null) gl.toneMappingExposure = base.current; }, [gl]);
-  return <pointLight ref={light} position={[0, 2.4, -0.4]} intensity={0} color="#d7e4ff" distance={10} decay={1.7} />;
-}
-
-/** Reduced-effects frame source for apparition windows: the crowd
- *  ticker is unmounted then, but a still-frame visit still needs its
- *  fade frames — flow only while a window is pending or live. */
-function GhostTicker({ cue }: { cue: CrowdCue }) {
-  const invalidate = useThree((s) => s.invalidate);
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      if (document.hidden) return;
-      const now = performance.now();
-      if (cue.apparitionUntil > now - 400 && cue.apparitionAt < now + 20000) invalidate();
-    }, 100);
-    return () => window.clearInterval(id);
-  }, [invalidate, cue]);
-  return null;
-}
-
-/* ------------------------------------------------------------------ */
 
 export interface KingRailProps {
   /** the rail cast (character ids) — empty off the King */
@@ -548,13 +337,9 @@ export interface KingRailProps {
   /** stage shape: wide/short stages push the ring out (ringScaleFor) */
   aspect: number;
   short: boolean;
-  /** the apparition system is live (the solo King sample): GHOST_ID
-   *  leaves the standing ring and only visits. Off (co-op, every
-   *  other surface) the ring renders exactly as it always has. */
-  ghost?: boolean;
 }
 
-export default function KingRail({ cast, seated, positions, n, turnSeat, cue, animate, aspect, short, ghost = false }: KingRailProps) {
+export default function KingRail({ cast, seated, positions, n, turnSeat, cue, animate, aspect, short }: KingRailProps) {
   const ringScale = ringScaleFor(aspect, short);
   const figures = useMemo(() => kingRailFigures(cast, ringScale), [cast, ringScale]);
   const seatedFigs = useMemo(
@@ -576,19 +361,10 @@ export default function KingRail({ cast, seated, positions, n, turnSeat, cue, an
     return { x: p.x, z: p.z };
   }, [turnPos, n]);
 
-  // The apparition split: with the system live, the ghost's slot is
-  // computed with everyone else's (positions stay stable) but his
-  // STANDING figure is not rendered — he only visits it.
-  const standing = ghost ? figures.filter((f) => f.id !== GHOST_ID) : figures;
-  const ghostFig = ghost ? figures.find((f) => f.id === GHOST_ID) : undefined;
-
   return (
     <group name="king-rail-crowd">
       {animate && <CrowdTicker />}
-      {!animate && ghostFig && <GhostTicker cue={cue} />}
-      {ghostFig && <GhostDirector cue={cue} />}
-      {standing.map((f) => <CrowdFigure key={f.id} fig={f} cue={cue} animate={animate} />)}
-      {ghostFig && <GhostFigure key={ghostFig.id} fig={ghostFig} cue={cue} animate={animate} />}
+      {figures.map((f) => <CrowdFigure key={f.id} fig={f} cue={cue} animate={animate} />)}
       {seatedFigs.map((f) => (f ? <SeatedFigure3D key={f.seat} fig={f} cue={cue} animate={animate} target={target} /> : null))}
     </group>
   );
