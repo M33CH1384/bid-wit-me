@@ -29,15 +29,15 @@
  * pose, zero per-frame cost — the crowd is scenery, still scenery.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CanvasTexture, PlaneGeometry, SRGBColorSpace, TextureLoader, type Group, type Mesh, type Texture } from 'three';
+import { AdditiveBlending, CanvasTexture, LinearFilter, PlaneGeometry, ShaderMaterial, SRGBColorSpace, TextureLoader, VideoTexture, type Group, type Mesh, type MeshBasicMaterial, type Texture } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { storyPortraitFor } from '@spades/bots';
 import { fx } from '../fx';
 import { edgePoint, seatDir, type SeatPos } from './layout';
 import {
-  BODY_H, BODY_W, RAIL_FLOOR_Y,
-  attentionYawFor, crowdPoseAt, kingRailFigures, restPose, ringScaleFor, seatedFigureFor, seatedPoseAt, stampStir,
-  type CrowdCue, type RailFigure, type SeatedFigure,
+  BODY_H, BODY_W, RAIL_FLOOR_Y, RAIL_VISITORS, VISIT_PEAK,
+  attentionYawFor, crowdPoseAt, kingRailFigures, restPose, ringScaleFor, seatedFigureFor, seatedPoseAt, stampStir, visitStateAt,
+  type CrowdCue, type RailFigure, type RailVisitorClips, type SeatedFigure,
 } from './kingRailLayout';
 
 /* ------------------------------------------------------------------ */
@@ -323,6 +323,271 @@ function CrowdTicker() {
 }
 
 /* ------------------------------------------------------------------ */
+/* The filmed visit (owner, 2026-10-26, late): a character with      */
+/* clips in RAIL_VISITORS no longer stands in the ring — he VISITS.   */
+/* Full-body silent film (arrive / idle / depart) on a floor-anchored */
+/* plane at his rail slot, black-keyed by shader so the figure        */
+/* composites into the venue's night, warm gold over the whole body,  */
+/* a contact shadow tracking him across the walk. The clip set and    */
+/* the phase machine live in kingRailLayout; the windows are stamped  */
+/* on the cue by the table. Pure decoration — no raycast, no input,   */
+/* ever; he stands on the ring slot the layout already guarantees.    */
+/* ------------------------------------------------------------------ */
+
+let visitGlowCache: Texture | null = null;
+/** A soft warm halo — the visit lights its own little patch of
+ *  night air. */
+function visitGlowTexture(): Texture {
+  if (visitGlowCache) return visitGlowCache;
+  const S = 256;
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  const g = cv.getContext('2d')!;
+  const rg = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  rg.addColorStop(0, 'rgba(255,255,255,0.85)');
+  rg.addColorStop(0.45, 'rgba(255,255,255,0.32)');
+  rg.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = rg;
+  g.fillRect(0, 0, S, S);
+  visitGlowCache = new CanvasTexture(cv);
+  return visitGlowCache;
+}
+
+const posterCache = new Map<string, Texture | null>();
+/** A visitor's full-body poster — the reduced-effects still frame,
+ *  and the stand-in until the arrive clip can play. */
+function visitPoster(clips: RailVisitorClips, onReady: () => void): Texture | null {
+  const hit = posterCache.get(clips.poster);
+  if (hit !== undefined) return hit;
+  posterCache.set(clips.poster, null);
+  new TextureLoader().load(clips.poster, (tex) => {
+    tex.colorSpace = SRGBColorSpace;
+    // NPOT frame, sampled on a plane: no mip chain (an incomplete
+    // texture samples black on some drivers — the video-plane recipe).
+    tex.generateMipmaps = false;
+    tex.minFilter = LinearFilter;
+    posterCache.set(clips.poster, tex);
+    onReady();
+  }, undefined, () => { /* stays null — the visit simply doesn't render */ });
+  return null;
+}
+
+/** The black-key composite: the footage is a man lit warm against
+ *  pure black, so the frame composites additively (black adds
+ *  nothing) with a soft rectangular feather at the frame's edges and
+ *  a hard-ish cut just under the shoe line (feetFrac) so the floor
+ *  spill in the footage never prints as a rectangle on the venue
+ *  floor — the contact shadow grounds him instead. The warm grade is
+ *  one golden multiplier over the whole figure. */
+function visitMaterial(feetFrac: number): ShaderMaterial {
+  return new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    uniforms: {
+      uTex: { value: null as Texture | null },
+      uOpacity: { value: 0 },
+      uFeet: { value: feetFrac },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      uniform sampler2D uTex;
+      uniform float uOpacity;
+      uniform float uFeet;
+      varying vec2 vUv;
+      void main() {
+        vec3 c = texture2D(uTex, vUv).rgb;
+        float ex = smoothstep(0.0, 0.05, vUv.x) * (1.0 - smoothstep(0.95, 1.0, vUv.x));
+        float ey = 1.0 - smoothstep(0.96, 1.0, vUv.y);
+        float below = smoothstep(0.0, 0.025, vUv.y - (1.0 - uFeet) + 0.012);
+        float a = uOpacity * ex * ey * below;
+        gl_FragColor = vec4(c * vec3(1.0, 0.9, 0.74) * a, a);
+      }`,
+  });
+}
+
+interface VisitVideos { arrive: HTMLVideoElement; idle: HTMLVideoElement; depart: HTMLVideoElement }
+
+function makeVisitVideo(srcPath: string, loop: boolean): HTMLVideoElement {
+  const v = document.createElement('video');
+  v.src = srcPath;
+  v.muted = true;
+  v.loop = loop;
+  v.playsInline = true;
+  v.preload = 'auto';
+  v.crossOrigin = 'anonymous';
+  return v;
+}
+
+/**
+ * One visitor's film at his ring slot. Animated: the three clips on
+ * one floor-anchored plane, the texture + opacity driven by
+ * visitStateAt (walk in → settled presence → walk out), the contact
+ * shadow tracking his in-frame centre. Reduced: the full-body poster
+ * still on the same plane, opacity envelope only — same windows,
+ * same caps, no video motion.
+ */
+function VisitFigure({ fig, clips, cue, animate }: { fig: RailFigure; clips: RailVisitorClips; cue: CrowdCue; animate: boolean }) {
+  const group = useRef<Group>(null);
+  const plane = useRef<Mesh>(null);
+  const glowMat = useRef<MeshBasicMaterial>(null);
+  const shadow = useRef<Mesh>(null);
+  const shadowMat = useRef<MeshBasicMaterial>(null);
+  const [, setArt] = useState(0);
+  const poster = visitPoster(clips, () => setArt((x) => x + 1));
+  const videos = useMemo<VisitVideos | null>(() => {
+    if (!animate || typeof document === 'undefined') return null;
+    return {
+      arrive: makeVisitVideo(clips.arrive, false),
+      idle: makeVisitVideo(clips.idle, true),
+      depart: makeVisitVideo(clips.depart, false),
+    };
+  }, [animate, clips]);
+  const textures = useMemo(() => {
+    if (!videos) return null;
+    const mk = (v: HTMLVideoElement): VideoTexture => {
+      const t = new VideoTexture(v);
+      t.colorSpace = SRGBColorSpace;
+      // NPOT frame, sampled on a plane: no mip chain (an incomplete
+      // texture samples black on some drivers — the video-plane recipe).
+      t.generateMipmaps = false;
+      t.minFilter = LinearFilter;
+      return t;
+    };
+    return { arrive: mk(videos.arrive), idle: mk(videos.idle), depart: mk(videos.depart) };
+  }, [videos]);
+  useEffect(() => () => {
+    if (!textures) return;
+    textures.arrive.dispose(); textures.idle.dispose(); textures.depart.dispose();
+  }, [textures]);
+  const [dead, setDead] = useState<Partial<Record<keyof VisitVideos, boolean>>>({});
+  useEffect(() => {
+    if (!videos) return;
+    const onErr = (k: keyof VisitVideos) => () => setDead((d) => ({ ...d, [k]: true }));
+    const handlers = (Object.keys(videos) as (keyof VisitVideos)[]).map((k) => {
+      const h = onErr(k);
+      videos[k].addEventListener('error', h);
+      return [videos[k], h] as const;
+    });
+    // Pre-roll the arrival so the first materialize never waits on it.
+    void videos.arrive.play().then(() => videos.arrive.pause()).catch(() => { /* the poster carries the visit */ });
+    return () => { handlers.forEach(([v, h]) => { v.removeEventListener('error', h); v.pause(); }); };
+  }, [videos]);
+  const mat = useMemo(() => visitMaterial(clips.feetFrac), [clips]);
+  useEffect(() => () => { mat.dispose(); }, [mat]);
+  const glowTex = useMemo(() => visitGlowTexture(), []);
+  const shadowTex = useMemo(() => contactShadow(), []);
+
+  // LIFE SIZE, floor-anchored: his height inside the frame is
+  // feetFrac of the frame; size the plane so that span equals the
+  // height his standing figure held, with the frame's shoe line
+  // (feetFrac down) planted exactly on the venue floor.
+  const ph = fig.height / clips.feetFrac;
+  const pw = ph * 0.75;
+
+  // A visit steps UP to the rail — across the table, on his own
+  // side, at the front ring's depth, facing the table. (In the full
+  // conversion every character visits this way: far side, own side,
+  // stepped up — far-side standers simply keep their own depth.)
+  const r0 = Math.hypot(fig.x, fig.z);
+  const aspectNow = useThree((s) => s.size.width / Math.max(1, s.size.height));
+  let gx: number; let gz: number; let gyaw: number;
+  if (aspectNow < 1) {
+    // Portrait: the narrow frustum crops the side arcs entirely —
+    // clamp into the far arc (34°) at the stepped-up radius.
+    const rStep = (fig.row === 0 ? r0 : r0 * (2.55 / 3.1)) * 0.92;
+    const k = r0 > 0 ? rStep / r0 : 1;
+    const VISIT_ARC = (34 * Math.PI) / 180;
+    const rawAng = Math.atan2(fig.x * k, Math.abs(fig.z) * k);
+    const ang = Math.max(-VISIT_ARC, Math.min(VISIT_ARC, rawAng));
+    gx = Math.sin(ang) * rStep;
+    gz = -Math.cos(ang) * rStep;
+    gyaw = -ang;
+  } else {
+    // Landscape: measured at the real table — a far-arc visit
+    // (his own slot mirrors to -66°) lands behind the scorebug and
+    // the partner's plate, head clipped by the frame top. The far
+    // FLANK is the visible stage (the ring's own flank figures read
+    // there): beyond 40° he snaps to the flank on his own side, at
+    // the front ring's depth. A visit exists to be seen.
+    const rStep = r0 * (2.55 / (fig.row === 0 ? 2.55 : 3.1)) * 0.98;
+    const rawAng = Math.atan2(fig.x, Math.abs(fig.z));
+    const FLANK = (82 * Math.PI) / 180;
+    const ang = Math.abs(rawAng) > (40 * Math.PI) / 180 ? Math.sign(rawAng) * FLANK : rawAng;
+    gx = Math.sin(ang) * rStep;
+    gz = -Math.cos(ang) * rStep;
+    gyaw = -ang;
+  }
+
+  const phaseRef = useRef<string>('gone');
+  useFrame(() => {
+    const st = visitStateAt(performance.now(), cue, clips);
+    const vis = st.opacity > 0.004 && st.phase !== 'gone';
+    if (group.current) group.current.visible = vis;
+    if (!vis) { phaseRef.current = 'gone'; return; }
+    // texture: the current phase's clip (a dead clip falls back to
+    // the poster, and the poster covers the beats before a clip can
+    // play); the reduced-effects path is the poster throughout.
+    const key: keyof VisitVideos | null = st.phase === 'settled' ? 'idle' : st.phase === 'arrive' || st.phase === 'depart' ? st.phase : null;
+    let tex: Texture | null = poster;
+    if (videos && textures && key && !dead[key]) tex = textures[key];
+    mat.uniforms.uTex.value = tex;
+    mat.uniforms.uOpacity.value = st.opacity;
+    if (plane.current) plane.current.visible = !!tex;
+    if (videos && key) {
+      const v = videos[key];
+      const want = st.clipMs / 1000;
+      if (phaseRef.current !== st.phase) {
+        phaseRef.current = st.phase;
+        if (Math.abs(v.currentTime - want) > 0.05) { try { v.currentTime = want; } catch { /* not ready */ } }
+        void v.play().catch(() => { /* the poster carries the visit */ });
+        (Object.keys(videos) as (keyof VisitVideos)[]).forEach((key) => { if (videos[key] !== v) videos[key].pause(); });
+      } else if (st.phase !== 'settled' && Math.abs(v.currentTime - want) > 0.3) {
+        try { v.currentTime = want; } catch { /* not ready */ }
+      }
+    }
+    if (glowMat.current) glowMat.current.opacity = st.opacity * 0.26;
+    if (shadowMat.current) shadowMat.current.opacity = 0.55 * Math.min(1, st.opacity / VISIT_PEAK);
+    if (shadow.current) shadow.current.position.x = (st.figureX - 0.5) * pw;
+  });
+
+  return (
+    <group ref={group} name="rail-visit" position={[gx, 0, gz]} rotation={[0, gyaw, 0]} renderOrder={fig.row === 0 ? 2 : 1} visible={false}>
+      <mesh ref={shadow} geometry={QUAD} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[pw * 0.85, pw * 0.5, 1]} renderOrder={0}>
+        <meshBasicMaterial ref={shadowMat} map={shadowTex} transparent opacity={0} depthWrite={false} color="#000000" />
+      </mesh>
+      <mesh geometry={QUAD} position={[0, RAIL_FLOOR_Y + ph * 0.52, -0.06]} scale={[pw * 1.7, ph * 1.15, 1]}>
+        <meshBasicMaterial ref={glowMat} map={glowTex} transparent opacity={0} blending={AdditiveBlending} depthWrite={false} color="#c07f2e" />
+      </mesh>
+      <mesh ref={plane} geometry={QUAD} position={[0, RAIL_FLOOR_Y + ph / 2, 0]} scale={[pw, ph, 1]}>
+        <primitive object={mat} attach="material" />
+      </mesh>
+    </group>
+  );
+}
+
+/** Reduced-effects frame source for visit windows: the crowd ticker
+ *  is unmounted then, but a still-frame visit still needs its fade
+ *  frames — flow only while a window is pending or live. */
+function VisitTicker({ cue }: { cue: CrowdCue }) {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      const now = performance.now();
+      if (cue.visitUntil > now - 400 && cue.visitAt < now + 20000) invalidate();
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [invalidate, cue]);
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
 
 export interface KingRailProps {
   /** the rail cast (character ids) — empty off the King */
@@ -337,9 +602,14 @@ export interface KingRailProps {
   /** stage shape: wide/short stages push the ring out (ringScaleFor) */
   aspect: number;
   short: boolean;
+  /** the filmed-visit system is live (the solo King sample):
+   *  characters with clips in RAIL_VISITORS leave the standing ring
+   *  and only visit. Off (co-op, every other surface) the ring
+   *  renders exactly as it always has. */
+  visit?: boolean;
 }
 
-export default function KingRail({ cast, seated, positions, n, turnSeat, cue, animate, aspect, short }: KingRailProps) {
+export default function KingRail({ cast, seated, positions, n, turnSeat, cue, animate, aspect, short, visit = false }: KingRailProps) {
   const ringScale = ringScaleFor(aspect, short);
   const figures = useMemo(() => kingRailFigures(cast, ringScale), [cast, ringScale]);
   const seatedFigs = useMemo(
@@ -361,10 +631,18 @@ export default function KingRail({ cast, seated, positions, n, turnSeat, cue, an
     return { x: p.x, z: p.z };
   }, [turnPos, n]);
 
+  // The visit split: with the system live, a visitor's slot is
+  // computed with everyone else's (positions stay stable) but their
+  // STANDING figure is not rendered — they only visit it.
+  const standing = visit ? figures.filter((f) => !RAIL_VISITORS[f.id]) : figures;
+  const visitFigs = visit ? figures.filter((f) => RAIL_VISITORS[f.id]) : [];
+
   return (
     <group name="king-rail-crowd">
       {animate && <CrowdTicker />}
-      {figures.map((f) => <CrowdFigure key={f.id} fig={f} cue={cue} animate={animate} />)}
+      {!animate && visitFigs.length > 0 && <VisitTicker cue={cue} />}
+      {standing.map((f) => <CrowdFigure key={f.id} fig={f} cue={cue} animate={animate} />)}
+      {visitFigs.map((f) => <VisitFigure key={f.id} fig={f} clips={RAIL_VISITORS[f.id]!} cue={cue} animate={animate} />)}
       {seatedFigs.map((f) => (f ? <SeatedFigure3D key={f.seat} fig={f} cue={cue} animate={animate} target={target} /> : null))}
     </group>
   );

@@ -61,7 +61,11 @@ import { fireCue, fx, useReduceEffects } from './fx';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { feltHandVisible } from './three/cardFace';
-import { newCrowdCue, stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue } from './three/crowdCue';
+import {
+  VISIT_ARRIVE_MS, VISIT_DEPART_MS, VISIT_SETTLED_MS, VISITOR_ID,
+  ambientVisit, newCrowdCue, stampVisit,
+  stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue,
+} from './three/crowdCue';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading, type LoadingSeat } from './TableLoading';
@@ -1744,6 +1748,27 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         // landed resolves here too, so the talk rides real moments.
         if (!beatFired && buzzAt('handEnd')) beatFired = true;
       }
+      // AMBIENT VISITS (filmed-visit pass): once per hand, a seeded
+      // roll may bring Ray in wordlessly — he walks in, stands a
+      // while, and walks out again: the coming-and-going texture
+      // between his lines. Never on the final hand (the endgame
+      // quiet is the King's; the witness line there is scripted),
+      // never over a window already running or scheduled.
+      if (visitSoloKing && snap.handNo !== visitRef.current.hand) {
+        visitRef.current.hand = snap.handNo;
+        if (finalHandNow) visitRef.current.final = true;
+        const visit = ambientVisit(
+          (story?.saveCtx?.attemptsAtStart ?? facts.attempts) + 1,
+          snap.handNo,
+          visitRef.current.final || snap.phase === 'gameOver',
+        );
+        if (visit) {
+          const at = performance.now() + visit.delayMs;
+          if (crowdCue.visitUntil < at) {
+            stampVisit(crowdCue, at, at + VISIT_ARRIVE_MS + visit.settledMs + VISIT_DEPART_MS, visit.settledMs);
+          }
+        }
+      }
       // RAILBIRDS: this attempt's drawn background cast, chiming in from
       // the rail — sparse, event-keyed, rate-capped (storyRail.ts), and
       // NEVER stacked on a scripted beat from this same state change.
@@ -1776,6 +1801,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           const lines = moment.kind === 'solo' ? [moment.line] : moment.lines;
           for (const l of lines) S.railSaid.push(l.line);
           const baseDelay = finalHandNow && stop.id === 'king' ? 7200 : 1100;
+          // A visit opens with a WALK-IN: when the rail opener is
+          // the visiting character, the whole beat waits for his
+          // arrival — his line lands as he settles, and an
+          // exchange's reply keeps its place behind the opener (the
+          // scheduler paces the lines off this one base).
+          const opensWithVisit = visitSoloKing && lines[0]?.speaker === VISITOR_ID;
+          const beatBase = opensWithVisit ? Math.max(baseDelay, VISIT_ARRIVE_MS + 400) : baseDelay;
           // Same pacing rule as deliver() (story/beatPacing.ts): an
           // exchange's reply used to land a fixed 1700 ms after the
           // opener — mid-sentence for any opener over ~1.7 s of voice,
@@ -1786,7 +1818,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           // the opener's last second and the cross-talk policy decides
           // the overlap, instead of waiting out the full clip + gap.
           void scheduleStoryBeats(lines, {
-            baseMs: baseDelay, gapMs: 1700, tailRideMs: REPLY_TAIL_RIDE_MS,
+            baseMs: beatBase, gapMs: 1700, tailRideMs: REPLY_TAIL_RIDE_MS,
             nameOf: (l) => STORY_CHARACTERS[l.speaker]?.name ?? l.speaker,
             audible: (l) => !sound.voiceMuted(STORY_CHARACTERS[l.speaker]?.name ?? l.speaker),
           }, (l, delayMs, ix) => {
@@ -1800,6 +1832,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             // seated player's figure leans with their reply.
             if (railSide) stampSpeaker(crowdCue, l.speaker, performance.now() + delayMs);
             else { const sx = names.indexOf(name); if (sx >= 0) noteSeatSpeech(sx, performance.now() + delayMs); }
+            // THE FILMED VISIT (owner, 2026-10-26, late): when the
+            // rail speaker is the visiting character, his line rides
+            // a visit — he starts walking in VISIT_ARRIVE_MS before
+            // the line lands (the beat's base delay was extended at
+            // scheduling so the walk completes first), settles as
+            // the line lands in his cast voice, lingers a beat, then
+            // walks out into the dark. An exchange's comeback line
+            // stamps again and the window merge extends his stay.
+            if (railSide && l.speaker === VISITOR_ID && visitSoloKing) {
+              const lineAt = performance.now() + delayMs;
+              stampVisit(crowdCue, lineAt - VISIT_ARRIVE_MS, lineAt + VISIT_SETTLED_MS + VISIT_DEPART_MS, VISIT_SETTLED_MS);
+            }
             // Rail speech is higher-priority than generic talk (mix
             // hierarchy): mark its window so chatter can't replace it.
             if (!sound.voiceMuted(name)) {
@@ -2508,6 +2552,19 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const crowdCueRef = useRef<CrowdCue | null>(null);
   if (!crowdCueRef.current) crowdCueRef.current = newCrowdCue();
   const crowdCue = crowdCueRef.current;
+  // THE FILMED VISIT (owner, 2026-10-26, late): at the SOLO King
+  // table Uncle Ray leaves the standing ring and only VISITS — his
+  // rail moments stamp a visit window on the cue (walk in → line →
+  // walk out), and ambient seeded visits bring him in wordlessly.
+  // Co-op keeps the ring exactly as shipped (its table stamps no
+  // windows). This replaced the same-day bust-portrait apparition,
+  // which the owner rejected ("live posters on a pillar"); the
+  // lightning tier that rode it stays reverted unless this look
+  // passes his eye.
+  const visitSoloKing = !online && kingRail.includes(VISITOR_ID);
+  // Per-match ambient-visit discipline. Refs, not state: a re-render
+  // must never reset it, and stamping never re-renders.
+  const visitRef = useRef({ hand: -1, final: false });
   const noteSeatSpeech = (seat: number, at: number) => {
     const id = seatedFigureIds?.[seat];
     if (id) stampSeatSpeaker(crowdCue, id, at);
@@ -2589,6 +2646,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           seatedFigures={seatedFiguresArr}
           crowdCue={crowdCue}
           crowdAnimate={!reduceFx && !fx.osReducedMotion}
+          visitRail={visitSoloKing}
           landCue={landCue}
           short={vp.short}
           safe={vp.safe}

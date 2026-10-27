@@ -31,7 +31,10 @@
  */
 import { Vector3 } from 'three';
 import { FELT, RAIL, edgePoint, seatDir, type SeatPos } from './layout';
-import type { CrowdCue } from './crowdCue';
+import {
+  VISIT_ARRIVE_MS, VISIT_DEPART_MS, VISIT_FADE_IN_MS, VISIT_FADE_OUT_MS,
+  VISIT_IDLE_MS, VISIT_PEAK, type CrowdCue,
+} from './crowdCue';
 
 /** The venue floor, 0.9 below the felt plane (mirrors Venue3D FLOOR_Y). */
 export const RAIL_FLOOR_Y = -0.9;
@@ -140,7 +143,7 @@ export function kingRailFigures(cast: readonly string[], ringScale = 1): RailFig
  * can stamp it without pulling three.js into the entry graph); it is
  * re-exported here for the scene-side consumers.
  */
-export { newCrowdCue, stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue } from './crowdCue';
+export { VISIT_AMBIENT_P, VISIT_ARRIVE_MS, VISIT_DEPART_MS, VISIT_FADE_IN_MS, VISIT_FADE_OUT_MS, VISIT_IDLE_MS, VISIT_PEAK, VISIT_SETTLED_MS, VISITOR_ID, ambientVisit, cueHash01, newCrowdCue, stampSeatSpeaker, stampSpeaker, stampStir, stampVisit, type AmbientVisit, type CrowdCue } from './crowdCue';
 
 /* ------------------------------------------------------------------ */
 /* Poses                                                               */
@@ -399,3 +402,121 @@ export function seatedFaceCorners(f: SeatedFigure, inflate = false): Vector3[] {
 }
 
 export { FELT, RAIL };
+
+/* ------------------------------------------------------------------ */
+/* The filmed visit (owner, 2026-10-26, late): the bust-portrait      */
+/* apparition was rejected on sight ("live posters on a pillar") —    */
+/* the rail's visits are now FULL-BODY FILM: a person walks in with   */
+/* real steps and weight, settles into living presence, drops his     */
+/* line, and walks out into the dark. The registry below drives       */
+/* everything: a character with clips leaves the standing ring and    */
+/* only visits. This pass converts Uncle Ray only; the other 19       */
+/* convert behind his verdict, one registry entry each. All of it is  */
+/* pure functions of the cue, so the choreography is unit-testable    */
+/* frame by frame.                                                    */
+/* ------------------------------------------------------------------ */
+
+export interface RailVisitorClips {
+  arrive: string;
+  idle: string;
+  depart: string;
+  /** the full-body art (webp): the reduced-effects still AND the
+   *  poster shown until the arrive clip can play. */
+  poster: string;
+  /** where his shoes meet the frame's bottom, as a fraction of the
+   *  frame height — the composite anchors the plane so THIS line
+   *  sits on the venue floor. */
+  feetFrac: number;
+  /** his centre in frame (fraction of width) at each phase's key
+   *  moments — the contact shadow tracks him as he crosses. */
+  enterX: number;
+  settleX: number;
+  exitX: number;
+}
+
+/** The visit registry. Clips are silent by construction (the encodes
+ *  carry no audio stream at all): full-body film generated from a
+ *  head-to-toe portrait of the shipped character — identity gated
+ *  frame by frame against the portrait — with real locomotion. His
+ *  cast recordings play over the film. The choreography constants
+ *  themselves live in ./crowdCue (three-free, so the table can stamp
+ *  windows without importing three). */
+export const RAIL_VISITORS: Record<string, RailVisitorClips> = {
+  uncleRay: {
+    arrive: '/assets/story/videos/ray-visit-arrive.mp4',
+    idle: '/assets/story/videos/ray-visit-idle.mp4',
+    depart: '/assets/story/videos/ray-visit-depart.mp4',
+    poster: '/assets/story/videos/ray-visit-poster.webp',
+    feetFrac: 0.94,
+    enterX: 0.3,
+    settleX: 0.51,
+    exitX: 1.04,
+  },
+};
+
+const smooth01 = (x: number): number => {
+  const c = Math.max(0, Math.min(1, x));
+  return c * c * (3 - 2 * c);
+};
+
+export type VisitPhase = 'gone' | 'arrive' | 'settled' | 'depart';
+
+export interface VisitState {
+  phase: VisitPhase;
+  /** plane opacity: 0..VISIT_PEAK (a presence, never solid) */
+  opacity: number;
+  /** ms into the CURRENT phase's clip (the idle phase loops) */
+  clipMs: number;
+  /** ms since the window opened (arrive-phase position tracking) */
+  elapsedMs: number;
+  /** his centre in frame right now (fraction of width) — the
+   *  contact shadow follows it across the walk */
+  figureX: number;
+}
+
+const NO_VISIT: VisitState = { phase: 'gone', opacity: 0, clipMs: 0, elapsedMs: 0, figureX: 0.51 };
+
+/**
+ * The visit's phase + envelope at time t. The window stamped on the
+ * cue splits by construction: arrive for VISIT_ARRIVE_MS (he walks
+ * in and settles; the ghost gathers over the first stretch of the
+ * walk), settled for the window's stamped hold (his line lands at
+ * its start; the presence loop breathes beneath it), then depart for
+ * VISIT_DEPART_MS (the nod, the turn, the walk out — the ghost lets
+ * go over the last stretch, as he leaves the light). Outside the
+ * window: gone.
+ */
+export function visitStateAt(t: number, cue: CrowdCue, clips: RailVisitorClips): VisitState {
+  if (t < cue.visitAt || t >= cue.visitUntil) return { ...NO_VISIT, figureX: clips.settleX };
+  const elapsed = t - cue.visitAt;
+  const settledEnd = VISIT_ARRIVE_MS + cue.visitSettledMs;
+  if (elapsed < VISIT_ARRIVE_MS) {
+    const k = elapsed / VISIT_ARRIVE_MS;
+    return {
+      phase: 'arrive',
+      opacity: VISIT_PEAK * smooth01(elapsed / VISIT_FADE_IN_MS),
+      clipMs: elapsed,
+      elapsedMs: elapsed,
+      figureX: clips.enterX + (clips.settleX - clips.enterX) * smooth01(k),
+    };
+  }
+  if (elapsed < settledEnd) {
+    const s = elapsed - VISIT_ARRIVE_MS;
+    return {
+      phase: 'settled',
+      opacity: VISIT_PEAK,
+      clipMs: s % VISIT_IDLE_MS,
+      elapsedMs: elapsed,
+      figureX: clips.settleX,
+    };
+  }
+  const d = elapsed - settledEnd;
+  const dk = Math.min(1, d / VISIT_DEPART_MS);
+  return {
+    phase: 'depart',
+    opacity: VISIT_PEAK * (1 - smooth01((d - (VISIT_DEPART_MS - VISIT_FADE_OUT_MS)) / VISIT_FADE_OUT_MS)),
+    clipMs: d,
+    elapsedMs: elapsed,
+    figureX: clips.settleX + (clips.exitX - clips.settleX) * dk,
+  };
+}

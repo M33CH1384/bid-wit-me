@@ -527,3 +527,184 @@ describe('the King table in the DOM: no coins, plates become info strips', () =>
     expect(table).toContain("? { 1: story.scene.stop.pair[0], 2: 'dee', 3: story.scene.stop.pair[1] }");
   });
 });
+
+/* ------------------------------------------- the filmed visit */
+/*
+ * THE FILMED VISIT (owner, 2026-10-26, late): the bust-portrait
+ * apparition shipped the same evening was rejected on sight — "that
+ * doesn't look like real people it looks like live posters on a
+ * pillar" — and the owner picked full-body filmed visits: "3d video
+ * that has people coming and going." Uncle Ray (the first railbird
+ * ever named) leaves the standing ring and only VISITS: full-body
+ * film walks him in with real steps, he settles into living
+ * presence, his line lands in his cast voice, he lingers, then walks
+ * out into the dark. The lightning tier that rode the apparition
+ * stays reverted — these pins also keep it OUT. The pins cover the
+ * registry + asset caps, the phase machine, the window merge, the
+ * ambient discipline, the ring split, the scheduling extension at
+ * the table source, and the reduced-effects still path.
+ */
+import { statSync } from 'node:fs';
+import {
+  RAIL_VISITORS, VISIT_ARRIVE_MS, VISIT_DEPART_MS, VISIT_FADE_IN_MS, VISIT_IDLE_MS,
+  VISIT_PEAK, VISIT_SETTLED_MS, VISITOR_ID, ambientVisit, stampVisit, visitStateAt,
+} from '../src/three/kingRailLayout';
+
+const assetSize = (rel: string): number => {
+  const p = [`apps/web/${rel}`, rel].find((c) => { try { statSync(c); return true; } catch { return false; } })!;
+  return statSync(p).size;
+};
+
+describe('the filmed visit — Uncle Ray walks in, he does not stand', () => {
+  const T0 = 1_000_000;
+  const clips = RAIL_VISITORS[VISITOR_ID]!;
+  /** the window the table stamps for a speaking visit whose line lands at lineAt */
+  const speechCue = (lineAt: number) => {
+    const cue = newCrowdCue();
+    stampVisit(cue, lineAt - VISIT_ARRIVE_MS, lineAt + VISIT_SETTLED_MS + VISIT_DEPART_MS, VISIT_SETTLED_MS);
+    return cue;
+  };
+
+  it('the registry names Ray, and his three clips + poster sit inside the story-video caps', () => {
+    expect(VISITOR_ID).toBe('uncleRay');
+    expect(clips.arrive).toBe('/assets/story/videos/ray-visit-arrive.mp4');
+    expect(clips.idle).toBe('/assets/story/videos/ray-visit-idle.mp4');
+    expect(clips.depart).toBe('/assets/story/videos/ray-visit-depart.mp4');
+    expect(clips.poster).toBe('/assets/story/videos/ray-visit-poster.webp');
+    for (const f of ['ray-visit-arrive.mp4', 'ray-visit-idle.mp4', 'ray-visit-depart.mp4']) {
+      expect(assetSize(`public/assets/story/videos/${f}`)).toBeLessThanOrEqual(800 * 1024);
+    }
+    expect(assetSize('public/assets/story/videos/ray-visit-poster.webp')).toBeLessThanOrEqual(120 * 1024);
+    // the shoe line sits low in the frame — a full body, head to shoes
+    expect(clips.feetFrac).toBeGreaterThan(0.9);
+    expect(clips.feetFrac).toBeLessThan(1);
+  });
+
+  it('phase machine: walk in → settled as the line lands → linger → walk out', () => {
+    const lineAt = T0 + VISIT_ARRIVE_MS + 400; // the beat base extended past the walk
+    const cue = speechCue(lineAt);
+    const at = cue.visitAt;
+    expect(visitStateAt(at - 1, cue, clips).phase).toBe('gone');
+    expect(visitStateAt(at - 1, cue, clips).opacity).toBe(0);
+    // mid-arrival: he is crossing the frame, still gathering
+    const mid = visitStateAt(at + VISIT_ARRIVE_MS / 2, cue, clips);
+    expect(mid.phase).toBe('arrive');
+    expect(mid.clipMs).toBeCloseTo(VISIT_ARRIVE_MS / 2, -2);
+    expect(mid.figureX).toBeGreaterThan(clips.enterX);
+    expect(mid.figureX).toBeLessThan(clips.settleX);
+    expect(visitStateAt(at + VISIT_FADE_IN_MS / 2, cue, clips).opacity).toBeCloseTo(VISIT_PEAK * 0.5, 2);
+    // the line lands exactly as he settles: full presence, idle at 0
+    const settled = visitStateAt(lineAt, cue, clips);
+    expect(settled.phase).toBe('settled');
+    expect(settled.opacity).toBeCloseTo(VISIT_PEAK, 5);
+    expect(settled.clipMs).toBe(0);
+    expect(settled.figureX).toBe(clips.settleX);
+    // the presence loop wraps inside a long settled hold
+    const longCue = newCrowdCue();
+    stampVisit(longCue, T0, T0 + VISIT_ARRIVE_MS + VISIT_IDLE_MS + 1500 + VISIT_DEPART_MS, VISIT_IDLE_MS + 1500);
+    const looped = visitStateAt(T0 + VISIT_ARRIVE_MS + VISIT_IDLE_MS + 500, longCue, clips);
+    expect(looped.phase).toBe('settled');
+    expect(looped.clipMs).toBe(500);
+    // departure: he crosses toward the exit and the ghost lets go at the end
+    const depAt = lineAt + VISIT_SETTLED_MS;
+    const dep = visitStateAt(depAt + 100, cue, clips);
+    expect(dep.phase).toBe('depart');
+    expect(dep.clipMs).toBe(100);
+    const leaving = visitStateAt(depAt + VISIT_DEPART_MS / 2, cue, clips);
+    expect(leaving.figureX).toBeGreaterThan(clips.settleX);
+    expect(leaving.opacity).toBeCloseTo(VISIT_PEAK, 5); // still fully there mid-walk
+    expect(visitStateAt(cue.visitUntil - 100, cue, clips).opacity).toBeLessThan(VISIT_PEAK * 0.15);
+    expect(visitStateAt(cue.visitUntil, cue, clips).phase).toBe('gone');
+    expect(visitStateAt(cue.visitUntil, cue, clips).opacity).toBe(0);
+  });
+
+  it('windows merge: an exchange comeback extends the SAME visit', () => {
+    const cue = newCrowdCue();
+    stampVisit(cue, T0, T0 + VISIT_ARRIVE_MS + VISIT_SETTLED_MS + VISIT_DEPART_MS, VISIT_SETTLED_MS);
+    const until0 = cue.visitUntil;
+    stampVisit(cue, T0 + 9000, T0 + 9000 + VISIT_SETTLED_MS + VISIT_DEPART_MS, VISIT_SETTLED_MS);
+    expect(cue.visitAt).toBe(T0); // never walks in twice
+    expect(cue.visitUntil).toBeGreaterThan(until0); // one continuous stay…
+    expect(cue.visitSettledMs).toBe(VISIT_SETTLED_MS + (cue.visitUntil - until0)); // …the hold absorbs the extension
+    stampVisit(cue, T0 + 60000, T0 + 60000 + 1000, 500); // after it closed: a fresh visit
+    expect(cue.visitAt).toBe(T0 + 60000);
+    expect(cue.visitSettledMs).toBe(500);
+  });
+
+  it('ambient visits: seeded, sparse, and never on the final hand', () => {
+    expect(ambientVisit(1, 1, true)).toBeNull();
+    const v = ambientVisit(1, 1, false);
+    expect(v).not.toBeNull(); // attempt 1, hand 1: the known roll fires
+    expect(v!.delayMs).toBeGreaterThanOrEqual(5000);
+    expect(v!.delayMs).toBeLessThan(12000);
+    expect(v!.settledMs).toBeGreaterThan(4000);
+    let fired = 0;
+    for (let seed = 1; seed <= 60; seed++) for (let hand = 1; hand <= 6; hand++) if (ambientVisit(seed, hand, false)) fired++;
+    expect(fired / (60 * 6)).toBeGreaterThan(0.2);
+    expect(fired / (60 * 6)).toBeLessThan(0.5);
+  });
+
+  it('the scheduling contract at the table source: the beat waits for the walk-in', () => {
+    const table = readSrc('src/Table.tsx');
+    expect(table).toContain('const visitSoloKing = !online && kingRail.includes(VISITOR_ID);'); // solo King only
+    expect(table).toContain('Math.max(baseDelay, VISIT_ARRIVE_MS + 400)'); // the whole beat extends…
+    expect(table).toContain('stampVisit(crowdCue, lineAt - VISIT_ARRIVE_MS, lineAt + VISIT_SETTLED_MS + VISIT_DEPART_MS, VISIT_SETTLED_MS)'); // …so the line lands at settle
+    expect(table).toContain('stampVisit(crowdCue, at, at + VISIT_ARRIVE_MS + visit.settledMs + VISIT_DEPART_MS, visit.settledMs)'); // ambient rides the same window
+    expect(table).toContain('visitRail={visitSoloKing}');
+  });
+
+  it('the lightning tier stays reverted: no stamps, no thunder, no director', () => {
+    const table = readSrc('src/Table.tsx');
+    expect(table).not.toContain('stampLightning');
+    expect(table).not.toContain('thunderRoll');
+    expect(table).not.toContain('tryGhostLightning');
+    const kr = readSrc('src/three/KingRail.tsx');
+    expect(kr).not.toContain('GhostDirector');
+    expect(kr).not.toContain('toneMappingExposure');
+    const cue = readSrc('src/three/crowdCue.ts');
+    expect(cue).not.toContain('lightningAt');
+    expect(cue).not.toContain('stampLightning');
+  });
+
+  it('Ray leaves the standing ring ONLY under the visit gate; the other 19 + seated are untouched', () => {
+    const kr = readSrc('src/three/KingRail.tsx');
+    expect(kr).toContain('figures.filter((f) => !RAIL_VISITORS[f.id])');
+    expect(kr).toContain('visitFigs.map((f) => <VisitFigure');
+    expect(kr).toContain('standing.map((f) => <CrowdFigure');
+    expect(kr).toContain('seatedFigs.map((f) => (f ? <SeatedFigure3D');
+    // the layout still deals all 20 slots — Ray's slot is his visit spot
+    const cast = railCastForAttempt('king', 1);
+    const figs = kingRailFigures(cast, 1);
+    expect(figs).toHaveLength(20);
+    expect(figs.find((f) => f.id === VISITOR_ID)).toBeDefined();
+    expect(kingRailFigures(cast, 1)).toEqual(figs); // deterministic — approval keeps every slot
+    const scene = readSrc('src/three/Scene.tsx');
+    expect(scene).toContain('visit={props.visitRail ?? false}');
+    const table = readSrc('src/Table.tsx');
+    expect(table).toContain('visitRail={visitSoloKing}');
+  });
+
+  it('floor-anchored at life scale: the shoe line plants on the venue floor', () => {
+    const kr = readSrc('src/three/KingRail.tsx');
+    expect(kr).toContain('const ph = fig.height / clips.feetFrac;'); // his in-frame span becomes his real height
+    expect(kr).toContain('position={[0, RAIL_FLOOR_Y + ph / 2, 0]}'); // the frame's bottom rides the floor offset…
+    expect(kr).toContain('uFeet'); // …and the shader cuts the frame at the shoe line
+    expect(kr).toContain('AdditiveBlending'); // black-keyed into the night
+    expect(kr).toContain('shadow.current.position.x = (st.figureX - 0.5) * pw'); // the contact shadow tracks the walk
+  });
+
+  it('reduced effects: the still-frame path — full-body poster, no video, ticker-driven fades', () => {
+    const kr = readSrc('src/three/KingRail.tsx');
+    expect(kr).toContain("if (!animate || typeof document === 'undefined') return null;");
+    expect(kr).toContain('visitPoster(clips');
+    expect(kr).toContain('{!animate && visitFigs.length > 0 && <VisitTicker cue={cue} />}');
+  });
+
+  it('no input lock: the visit takes no pointer path (source)', () => {
+    const kr = readSrc('src/three/KingRail.tsx');
+    const visit = kr.slice(kr.indexOf('function VisitFigure'), kr.indexOf('export interface KingRailProps'));
+    expect(visit).not.toContain('onPointer');
+    expect(visit).not.toContain('onClick');
+    expect(visit).not.toContain('raycast');
+  });
+});
