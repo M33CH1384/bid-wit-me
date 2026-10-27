@@ -68,6 +68,23 @@ export async function totalsFor(db: D1Database, userId: string, kind: RatingKind
   return t;
 }
 
+/**
+ * Streak Fire (owner, 2026-10-27): the home screen's streak source — the
+ * player's current win streak from the SAME stored cred_totals rows the
+ * Record Book's current-streak honor reads (totalsFor backfills a
+ * missing row from real game history). The home fire takes the MAX
+ * current streak across kinds and names the kind it came from; a tie
+ * keeps 'team' (the same deterministic rule the client's
+ * homeStreakFromTotals pins). Self payload only — see cred/routes.ts.
+ */
+export async function streakFireFor(db: D1Database, userId: string): Promise<{ current: number; kind: RatingKind | null; best: number }> {
+  const [team, cut] = await Promise.all([totalsFor(db, userId, 'team'), totalsFor(db, userId, 'cutthroat')]);
+  const pick = cut.curStreak > team.curStreak
+    ? { current: cut.curStreak, kind: 'cutthroat' as RatingKind }
+    : { current: team.curStreak, kind: 'team' as RatingKind };
+  return { current: pick.current, kind: pick.current > 0 ? pick.kind : null, best: Math.max(team.bestStreak, cut.bestStreak) };
+}
+
 async function bumpTotals(db: D1Database, userId: string, kind: RatingKind, won: boolean, shotsGiven: number, abandonedLeaver: boolean): Promise<Totals> {
   const t = await totalsFor(db, userId, kind);
   if (abandonedLeaver) {

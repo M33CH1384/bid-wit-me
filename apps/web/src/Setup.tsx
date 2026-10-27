@@ -24,6 +24,14 @@ import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
 import { OFFLINE_PAIR_KEY, TeamNameField, pairTeamNames, useTeamNameFor } from './TeamName';
 import { STORY_OWNER_ONLY, fetchStoryAccess, storyLockedFor } from './story/storyApi';
+import FireCanvas from './fire/FireCanvas';
+import { HOME_FIRE_TIERS, fetchHomeStreak, homeFireLabel, homeFireTier, type HomeStreak } from './streakFire';
+import { fx, useReduceEffects } from './fx';
+
+/** Streak-fire band heights (px) by tier: T1 licks the bottom edge, T4
+ *  earns the tall wall. The flames stay BEHIND the home column (the
+ *  splash/actions are lifted above the band in fire.css). */
+const HOME_BAND_HEIGHTS: Record<number, number> = { 1: 118, 2: 148, 3: 184, 4: 224 };
 import { loadStoryGame, storySaveSummary, type StorySaveSummary } from './story/storySave';
 import { storyPairLabel } from './story/storySettings';
 
@@ -213,6 +221,17 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
+  // Streak fire (owner, 2026-10-27): the signed-in player's REAL current
+  // win streak (server: cred_totals via /api/profile/me's streakFire
+  // field). Signed out or no streak data → null → no fire, honestly.
+  // Re-read when the identity changes, like the story flag above.
+  const [homeStreak, setHomeStreak] = useState<HomeStreak | null>(null);
+  const reduceFx = useReduceEffects();
+  useEffect(() => {
+    let live = true;
+    void fetchHomeStreak().then((hs) => { if (live) setHomeStreak(hs); });
+    return () => { live = false; };
+  }, [storyUserId]);
   const offlineTeamName = useTeamNameFor(OFFLINE_PAIR_KEY);
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const [ask, setAsk] = useState(isFirstVisit);
@@ -306,8 +325,12 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     // ink behind the column, glass on the shared elements, and the
     // emblem/card art painted by .wiz-home::before/::after — decoration
     // layered behind the splash, never DOM, never a destination.
+    const fireTier = homeStreak ? homeFireTier(homeStreak.streak) : 0;
     const actions = (
       <div className="wiz-actions">
+        {fireTier > 0 && homeStreak && (
+          <div className="home-streak-chip" data-testid="home-streak-chip">{homeFireLabel(homeStreak.streak)}</div>
+        )}
         {onResume ? (
           <>
             <button type="button" className="hero-btn gold" data-testid="resume" onClick={onResume}><b>RESUME GAME</b><small>{resumeLabel ?? 'your game in progress'}</small></button>
@@ -331,6 +354,11 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     );
     body = (
       <div className="wiz-home">
+        {fireTier > 0 && (
+          <div className="home-streak-fire" data-testid="home-streak-fire" style={{ height: HOME_BAND_HEIGHTS[fireTier] }}>
+            <FireCanvas mode="band" params={HOME_FIRE_TIERS[fireTier as 1 | 2 | 3 | 4]} calm={reduceFx || fx.osReducedMotion} />
+          </div>
+        )}
         <div className="splash">
           <div className="splash-logo-wrap"><img className="logo splash-logo" src="/assets/bwm-wordmark-white.svg" alt="" /><span className="beta-tag" data-testid="beta-tag">BETA</span></div>
           <h1 className="sr-only">Bid Wit Me</h1>

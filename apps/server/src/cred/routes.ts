@@ -41,6 +41,7 @@ import { currentSeasonId, seasonChallenges } from './seasonSets';
 import { seasonUpkeepView, type SeasonUpkeepView } from './bigJokerSeason';
 import { achievementStates } from './achievements';
 import { balance, ledger, move, grantWelcome, dailyLogin, earnMultiplier } from './coins';
+import { streakFireFor } from './hooks';
 
 export interface CredEnv extends AuthEnv {}
 
@@ -106,11 +107,19 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
   ]);
   const stats = await myStats(db, userId);
   const card = await cardFor(db, userId, userId, now, { level, stats });
+  /** Streak Fire (owner, 2026-10-27): the home screen's fire reads its
+   *  streak from HERE — the stored cred_totals cur_streak (max across
+   *  kinds, kind named), NOT the card's combined personalStats streak,
+   *  so the fire and the Record Book's current-streak honor can never
+   *  tell two stories. Self payload only: fullProfile is /api/profile/me
+   *  alone; the public profile never carries it. */
+  const streakFire = await streakFireFor(db, userId);
   // after cardFor: the Big Joker latch it maintains is fresh for the upkeep view
   const enrichedChallenges = await enrichChallenges(db, userId, challenges, now);
   return {
     user: { id: userId, name: username, avatar: pic.avatar, avatarUpdatedAt: pic.avatarUpdatedAt, tagline, socialLinks: links, region },
     card,
+    streakFire,
     /** developer (owner) accounts bypass unlock gates, e.g. The Pj's */
     dev,
     /** story-mode access (see story/access): admins, the named player

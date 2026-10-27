@@ -453,14 +453,11 @@
 @keyframes animfx-wire { 0% { box-shadow: inset 0 0 0 0 rgba(255, 170, 60, 0), inset 0 0 22px rgba(255, 120, 40, 0); } 30% { box-shadow: inset 0 0 0 3px rgba(255, 190, 90, .75), inset 0 0 46px rgba(255, 120, 40, .4); } 100% { box-shadow: inset 0 0 0 0 rgba(255, 170, 60, 0), inset 0 0 22px rgba(255, 120, 40, 0); } }
 @keyframes animfx-wire-still { 0% { box-shadow: inset 0 0 0 2px rgba(255, 190, 90, 0); } 30% { box-shadow: inset 0 0 0 2px rgba(255, 190, 90, .7); } 100% { box-shadow: inset 0 0 0 2px rgba(255, 190, 90, 0); } }
 
-/* ---- 5. on fire: a hot rim on the streaking seat's plate ---- */
-.animfx-firering {
-  position: fixed; border-radius: 16px; pointer-events: none;
-  border: 2px solid rgba(255, 150, 60, .9);
-  box-shadow: 0 0 20px 4px rgba(255, 110, 30, .5), inset 0 0 16px rgba(255, 150, 60, .4);
-  animation: animfx-fire-flicker .85s ease-in-out infinite alternate;
-}
-.animfx-firering.calm { animation: none; }
+/* ---- 5. on fire (owner, 2026-10-27): the CSS rim is RETIRED — the
+ * streaking seat's plate now carries the photoreal canvas fire
+ * (fire/fire.css .animfx-platefire, same trickStreak detector, same
+ * animfx-firering testid on the canvas surface). The flicker keyframes
+ * stay: the streak-heat cell below still breathes with them. */
 @keyframes animfx-fire-flicker { from { opacity: .76; } to { opacity: 1; } }
 
 /* ---- 6+7. streak heat / bag brink: scorebug cell overlays (capped, quiet) ---- */

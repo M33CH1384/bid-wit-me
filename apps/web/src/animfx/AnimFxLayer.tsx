@@ -44,11 +44,13 @@ import { CoinIcon } from '../RepBlock';
 import { fetchWagerList } from '../social/wagerApi';
 import {
   UPSET_GAP, bagBrinkSides, bagPenaltySides, bigJokerSeat, blindNilSeats, bostonSides,
-  comebackSides, fireSeat, heatSides, matchPointSides, newlyEliminated,
+  comebackSides, heatSides, matchPointSides, newlyEliminated, trickStreak,
   nilBustedSeats, nilLiveSeats, photoFinish, ratingGap, runClaimerSeat, saveInTrick,
   sealedNilSeats, seatsOfSide, setSides, sideIndexOf, spadePlayed, syncSides,
   trickWasCut, wheelsSides, wireSides,
 } from './detect';
+import FireCanvas from '../fire/FireCanvas';
+import { SMOLDER_PARAMS, TRICK_FIRE_TIERS, trickFire, trickFireLabel } from '../streakFire';
 import './animfx.css';
 
 /* ------------------------------------------------------------ positioning */
@@ -274,7 +276,11 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
   const [spots, setSpots] = useState<SeatSpot[]>([]);
   const [shade, setShade] = useState<ShadeSpec | null>(null);
   const [moons, setMoons] = useState<SeatSpot[]>([]);
-  const [fireSpots, setFireSpots] = useState<SeatSpot[]>([]);
+  /* STREAK FIRE (owner, 2026-10-27): the wave-3 ON FIRE look, upgraded —
+   * the CSS rim is now a photoreal canvas fire around the streaking
+   * seat's plate (fire/FireCanvas), fed by the SAME detector the rim
+   * used (trickStreak over the current hand's completed tricks). */
+  const [fireFx, setFireFx] = useState<{ seat: number; count: number; spot: SeatSpot } | null>(null);
   const [cells, setCells] = useState<CellFx[]>([]);
   /* the spotlight shade canvas: painted imperatively (see
    * paintSpotlightShade) whenever the composed spec changes, and repainted
@@ -740,12 +746,16 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
       });
     }
     setShade((prev) => (JSON.stringify(prev) === JSON.stringify(shadeNext) ? prev : shadeNext));
-    /* wave 3 persistent looks, measured the same way: ON FIRE rim over the
-       streaking seat's plate; STREAK HEAT / BAG BRINK overlays over the
-       scorebug cells */
-    const fp = st.phase === 'playing' ? fireSeat(st) : null;
-    const nf = fp !== null ? measure([fp]) : [];
-    setFireSpots((prev) => (JSON.stringify(prev) === JSON.stringify(nf) ? prev : nf));
+    /* wave 3 persistent looks, measured the same way: STREAK FIRE over
+       the streaking seat's plate (2 straight trick wins = smolder
+       pre-fire, 3+ = real flames by tier — streakFire.ts); STREAK HEAT /
+       BAG BRINK overlays over the scorebug cells */
+    const ts = st.phase === 'playing' ? trickStreak(st.tricks) : null;
+    const tf = ts ? trickFire(ts.count) : null;
+    const nf = ts && tf && tf.kind !== 'none'
+      ? (measure([ts.seat]).map((spot) => ({ seat: ts.seat, count: ts.count, spot })))[0] ?? null
+      : null;
+    setFireFx((prev) => (JSON.stringify(prev) === JSON.stringify(nf) ? prev : nf));
     const heat = heatSides(st.history);
     const brink = st.result ? [] : bagBrinkSides(st.bags);
     const nc: CellFx[] = [...new Set([...heat, ...brink])].flatMap((side) => {
@@ -896,9 +906,27 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
             {s.sx !== null && <div className="animfx-moonedge" style={{ left: s.sx - 34, top: (s.sy ?? 0) - 48, width: 68, height: 96 }} />}
           </div>
         ))}
-        {fireSpots.map((s) => (
-          <div key={`fr${s.seat}`} data-testid="animfx-firering" className={`animfx-firering${reduced ? ' calm' : ''}`} style={{ left: s.x - s.w / 2 - 5, top: s.y - s.h / 2 - 5, width: s.w + 10, height: s.h + 10 }} />
-        ))}
+        {fireFx && (() => {
+          const f = trickFire(fireFx.count);
+          const s = fireFx.spot;
+          const padX = 12;
+          const padB = 12;
+          const rise = f.kind === 'smolder' ? 22 : 38 + f.tier * 12;
+          return (
+            <div key={`fr${s.seat}`} className="animfx-platefire" style={{ left: s.x - s.w / 2 - padX, top: s.y - s.h / 2 - rise, width: s.w + padX * 2, height: s.h + rise + padB }}>
+              <FireCanvas
+                mode="plate"
+                testId={f.kind === 'fire' ? 'animfx-firering' : 'animfx-smolder'}
+                params={f.kind === 'smolder' ? SMOLDER_PARAMS : TRICK_FIRE_TIERS[f.tier]}
+                mask={{ x: padX, y: rise, w: s.w, h: s.h }}
+                calm={reduced}
+                label={trickFireLabel(fireFx.count)}
+                labelTestId="animfx-firelabel"
+                chipStyle={{ top: rise - 9, right: padX - 6 }}
+              />
+            </div>
+          );
+        })()}
         {cells.map((c) => (
           <Fragment key={`cell${c.side}`}>
             {c.heat && <div data-testid="animfx-cellheat" className={`animfx-cellheat${reduced ? ' calm' : ''}`} style={{ left: c.x, top: c.y, width: c.w, height: c.h }} />}
