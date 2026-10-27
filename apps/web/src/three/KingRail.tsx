@@ -1,32 +1,28 @@
 /**
- * The King's rail + seated three, as figures in the 3D scene (owner,
- * 2026-10-26: the face-coin columns "look really [bad] — remember
- * this is a 3d table, they should be standing around the table as
- * human figures not coins with faces"; then: "add all the other
- * characters to the table and animate everyone"; then the seated
- * King / Ringer / Dee join the scene too).
+ * The King table's figures in the 3D scene: the seated three (King /
+ * Ringer / Dee) and Uncle Ray's filmed visit.
  *
- * Construction: each figure is two crossed billboards sharing one
- * PlaneGeometry — a dark, scene-lit standing/seated silhouette
- * (canvas-painted: night gradient, cool rim from the street side,
- * warm key from the table side) and the character's shipped portrait
- * (512² bust) as head/upper body, its edges dissolved into the body
- * with a canvas alpha mask so nobody reads as a floating head or a
- * coin. Standing figures plant their feet on the venue floor
- * (RAIL_FLOOR_Y) around the table; seated figures rise from behind
- * the apron at their seat's edge.
+ * THE STANDING RAIL CROWD IS REMOVED (owner, 2026-10-26, final word:
+ * "we can go ahead and remove the floating heads at this point").
+ * The bust-portrait figures that stood around the table — portrait
+ * (512² bust) dissolved over a canvas silhouette — are gone entirely;
+ * the rail stands empty until the real 3D crowd, being built
+ * separately, arrives. Nothing of that construction remains here.
  *
- * Life: poses are pure functions of (figure, time, cue) from
- * kingRailLayout — seeded idle breathing/sway/head-wander, a stir
- * ripple on real match moments (stamped by the table over the cue
- * channel; the nuke family arrives over the fx bus), a lean for the
- * railbird or seated character whose line is landing, and seated
- * attention toward the current action with per-character amplitude
- * personalities (Dee expressive, Ringer edgy, the King nearly still).
+ * What stays, untouched: the seated three rise from behind the apron
+ * at their seats' edges (portrait over a seated torso, same
+ * construction as shipped), living by pure poses from kingRailLayout
+ * — seeded idle breathing/sway, a stir reaction on real match moments
+ * (stamped by the table over the cue channel; the nuke family arrives
+ * over the fx bus), a lean for the seated character whose line is
+ * landing, and attention toward the current action with per-character
+ * amplitude personalities (Dee expressive, Ringer edgy, the King
+ * nearly still). And the filmed visit (below) still walks Ray in and
+ * out of the empty rail on his moments.
  * The canvas is frameloop="demand": a 50 ms ticker (the venue's own
- * AmbientTicker cadence) keeps frames flowing only while the crowd
- * is animated. Reduced-effects / OS reduced-motion → no ticker, rest
- * pose, zero per-frame cost — the crowd is scenery, still scenery.
+ * AmbientTicker cadence) keeps frames flowing only while figures are
+ * animated. Reduced-effects / OS reduced-motion → no ticker, rest
+ * pose, zero per-frame cost.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AdditiveBlending, CanvasTexture, LinearFilter, PlaneGeometry, ShaderMaterial, SRGBColorSpace, TextureLoader, VideoTexture, type Group, type Mesh, type MeshBasicMaterial, type Texture } from 'three';
@@ -35,8 +31,8 @@ import { storyPortraitFor } from '@spades/bots';
 import { fx } from '../fx';
 import { edgePoint, seatDir, type SeatPos } from './layout';
 import {
-  BODY_H, BODY_W, RAIL_FLOOR_Y, RAIL_VISITORS, VISIT_PEAK,
-  attentionYawFor, crowdPoseAt, kingRailFigures, restPose, ringScaleFor, seatedFigureFor, seatedPoseAt, stampStir, visitStateAt,
+  RAIL_FLOOR_Y, RAIL_VISITORS, VISIT_PEAK,
+  attentionYawFor, railVisitorFigures, restPose, ringScaleFor, seatedFigureFor, seatedPoseAt, stampStir, visitStateAt,
   type CrowdCue, type RailFigure, type RailVisitorClips, type SeatedFigure,
 } from './kingRailLayout';
 
@@ -54,7 +50,7 @@ const portraitCache = new Map<string, Texture | null>();
 
 /** The portrait with its edges dissolved: a radial-ellipse mask keeps
  *  the face and shoulders, a linear dissolve takes the bottom into
- *  the silhouette. Painted once per character, module-cached. */
+ *  the seated torso. Painted once per character, module-cached. */
 function fadedPortrait(id: string, onReady: () => void): Texture | null {
   const hit = portraitCache.get(id);
   if (hit !== undefined) return hit;
@@ -97,58 +93,7 @@ function usePortrait(id: string): Texture | null {
   return tex;
 }
 
-/** Standing silhouettes: three stance variants (shoulder width / line),
- *  near-black with the venue's light on the edges — cool rim left
- *  (street side), warm key right (table side), a sheen at the crown
- *  of the shoulders where the portrait dissolves in. */
-const silhouetteCache: (Texture | null)[] = [null, null, null];
-function silhouette(variant: number): Texture {
-  const hit = silhouetteCache[variant];
-  if (hit) return hit;
-  const W = 256, H = 512;
-  const cv = document.createElement('canvas');
-  cv.width = W; cv.height = H;
-  const g = cv.getContext('2d')!;
-  const sw = [0.86, 0.98, 0.74][variant]!; // shoulder half-width factor
-  const neck = 0.16 + variant * 0.02;
-  const grad = g.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#181a24');
-  grad.addColorStop(0.35, '#10121a');
-  grad.addColorStop(1, '#05060a');
-  g.fillStyle = grad;
-  g.beginPath();
-  const cx = W / 2, top = H * 0.04, shY = H * 0.16, shX = (W / 2) * sw;
-  g.moveTo(cx - W * neck, top);
-  g.bezierCurveTo(cx - shX, shY - H * 0.05, cx - shX * 1.04, shY + H * 0.1, cx - shX * 0.92, H * 0.55);
-  g.bezierCurveTo(cx - shX * 0.86, H * 0.8, cx - shX * 0.9, H * 0.96, cx - shX * 0.88, H);
-  g.lineTo(cx + shX * 0.88, H);
-  g.bezierCurveTo(cx + shX * 0.9, H * 0.96, cx + shX * 0.86, H * 0.8, cx + shX * 0.92, H * 0.55);
-  g.bezierCurveTo(cx + shX * 1.04, shY + H * 0.1, cx + shX, shY - H * 0.05, cx + W * neck, top);
-  g.closePath();
-  g.fill();
-  // rim + key edge light, clipped to the body
-  g.save();
-  g.clip();
-  const rim = g.createLinearGradient(0, 0, W * 0.3, 0);
-  rim.addColorStop(0, 'rgba(127,168,255,0.5)');
-  rim.addColorStop(1, 'rgba(127,168,255,0)');
-  g.fillStyle = rim; g.fillRect(0, 0, W * 0.3, H);
-  const key = g.createLinearGradient(W, 0, W * 0.72, 0);
-  key.addColorStop(0, 'rgba(255,180,92,0.34)');
-  key.addColorStop(1, 'rgba(255,180,92,0)');
-  g.fillStyle = key; g.fillRect(W * 0.7, 0, W * 0.3, H);
-  const sheen = g.createLinearGradient(0, 0, 0, H * 0.3);
-  sheen.addColorStop(0, 'rgba(245,244,255,0.13)');
-  sheen.addColorStop(1, 'rgba(245,244,255,0)');
-  g.fillStyle = sheen; g.fillRect(0, 0, W, H * 0.3);
-  g.restore();
-  const out = new CanvasTexture(cv);
-  out.colorSpace = SRGBColorSpace;
-  silhouetteCache[variant] = out;
-  return out;
-}
-
-/** Seated torso: the same family, cropped at the waist by the table —
+/** Seated torso: cropped at the waist by the table —
  *  shoulders and chest only, wider and shorter. */
 let torsoTex: Texture | null = null;
 function torsoTexture(): Texture {
@@ -208,64 +153,6 @@ function contactShadow(): Texture {
 /* Figures                                                             */
 /* ------------------------------------------------------------------ */
 
-function CrowdFigure({ fig, cue, animate }: { fig: RailFigure; cue: CrowdCue; animate: boolean }) {
-  const root = useRef<Group>(null);
-  const hip = useRef<Group>(null);
-  const head = useRef<Group>(null);
-  const portraitMesh = useRef<Mesh>(null);
-  const tex = usePortrait(fig.id);
-  const body = useMemo(() => silhouette(fig.variant), [fig.variant]);
-  const shadow = useMemo(() => contactShadow(), []);
-  const H = fig.height;
-  const pw = (0.8 * H) / 1.74;
-  const bw = (BODY_W * H) / 1.74;
-  const bh = (BODY_H * H) / 1.74;
-  const hipY = H * 0.53;
-
-  const apply = (t: number) => {
-    const pose = animate ? crowdPoseAt(fig, t, cue) : restPose();
-    const r = root.current, h = hip.current, hd = head.current;
-    if (!r || !h || !hd) return;
-    r.position.z = fig.z + Math.cos(fig.yaw) * pose.stepIn;
-    r.position.x = fig.x + Math.sin(fig.yaw) * pose.stepIn;
-    h.position.y = hipY + pose.bobY;
-    h.rotation.z = pose.swayRad;
-    h.rotation.x = pose.leanRad;
-    hd.rotation.y = pose.headYawRad;
-    hd.rotation.x = pose.headPitchRad;
-    portraitMesh.current?.scale.set(pw * pose.breathK, pw * pose.breathK, 1);
-  };
-  useEffect(() => { if (!animate) apply(0); }, [animate]); // eslint-disable-line react-hooks/exhaustive-deps
-  useFrame(() => { if (animate) apply(performance.now()); });
-
-  return (
-    <group ref={root} position={[fig.x, RAIL_FLOOR_Y, fig.z]} rotation={[0, fig.yaw, 0]} renderOrder={fig.row === 0 ? 2 : 1}>
-      <mesh geometry={QUAD} position={[0, 0.012, 0.02]} rotation={[-Math.PI / 2, 0, 0]} scale={[1.15, 0.55, 1]} renderOrder={0}>
-        <meshBasicMaterial map={shadow} transparent depthWrite={false} />
-      </mesh>
-      <group ref={hip} position={[0, hipY, 0]}>
-        <group position={[0, -hipY, 0]}>
-          <mesh geometry={QUAD} position={[0, bh / 2, -0.015]} scale={[bw, bh, 1]}>
-            <meshBasicMaterial map={body} transparent depthWrite={false} />
-          </mesh>
-          <group ref={head} position={[0, H - pw, 0]}>
-            {tex && (
-              <mesh
-                ref={portraitMesh}
-                geometry={QUAD}
-                position={[0, pw / 2, 0.012]}
-                scale={[pw, pw, 1]}
-              >
-                <meshBasicMaterial map={tex} transparent depthWrite={false} color={PORTRAIT_DIM} />
-              </mesh>
-            )}
-          </group>
-        </group>
-      </group>
-    </group>
-  );
-}
-
 function SeatedFigure3D({ fig, cue, animate, target }: {
   fig: SeatedFigure; cue: CrowdCue; animate: boolean; target: { x: number; z: number };
 }) {
@@ -312,7 +199,7 @@ function SeatedFigure3D({ fig, cue, animate, target }: {
 }
 
 /** Keeps demand-loop frames flowing at the venue's ambient cadence —
- *  mounted only while the crowd is animated. */
+ *  mounted only while the figures are animated. */
 function CrowdTicker() {
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
@@ -324,7 +211,7 @@ function CrowdTicker() {
 
 /* ------------------------------------------------------------------ */
 /* The filmed visit (owner, 2026-10-26, late): a character with      */
-/* clips in RAIL_VISITORS no longer stands in the ring — he VISITS.   */
+/* clips in RAIL_VISITORS never stands at the rail — he VISITS.       */
 /* Full-body silent film (arrive / idle / depart) on a floor-anchored */
 /* plane at his rail slot, black-keyed by shader so the figure        */
 /* composites into the venue's night, warm gold over the whole body,  */
@@ -603,15 +490,15 @@ export interface KingRailProps {
   aspect: number;
   short: boolean;
   /** the filmed-visit system is live (the solo King sample):
-   *  characters with clips in RAIL_VISITORS leave the standing ring
-   *  and only visit. Off (co-op, every other surface) the ring
-   *  renders exactly as it always has. */
+   *  characters with clips in RAIL_VISITORS appear only as visits.
+   *  There is no standing ring anymore (owner removed the bust
+   *  crowd, 2026-10-26), so off (co-op, every other surface) the
+   *  rail is simply empty. */
   visit?: boolean;
 }
 
 export default function KingRail({ cast, seated, positions, n, turnSeat, cue, animate, aspect, short, visit = false }: KingRailProps) {
   const ringScale = ringScaleFor(aspect, short);
-  const figures = useMemo(() => kingRailFigures(cast, ringScale), [cast, ringScale]);
   const seatedFigs = useMemo(
     () => seated.map((id, seat) => (id ? seatedFigureFor(id, seat, positions[seat] ?? 'top', n, ringScale) : null)),
     [seated, positions, n, ringScale],
@@ -631,17 +518,20 @@ export default function KingRail({ cast, seated, positions, n, turnSeat, cue, an
     return { x: p.x, z: p.z };
   }, [turnPos, n]);
 
-  // The visit split: with the system live, a visitor's slot is
-  // computed with everyone else's (positions stay stable) but their
-  // STANDING figure is not rendered — they only visit it.
-  const standing = visit ? figures.filter((f) => !RAIL_VISITORS[f.id]) : figures;
-  const visitFigs = visit ? figures.filter((f) => RAIL_VISITORS[f.id]) : [];
+  // The rail stands empty: the only figures the cast can produce are
+  // its registered visitors, and only while the visit system is live.
+  // Their slots are computed from the full cast order (positions stay
+  // stable), but nobody renders standing — a visitor appears inside
+  // his stamped windows and is gone between them.
+  const visitFigs = useMemo(
+    () => (visit ? railVisitorFigures(cast, ringScale) : []),
+    [visit, cast, ringScale],
+  );
 
   return (
     <group name="king-rail-crowd">
       {animate && <CrowdTicker />}
       {!animate && visitFigs.length > 0 && <VisitTicker cue={cue} />}
-      {standing.map((f) => <CrowdFigure key={f.id} fig={f} cue={cue} animate={animate} />)}
       {visitFigs.map((f) => <VisitFigure key={f.id} fig={f} clips={RAIL_VISITORS[f.id]!} cue={cue} animate={animate} />)}
       {seatedFigs.map((f) => (f ? <SeatedFigure3D key={f.seat} fig={f} cue={cue} animate={animate} target={target} /> : null))}
     </group>

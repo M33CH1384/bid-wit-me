@@ -15,16 +15,27 @@
  * rendered the cast as DOM face-coin columns and was rejected on
  * sight — "remember this is a 3d table, they should be standing
  * around the table as human figures not coins with faces." The cast
- * now renders as standing figures INSIDE the 3D scene
- * (three/KingRail.tsx + three/kingRailLayout.ts), animated (seeded
- * idle, stir reactions, speaker leans), and the seated King / Ringer /
- * Dee are figures too, their plates gone to info strips. These pins
- * cover: the full cast on first entry AND resume (round-trip through
- * the session save), the gate's derivation matching the scene
- * channel's precedence, the coin columns GONE, figure completeness /
- * order / placement / occlusion envelopes, animation staggering,
- * reduced-motion stillness (source gates), seated identities and
- * plate parity, and no other stop gaining any of it.
+ * then rendered as standing figures INSIDE the 3D scene, and the
+ * seated King / Ringer / Dee became figures too, their plates gone
+ * to info strips.
+ *
+ * REMOVAL (owner, 2026-10-26, final word: "we can go ahead and
+ * remove the floating heads at this point"): the standing bust crowd
+ * is OUT — the construction itself was the problem, and the real 3D
+ * replacements are being built separately. The rail now stands EMPTY
+ * at the King table. What remains in the scene: the seated three
+ * (untouched) and Uncle Ray's filmed visit (below), which appears at
+ * his historical rail spot only inside stamped windows. These pins
+ * cover: the full cast derivation on first entry AND resume
+ * (round-trip through the session save — the cast still drives rail
+ * dialogue and the visit's placement), the gate's derivation matching
+ * the scene channel's precedence, the coin columns GONE, the standing
+ * ring GONE (source + layout contract), the visitor's slot fidelity,
+ * reduced-motion stillness (source gates), seated identities /
+ * occlusion envelopes / plate parity, and no other stop gaining any
+ * of it. Rail dialogue systems are pinned by their own suites; here
+ * only their figure coupling is pinned — now: none for rail speakers,
+ * the seated lean intact.
  */
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
@@ -135,9 +146,8 @@ describe('the King contract: the full cast, first entry and resume', () => {
 import { Vector3 } from 'three';
 import { makeCamera } from '../src/three/layout';
 import {
-  POSE_INFLATE, RAIL_FLOOR_Y, attentionYawFor, crowdPoseAt, faceCorners, figureCorners,
-  kingRailFigures, newCrowdCue, restPose, seatedFaceCorners, seatedFigureFor, seatedPoseAt,
-  stampSpeaker, stampStir, stampSeatSpeaker,
+  RAIL_BACK_R, RAIL_FRONT_R, attentionYawFor, newCrowdCue, railVisitorFigures, restPose,
+  seatedFaceCorners, seatedFigureFor, seatedPoseAt, stampStir, stampSeatSpeaker,
 } from '../src/three/kingRailLayout';
 
 const readSrc = (rel: string) => {
@@ -176,103 +186,93 @@ describe('the coin columns are gone (negative pins)', () => {
     expect(ot).toContain("room.story?.stopId === 'king'");
     expect(ot).toContain('seatedFigures:');
   });
+
+  it('the standing ring is removed: no crowd figures in the scene, no ring in the layout, no rail-lean cue', () => {
+    const kr = readSrc('src/three/KingRail.tsx');
+    expect(kr).not.toContain('CrowdFigure');
+    expect(kr).not.toContain('silhouette(');
+    expect(kr).not.toContain('standing.map');
+    expect(kr).not.toContain('crowdPoseAt');
+    // …the scene renders visitors + the seated three, nothing else.
+    expect(kr).toContain('visitFigs.map((f) => <VisitFigure');
+    expect(kr).toContain('seatedFigs.map((f) => (f ? <SeatedFigure3D');
+    const layout = readSrc('src/three/kingRailLayout.ts');
+    expect(layout).not.toContain('kingRailFigures');
+    expect(layout).not.toContain('crowdPoseAt');
+    expect(layout).not.toContain('figureCorners');
+    expect(layout).not.toContain('faceCorners');
+    // The cue carries no rail-speaker lean anymore (the stir the
+    // seated three react to, and the seated speaker lean, remain).
+    const cue = readSrc('src/three/crowdCue.ts');
+    expect(cue).not.toContain('speakerId');
+    expect(cue).not.toContain('stampSpeaker');
+    expect(cue).toContain('stampSeatSpeaker');
+    const table = readSrc('src/Table.tsx');
+    expect(table).not.toContain('stampSpeaker');
+  });
 });
 
-describe('crowd placement: complete, ordered, deterministic, off the felt', () => {
-  const figs = kingRailFigures(FULL);
-
-  it('one figure per cast member — the complete 20, in cast order', () => {
-    expect(figs).toHaveLength(20);
-    expect(figs.map((f) => f.id)).toEqual(FULL);
-    // The seated three are never in the crowd.
+describe('the rail stands empty: only the visitor keeps a slot', () => {
+  it('the full King cast produces exactly ONE figure — the registered visitor', () => {
+    const figs = railVisitorFigures(FULL);
+    expect(figs).toHaveLength(1);
+    expect(figs[0]!.id).toBe('uncleRay');
+    expect(figs[0]!.index).toBe(0);
+    // Nobody else in the cast — and never a seated character — gets a figure.
+    for (const id of FULL) {
+      if (id !== 'uncleRay') expect(figs.map((f) => f.id)).not.toContain(id);
+    }
     for (const seated of ['king', 'ringer', 'dee']) expect(FULL).not.toContain(seated);
   });
 
-  it('the ring reads left-to-right in cast order (slots sorted by angle)', () => {
-    const angles = figs.map((f) => Math.atan2(f.x, -f.z));
-    for (let i = 1; i < angles.length; i++) expect(angles[i]!).toBeGreaterThan(angles[i - 1]!);
+  it("the visitor's slot is the one the ring dealt him: cast index 0, back row, −114°", () => {
+    const f = railVisitorFigures(FULL)[0]!;
+    const rad = (-114 * Math.PI) / 180;
+    expect(f.row).toBe(1);
+    expect(f.x).toBeCloseTo(Math.sin(rad) * RAIL_BACK_R, 9);
+    expect(f.z).toBeCloseTo(-Math.cos(rad) * RAIL_BACK_R, 9);
+    expect(f.height).toBeGreaterThanOrEqual(1.63);
+    expect(f.height).toBeLessThanOrEqual(1.82);
+    // Outside the felt's bounds (1.5 × 1.78 + 0.2 rail) with margin:
+    // the visit never enters the table's footprint.
+    expect(Math.hypot(f.x / 1.78, f.z / 2.06)).toBeGreaterThan(1.05);
   });
 
-  it('deterministic: the same cast deals the identical ring (resume-safe)', () => {
-    expect(kingRailFigures(FULL)).toEqual(figs);
-    expect(kingRailFigures([...FULL].reverse()).map((f) => f.id)).toEqual([...FULL].reverse());
+  it('the slot follows cast order, not a hardcode — a different index deals a different slot', () => {
+    const figs = railVisitorFigures(['pat', 'uncleRay', 'ace']);
+    expect(figs).toHaveLength(1);
+    const f = figs[0]!;
+    expect(f.index).toBe(1);
+    // Cast index 1 is the front row's −104° slot.
+    const rad = (-104 * Math.PI) / 180;
+    expect(f.row).toBe(0);
+    expect(f.x).toBeCloseTo(Math.sin(rad) * RAIL_FRONT_R, 9);
+    expect(f.z).toBeCloseTo(-Math.cos(rad) * RAIL_FRONT_R, 9);
   });
 
-  it('life-size, feet on the venue floor, everybody outside the felt + rail', () => {
-    for (const f of figs) {
-      expect(f.height).toBeGreaterThanOrEqual(1.63);
-      expect(f.height).toBeLessThanOrEqual(1.82);
-      const corners = figureCorners(f);
-      expect(Math.min(...corners.map((c) => c.y))).toBeCloseTo(RAIL_FLOOR_Y, 6);
-      expect(Math.max(...corners.map((c) => c.y))).toBeCloseTo(RAIL_FLOOR_Y + f.height, 6);
-      // Outside the felt's bounds (1.5 × 1.78 + 0.2 rail) with margin:
-      // the ring never enters the table's footprint.
-      const radial = Math.hypot(f.x / 1.78, f.z / 2.06);
-      expect(radial, f.id).toBeGreaterThan(1.05);
-      // Nobody between the player and the felt: the near-centre sector
-      // (behind the player's seat, |angle| > 130°) stays empty, and no
-      // figure stands in the centre gap behind the partner either.
-      const ang = (Math.atan2(f.x, -f.z) * 180) / Math.PI;
-      expect(Math.abs(ang), f.id).toBeLessThan(125);
-      expect(Math.abs(ang), f.id).toBeGreaterThan(30);
-    }
+  it('deterministic and ring-scaled: the same cast deals the identical slot (resume-safe)', () => {
+    expect(railVisitorFigures(FULL)).toEqual(railVisitorFigures(FULL));
+    const wide = railVisitorFigures(FULL, 1.18)[0]!;
+    const base = railVisitorFigures(FULL)[0]!;
+    expect(Math.hypot(wide.x, wide.z)).toBeCloseTo(Math.hypot(base.x, base.z) * 1.18, 9);
+    expect(wide.height).toBe(base.height);
+  });
+
+  it('a cast without a registered visitor — or no cast at all — renders an empty rail', () => {
+    expect(railVisitorFigures(['pat', 'ace', 'queenie'])).toEqual([]);
+    expect(railVisitorFigures([])).toEqual([]);
   });
 });
 
-describe('crowd life: seeded idle, stir ripple, speaker lean — still when reduced', () => {
-  const figs = kingRailFigures(FULL);
-  const cue = newCrowdCue();
-
-  it('idle poses are staggered — no two figures share a pose at the same instant', () => {
-    const poses = figs.map((f) => crowdPoseAt(f, 123456, cue));
-    const keys = new Set(poses.map((p) => `${p.swayRad.toFixed(4)}|${p.headYawRad.toFixed(4)}|${p.bobY.toFixed(4)}`));
-    expect(keys.size).toBe(figs.length);
-  });
-
-  it('idle poses move over time (breathing/sway are alive, bounded by the inflate envelope)', () => {
-    const f = figs[5]!;
-    const a = crowdPoseAt(f, 100000, cue);
-    const b = crowdPoseAt(f, 101900, cue);
-    expect(Math.abs(a.swayRad - b.swayRad) + Math.abs(a.bobY - b.bobY)).toBeGreaterThan(0.001);
-    for (let t = 0; t < 30000; t += 977) {
-      const p = crowdPoseAt(f, t, cue);
-      expect(Math.abs(p.swayRad)).toBeLessThanOrEqual(0.035);
-      expect(Math.abs(p.leanRad)).toBeLessThanOrEqual(0.001);
-      expect(p.stepIn).toBe(0);
-      expect(Math.abs(p.bobY)).toBeLessThanOrEqual(0.007);
-    }
-    void POSE_INFLATE;
-  });
-
-  it('a stir ripples: lean peaks later for later figures, then settles', () => {
-    const c = newCrowdCue();
-    stampStir(c, 5000, 1);
-    const early = crowdPoseAt(figs[2]!, 5450, c);
-    const late = crowdPoseAt(figs[12]!, 5450, c);
-    expect(early.leanRad).toBeGreaterThan(0.02);
-    expect(late.leanRad).toBeLessThan(early.leanRad);
-    const settled = crowdPoseAt(figs[2]!, 5000 + 4000, c);
-    expect(settled.leanRad).toBeCloseTo(0, 3);
-  });
-
-  it('only the speaking railbird leans in', () => {
-    const c = newCrowdCue();
-    stampSpeaker(c, 'redd', 8000);
-    const speaker = crowdPoseAt(figs.find((f) => f.id === 'redd')!, 8500, c);
-    const bystander = crowdPoseAt(figs.find((f) => f.id === 'pat')!, 8500, c);
-    expect(speaker.leanRad).toBeGreaterThan(0.03);
-    expect(speaker.stepIn).toBeGreaterThan(0.02);
-    expect(bystander.leanRad).toBeLessThan(0.005);
-  });
-
-  it('the rest pose is exactly still — the reduced path applies it verbatim', () => {
+describe('stillness: the rest pose contract the reduced path applies', () => {
+  it('the rest pose is exactly still', () => {
     const r = restPose();
     expect(r).toEqual({ bobY: 0, breathK: 1, swayRad: 0, leanRad: 0, stepIn: 0, headYawRad: 0, headPitchRad: 0 });
+  });
+
+  it('the ticker (the only frame driver) mounts only when animated; the seated pose gates on animate', () => {
     const kr = readSrc('src/three/KingRail.tsx');
-    // Ticker (the only frame driver) mounts only when animated; figures
-    // apply restPose() when not animated.
     expect(kr).toContain('{animate && <CrowdTicker />}');
-    expect(kr).toContain('animate ? crowdPoseAt(fig, t, cue) : restPose()');
     expect(kr).toContain('animate ? seatedPoseAt(fig, t, cue, attn.current) : restPose()');
   });
 });
@@ -355,36 +355,10 @@ const P_ZONES: Record<string, Rect> = {
   hand: [0, 0.57, 1, 1], bid: [0.06, 0.35, 0.94, 0.82],
 };
 
-describe('occlusion envelopes at phone size (390×844), poses inflated', () => {
-  const figs = kingRailFigures(FULL);
+describe('occlusion envelopes at phone size (390×844), poses inflated — the seated three', () => {
   const dee = seatedFigureFor('dee', 2, 'top', 4);
   const kingS = seatedFigureFor('king', 1, 'left', 4);
   const ringerS = seatedFigureFor('ringer', 3, 'right', 4);
-
-  it('standing: no crowd face touches the scorebug, a plate, the dock, the trick, the hand, or the bid area', () => {
-    const cam = makeCamera(390 / 844, false, 'standing');
-    for (const f of figs) {
-      const face = rectOf(cam, faceCorners(f, true));
-      for (const [zn, zr] of Object.entries(P_ZONES)) {
-        expect(hit(face, zr), `${f.id} face × ${zn}`).toBe(false);
-      }
-    }
-  });
-
-  it('sitting: faces stay clear of plates/dock/trick/hand/bid; a far face may tuck its crown behind the scorebug only', () => {
-    const cam = makeCamera(390 / 844, false, 'sitting');
-    for (const f of figs) {
-      const face = rectOf(cam, faceCorners(f, true));
-      for (const [zn, zr] of Object.entries(P_ZONES)) {
-        if (zn === 'bug') continue;
-        expect(hit(face, zr), `${f.id} face × ${zn}`).toBe(false);
-      }
-      // If the bug covers the top of a far face, the chin must still
-      // emerge below it — the face is cropped by the frame furniture,
-      // never swallowed by it.
-      if (hit(face, P_ZONES.bug!)) expect(face[3]).toBeLessThanOrEqual(0.24);
-    }
-  });
 
   it('seated Dee: her face clears the scorebug; her own strip may cross the forehead, never the eyes', () => {
     const cam = makeCamera(390 / 844, false, 'standing');
@@ -410,24 +384,6 @@ describe('occlusion envelopes at phone size (390×844), poses inflated', () => {
     }
   });
 
-  it('presence: faces are actually in frame at every briefed size and view', () => {
-    const sizes = [
-      { w: 390, h: 844, short: false, min: 2 },
-      { w: 932, h: 430, short: true, min: 6 },
-      { w: 667, h: 375, short: true, min: 6 },
-      { w: 1440, h: 900, short: false, min: 6 },
-    ] as const;
-    for (const s of sizes) {
-      for (const view of ['standing', 'sitting'] as const) {
-        const cam = makeCamera(s.w / s.h, s.short, view);
-        const inFrame = figs.filter((f) => {
-          const r = rectOf(cam, faceCorners(f, true));
-          return r[2] > 0 && r[0] < 1 && r[3] > 0 && r[1] < 1;
-        });
-        expect(inFrame.length, `${s.w}×${s.h} ${view}`).toBeGreaterThanOrEqual(s.min);
-      }
-    }
-  });
 });
 
 /* ------------------------------------------------------------ the felt */
@@ -535,13 +491,15 @@ describe('the King table in the DOM: no coins, plates become info strips', () =>
  * doesn't look like real people it looks like live posters on a
  * pillar" — and the owner picked full-body filmed visits: "3d video
  * that has people coming and going." Uncle Ray (the first railbird
- * ever named) leaves the standing ring and only VISITS: full-body
- * film walks him in with real steps, he settles into living
- * presence, his line lands in his cast voice, he lingers, then walks
- * out into the dark. The lightning tier that rode the apparition
+ * ever named) only VISITS: full-body film walks him in with real
+ * steps, he settles into living presence, his line lands in his cast
+ * voice, he lingers, then walks out into the dark. (The standing ring
+ * he once left has since been removed entirely — see the header —
+ * so between visits the rail is simply empty, exactly as it is
+ * during them.) The lightning tier that rode the apparition
  * stays reverted — these pins also keep it OUT. The pins cover the
  * registry + asset caps, the phase machine, the window merge, the
- * ambient discipline, the ring split, the scheduling extension at
+ * ambient discipline, the visit gate, the scheduling extension at
  * the table source, and the reduced-effects still path.
  */
 import { statSync } from 'node:fs';
@@ -666,18 +624,20 @@ describe('the filmed visit — Uncle Ray walks in, he does not stand', () => {
     expect(cue).not.toContain('stampLightning');
   });
 
-  it('Ray leaves the standing ring ONLY under the visit gate; the other 19 + seated are untouched', () => {
+  it('Ray appears ONLY as a visit under the visit gate; the seated three are untouched', () => {
     const kr = readSrc('src/three/KingRail.tsx');
-    expect(kr).toContain('figures.filter((f) => !RAIL_VISITORS[f.id])');
+    // Visitor figures exist only when the gate is on — and they are
+    // the ONLY figures the cast produces (no standing ring remains).
+    expect(kr).toContain('visit ? railVisitorFigures(cast, ringScale) : []');
     expect(kr).toContain('visitFigs.map((f) => <VisitFigure');
-    expect(kr).toContain('standing.map((f) => <CrowdFigure');
+    expect(kr).not.toContain('CrowdFigure');
     expect(kr).toContain('seatedFigs.map((f) => (f ? <SeatedFigure3D');
-    // the layout still deals all 20 slots — Ray's slot is his visit spot
+    // the layout deals the visitor his historical slot from the full cast
     const cast = railCastForAttempt('king', 1);
-    const figs = kingRailFigures(cast, 1);
-    expect(figs).toHaveLength(20);
-    expect(figs.find((f) => f.id === VISITOR_ID)).toBeDefined();
-    expect(kingRailFigures(cast, 1)).toEqual(figs); // deterministic — approval keeps every slot
+    const figs = railVisitorFigures(cast, 1);
+    expect(figs).toHaveLength(1);
+    expect(figs[0]!.id).toBe(VISITOR_ID);
+    expect(railVisitorFigures(cast, 1)).toEqual(figs); // deterministic — resume keeps his spot
     const scene = readSrc('src/three/Scene.tsx');
     expect(scene).toContain('visit={props.visitRail ?? false}');
     const table = readSrc('src/Table.tsx');

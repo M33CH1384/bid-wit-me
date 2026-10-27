@@ -1,19 +1,22 @@
 /**
  * The crowd cue — the one mutable channel between the table's event stream
- * and the King rail figures (three/KingRail.tsx). Deliberately three-free
- * and dependency-free: Table.tsx imports the stamp helpers statically, and
- * the entry graph must never pull three.js into the first script (the
- * blank-screen stall, pinned by entry-graph.test.ts). Poses are computed
- * from this cue by the pure math in kingRailLayout.ts; stamping a cue never
- * re-renders anything — the figures' frame loop reads it.
+ * and the King table figures (three/KingRail.tsx): the seated three and
+ * the filmed visit. Deliberately three-free and dependency-free: Table.tsx
+ * imports the stamp helpers statically, and the entry graph must never
+ * pull three.js into the first script (the blank-screen stall, pinned by
+ * entry-graph.test.ts). Poses are computed from this cue by the pure math
+ * in kingRailLayout.ts; stamping a cue never re-renders anything — the
+ * figures' frame loop reads it.
+ *
+ * The rail-speaker lean cue that once animated the standing bust crowd
+ * is gone with the crowd itself (owner removed the standing ring,
+ * 2026-10-26): rail lines land in voice + bubble only, no figure leans.
+ * The stir stays — the seated three react to it.
  */
 export interface CrowdCue {
-  /** last crowd stir (a set, a shot-out, a Nil landing, a big swing, the nuke) */
+  /** last room stir (a set, a shot-out, a Nil landing, a big swing, the nuke) */
   stirAt: number;
   stirAmp: number;
-  /** the railbird currently speaking a chime-in, and when their line lands */
-  speakerId: string | null;
-  speakerAt: number;
   /** a seated figure currently speaking (bot talk / scene line / consultation) */
   seatSpeakerId: string | null;
   seatSpeakerAt: number;
@@ -32,7 +35,7 @@ export interface CrowdCue {
 
 export function newCrowdCue(): CrowdCue {
   return {
-    stirAt: -1e9, stirAmp: 0, speakerId: null, speakerAt: -1e9,
+    stirAt: -1e9, stirAmp: 0,
     seatSpeakerId: null, seatSpeakerAt: -1e9,
     visitAt: -1e9, visitUntil: -1e9, visitSettledMs: 0,
   };
@@ -41,11 +44,6 @@ export function newCrowdCue(): CrowdCue {
 export function stampStir(cue: CrowdCue, at: number, amp: number): void {
   cue.stirAt = at;
   cue.stirAmp = amp;
-}
-
-export function stampSpeaker(cue: CrowdCue, id: string, at: number): void {
-  cue.speakerId = id;
-  cue.speakerAt = at;
 }
 
 export function stampSeatSpeaker(cue: CrowdCue, id: string, at: number): void {
@@ -90,10 +88,11 @@ export function stampVisit(cue: CrowdCue, at: number, until: number, settledMs: 
 /* and returns only if this look passes his eye.                     */
 /* ------------------------------------------------------------------ */
 
-/** The visiting character for this sample pass. On the owner's
- *  approval the follow-up converts the whole cast (registry-driven —
- *  see RAIL_VISITORS in kingRailLayout.ts) and the ring comes down;
- *  until then only Ray's standing figure leaves the ring. */
+/** The visiting character for this sample pass. The standing ring
+ *  itself is down now (owner removed the bust-portrait crowd,
+ *  2026-10-26 — the rail stands empty between visits), and on the
+ *  owner's approval the follow-up converts more of the cast to
+ *  visits (registry-driven — see RAIL_VISITORS in kingRailLayout.ts). */
 export const VISITOR_ID = 'uncleRay';
 
 /* The three filmed phases (ms, on the cue's performance.now

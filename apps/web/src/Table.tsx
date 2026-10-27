@@ -64,7 +64,7 @@ import { feltHandVisible } from './three/cardFace';
 import {
   VISIT_ARRIVE_MS, VISIT_DEPART_MS, VISIT_SETTLED_MS, VISITOR_ID,
   ambientVisit, newCrowdCue, stampVisit,
-  stampSeatSpeaker, stampSpeaker, stampStir, type CrowdCue,
+  stampSeatSpeaker, stampStir, type CrowdCue,
 } from './three/crowdCue';
 import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
@@ -1827,11 +1827,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             // the seated player's answer (their own name, their seat).
             const railSide = moment.kind === 'solo' || ix !== 1;
             const name = STORY_CHARACTERS[l.speaker]?.name ?? l.speaker;
-            // THE FIGURES ANSWER THE VOICES (owner, 2026-10-26): a
-            // railbird's figure leans while their chime-in lands; a
-            // seated player's figure leans with their reply.
-            if (railSide) stampSpeaker(crowdCue, l.speaker, performance.now() + delayMs);
-            else { const sx = names.indexOf(name); if (sx >= 0) noteSeatSpeech(sx, performance.now() + delayMs); }
+            // THE SEATED FIGURES ANSWER THE VOICES (owner, 2026-10-26):
+            // a seated player's figure leans with their reply. A rail
+            // speaker has no figure to lean — the standing crowd was
+            // removed (owner, 2026-10-26) — their line lands in voice
+            // and bubble exactly as before.
+            if (!railSide) { const sx = names.indexOf(name); if (sx >= 0) noteSeatSpeech(sx, performance.now() + delayMs); }
             // THE FILMED VISIT (owner, 2026-10-26, late): when the
             // rail speaker is the visiting character, his line rides
             // a visit — he starts walking in VISIT_ARRIVE_MS before
@@ -2522,11 +2523,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // The deal beat hands the fan back to the live hand, which the deal flight deals out.
   const gathering = redeal?.phase === 'gather';
   const fanHand = misdealFanHand(gathering, redeal?.heldHand ?? null, display.hand);
-  // The King's rail + seated three live in the 3D scene now (owner,
-  // 2026-10-26: standing figures around the table, not face coins —
-  // three/KingRail.tsx renders kingRailFigures(kingRail)). Solo: the
-  // cast from kingRailCastFor. Co-op: OnlineTable passes its cast +
-  // seated figures through the online object (there is no story prop).
+  // The King table's cast + seated three live in the 3D scene
+  // (three/KingRail.tsx): the seated three as figures, and the cast
+  // only as the filmed visit's placement source — the standing rail
+  // crowd was removed (owner, 2026-10-26), so the cast itself renders
+  // nobody standing. Solo: the cast from kingRailCastFor. Co-op:
+  // OnlineTable passes its cast + seated figures through the online
+  // object (there is no story prop).
   const kingRail: string[] = (() => {
     const solo = kingRailCastFor(story);
     return solo.length > 0 ? solo : (online?.kingRailCast ?? []);
@@ -2553,11 +2556,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   if (!crowdCueRef.current) crowdCueRef.current = newCrowdCue();
   const crowdCue = crowdCueRef.current;
   // THE FILMED VISIT (owner, 2026-10-26, late): at the SOLO King
-  // table Uncle Ray leaves the standing ring and only VISITS — his
+  // table Uncle Ray only VISITS — his
   // rail moments stamp a visit window on the cue (walk in → line →
   // walk out), and ambient seeded visits bring him in wordlessly.
-  // Co-op keeps the ring exactly as shipped (its table stamps no
-  // windows). This replaced the same-day bust-portrait apparition,
+  // Co-op stamps no windows, and its rail stands empty like the solo
+  // one (the standing crowd was removed, owner, 2026-10-26). This
+  // replaced the same-day bust-portrait apparition,
   // which the owner rejected ("live posters on a pillar"); the
   // lightning tier that rode it stays reverted unless this look
   // passes his eye.
