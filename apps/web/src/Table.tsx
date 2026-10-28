@@ -14,7 +14,8 @@ import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard,
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
-import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueUnlocked } from './venues';
+import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueAssetUrls, venueUnlocked } from './venues';
+import { assetSettled, createAssetGate, imageSettled, fetchSettled, loaderStillUp, notedRoomAssets, roomGlbUrls } from './assetGate';
 import { type FormEvent, Fragment, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -46,7 +47,7 @@ import { closeTableProfile, openPlayerProfile, profileTargetOf, setTableProfileH
 import { recordOfflineGame } from './offlineStats';
 import { setStoryVoiceScope, setTableIntensity, showLine, speakBot, spokenClipDurationMs, talkPrefs as talkStore, useTalkPrefs } from './talkPrefs';
 import { chatStickToBottom } from './chatScroll';
-import { setActiveDeck } from './decks';
+import { setActiveDeck, whenDeckArtSettled, whenDeckBackSettled } from './decks';
 import { pickTeamName, toggleReaction } from '@spades/protocol';
 import { Intermission, calloutsFor } from './Intermission';
 import { BoxScore } from './BoxScore';
@@ -77,7 +78,7 @@ import { VersusIntro, markVersusShown, versusDismissReady, versusEligible, type 
 import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, type RewardsProfile } from './GameOverRewards';
 import { stashRewards } from './RewardsPage';
 import { flushLocalGames, localGameId } from './localStats';
-import { tableStillLoading, warmTableEffects } from './effects/warm';
+import { warmTableEffects } from './effects/warm';
 import { THIRD_SET_HEADLINE, endReasonText, onNoticeSides, shotChatLines, stickyNoticeSides } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { sessionRoom } from './spatial';
@@ -115,7 +116,7 @@ import { isWildDeuce } from './cardFaces';
 import { MISDEAL_DEAL_SPEED, MISDEAL_REVEAL_DWELL_MS, heldHandForThrowIn, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, buzzMomentFor, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, tableExchangeFor } from '@spades/bots';
+import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, buzzMomentFor, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, personaPortraitFor, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, storyPortraitFor, tableExchangeFor } from '@spades/bots';
 import { preloadVoice } from './voices/voices';
 import { signalTableReady } from './transitions';
 const Scene = lazy(loadScene);
@@ -1158,6 +1159,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [effectsWarm, setEffectsWarm] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0.08);
   const [loadGiveUp, setLoadGiveUp] = useState(false);
+  // Asset gate (assetGate.ts): this table's room files + the deck in use have
+  // actually loaded. The loader holds for it alongside dressed/effectsWarm.
+  const [assetsSettled, setAssetsSettled] = useState(false);
   const [loadGone, setLoadGone] = useState(false);
   // Versus intro (boxing match card on the loader): eligibility is decided once, at
   // mount — a fresh game start that hasn't shown the intro for this match seed yet.
@@ -1193,8 +1197,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     warmTableEffects().then(() => { if (alive) setEffectsWarm(true); }).catch(() => { if (alive) setEffectsWarm(true); });
     return () => { alive = false; };
   }, []);
-  useEffect(() => { if (dressed && effectsWarm) setLoadProgress(1); }, [dressed, effectsWarm]);
-  const loading = tableStillLoading(dressed, effectsWarm, loadGiveUp);
+  useEffect(() => { if (dressed && effectsWarm && assetsSettled) setLoadProgress(1); }, [dressed, effectsWarm, assetsSettled]);
+  const loading = loaderStillUp({ dressed, effectsWarm, assetsSettled, giveUp: loadGiveUp });
   useEffect(() => {
     if (dealReady) return;
     // Cards never deal behind the versus intro: the deal waits for the story to
@@ -2482,6 +2486,64 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       color: seat === HUMAN && !spectating ? USER_COLORS.You : SEAT_COLORS[seat] ?? '#ddd',
     };
   }), [names, storySeatIds, online, acctUser, spectating, n]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Asset gate (owner 2026-10-28 — the loader stays until the room's assets AND
+  // the cards are loaded): register everything this table will present, once,
+  // at mount. Venue files + the street rooms' sedan come from the same lists
+  // the three layer fetches; the cube rooms' own files arrive via the warm-up
+  // ledger (notedRoomAssets) once the scene chunk's preload pass has run for
+  // this venue; the deck is the one in use at THIS table (settings.deck, the
+  // same value setActiveDeck applied); faces are the seated art the plates
+  // and loader present. Failures settle the gate — the fallbacks behind the
+  // loader engage — and the gate's own cap bounds a hang (assetGate.ts).
+  useEffect(() => {
+    let alive = true;
+    const stopId = story?.scene?.stop.id ?? null;
+    const gate = createAssetGate(`${settings.quality}:${venue}:${settings.deck}:${stopId ?? 'open'}`);
+    const publish = (extra?: { doneAt: number; cappedOut: boolean }) => {
+      const p = gate.progress();
+      (window as unknown as { __bwmAssetGate?: unknown }).__bwmAssetGate = {
+        key: gate.key, total: p.total, settled: p.settled, failed: gate.failed(),
+        ...(extra ? { cappedOut: extra.cappedOut, doneAt: extra.doneAt } : {}),
+      };
+    };
+    const urls = venueAssetUrls(venue, settings.quality);
+    if (urls.bg) gate.add(`venue backdrop ${urls.bg}`, imageSettled(urls.bg));
+    if (urls.floor) gate.add(`venue floor ${urls.floor}`, imageSettled(urls.floor));
+    if (urls.rail) gate.add(`venue rail ${urls.rail}`, imageSettled(urls.rail));
+    if (urls.env) gate.add(`venue environment ${urls.env}`, fetchSettled(urls.env));
+    for (const g of roomGlbUrls(venue, settings.quality, stopId)) gate.add(g.label, fetchSettled(g.url));
+    gate.addGroup(`deck art (${settings.deck})`, whenDeckArtSettled(settings.deck));
+    gate.add(`card back (${settings.deck})`, whenDeckBackSettled(settings.deck));
+    for (const seat of loadingSeats) {
+      if (seat.storyId) gate.add(storyPortraitFor(seat.storyId), imageSettled(storyPortraitFor(seat.storyId)));
+      else if (seat.bot) gate.add(personaPortraitFor(seat.name), imageSettled(personaPortraitFor(seat.name)));
+    }
+    publish();
+    const off = gate.onProgress(() => {
+      if (!alive) return;
+      publish();
+      const f = gate.progress().fraction;
+      setLoadProgress((p) => Math.max(p, Math.min(0.94, 0.42 + 0.52 * f)));
+    });
+    void gate.done.then((r) => {
+      if (!alive) return;
+      publish({ doneAt: performance.now(), cappedOut: r.cappedOut });
+      setAssetsSettled(true);
+    });
+    // Fold in the room's own files: run the scene's warm pass for this venue
+    // (the same pass the splash ran; idempotent) so its preloads note their
+    // lists into the ledger, then register whatever it noted and seal. If the
+    // scene chunk never lands, the gate's cap still releases the loader.
+    void loadScene()
+      .then((m) => { try { m.preloadTableAssets(settings.quality, venue); } catch { /* warm is best-effort */ } })
+      .catch(() => undefined)
+      .then(() => {
+        for (const url of notedRoomAssets(venue)) gate.add(url, assetSettled(url));
+        gate.seal();
+        publish();
+      });
+    return () => { alive = false; off(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- a table's venue/deck/seats are its mount identity
   const versusModel: VersusModel | null = useMemo(() => {
     if (!versusActive) return null;
     const member = (seat: number): VersusMember => {

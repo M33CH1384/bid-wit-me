@@ -15,6 +15,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { CHAIR_SPOTS, STUDIO } from './classicStudioLayout';
+import { noteRoomAssets } from '../assetGate';
 
 const BASE = '/assets/venues/classic';
 const WALL = '#55314d'; // plum plaster (far)
@@ -26,6 +27,8 @@ const PANEL = '#542848'; // far-wall wainscot panels
 /** Fetch-warm the studio files at low priority (splash/wizard warm-up path; never blocks the table). */
 export function preloadClassicStudio(): void {
   const files = [`${BASE}/chair.glb`, `${BASE}/lamp.glb`, `${BASE}/floor_diffuse_512.jpg`, `${BASE}/floor_nor_gl_512.jpg`, `${BASE}/floor_rough_512.jpg`];
+  // Asset gate: note the room's files so the table loader can wait on them (assetGate.ts).
+  noteRoomAssets('classic', files);
   window.setTimeout(() => files.forEach((url) => { void fetch(url, { priority: 'low' } as RequestInit).catch(() => undefined); }), 1500);
 }
 

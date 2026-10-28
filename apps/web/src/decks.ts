@@ -105,10 +105,8 @@ export function setActiveDeck(id: string): void {
   void getDeckImage('BJ'); void getDeckImage('LJ');
 }
 
-/** Loaded deck image for a card (null while loading / for painted cards). Starts the load on first ask. */
-export function getDeckImage(card: Card | string): HTMLImageElement | null {
-  const url = deckArtUrl(active, card);
-  if (!url || typeof Image === 'undefined') return null;
+/** Start (or fetch from the shared cache) the load of one deck-art file by URL. */
+function ensureDeckImage(url: string): HTMLImageElement {
   let img = images.get(url);
   if (!img) {
     img = new Image();
@@ -119,5 +117,69 @@ export function getDeckImage(card: Card | string): HTMLImageElement | null {
     img.onload = () => waiters.forEach((f) => f());
     images.set(url, img);
   }
+  return img;
+}
+
+/** Loaded deck image for a card (null while loading / for painted cards). Starts the load on first ask. */
+export function getDeckImage(card: Card | string): HTMLImageElement | null {
+  const url = deckArtUrl(active, card);
+  if (!url || typeof Image === 'undefined') return null;
+  const img = ensureDeckImage(url);
   return img.complete && img.naturalWidth ? img : null;
+}
+
+/** Every art file a deck's faces are painted from: the twelve courts, both
+ *  jokers, and the four aces for acesArt decks. Number cards are painted
+ *  (no file), so this is the deck's complete fetchable face set. */
+export function deckArtUrlsFor(deck: string): string[] {
+  const cards: string[] = [];
+  for (const r of ['J', 'Q', 'K']) for (const s of ['S', 'H', 'D', 'C']) cards.push(`${r}${s}`);
+  if (deckById(deck)?.acesArt) for (const s of ['S', 'H', 'D', 'C']) cards.push(`A${s}`);
+  cards.push('BJ', 'LJ');
+  return cards.map((c) => deckArtUrl(deck, c)).filter((u): u is string => !!u);
+}
+
+/**
+ * Asset gate (assetGate.ts): resolves once every art file of THIS deck has
+ * settled — loaded, or failed (a failed face falls back to the painted face
+ * the card layer already renders, so a failure never traps the loader).
+ * Shares the module's image cache with getDeckImage, so the table's own
+ * face painting reuses the very elements this waited on.
+ */
+export function whenDeckArtSettled(deck: string): Promise<{ total: number; failed: string[] }> {
+  const urls = deckArtUrlsFor(deck);
+  if (typeof Image === 'undefined') return Promise.resolve({ total: urls.length, failed: urls });
+  return Promise.all(urls.map((url) => new Promise<boolean>((resolve) => {
+    const img = ensureDeckImage(url);
+    if (img.complete) { resolve(img.naturalWidth > 0); return; }
+    let done = false;
+    const finish = (ok: boolean) => { if (!done) { done = true; resolve(ok); } };
+    img.addEventListener('load', () => finish(true));
+    img.addEventListener('error', () => finish(false));
+  }))).then((oks) => ({ total: urls.length, failed: urls.filter((_, i) => !oks[i]) }));
+}
+
+const backSettles = new Map<string, Promise<boolean>>();
+/**
+ * Asset gate: resolves once this deck's card BACK has settled (false on
+ * error — three/cardTextures' own loader keeps its procedural fallback).
+ * The back's production cache lives in cardTextures; this gate copy rides
+ * the HTTP cache behind it, so the duplicate element costs no second
+ * download in practice.
+ */
+export function whenDeckBackSettled(deck: string): Promise<boolean> {
+  let p = backSettles.get(deck);
+  if (p) return p;
+  p = new Promise<boolean>((resolve) => {
+    if (typeof Image === 'undefined') { resolve(false); return; }
+    const img = new Image();
+    let done = false;
+    const finish = (ok: boolean) => { if (!done) { done = true; resolve(ok); } };
+    img.onload = () => finish(true);
+    img.onerror = () => finish(false);
+    img.src = deckBackUrl(deck);
+    if (img.complete && img.naturalWidth) finish(true);
+  });
+  backSettles.set(deck, p);
+  return p;
 }

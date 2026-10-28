@@ -13,6 +13,7 @@ import { Box3, type Group, Mesh, MeshStandardMaterial, type Object3D, type Point
 import { flickerAt, glowAt, venueLifeFor } from '../venueLife';
 import { fx } from '../fx';
 import type { VenueId } from '../venues';
+import { noteRoomAssets } from '../assetGate';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -178,5 +179,7 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
 
 export function preloadCubeVenue(cfg: CubeVenueConfig): void {
   const files = [`${CLASSIC}/chair.glb`, ...(cfg.pendants === false ? [] : [`${CLASSIC}/lamp.glb`]), ...(cfg.floorUrl ? [cfg.floorUrl] : []), ...(cfg.sky ? [BARBER_ASSETS.skyPoster] : [])];
+  // Asset gate: note the room's files so the table loader can wait on them (assetGate.ts).
+  noteRoomAssets(cfg.id, files);
   window.setTimeout(() => files.forEach((url) => { void fetch(url, { priority: 'low' } as RequestInit).catch(() => undefined); }), 1500);
 }

@@ -16,6 +16,7 @@ import {
   RepeatWrapping, SRGBColorSpace,
 } from 'three';
 import { type VenueDef, type VenueId, venueAssetUrls } from '../venues';
+import { noteRoomAssets } from '../assetGate';
 import PjsStreetRoom, { SEDAN_URL } from './PjsStreetRoom';
 import { flickerAt, glowAt, smokePuffAt, venueLifeFor } from '../venueLife';
 
@@ -640,6 +641,8 @@ export function preloadVenueAssets(id: VenueId, quality: 'high' | 'low'): void {
   const rest = [u.bg, u.floor, u.env].filter((x): x is string => !!x);
   // The Pj's street environment (High only): warm the sedan GLB with the same low-priority pass.
   if (id === 'blockAfterDark' && quality === 'high') rest.push(SEDAN_URL);
+  // Asset gate: note the venue's files so the table loader can wait on them (assetGate.ts).
+  noteRoomAssets(id, [...rest, ...(u.rail ? [u.rail] : [])]);
   window.setTimeout(() => rest.forEach((url) => { void fetch(url, { priority: 'low' } as RequestInit).catch(() => undefined); }), 1500);
 }
 

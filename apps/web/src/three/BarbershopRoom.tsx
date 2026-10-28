@@ -16,11 +16,14 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { BARBER, BARBER_ASSETS, CHAIR_SPOTS, skySeekFraction, todFromDate, todLighting, type TodState } from './barbershopLayout';
+import { noteRoomAssets } from '../assetGate';
 
 const CLASSIC = '/assets/venues/classic';
 
 export function preloadBarbershopRoom(): void {
   const files = [`${CLASSIC}/chair.glb`, `${CLASSIC}/lamp.glb`, BARBER_ASSETS.skyPoster, BARBER_ASSETS.streetPoster, BARBER_ASSETS.skyDay, BARBER_ASSETS.street];
+  // Asset gate: note the room's files so the table loader can wait on them (assetGate.ts).
+  noteRoomAssets('barbershop', files);
   window.setTimeout(() => files.forEach((url) => { void fetch(url, { priority: 'low' } as RequestInit).catch(() => undefined); }), 1500);
 }
 
