@@ -25,14 +25,34 @@
  * geometry. Zero downloads.
  *
  * Camera containment (the sandbox gate's hard lesson): the
- * beadboard ceiling is a SINGLE-SIDED downward plane at deck +
- * 3.2 m — the production cube-room discipline (STUDIO rooms
- * ceiling at 5 m) — because the game's raised sitting camera
- * rides ≈3.25 m over the floor and the standing camera above
- * that; a solid porch-height ceiling clipped the seated view
- * outright. Posts and walls are extended to the 3.2 m line to
- * meet it (the manifest's 2.6 m porch height yields to the
+ * beadboard ceiling is a SINGLE-SIDED downward plane — the
+ * production cube-room discipline (STUDIO rooms ceiling at
+ * 5 m) — because the game's raised sitting camera rides
+ * ≈3.25 m over the floor and the standing camera above that;
+ * a solid porch-height ceiling clipped the seated view
+ * outright. Posts and walls are extended to the ceiling line
+ * to meet it (the manifest's 2.6 m porch height yields to the
  * cameras; documented in the sandbox batch report).
+ *
+ * OWNER FIX (2026-10-28, device report on the shipped 3a
+ * room): two geometry defects. (1) In STANDING view a wide
+ * tan bar banded across the middle of the felt — proven by
+ * toggle captures to be the front FASCIA, the header board
+ * the string lights hang along: at deck +3.08 and z +2.42 it
+ * sat barely a metre in front of the standing camera
+ * (deck +5.4, z +3.75), its broad flat face subtending the
+ * whole mid-frame. The ceiling plane and beams were
+ * exonerated by the same captures. Cure, as the owner
+ * prescribed — raise the wood and move it with the room:
+ * the ceiling rises to deck +4.0, the beams with it, and the
+ * header now runs at the extended deck's front edge
+ * (z +4.32, behind the standing camera entirely). (2) In
+ * sitting view the player's seat backed onto the porch
+ * ENTRANCE — the railing gap and steps sat on the table's
+ * axis directly behind his chair. The deck now extends to
+ * z +4.3 (2.4 m of deck behind his seat), the front railing
+ * runs full width, and the entry gap + steps moved to the
+ * EAST side run, beside the play area where nobody sits.
  *
  * Effects discipline: the room has NO animated loops (string
  * lights burn steady at dusk), so it renders identically at
@@ -612,42 +632,56 @@ function PorchLights() {
 
 export default function PorchDeckRoom() {
   const { mats } = assets();
-  const ceilY = FLOOR_Y + 3.08;
+  const ceilY = FLOOR_Y + 3.88;
   return (
     <group>
       <EnvFog />
       <PorchLights />
       <FoldingChairs />
 
-      {/* plank deck, top at the floor line */}
-      <mesh material={mats.deckWood} position={[0, FLOOR_Y - 0.05, 0]} receiveShadow>
-        <boxGeometry args={[7.6, 0.1, 4.8]} />
+      {/* plank deck, top at the floor line — EXTENDED on the
+          entrance side (owner fix, 2026-10-28): the deck now runs
+          to z +4.3, so the player's seat sits ON the porch with
+          deck behind it, not in the doorway (see the entry note
+          at the railing below) */}
+      <mesh material={mats.deckWood} position={[0, FLOOR_Y - 0.05, 0.95]} receiveShadow>
+        <boxGeometry args={[7.6, 0.1, 6.7]} />
       </mesh>
-      <mesh material={mats.postPaint} position={[0, FLOOR_Y - 0.06, 2.42]}>
+      <mesh material={mats.postPaint} position={[0, FLOOR_Y - 0.06, 4.32]}>
         <boxGeometry args={[7.6, 0.14, 0.06]} />
       </mesh>
-      {/* back wall: weatherboard siding (3.2 m — camera containment) */}
-      <mesh material={mats.siding} position={[0, FLOOR_Y + 1.6, -2.62]} receiveShadow>
-        <boxGeometry args={[7.6, 3.2, 0.16]} />
+      {/* back wall: weatherboard siding (4.0 m — raised with the
+          ceiling, see below) */}
+      <mesh material={mats.siding} position={[0, FLOOR_Y + 2.0, -2.62]} receiveShadow>
+        <boxGeometry args={[7.6, 4.0, 0.16]} />
       </mesh>
       {/* side returns: the house wraps only the back portion */}
       {[-3.85, 3.85].map((x) => (
-        <mesh key={x} material={mats.siding} position={[x, FLOOR_Y + 1.6, -1.62]} receiveShadow>
-          <boxGeometry args={[0.16, 3.2, 2.0]} />
+        <mesh key={x} material={mats.siding} position={[x, FLOOR_Y + 2.0, -1.62]} receiveShadow>
+          <boxGeometry args={[0.16, 4.0, 2.0]} />
         </mesh>
       ))}
       {/* beadboard ceiling: single-sided downward plane at deck +
-          3.2 (invisible from above — production cube-room
-          discipline, see the file header), beams + fascia */}
-      <mesh material={mats.beadboard} rotation={[Math.PI / 2, 0, 0]} position={[0, FLOOR_Y + 3.2, 0]} receiveShadow>
-        <planeGeometry args={[7.6, 4.8]} />
+          4.0 (invisible from above — production cube-room
+          discipline, see the file header), beams + fascia.
+          RAISED from 3.2 (owner fix, 2026-10-28): the standing
+          camera rides at deck +5.4, and the old front fascia —
+          the header board the string lights hang along — sat at
+          deck +3.08 barely a metre in front of it, its broad face
+          banding straight across the felt. The header now sits
+          at the extended deck's front edge (z +4.32, BEHIND the
+          standing camera) at deck +3.88, and the beams rise with
+          the ceiling — the wood frames the view's top edge and
+          never crosses the table. */}
+      <mesh material={mats.beadboard} rotation={[Math.PI / 2, 0, 0]} position={[0, FLOOR_Y + 4.0, 0.95]} receiveShadow>
+        <planeGeometry args={[7.6, 6.7]} />
       </mesh>
       {[-1.2, 1.2].map((z) => (
-        <mesh key={z} material={mats.postPaint} position={[0, FLOOR_Y + 3.13, z]}>
+        <mesh key={z} material={mats.postPaint} position={[0, FLOOR_Y + 3.93, z]}>
           <boxGeometry args={[7.6, 0.1, 0.14]} />
         </mesh>
       ))}
-      <mesh material={mats.postPaint} position={[0, FLOOR_Y + 3.08, 2.42]}>
+      <mesh material={mats.postPaint} position={[0, FLOOR_Y + 3.88, 4.32]}>
         <boxGeometry args={[7.6, 0.26, 0.06]} />
       </mesh>
       {/* windows: warm lit left of the door, sleeping dark right */}
@@ -680,38 +714,60 @@ export default function PorchDeckRoom() {
         </mesh>
       </group>
       <ScreenDoor />
-      {/* POR-08: support posts at the open edge (3.2 m line) */}
+      {/* POR-08: support posts — the mid pair at the old front
+          line plus a front pair at the extended deck's edge, all
+          raised to the 4.0 m ceiling line */}
       {[-3.3, 3.3].map((x) => (
-        <group key={x} position={[x, FLOOR_Y, 2.1]}>
-          <mesh material={mats.postPaint} position={[0, 1.6, 0]} castShadow receiveShadow>
-            <boxGeometry args={[0.14, 3.2, 0.14]} />
+        <group key={`mid-${x}`} position={[x, FLOOR_Y, 2.1]}>
+          <mesh material={mats.postPaint} position={[0, 2.0, 0]} castShadow receiveShadow>
+            <boxGeometry args={[0.14, 4.0, 0.14]} />
           </mesh>
           <mesh material={mats.postPaint} position={[0, 0.09, 0]}>
             <boxGeometry args={[0.2, 0.18, 0.2]} />
           </mesh>
-          <mesh material={mats.postPaint} position={[0, 3.12, 0]}>
+          <mesh material={mats.postPaint} position={[0, 3.92, 0]}>
             <boxGeometry args={[0.19, 0.14, 0.19]} />
           </mesh>
         </group>
       ))}
-      {/* railing: front-left + front-right with the steps gap */}
-      <RailingRun from={[-3.3, 2.1]} to={[-0.75, 2.1]} />
-      <RailingRun from={[0.95, 2.1]} to={[3.3, 2.1]} />
-      <RailingRun from={[-3.3, 2.1]} to={[-3.3, 0.4]} />
-      {/* steps down at the door axis */}
+      {[-3.3, 3.3].map((x) => (
+        <group key={`front-${x}`} position={[x, FLOOR_Y, 4.0]}>
+          <mesh material={mats.postPaint} position={[0, 2.0, 0]} castShadow receiveShadow>
+            <boxGeometry args={[0.14, 4.0, 0.14]} />
+          </mesh>
+          <mesh material={mats.postPaint} position={[0, 0.09, 0]}>
+            <boxGeometry args={[0.2, 0.18, 0.2]} />
+          </mesh>
+          <mesh material={mats.postPaint} position={[0, 3.92, 0]}>
+            <boxGeometry args={[0.19, 0.14, 0.19]} />
+          </mesh>
+        </group>
+      ))}
+      {/* railing (owner fix, 2026-10-28): the front run is now
+          FULL width at the extended deck's edge and both sides
+          run back to the house — the entry gap moved to the EAST
+          side run (z 1.55…2.55), beside the play area where
+          nobody sits. The player no longer backs onto the
+          doorway. */}
+      <RailingRun from={[-3.3, 4.0]} to={[3.3, 4.0]} />
+      <RailingRun from={[-3.3, 4.0]} to={[-3.3, -0.6]} />
+      <RailingRun from={[3.3, 4.0]} to={[3.3, 2.55]} />
+      <RailingRun from={[3.3, 1.55]} to={[3.3, -0.6]} />
+      {/* entry steps: down the east side at the railing gap,
+          landing on the yard — never on the table's axis */}
       {[0, 1, 2].map((i) => (
-        <mesh key={i} material={mats.deckWood} position={[0.1, FLOOR_Y - 0.12 * (i + 1) + 0.06, 2.62 + i * 0.3]} receiveShadow castShadow>
-          <boxGeometry args={[1.5, 0.09, 0.32]} />
+        <mesh key={i} material={mats.deckWood} position={[3.56 + i * 0.32, FLOOR_Y - 0.10 - i * 0.12 - 0.05, 2.05]} receiveShadow castShadow>
+          <boxGeometry args={[0.32, 0.1, 1.0]} />
         </mesh>
       ))}
-      {/* yard, sidewalk, street */}
-      <mesh material={mats.lawnDark} rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y - 0.37, 5.6]} receiveShadow>
+      {/* yard, sidewalk, street — shifted out with the deck */}
+      <mesh material={mats.lawnDark} rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y - 0.37, 7.5]} receiveShadow>
         <planeGeometry args={[30, 6.4]} />
       </mesh>
-      <mesh material={mats.concrete} position={[0, FLOOR_Y - 0.345, 6.4]} receiveShadow>
+      <mesh material={mats.concrete} position={[0, FLOOR_Y - 0.345, 8.3]} receiveShadow>
         <boxGeometry args={[30, 0.05, 1.6]} />
       </mesh>
-      <mesh material={mats.asphalt} rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y - 0.38, 10.6]} receiveShadow>
+      <mesh material={mats.asphalt} rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y - 0.38, 12.5]} receiveShadow>
         <planeGeometry args={[40, 7]} />
       </mesh>
       {/* across the street: porch silhouettes against the dusk */}
@@ -720,7 +776,7 @@ export default function PorchDeckRoom() {
         { x: -1.2, mat: 'houseB', w: 6.2, h: 4.1 },
         { x: 5.6, mat: 'houseA', w: 5.8, h: 3.7 },
       ].map((hh, i) => (
-        <group key={i} position={[hh.x, FLOOR_Y - 0.38, 14.6]} rotation={[0, Math.PI, 0]}>
+        <group key={i} position={[hh.x, FLOOR_Y - 0.38, 16.5]} rotation={[0, Math.PI, 0]}>
           <mesh material={mats[hh.mat]} position={[0, hh.h / 2, 0]}>
             <boxGeometry args={[hh.w, hh.h, 0.4]} />
           </mesh>
@@ -736,13 +792,18 @@ export default function PorchDeckRoom() {
         </group>
       ))}
       {/* dusk sky */}
-      <mesh material={mats.sky} position={[0, 3.4, 20]}>
+      <mesh material={mats.sky} position={[0, 3.4, 21.9]}>
         <planeGeometry args={[70, 16]} />
       </mesh>
-      {/* string lights (POR-03): ceiling front edge + west perimeter + railing swag */}
-      <StringLights a={[-3.3, ceilY, 2.02]} b={[3.3, ceilY, 2.02]} sag={0.30} bulbs={17} />
-      <StringLights a={[-3.3, ceilY, 2.02]} b={[-3.3, ceilY, -2.35]} sag={0.34} bulbs={11} />
-      <StringLights a={[-3.3, FLOOR_Y + 0.92, 2.14]} b={[-0.78, FLOOR_Y + 0.92, 2.14]} sag={0.13} bulbs={7} />
+      {/* string lights (POR-03): raised with the header (owner
+          fix) — front edge at the extended deck line, perimeters
+          down both sides, a swag along the front railing. From
+          the seats they frame the top and sides; the front run
+          sits behind the standing camera, never across the felt */}
+      <StringLights a={[-3.3, ceilY, 4.22]} b={[3.3, ceilY, 4.22]} sag={0.30} bulbs={17} />
+      <StringLights a={[-3.3, ceilY, 4.22]} b={[-3.3, ceilY, -2.35]} sag={0.34} bulbs={15} />
+      <StringLights a={[3.3, ceilY, 4.22]} b={[3.3, ceilY, -2.35]} sag={0.34} bulbs={15} />
+      <StringLights a={[-3.3, FLOOR_Y + 0.92, 4.04]} b={[-0.85, FLOOR_Y + 0.92, 4.04]} sag={0.13} bulbs={7} />
       {/* dressing: rockers on the west flank, side table, plants */}
       <RockingChair spot={{ x: -3.0, z: -1.55, ry: Math.PI / 2 + 0.35 }} throwPlaid />
       <RockingChair spot={{ x: -3.05, z: 0.15, ry: Math.PI / 2 - 0.2 }} />
