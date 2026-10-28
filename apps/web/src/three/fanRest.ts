@@ -1,9 +1,12 @@
 import { liftEase } from './handLift';
 
 /**
- * Fan rest (owner, 2026-10-28): in LANDSCAPE + the STANDING camera only, a
- * seat's fanned cards LOWER and TIGHTEN while that seat is off-turn, and
- * raise/open back to the normal spread when the seat becomes the one to act.
+ * Fan rest (owner, 2026-10-28): a seat's fanned cards LOWER and TIGHTEN
+ * while that seat is off-turn, and raise/open back to the normal spread
+ * when the seat becomes the one to act. Scope: the SITTING camera rests
+ * at any aspect (portrait included — it is the phone's home camera), and
+ * the STANDING camera rests in landscape; portrait + Standing never
+ * rests, so that framing stays byte-unchanged.
  *
  * This module is the pure state half of the feature — no three.js, no DOM
  * (except the reduced-motion input, which callers pass in):
@@ -28,22 +31,25 @@ export const FAN_REST_MS = 650;
 export interface FanRestGate {
   /** Viewport aspect (width / height). Landscape means strictly > 1. */
   aspect: number;
-  /** The table camera view. Only 'standing' rests; sitting never does. */
+  /** The table camera view. 'sitting' rests at any aspect; 'standing' rests in landscape only. */
   view: 'standing' | 'sitting';
   /** True when this seat is the one to act (bid or play — Table's actor). */
   seatIsActive: boolean;
 }
 
 /**
- * The rest amount a fan should settle at: 1 only in landscape + Standing
- * for a seat that is NOT the one to act. Portrait and Sitting always
- * return 0 (byte-unchanged behaviour there), and the active seat — the
- * human included — always returns 0 (raised/open, ready to tap).
+ * The rest amount a fan should settle at for a seat that is NOT the one
+ * to act: 1 in the Sitting camera at any aspect, and 1 in the Standing
+ * camera in landscape. Portrait + Standing always returns 0
+ * (byte-unchanged behaviour there), a dead aspect (0 / NaN canvas)
+ * never rests, and the active seat — the human included — always
+ * returns 0 (raised/open, ready to tap).
  */
 export function fanRestTarget(g: FanRestGate): number {
   if (g.seatIsActive) return 0;
-  if (!(Number.isFinite(g.aspect) && g.aspect > 1)) return 0;
-  if (g.view !== 'standing') return 0;
+  if (!(Number.isFinite(g.aspect) && g.aspect > 0)) return 0;
+  if (g.view === 'sitting') return 1;
+  if (!(g.aspect > 1)) return 0;
   return 1;
 }
 

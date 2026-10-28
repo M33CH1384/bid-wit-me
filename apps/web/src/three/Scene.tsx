@@ -651,8 +651,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     : portraitPhone ? { ...phoneHandFan(), view, bottomFrac: (phoneHandFan().bottomFrac ?? 0) + sittingBottom, ...strip, minStripPx: (handCounts[human] ?? 13) > 13 ? MIN_STRIP_PX : PHONE_HAND_STRIP_PX }
     : { view, ...strip };
   const trickScale = short ? 1.81 : undefined; // +25% over the old 1.45, same ratio as TRICK_SCALE
-  // Fan rest (owner 2026-10-28, fanRest.ts): in landscape + Standing, every seat's
-  // fan rests lowered + tightened while it is NOT the seat to act, and opens to the
+  // Fan rest (owner 2026-10-28, fanRest.ts): in Sitting (any aspect) and in
+  // landscape + Standing, every seat's fan rests lowered + tightened while it is
+  // NOT the seat to act, and opens to the
   // normal spread for the acting seat. Keyed to props.activeSeat — the same
   // acting-seat signal the plates/badges use — so the human's fan starts rising
   // the moment the turn arrives (and it is NOT exempt: off-turn it rests too).

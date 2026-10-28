@@ -90,8 +90,9 @@ export const OPP_FAN_REST_TIGHTEN = 0.45;
 const clampRest = (rest: number | undefined): number => (Number.isFinite(rest) && rest! > 0 ? Math.min(1, rest!) : 0);
 
 /** Opponent's held fan: upright cards near the rail, backs toward the table centre.
- *  `rest` (0..1, landscape + Standing off-turn only — see fanRest.ts) lowers the
- *  whole fan toward the seat's edge and closes its spread; 0 = today's fan. */
+ *  `rest` (0..1, off-turn only — scope in fanRest.ts: Sitting at any aspect,
+ *  Standing in landscape) lowers the whole fan toward the seat's edge and
+ *  closes its spread; 0 = today's fan. */
 export function opponentFan(pos: SeatPos, n: number, i: number, count: number, rest = 0): Xform {
   const r = clampRest(rest);
   const d = seatDir(pos, n);
@@ -445,8 +446,9 @@ export interface FanOpts {
    * raised/open spread, 1 = fully lowered + tightened. Applied in
    * handCardPlane as a pose ON TOP of the solved layout — the solver,
    * card scale and depth stack never see it, so open and rest share one
-   * fit. Callers only pass a non-zero amount in landscape + Standing
-   * for a seat that is not the one to act.
+   * fit. Callers only pass a non-zero amount for a seat that is not the
+   * one to act, in the scopes fanRest.ts gates (Sitting at any aspect,
+   * Standing in landscape).
    */
   rest?: number;
 }
