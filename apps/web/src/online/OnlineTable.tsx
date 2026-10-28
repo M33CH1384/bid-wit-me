@@ -209,6 +209,9 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
           // The King's finale cutthroat (story co-op, Phase 4): the revolver
           // stays on the felt by his seat (server seat 1) for the whole game.
           kingGunSeat: room.story?.stopId === 'king' && room.story.phase === 'finale-game' ? rot.L(1) : null,
+          // Story-scoped room dressing: the room's stop id (e.g. the
+          // Corner street environment at stop `corner`, High quality).
+          storyStopId: room.story?.stopId ?? null,
           // The King's rail + seated figures in co-op (owner, 2026-10-26):
           // at the King stop the whole neighborhood stands around the 3D
           // table (railCastForAttempt deals the full pool at the King for

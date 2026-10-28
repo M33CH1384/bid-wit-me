@@ -206,6 +206,11 @@ export interface OnlineBinding {
   /** Story co-op: the pair's narrative line for this stop (attempts/clears from
    *  the pair context), shown as the viewer side's headline on the versus card. */
   versusPairNote?: string | null;
+  /** Story co-op: the room's story stop id. Solo derives its own from
+   *  the story prop; this carries the co-op room's stop so story-scoped
+   *  room dressing (the Corner street room at stop `corner`) mounts in
+   *  the scene for online story tables too. */
+  storyStopId?: string | null;
   /** Release 10: watching, not playing. Seat 0 is a real player (names[0] is their name): no hand, no controls. */
   spectator?: boolean;
   /**
@@ -2657,6 +2662,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           dealEpoch={dealEpoch}
           dealFlight={redeal?.phase === 'deal'}
           kingGunSeat={kingGunSeatFor(story) ?? online?.kingGunSeat ?? null}
+          storyStopId={storyStopId ?? online?.storyStopId ?? null}
           kingRailCast={kingRail}
           seatedFigures={seatedFiguresArr}
           crowdCue={crowdCue}

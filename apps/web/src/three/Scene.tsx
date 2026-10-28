@@ -41,6 +41,7 @@ import BackyardRoom, { preloadBackyardRoom } from './BackyardRoom';
 import ChurchRoom, { preloadChurchRoom } from './ChurchRoom';
 import VegasRoom, { preloadVegasRoom } from './VegasRoom';
 import SpeakeasyRoom, { preloadSpeakeasyRoom } from './SpeakeasyRoom';
+import CornerStreetRoom from './CornerStreetRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
 import MansionRoom, { preloadMansionRoom } from './MansionRoom';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
@@ -144,6 +145,12 @@ export interface SceneProps {
   /** The King's rail cast (character ids) standing around the table as
    *  3D figures — King story tables only; empty/absent everywhere else. */
   kingRailCast?: readonly string[];
+  /** The story stop this table is playing (story tables only). Story-
+   *  scoped room dressing keys off it: at stop `corner` (venueId
+   *  speakeasy) the High-quality room is the Corner street
+   *  environment, not the Speakeasy Lounge — see CornerStreetRoom.
+   *  Null/absent = not a story table; every venue renders as itself. */
+  storyStopId?: string | null;
   /** Per-seat seated figures (character id or null, by seat): at the
    *  King table the seated story characters render in the scene. */
   seatedFigures?: readonly (string | null)[];
@@ -1670,7 +1677,9 @@ export default function Scene(props: SceneProps) {
       {backyard && textured && <BackyardRoom quality={props.quality} handNo={props.handNo} />}
       {church && textured && <ChurchRoom quality={props.quality} handNo={props.handNo} />}
       {vegas && textured && <VegasRoom quality={props.quality} handNo={props.handNo} />}
-      {speakeasy && textured && <SpeakeasyRoom quality={props.quality} handNo={props.handNo} />}
+      {speakeasy && textured && (props.storyStopId === 'corner' && props.quality === 'high'
+        ? <CornerStreetRoom fxOn={!props.reduceFx} />
+        : <SpeakeasyRoom quality={props.quality} handNo={props.handNo} />)}
       {grandma && textured && <GrandmaRoom quality={props.quality} handNo={props.handNo} />}
       {mansion && textured && <MansionRoom quality={props.quality} handNo={props.handNo} />}
       {showTable && (
