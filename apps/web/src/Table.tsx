@@ -3044,22 +3044,29 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             {st.result.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
             {st.result.endReason === 'third-set' && <div className="shot-out-banner third-set" data-testid="third-set">{THIRD_SET_HEADLINE}</div>}
             <p className="muted" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
-            {/* placements + box score + headlines scroll inside the sheet (the
-                .modal > .scroll flex contract); hero stays fixed above and the
-                action buttons stay pinned below — nothing is ever clipped */}
+            {/* the standings are FIXED sheet content, never scroll content
+                (owner, 2026-10-28: in landscape the .scroll region below is
+                squeezed to a sliver and the second team's row sat under an
+                inner scroll — a two-team standings list must never need a
+                scroll). Only the box score (detail, also on the Score pad)
+                scrolls inside the sheet; hero + standings stay fixed above
+                and the action buttons stay pinned below. In the landscape
+                tier the sheet composes as a grid — standings left, box
+                score right — see "Game-over sheet in LANDSCAPE" in
+                styles.css and layout-gameover-landscape-fit.test.ts. */}
+            <ol className="placements">
+              {st.result.finalScores
+                .map((score, side) => ({ side, score, place: st.result!.placements[side]! }))
+                .sort((a, b) => a.place - b.place)
+                .map((x) => (
+                  <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${st.result!.winners.includes(x.side) ? ' win' : ''}`}>
+                    <span className="place">#{x.place}</span>
+                    <span>{sideName(r, x.side, names)}</span>
+                    <b>{x.score}</b>
+                  </li>
+                ))}
+            </ol>
             <div className="scroll go-scroll" data-testid="gameover-scroll">
-              <ol className="placements">
-                {st.result.finalScores
-                  .map((score, side) => ({ side, score, place: st.result!.placements[side]! }))
-                  .sort((a, b) => a.place - b.place)
-                  .map((x) => (
-                    <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${st.result!.winners.includes(x.side) ? ' win' : ''}`}>
-                      <span className="place">#{x.place}</span>
-                      <span>{sideName(r, x.side, names)}</span>
-                      <b>{x.score}</b>
-                    </li>
-                  ))}
-              </ol>
               <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} />
               {tipNudge && (
                 <p className="tip-nudge" data-testid="tip-nudge">
