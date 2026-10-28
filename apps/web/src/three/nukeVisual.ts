@@ -42,7 +42,16 @@ export function currentNukeDevice(): NukeDevice {
   return { ua: navigator.userAgent ?? '', platform: navigator.platform ?? '', maxTouchPoints: navigator.maxTouchPoints ?? 0 };
 }
 
-import { FELT, RAIL } from './layout';
+/*
+ * Table extents, MIRRORED from layout.ts (FELT hx 1.5 / hz 1.78, RAIL 0.2) —
+ * deliberately not imported: haptics.ts statically imports this module from
+ * the entry graph, and layout.ts pulls in three.js, which must stay out of
+ * the first script (entry-graph.test.ts). nuke-engulf.test.ts pins these
+ * values against the real layout module, so the mirror cannot drift.
+ */
+const TABLE_FELT_HX = 1.5;
+const TABLE_FELT_HZ = 1.78;
+const TABLE_RAIL = 0.2;
 
 /**
  * The demand-loop blast is stuck on the white flash when the rendered clock stops between watchdog
@@ -81,11 +90,11 @@ export const CAP_PLANE_Y = 0.82;
 /** Margin over the true occlusion need, for the dome's curved shoulder. */
 export const CAP_COVER_MARGIN = 1.07;
 
-/** Table extent the cloud must swallow: felt half-extents plus the rail, from layout.ts. */
+/** Table extent the cloud must swallow: felt half-extents plus the rail (mirrored above). */
 export const TABLE_EXTENT = {
-  hx: FELT.hx + RAIL,
-  hz: FELT.hz + RAIL,
-  halfDiagonal: Math.hypot(FELT.hx + RAIL, FELT.hz + RAIL),
+  hx: TABLE_FELT_HX + TABLE_RAIL,
+  hz: TABLE_FELT_HZ + TABLE_RAIL,
+  halfDiagonal: Math.hypot(TABLE_FELT_HX + TABLE_RAIL, TABLE_FELT_HZ + TABLE_RAIL),
 } as const;
 
 /** Fallback cover radius when no live camera is at hand (tests, first frame). */
