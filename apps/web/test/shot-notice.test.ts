@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { type Bid, type GameState, type HandRecord, isShot, makeRules, newGame, scoreHand } from '@spades/rules';
-import { onNoticeSides, shotArms, shotChatLines, stickyNoticeSides } from '../src/shotOut';
+import { endReasonText, onNoticeSides, shotArms, shotChatLines, stickyNoticeSides } from '../src/shotOut';
 import { resultChips } from '../src/ScorePad';
 import { noticeStickyTip, noticeTip } from '../src/seatLabel';
 
@@ -95,6 +95,23 @@ describe('chat lines stay truthful', () => {
     expect(first).toEqual(['⚠ Side 0 got shot · ON NOTICE: one more and they\'re out']);
     const second = shotChatLines(joker, timeline[3]!, { result: null, history: timeline.slice(0, 4) }, label);
     expect(second).toEqual(['⚠ Side 0 got shot · ON NOTICE FOR GOOD: one more shot and they\'re out — making their books won\'t clear it']);
+  });
+});
+
+describe('game-over sentence for a sticky ending', () => {
+  const label = (side: number) => `Side ${side}`;
+  const over = (history: HandRecord[]): GameState => ({
+    ...st(history), phase: 'gameOver',
+    result: { endReason: 'shotOut', shotOut: [0], finalScores: [40, 120], placements: [2, 1], winners: [1] },
+  });
+  it('across a gap it says "on notice for good", not "two hands in a row"', () => {
+    // last hand shot side 0 out; the hand before it was a MAKE for side 0 — a sticky ending
+    const hist = [...timeline, rec(6, SET0.bids, SET0.tricks)];
+    expect(endReasonText(joker, over(hist), label)).toBe('Side 0 got shot while on notice for good.');
+  });
+  it('back-to-back shots keep the classic wording', () => {
+    const hist = [rec(1, MADE.bids, MADE.tricks), rec(2, SET0.bids, SET0.tricks), rec(3, SET0.bids, SET0.tricks)];
+    expect(endReasonText(joker, over(hist), label)).toBe('Side 0 got shot two hands in a row.');
   });
 });
 

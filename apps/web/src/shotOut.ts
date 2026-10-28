@@ -46,9 +46,12 @@ export function shotChatLines(r: TableRules, rec: HandRecord, st: Pick<GameState
   return rec.sides.flatMap((s) => {
     if (!s.shot) return [];
     if (out.includes(s.side)) {
+      // No recorded evidence about the previous hand → keep the long-standing wording;
+      // the sticky wording is used only when the previous record proves a gap.
+      const prevSide = prev?.sides?.find((x) => x.side === s.side);
       const how = rec.handNo === 1
         ? 'got shot on the first hand'
-        : prev?.sides.find((x) => x.side === s.side)?.shot
+        : !prevSide || prevSide.shot
           ? 'got shot two hands in a row'
           : 'got shot while on notice for good';
       return [`💀 SHOT OUT: ${label(s.side)} ${how}`];
@@ -75,10 +78,14 @@ export function endReasonText(r: TableRules, st: Pick<GameState, 'result' | 'his
     // sentence, so the sentence carries only the detail — never the stamp again
     const who = (res.shotOut ?? []).map(label).join(' & ');
     if (st.history.length === 1) return `${who} got shot on the first hand.`;
-    // "two hands in a row" only when the previous hand really was a shot for the out side;
-    // a sticky second notice can end it across a gap, and the sentence must say that instead.
+    // "two hands in a row" unless the previous hand's record proves a gap (no shot for the
+    // out side): a sticky second notice can end it across a gap, and the sentence must say
+    // that instead. A record with no sides carries no evidence — the classic wording stands.
     const prev = st.history[st.history.length - 2];
-    const inARow = (res.shotOut ?? []).every((side) => prev?.sides.find((s) => s.side === side)?.shot);
+    const inARow = (res.shotOut ?? []).every((side) => {
+      const prevSide = prev?.sides?.find((s) => s.side === side);
+      return prevSide ? !!prevSide.shot : true;
+    });
     return inARow ? `${who} got shot two hands in a row.` : `${who} got shot while on notice for good.`;
   }
   if (res.endReason === 'third-set') {
