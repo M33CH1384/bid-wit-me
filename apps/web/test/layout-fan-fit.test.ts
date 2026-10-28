@@ -103,7 +103,7 @@ describe('D10 by-design: the bid panel is a measured modal overlay', () => {
     const meZ = num(/\.me \{[^}]*z-index: (\d+)/, css);
     const fanZ = num(/\.felt-hand \{[^}]*z-index: (\d+)/, css);
     expect(meZ).toBeGreaterThan(fanZ);
-    expect(css).toContain('.table-screen:not(.short) .me:has(> .bid-panel) { bottom: var(--hand-clear, calc(23vh + env(safe-area-inset-bottom))); }');
+    expect(css).toContain('.table-screen:not(.short) .me:has(> .bid-panel) { bottom: var(--hand-clear, calc(43vh + env(safe-area-inset-bottom))); }');
     expect(table).toContain("el.style.setProperty('--hand-clear'");
   });
 });

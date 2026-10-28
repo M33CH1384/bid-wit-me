@@ -2442,10 +2442,25 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   useEffect(() => {
     if (!measureHand) return;
     const tick = () => {
-      const L = (window as unknown as { __bwmLayout?: { hand: { y: number }[] } }).__bwmLayout;
       const el = screenRef.current;
-      if (!el || !L?.hand?.length) return;
-      const top = Math.min(...L.hand.map((q) => q.y));
+      if (!el) return;
+      const L = (window as unknown as { __bwmLayout?: { hand: { y: number }[] } }).__bwmLayout;
+      let top = Infinity;
+      if (L?.hand?.length) top = Math.min(...L.hand.map((q) => q.y));
+      // The flat (felt) hand publishes nothing to __bwmLayout, and on the founder's
+      // iPhone the 3D layout publish cannot be relied on either (see the plate note
+      // above): when the bid panel's anchor waited on the 3D publish alone, it fell
+      // back to a stale vh guess and sat ON the fan (story Porch, hand 2, standing,
+      // 2026-10-28). Measure whichever hand is actually on screen — the DOM fan's
+      // own box when it is the visible one — and clear the higher of the two.
+      // (The Scene flags .hand-3d on this element while the 3D hand is the live
+      // one and CSS merely hides the flat fan — its stale box must not anchor.)
+      const felt = el.classList.contains('hand-3d') ? null : el.querySelector<HTMLElement>('.felt-hand');
+      if (felt) {
+        const r = felt.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) top = Math.min(top, r.top);
+      }
+      if (!Number.isFinite(top)) return;
       el.style.setProperty('--hand-clear', `${Math.max(60, Math.round(window.innerHeight - top + 6))}px`);
     };
     tick();

@@ -13,7 +13,17 @@ export const FELT_EXPOSED_PX = 44;
  * Quick-load card box. Bigger than the old 52×74, kept inside `screenW` with a few pixels for the outline.
  * The exposed strip is 44px when that still leaves a readable card; otherwise the row fits at about a third showing.
  */
-export function feltCardBox(count: number, screenW: number): { width: number; height: number; margin: number; exposed: number } {
+/** Tallest a flat card may grow, as a fraction of the viewport height. The box is
+ *  sized from the screen WIDTH, which on a landscape phone (844px wide, 390px
+ *  tall) produced 120×168 cards eating 43% of the height — leaving the bid panel
+ *  no room between the scorebug and the fan (it clipped off the top of the
+ *  screen, founder's table 2026-10-28). The 3D fan's own landscape strip is
+ *  0.32 of the height; the flat stand-in stays in the same proportion. While
+ *  the bid panel is open, styles.css also drops this fan to the 3D fan's low
+ *  anchor — together they restore the panel's room in landscape. */
+export const FELT_MAX_HEIGHT_FRAC = 0.34;
+
+export function feltCardBox(count: number, screenW: number, screenH?: number): { width: number; height: number; margin: number; exposed: number } {
   const widthPx = Number.isFinite(screenW) && screenW >= 32 ? screenW : 390;
   const avail = Math.max(80, widthPx - 12);
   const gaps = Math.max(0, Math.max(1, count) - 1);
@@ -40,7 +50,13 @@ export function feltCardBox(count: number, screenW: number): { width: number; he
       }
     }
   }
-  return { width, height: width * 1.4, margin: -(width - exposed) / 2, exposed };
+  let height = width * 1.4;
+  if (Number.isFinite(screenH) && screenH! >= 32 && height > screenH! * FELT_MAX_HEIGHT_FRAC) {
+    height = Math.floor(screenH! * FELT_MAX_HEIGHT_FRAC);
+    width = height / 1.4;
+    exposed = gaps === 0 ? width : (avail - width) / gaps;
+  }
+  return { width, height, margin: -(width - exposed) / 2, exposed };
 }
 
 /**
@@ -84,12 +100,13 @@ export function FeltHand({ cards, trick, legal, selected, onCard, promoted, visi
   const slots = useRef(new Map<string, HTMLCanvasElement | null>());
   const key = `${cards.join(',')}|${trick.join(',')}`;
   const [screenW, setScreenW] = useState(() => (typeof window === 'undefined' ? 390 : window.innerWidth));
+  const [screenH, setScreenH] = useState(() => (typeof window === 'undefined' ? 844 : window.innerHeight));
   useEffect(() => {
-    const onResize = () => setScreenW(window.innerWidth);
+    const onResize = () => { setScreenW(window.innerWidth); setScreenH(window.innerHeight); };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  const box = feltCardBox(cards.length, screenW);
+  const box = feltCardBox(cards.length, screenW, screenH);
 
   useEffect(() => {
     const queue = [...cards, ...trick];
