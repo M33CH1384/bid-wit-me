@@ -19,7 +19,7 @@
  * generator at the table) render as a clean index face (rank + suit), the
  * same identity the painted face carries.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Card } from '@spades/rules';
 import { DECKS, deckArtUrl, deckBackUrl, deckById, deckThumbUrl, type DeckDef } from './decks';
 import { deckUnlockLine, deckUnlocked, useClearedStoryStops } from './storyDecks';
@@ -61,6 +61,42 @@ function CardTile({ deckId, card, onFocus }: { deckId: string; card: Card; onFoc
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Card-focus swipe (owner, 2026-10-28: "I want to be able to swipe    */
+/* thru the cards on these screens in addition to tapping the         */
+/* arrows").                                                          */
+/*                                                                    */
+/* Pointer-driven on the focus stage, so touch, mouse and trackpad    */
+/* drags all read the same: the card tracks the finger, a committed   */
+/* release slides it out and the neighbour settles in from the other  */
+/* side; a short or slow drag settles back. Horizontal-only by        */
+/* construction — the surface is touch-action: pan-y (the browser     */
+/* keeps vertical pans for the sheet's own scrolling) and a           */
+/* vertical-dominant move releases the gesture untouched. The ends    */
+/* behave exactly like the arrows: the swipe calls the same prev /    */
+/* next targets, wrap included. Under reduced motion there is no      */
+/* tracking and no slide — the swap is instant.                       */
+/* ------------------------------------------------------------------ */
+
+const SWIPE_SLOP_PX = 10; // travel before a direction is chosen
+const SWIPE_COMMIT_PX = 54; // release distance that commits the swipe
+const SWIPE_FLICK_MIN_PX = 20; // a fast flick commits from this far…
+const SWIPE_FLICK_PX_MS = 0.5; // …at at least this speed (px/ms)
+const SWIPE_EXIT_PX = 340; // slide-out travel — past any stage width
+const SWIPE_OUT_MS = 230; // slide-out duration
+const SWIPE_SETTLE_MS = 300; // settle-back / settle-in duration
+
+function swipeReducedMotion(): boolean {
+  try { return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+type SwipeGesture = {
+  id: number; x0: number; y0: number;
+  dir: 'h' | 'v' | null;
+  dx: number; lastX: number; lastT: number; v: number;
+  reduced: boolean;
+};
+
 function CardFocus({ deckId, card, onNav }: { deckId: string; card: Card; onNav: (c: Card) => void }) {
   const art = deckArtUrl(deckId, card);
   const fact = deckCardFact(deckId, card);
@@ -68,14 +104,103 @@ function CardFocus({ deckId, card, onNav }: { deckId: string; card: Card; onNav:
   const n = DECK_CARD_ORDER.length;
   const prev = DECK_CARD_ORDER[(idx + n - 1) % n]!;
   const next = DECK_CARD_ORDER[(idx + 1) % n]!;
+
+  const [slide, setSlide] = useState<{ x: number; ms: number }>({ x: 0, ms: 0 });
+  const [enterDir, setEnterDir] = useState<0 | -1 | 1>(0); // -1: arrived going next, 1: going prev
+  const gesture = useRef<SwipeGesture | null>(null);
+  const navBusy = useRef(false);
+  const enterSeq = useRef(0); // generation guard: a stale settle-in cleanup never clears a newer entry
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => { timers.current.forEach((t) => window.clearTimeout(t)); }, []);
+  const later = (fn: () => void, ms: number) => { timers.current.push(window.setTimeout(fn, ms)); };
+
+  /** Arrow taps keep their exact instant swap; they also reset any slide state. */
+  const navNow = (c: Card) => { setEnterDir(0); setSlide({ x: 0, ms: 0 }); onNav(c); };
+
+  /** dir -1: swiped left, going next. dir 1: swiped right, going prev. */
+  const commitSwipe = (dir: -1 | 1) => {
+    const target = dir === -1 ? next : prev;
+    if (swipeReducedMotion()) { navNow(target); return; }
+    navBusy.current = true;
+    setSlide({ x: dir * SWIPE_EXIT_PX, ms: SWIPE_OUT_MS });
+    later(() => {
+      const seq = ++enterSeq.current;
+      setEnterDir(dir);
+      setSlide({ x: 0, ms: 0 });
+      onNav(target);
+      navBusy.current = false;
+      later(() => { if (enterSeq.current === seq) setEnterDir(0); }, SWIPE_SETTLE_MS + 60);
+    }, SWIPE_OUT_MS);
+  };
+
+  const settleBack = () => {
+    setSlide({ x: 0, ms: SWIPE_SETTLE_MS });
+    later(() => setSlide({ x: 0, ms: 0 }), SWIPE_SETTLE_MS + 20);
+  };
+
+  const endGesture = (commit: boolean) => {
+    const g = gesture.current;
+    if (!g) return;
+    gesture.current = null;
+    if (g.dir !== 'h') return;
+    const adx = Math.abs(g.dx);
+    const flicked = adx >= SWIPE_FLICK_MIN_PX && Math.abs(g.v) >= SWIPE_FLICK_PX_MS
+      && Math.sign(g.v) === Math.sign(g.dx);
+    if (commit && (adx >= SWIPE_COMMIT_PX || flicked)) commitSwipe(g.dx < 0 ? -1 : 1);
+    else if (!g.reduced) settleBack();
+  };
+
+  const onPointerDown = (e: ReactPointerEvent) => {
+    if (navBusy.current || gesture.current) return;
+    if ((e.target as HTMLElement).closest('button')) return; // the arrows keep their plain tap
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    gesture.current = {
+      id: e.pointerId, x0: e.clientX, y0: e.clientY, dir: null,
+      dx: 0, lastX: e.clientX, lastT: performance.now(), v: 0,
+      reduced: swipeReducedMotion(),
+    };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
+  };
+
+  const onPointerMove = (e: ReactPointerEvent) => {
+    const g = gesture.current;
+    if (!g || e.pointerId !== g.id) return;
+    if (e.pointerType === 'mouse' && (e.buttons & 1) === 0) { endGesture(false); return; }
+    const dx = e.clientX - g.x0;
+    const dy = e.clientY - g.y0;
+    g.dx = dx;
+    if (g.dir === null) {
+      if (Math.abs(dx) < SWIPE_SLOP_PX && Math.abs(dy) < SWIPE_SLOP_PX) return;
+      g.dir = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+      if (g.dir === 'v') { gesture.current = null; return; } // the sheet's scroll owns it
+    }
+    const now = performance.now();
+    const dt = now - g.lastT;
+    if (dt > 0) g.v = 0.65 * g.v + 0.35 * ((e.clientX - g.lastX) / dt);
+    g.lastX = e.clientX; g.lastT = now;
+    if (!g.reduced) setSlide({ x: dx, ms: 0 });
+  };
+
+  const swipeStyle: CSSProperties | undefined = enterDir !== 0 ? undefined
+    : slide.x !== 0 || slide.ms !== 0
+      ? { transform: `translateX(${slide.x}px)`, transition: slide.ms ? `transform ${slide.ms}ms cubic-bezier(.25,.8,.3,1)` : 'none' }
+      : undefined;
+
   return (
     <div className="db-focus" data-testid="deck-card-focus">
-      <div className="db-stage">
-        <button type="button" className="db-nav" data-testid="deck-card-prev" aria-label="Previous card" onClick={() => onNav(prev)}>‹</button>
-        {art
-          ? <img className="db-big" src={art} alt={cardLabel(card)} />
-          : <PaintedCard card={card} className="db-big-painted" />}
-        <button type="button" className="db-nav" data-testid="deck-card-next" aria-label="Next card" onClick={() => onNav(next)}>›</button>
+      <div className="db-stage-clip">
+      <div className="db-stage"
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+        onPointerUp={() => endGesture(true)} onPointerCancel={() => endGesture(false)}>
+        <button type="button" className="db-nav" data-testid="deck-card-prev" aria-label="Previous card" onClick={() => navNow(prev)}>‹</button>
+        <div className={`db-swipe${enterDir === -1 ? ' enter-next' : enterDir === 1 ? ' enter-prev' : ''}`}
+          data-testid="deck-card-swipe" style={swipeStyle} onDragStart={(e) => e.preventDefault()}>
+          {art
+            ? <img className="db-big" src={art} alt={cardLabel(card)} draggable={false} />
+            : <PaintedCard card={card} className="db-big-painted" />}
+        </div>
+        <button type="button" className="db-nav" data-testid="deck-card-next" aria-label="Next card" onClick={() => navNow(next)}>›</button>
+      </div>
       </div>
       <div className="db-focus-meta">
         <b className="db-focus-name">{cardLabel(card)}</b>
