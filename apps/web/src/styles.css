@@ -2349,6 +2349,51 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .rw-trophy { font-size: 34px; }
   .rw-head h2 { font-size: clamp(28px, 7vw, 40px); }
 }
+/* Landscape phones (owner, 2026-10-28): the card runs ~600-800px tall in a
+   390-430px viewport, so the reward rows — the count-up show — start BELOW
+   THE FOLD with the Postgame Report ahead of them. The rows' in-view gate
+   (above) only starts their animation as the player's scroll carries them
+   through the band, so the show plays mid-scroll and is spent by the time
+   the page settles: "you have to scroll to see it but once you do it's
+   already happened." In short landscape the card therefore composes as
+   THREE COLUMNS — headline + Postgame Report on the left, reward rows
+   in the middle, actions on a right rail — and the whole celebration
+   (confetti over the card, the rows counting up, the actions) sits in
+   the INITIAL viewport with no scrolling at all; the rows' gate opens
+   at presentation because the rows are already in view. Height+width
+   gated like the recap sheet's short-landscape block: portrait phones
+   and tall screens keep the single column, byte-for-byte. Extra rows
+   (achievements, challenges, card-up) extend the middle column
+   downward — the rows still START in view, so their gate opens on time
+   even when a long card scrolls a little. */
+@media (max-height: 560px) and (min-width: 560px) {
+  .rewards-page { padding: calc(6px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); }
+  .rw-card {
+    width: min(100%, 920px);
+    padding: 14px 14px 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(150px, .55fr);
+    grid-template-areas: "head rows actions" "report rows actions";
+    column-gap: 22px;
+    row-gap: 8px;
+  }
+  .rw-head { grid-area: head; }
+  .rw-postgame { grid-area: report; margin: 0; }
+  .rw-rows { grid-area: rows; }
+  .rw-actions { grid-area: actions; margin-top: 0; gap: 8px; justify-content: center; }
+  .rw-row { padding: 8px 10px; }
+  .rw-actions .primary.big { min-height: 44px; }
+  .rw-actions .rw-rematch-btn { min-height: 44px; }
+  /* The league ticker rides the bottom of this screen on device and its
+     clearance rule (html.bwm-ticker-on .rewards-page) takes 58px of
+     bottom padding — the fit above is budgeted against that too: the
+     report table and headline trim down so the whole card still fits
+     between the top padding and the ticker clearance at 390px tall. */
+  .rw-trophy { font-size: 30px; }
+  .rw-head h2 { font-size: clamp(28px, 7vw, 36px); }
+  .rw-postgame .cmp-table th, .rw-postgame .cmp-table td { padding-top: 4px; padding-bottom: 4px; }
+  .rw-moments li { margin: 1px 0; }
+}
 .vs-tile.lose .vs-frame { border-radius: 10px; border: 1px solid rgba(var(--edge-rgb),.35); }
 .vs-tile.lose .vs-avatar span { font-size: 28px; }
 .vs-tile.lose figcaption { font-size: 12px; font-weight: 700; color: var(--muted); }
