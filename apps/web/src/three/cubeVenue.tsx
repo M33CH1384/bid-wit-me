@@ -8,8 +8,11 @@
  * mid-hand; sky video keeps playing from the same local clock.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useThree } from '@react-three/fiber';
-import { Box3, type Group, Mesh, MeshStandardMaterial, type Object3D, RepeatWrapping, SRGBColorSpace, TextureLoader, VideoTexture } from 'three';
+import { useFrame, useThree } from '@react-three/fiber';
+import { Box3, type Group, Mesh, MeshStandardMaterial, type Object3D, type PointLight, RepeatWrapping, SRGBColorSpace, TextureLoader, VideoTexture } from 'three';
+import { flickerAt, glowAt, venueLifeFor } from '../venueLife';
+import { fx } from '../fx';
+import type { VenueId } from '../venues';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -54,10 +57,40 @@ export function useLocalTod(handNo: number) {
   return lock;
 }
 
+/**
+ * Wave D venue life for the cube rooms: the config's point lights
+ * breathe on the shared life layer (venueLife glow × flicker for the
+ * room) — a pure function of the frame clock, so the pulse is seekable
+ * and identical on every client. High quality only, mirroring the
+ * Venue3D fxOn gate; on Low the lights hold their shipped intensity
+ * (the held frame). Rooms without point lights have nothing to pulse.
+ */
+function CubeLifePulse({ cfg, quality, lights }: { cfg: CubeVenueConfig; quality: 'high' | 'low'; lights: React.RefObject<(PointLight | null)[]> }) {
+  const invalidate = useThree((s) => s.invalidate);
+  const life = useMemo(() => venueLifeFor(cfg.id as VenueId), [cfg.id]);
+  const bases = useMemo(() => (cfg.points ?? []).map((pt) => pt.i), [cfg]);
+  useEffect(() => {
+    if (quality !== 'high' || !bases.length) return;
+    const id = window.setInterval(() => { if (!document.hidden) invalidate(); }, 90);
+    return () => window.clearInterval(id);
+  }, [quality, bases.length, invalidate]);
+  useFrame(({ clock }) => {
+    if (quality !== 'high') return;
+    const t = clock.elapsedTime;
+    // Calm contract (coordinator integration): under Reduce Effects / OS
+    // reduce-motion the lights hold their shipped base intensity — the
+    // pulse stills to the held frame instead of breathing.
+    const k = fx.reduced || fx.osReducedMotion ? 1 : glowAt(life, t) * flickerAt(life, t);
+    (lights.current ?? []).forEach((l, i) => { if (l) l.intensity = (bases[i] ?? l.intensity) * k; });
+  });
+  return null;
+}
+
 export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenueConfig; quality: 'high' | 'low'; handNo: number }) {
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
   const propsRef = useRef<Group>(null);
+  const lifeLights = useRef<(PointLight | null)[]>([]);
   const floorMat = useRef<MeshStandardMaterial>(null);
   const lock = useLocalTod(handNo);
   const light = todLighting(lock.tod);
@@ -135,7 +168,8 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
         {(cfg.cyls ?? []).map((b, i) => <mesh key={`c${i}`} position={b.p} rotation={[0, 0, b.rz ?? 0]} castShadow receiveShadow><cylinderGeometry args={b.a} /><meshStandardMaterial color={b.c} roughness={b.r ?? 0.8} metalness={b.m ?? 0} emissive={b.e ?? '#000000'} emissiveIntensity={b.ei ?? 0} /></mesh>)}
         {(cfg.tori ?? []).map((b, i) => <mesh key={`t${i}`} position={b.p} rotation={[0, b.ry ?? 0, 0]}><torusGeometry args={b.a} /><meshStandardMaterial color={b.c} roughness={0.6} /></mesh>)}
         {(cfg.planes ?? []).map((b, i) => <mesh key={`p${i}`} position={b.p} rotation={b.rot ?? [0, 0, 0]} receiveShadow>{b.sky && skyTex ? <><planeGeometry args={b.s} /><meshBasicMaterial map={skyTex} color={skyColor} side={2} /></> : b.sea ? <><planeGeometry args={b.s} /><meshStandardMaterial color={b.c ?? '#2a6a8a'} roughness={0.35} metalness={0.1} /></> : <><planeGeometry args={b.s} /><meshStandardMaterial color={b.c ?? '#888888'} roughness={0.9} side={2} /></>}</mesh>)}
-        {(cfg.points ?? []).map((pt, i) => <pointLight key={`l${i}`} position={pt.p} color={pt.c} intensity={pt.i} distance={pt.d} decay={2} />)}
+        {(cfg.points ?? []).map((pt, i) => <pointLight key={`l${i}`} ref={(el) => { lifeLights.current[i] = el; }} position={pt.p} color={pt.c} intensity={pt.i} distance={pt.d} decay={2} />)}
+        <CubeLifePulse cfg={cfg} quality={quality} lights={lifeLights} />
       </group>
       <group ref={propsRef} />
     </group>

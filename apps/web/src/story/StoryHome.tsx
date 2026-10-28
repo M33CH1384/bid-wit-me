@@ -193,7 +193,11 @@ export default function StoryHome() {
   const goScreen = (next: Screen) => {
     if (next.k !== screen.k && next.k !== 'game' && screen.k !== 'game') {
       const throughDoor = screen.k === 'map' && (next.k === 'tape' || next.k === 'intro');
-      coverThen(() => setScreen(next), throughDoor ? 'story-entry' : 'screen');
+      // Wave D (§A6 row 67): a doorway move names its destination
+      // stop, so the Doorway dresses as that stop's own door. Every
+      // other move passes no stop and is untouched.
+      const doorwayStopId = throughDoor && (next.k === 'tape' || next.k === 'intro') ? next.stop.id : undefined;
+      coverThen(() => setScreen(next), throughDoor ? 'story-entry' : 'screen', doorwayStopId ? { doorwayStopId } : undefined);
     }
     else setScreen(next);
   };

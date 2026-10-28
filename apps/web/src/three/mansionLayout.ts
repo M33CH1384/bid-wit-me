@@ -20,5 +20,7 @@ export const MANSION: CubeVenueConfig = {
     { p: [-2.75, 0.18, -3.85], a: [0.34, 0.38, 0.36, 14], c: '#d8cfb8', r: 0.4 },
     { p: [2.75, 0.18, -3.85], a: [0.34, 0.38, 0.36, 14], c: '#d8cfb8', r: 0.4 },
   ],
+  // Wave D life: chandelier light — CubeLifePulse shimmers it on the mansion channel.
+  points: [{ p: [0, 2.8, -2.6], c: '#fff0d0', i: 5, d: 8 }],
 };
 export function mansionTris(withProps: boolean): number { return cubeTris(withProps, MANSION); }

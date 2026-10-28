@@ -2869,12 +2869,17 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .prof-loading, .prof-error { text-align: center; padding: 60px 20px; color: var(--muted); }
 .muted { color: var(--muted); }
 
-/* Cop drive-by light flash (The Pj's, Demetrius 2026-10-19): subtle red/blue edge glow. */
-.driveby-lights { position: absolute; inset: 0; z-index: 30; pointer-events: none; animation: driveby-flash 0.9s steps(2, jump-none) infinite; }
+/* Cop drive-by light flash (The Pj's, Demetrius 2026-10-19) — Wave D
+   rebuild: the old 0.9 s two-step strobe becomes a wash that TRAVELS
+   with the cruiser the audio pans across (siren sweep 6 s inside the
+   component's held 7 s window): red enters at the left edge, the two
+   colours cross mid-frame, blue leaves at the right, twice per pass.
+   Softer alpha, no steps — a passing light, not an alarm. */
+.driveby-lights { position: absolute; inset: 0; z-index: 30; pointer-events: none; animation: driveby-flash 3.5s ease-in-out infinite; }
 @keyframes driveby-flash {
-  0% { box-shadow: inset 0 0 60px 18px rgba(255, 30, 30, 0.28); }
-  50% { box-shadow: inset 0 0 60px 18px rgba(30, 90, 255, 0.28); }
-  100% { box-shadow: inset 0 0 60px 18px rgba(255, 30, 30, 0.28); }
+  0% { box-shadow: inset 90px 0 70px -30px rgba(255, 30, 30, 0.22), inset -30px 0 60px -40px rgba(30, 90, 255, 0); }
+  50% { box-shadow: inset 30px 0 70px -30px rgba(30, 90, 255, 0.20), inset -30px 0 70px -30px rgba(255, 30, 30, 0.20); }
+  100% { box-shadow: inset 30px 0 60px -40px rgba(255, 30, 30, 0), inset -90px 0 70px -30px rgba(30, 90, 255, 0.22); }
 }
 
 /* ---- Uploaded profile pictures (Demetrius 2026-10-19): stand in for the camera when it's off ---- */

@@ -36,6 +36,20 @@
  * painting, ever. Motion resumes mid-flight on a re-cover snap-back
  * exactly like the spray's (negative delay from the snapshot's
  * fromCoverage).
+ *
+ * WAVE D (2026-10-28, §A6 row 64; the motion-studio Card Fan
+ * prototype — graded 6/7/7 — is the reference treatment): the cards
+ * gain REAL 3D geometry. Each card body keeps the exact flat
+ * rectangle fanCardContains pins (the cover math does not move), and
+ * inside it a slightly inset FACE tilts in perspective — rotateY
+ * proportional to the card's fan tilt, so the fan's edges angle away
+ * like held cards while the center faces the player — with the
+ * card's edge showing around the face as its thickness. A light
+ * sweep then crosses the formed fan card by card (per-card stagger,
+ * transform/opacity only), timed to finish inside the cover window.
+ * The prototype's shallow-focus blur toward the fan's edges is NOT
+ * carried over: filter blur on the covering cards would soften the
+ * cover itself, and the family's calm contract prefers a crisp fan.
  */
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { SPADE_PATH_D } from './SprayLayer';
@@ -124,6 +138,24 @@ export function fanCardContains(layout: FanLayout, tiltDeg: number, x: number, y
   return Math.abs(t) <= layout.w / 2;
 }
 
+/** Wave D 3D face tilt for a fan card at `tilt` deg: the face angles
+ *  away from the viewer in proportion to the card's fan rotation
+ *  (outer cards turn most, the center card stays nearly square-on),
+ *  with a small constant rotateX lift. Pure in the tilt — the same
+ *  fan, every episode. The face is inset inside the card body, so
+ *  this tilt never opens a gap in the pinned cover rectangle. */
+export function fanFaceTilt(tilt: number): { rotateY: number; rotateX: number } {
+  const clamped = Math.max(-18, Math.min(18, -tilt * 0.3));
+  return { rotateY: clamped === 0 ? 0 : clamped, rotateX: 4 };
+}
+
+/** The light sweep's schedule inside the cover (Wave D): it starts
+ *  once the fan is mostly formed and the last card's sweep lands
+ *  inside the cover window, so the swap never cuts it. */
+const FAN_SHEEN_START_MS = 150;
+const FAN_SHEEN_STAGGER_MS = 12;
+const FAN_SHEEN_MS = 150;
+
 const fromState = (tilt: number) => ({
   transform: `rotate(${tilt * 0.25}deg) translateY(26%) scale(0.94)`,
   opacity: '0',
@@ -180,6 +212,22 @@ export default function FanLayer() {
           easing: 'cubic-bezier(0.22, 0.9, 0.3, 1)',
         });
       });
+      // The light sweep crosses the formed fan, card by card.
+      qa('fan-sheen').forEach((el, i) => {
+        run(
+          el,
+          [
+            { transform: 'translateX(-140%) skewX(-14deg)', opacity: '0' },
+            { opacity: '0.9', offset: 0.3 },
+            { transform: 'translateX(240%) skewX(-14deg)', opacity: '0' },
+          ],
+          {
+            duration: FAN_SHEEN_MS,
+            delay: FAN_SHEEN_START_MS + i * FAN_SHEEN_STAGGER_MS - resumeMs,
+            easing: 'ease-out',
+          },
+        );
+      });
     } else {
       // Reveal: the fan keeps turning the way it came and lifts off
       // the top; the shade lets go first so the new screen breathes
@@ -227,9 +275,17 @@ export default function FanLayer() {
             ...(phase === 'cover' ? fromState(tilt) : coveredState(tilt)),
           }}
         >
-          <svg className="tfan-mark" viewBox="0 0 64 64" aria-hidden="true">
-            <path d={SPADE_PATH_D} fill="currentColor" />
-          </svg>
+          <div
+            className="tfan-face"
+            style={{
+              transform: `rotateY(${fanFaceTilt(tilt).rotateY}deg) rotateX(${fanFaceTilt(tilt).rotateX}deg)`,
+            }}
+          >
+            <div data-anim="fan-sheen" className="tfan-sheen" style={{ opacity: 0 }} />
+            <svg className="tfan-mark" viewBox="0 0 64 64" aria-hidden="true">
+              <path d={SPADE_PATH_D} fill="currentColor" />
+            </svg>
+          </div>
         </div>
       ))}
     </div>

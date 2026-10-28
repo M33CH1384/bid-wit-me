@@ -67,6 +67,20 @@
  *
  * spray.ts is the family's façade: it re-exports this controller under
  * the spray-era names the original call sites and tests use.
+ *
+ * WAVE D (2026-10-28, Animation Replacement Program §A6 rows 62–67):
+ * every program rebuilt in the HyperFrames code-lane at HELD timings
+ * — each program's total below is byte-identical to the shipped spec
+ * (the Wave D test pins them against the pre-rebuild numbers), and
+ * the compositor-only invariant above is unchanged: the treatments
+ * that wanted fluid/canvas (Spray grain, Ink tendrils, the Deal's
+ * flight) are expressed as pre-rendered textures, SVG stroke paths,
+ * and CSS 3D transforms the compositor animates. The one structural
+ * addition: a story-entry episode now carries its destination stop
+ * id (snapshot.doorwayStop) so the Doorway can dress itself as that
+ * stop's own door (see doorwayKindForStop) — a visual variant only,
+ * resolved inside the doorway program; timings, triggers, and the
+ * controller's semantics do not branch on it.
  */
 import { fx } from './fx';
 import { themeStore } from './theme';
@@ -80,6 +94,38 @@ export type MoveClass =
   | 'story-entry';
 
 export type TransitionProgramId = 'spray' | 'ink' | 'fan' | 'deal' | 'sweep' | 'doorway';
+
+/* ------------------------------------------------------------------ */
+/* The Doorway's destination dress (Wave D, §A6 row 67): the door of  */
+/* light takes the shape of the destination stop's own doorway. The   */
+/* kind is a VISUAL variant inside the doorway program — one spec,    */
+/* one lifecycle, silent under every kind. Stops not listed (and the  */
+/* plain Home -> Story entry, which has no single destination stop)   */
+/* get 'hall', the original warm door.                                */
+/* ------------------------------------------------------------------ */
+export type DoorwayKind = 'hall' | 'screen' | 'shop' | 'double' | 'gate' | 'elevator';
+
+export function doorwayKindForStop(stopId?: string | null): DoorwayKind {
+  switch (stopId) {
+    case 'porch':
+      return 'screen'; // the Porch's screen door
+    case 'barbershop':
+    case 'corner':
+      return 'shop'; // storefront glass (the shop, the bodega)
+    case 'rec-center':
+    case 'church-basement':
+    case 'legends':
+    case 'king':
+      return 'double'; // paired doors (gym, basement, the Legends', the King's)
+    case 'cookout':
+    case 'the-pjs':
+      return 'gate'; // yard / street gate slats
+    case 'high-rise':
+      return 'elevator'; // brushed-steel car doors
+    default:
+      return 'hall';
+  }
+}
 
 export interface ProgramSpec {
   /** Cover length. For the Deal: the minimum dwell before the cover
@@ -235,6 +281,11 @@ export interface TransitionSnapshot {
   episodeId: number;
   /** the program this episode is running */
   program: TransitionProgramId;
+  /** Wave D: for a story-entry episode, the destination stop's id
+   *  ('' when the move names no stop — the Doorway then wears its
+   *  default hall dress). Carried for the episode's whole life,
+   *  snap-backs included; no other program reads it. */
+  doorwayStop: string;
 }
 
 let snapshot: TransitionSnapshot = {
@@ -243,6 +294,7 @@ let snapshot: TransitionSnapshot = {
   fromCoverage: 0,
   episodeId: 0,
   program: 'spray',
+  doorwayStop: '',
 };
 const subs = new Set<() => void>();
 let pending: Array<() => void> = [];
@@ -303,11 +355,23 @@ function activeSpec(): ProgramSpec {
   return PROGRAM_SPECS[snapshot.program];
 }
 
-function startCover(mutate: () => void, fromCoverage: number, program: TransitionProgramId): void {
+function startCover(
+  mutate: () => void,
+  fromCoverage: number,
+  program: TransitionProgramId,
+  doorwayStop = '',
+): void {
   clearTimers();
   pending = [mutate];
   const spec = PROGRAM_SPECS[program];
-  emit({ phase: 'cover', phaseAt: nowMs(), fromCoverage, episodeId: snapshot.episodeId + 1, program });
+  emit({
+    phase: 'cover',
+    phaseAt: nowMs(),
+    fromCoverage,
+    episodeId: snapshot.episodeId + 1,
+    program,
+    doorwayStop: program === 'doorway' ? doorwayStop : '',
+  });
   coverTimer = setTimeout(flushCover, spec.coverMs);
   failsafeTimer = setTimeout(cancelTransitions, spec.failsafeMs);
 }
@@ -324,7 +388,7 @@ function flushCover(): void {
   // layer keeps the cover at full for spec.holdMs (the swap lands under
   // it) and only then starts clearing — so this timer covers hold +
   // reveal.
-  emit({ phase: 'reveal', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program });
+  emit({ phase: 'reveal', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program, doorwayStop: snapshot.doorwayStop });
   revealTimer = setTimeout(endReveal, spec.holdMs + spec.revealMs);
   runMutations(ms);
 }
@@ -333,7 +397,7 @@ function endReveal(): void {
   revealTimer = undefined;
   if (failsafeTimer !== undefined) clearTimeout(failsafeTimer);
   failsafeTimer = undefined;
-  emit({ phase: 'idle', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program });
+  emit({ phase: 'idle', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program, doorwayStop: snapshot.doorwayStop });
 }
 
 /**
@@ -343,7 +407,14 @@ function endReveal(): void {
  * flush; during a reveal the cover snaps back and the mutation rides
  * the same episode (keeping the episode's program).
  */
-export function coverThen(mutate: () => void, moveClass: MoveClass = 'screen'): void {
+export interface CoverOptions {
+  /** Wave D: for a 'story-entry' move, the destination stop's id —
+   *  the Doorway dresses as that stop's door (doorwayKindForStop).
+   *  Ignored by every other move class. */
+  doorwayStopId?: string;
+}
+
+export function coverThen(mutate: () => void, moveClass: MoveClass = 'screen', opts?: CoverOptions): void {
   if (!rendererMounted || typeof window === 'undefined' || transitionsSuppressed()) {
     mutate();
     return;
@@ -365,7 +436,7 @@ export function coverThen(mutate: () => void, moveClass: MoveClass = 'screen'): 
       // the end of the ceremony): a navigation during the lift ends
       // the episode and starts its own.
       endDealNow();
-      startCover(mutate, 0, resolveProgram(moveClass));
+      startCover(mutate, 0, resolveProgram(moveClass), opts?.doorwayStopId ?? '');
       return;
     }
     // The reveal opens with the hold, so the dissolved fraction is
@@ -376,10 +447,11 @@ export function coverThen(mutate: () => void, moveClass: MoveClass = 'screen'): 
       1,
       Math.max(0, (nowMs() - snapshot.phaseAt - spec.holdMs) / spec.revealMs),
     );
-    startCover(mutate, 1 - dissolved, snapshot.program);
+    // Snap-back keeps the EPISODE's program — and its doorway dress.
+    startCover(mutate, 1 - dissolved, snapshot.program, snapshot.doorwayStop);
     return;
   }
-  startCover(mutate, 0, resolveProgram(moveClass));
+  startCover(mutate, 0, resolveProgram(moveClass), opts?.doorwayStopId ?? '');
 }
 
 /**
@@ -395,7 +467,7 @@ export function cancelTransitions(): void {
   dealReady = false;
   dealDwellDone = false;
   runMutations(ms);
-  emit({ phase: 'idle', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program });
+  emit({ phase: 'idle', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program, doorwayStop: snapshot.doorwayStop });
 }
 
 /* ------------------------------------------------------------------ */
@@ -416,7 +488,7 @@ function endDealNow(): void {
   clearTimers();
   dealReady = false;
   dealDwellDone = false;
-  emit({ phase: 'idle', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program });
+  emit({ phase: 'idle', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program, doorwayStop: snapshot.doorwayStop });
 }
 
 function releaseDeal(): void {
@@ -426,7 +498,7 @@ function releaseDeal(): void {
   if (coverTimer !== undefined) clearTimeout(coverTimer);
   coverTimer = undefined;
   const spec = PROGRAM_SPECS.deal;
-  emit({ phase: 'reveal', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: 'deal' });
+  emit({ phase: 'reveal', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: 'deal', doorwayStop: '' });
   revealTimer = setTimeout(endReveal, spec.holdMs + spec.revealMs);
 }
 
@@ -446,7 +518,7 @@ export function coverTableEntry(): void {
   dealReady = false;
   dealDwellDone = false;
   const spec = PROGRAM_SPECS.deal;
-  emit({ phase: 'cover', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId + 1, program: 'deal' });
+  emit({ phase: 'cover', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId + 1, program: 'deal', doorwayStop: '' });
   coverTimer = setTimeout(() => {
     coverTimer = undefined;
     dealDwellDone = true;

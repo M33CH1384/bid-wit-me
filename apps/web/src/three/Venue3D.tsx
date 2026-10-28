@@ -9,10 +9,11 @@ import { Environment, useTexture } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import {
-  type Group, type InstancedMesh, type Mesh, type Texture, AdditiveBlending, CanvasTexture, DoubleSide, EquirectangularReflectionMapping, Object3D,
+  type Group, type InstancedMesh, type Mesh, type PointLight, type Texture, AdditiveBlending, CanvasTexture, DoubleSide, EquirectangularReflectionMapping, Object3D,
   RepeatWrapping, SRGBColorSpace,
 } from 'three';
 import { type VenueDef, type VenueId, venueAssetUrls } from '../venues';
+import { flickerAt, glowAt, smokePuffAt, venueLifeFor } from '../venueLife';
 
 const FLOOR_Y = -0.9;
 
@@ -166,29 +167,53 @@ function AmbientTicker() {
   return null;
 }
 
-function Smoke({ at, color = '#d8d4cc', count = 14, spread = 0.25, rise = 1.6 }: { at: [number, number, number]; color?: string; count?: number; spread?: number; rise?: number }) {
+/**
+ * Drifting smoke — Wave D: the puffs are the shared life layer's
+ * seekable model (venueLife.smokePuffAt): seeded offsets, a looping
+ * rise on the venue's own period, no Math.random anywhere — every
+ * client sees the same puff at the same t, and the loop cannot drift.
+ */
+function Smoke({ at, venue = 'backyard', rise = 1.6 }: { at: [number, number, number]; venue?: VenueId; rise?: number }) {
+  const life = venueLifeFor(venue);
+  const count = life.smoke?.count ?? 0;
   const ref = useRef<InstancedMesh>(null);
   const dummy = useMemo(() => new Object3D(), []);
-  const seeds = useMemo(() => Array.from({ length: count }, (_, i) => ({ o: i / count, x: (Math.random() - 0.5) * spread, z: (Math.random() - 0.5) * spread, s: 0.5 + Math.random() * 0.6 })), [count, spread]);
   const tex = useMemo(() => canvasTex(64, 64, (g) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,255,255,0.55)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); }), []);
   useFrame(({ clock, camera }) => {
-    const m = ref.current; if (!m) return;
-    const t = clock.elapsedTime * 0.18;
-    seeds.forEach((sd, i) => {
-      const u = (t + sd.o) % 1;
-      dummy.position.set(at[0] + sd.x + Math.sin((t + sd.o) * 6) * 0.12 * u, at[1] + u * rise, at[2] + sd.z);
+    const m = ref.current; if (!m || !life.smoke) return;
+    const t = clock.elapsedTime;
+    for (let i = 0; i < count; i++) {
+      const puff = smokePuffAt(life, i, t, rise);
+      dummy.position.set(at[0] + puff.x, at[1] + puff.y, at[2]);
       dummy.quaternion.copy(camera.quaternion);
-      const k = (0.15 + u * 0.55) * sd.s; dummy.scale.set(k, k, k);
+      // per-puff fade rides the scale (one shared material opacity)
+      const k = puff.scale * (0.3 + puff.opacity);
+      dummy.scale.set(k, k, k);
       dummy.updateMatrix(); m.setMatrixAt(i, dummy.matrix);
-    });
+    }
     m.instanceMatrix.needsUpdate = true;
   });
+  if (!life.smoke) return null;
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, count]} frustumCulled={false}>
       <planeGeometry args={[1, 1]} />
-      <meshBasicMaterial map={tex} color={color} transparent depthWrite={false} opacity={0.5} />
+      <meshBasicMaterial map={tex} color={life.smoke.tint} transparent depthWrite={false} opacity={0.85} />
     </instancedMesh>
   );
+}
+
+/** A point light breathing on the venue's life channels (glow × flicker).
+ *  fxOn false = the held frame: steady at the glow's midpoint, no motion. */
+function LifeGlow({ at, venue, base, fxOn, flicker = false }: { at: [number, number, number]; venue: VenueId; base: number; fxOn: boolean; flicker?: boolean }) {
+  const ref = useRef<PointLight>(null);
+  const life = venueLifeFor(venue);
+  useFrame(({ clock }) => {
+    const l = ref.current; if (!l) return;
+    if (!fxOn) { l.intensity = base * (life.glow.lo + life.glow.hi) / 2; return; }
+    const t = clock.elapsedTime;
+    l.intensity = base * glowAt(life, t) * (flicker ? flickerAt(life, t) : 1);
+  });
+  return <pointLight ref={ref} position={at} color={life.glow.tint} intensity={base} distance={7} decay={2} />;
 }
 
 function Flame({ at, animate }: { at: [number, number, number]; animate: boolean }) {
@@ -197,7 +222,8 @@ function Flame({ at, animate }: { at: [number, number, number]; animate: boolean
   useFrame(({ clock, camera }) => {
     const m = ref.current; if (!m) return;
     m.quaternion.copy(camera.quaternion);
-    if (animate) { const t = clock.elapsedTime; m.scale.set(1 + Math.sin(t * 13) * 0.08, 1 + Math.sin(t * 9 + at[0]) * 0.16, 1); }
+    // torch flame rides the beach flicker channel (seekable, seeded)
+    if (animate) { const f = flickerAt(venueLifeFor('beach'), clock.elapsedTime + at[0]); m.scale.set(0.92 + f * 0.14, 0.82 + f * 0.34, 1); }
   });
   return (
     <group position={at}>
@@ -287,7 +313,7 @@ function Backyard({ fxOn }: { fxOn: boolean }) {
   );
 }
 
-function Mansion() {
+function Mansion({ fxOn }: { fxOn: boolean }) {
   return (
     <group>
       {/* marble columns and a chandelier glow at the back */}
@@ -300,7 +326,7 @@ function Mansion() {
       <group position={[0, 1.55, -3.0]}>
         {Array.from({ length: 16 }, (_, i) => { const a = (i / 16) * Math.PI * 2; return <Bulb key={i} p={[Math.cos(a) * 0.55, Math.sin(i * 1.7) * 0.06, Math.sin(a) * 0.55]} c="#fff4d6" r={0.05} />; })}
         {Array.from({ length: 10 }, (_, i) => { const a = (i / 10) * Math.PI * 2; return <Bulb key={`b${i}`} p={[Math.cos(a) * 0.3, -0.22, Math.sin(a) * 0.3]} c="#e8f4ff" r={0.04} />; })}
-        <pointLight color="#fff0d0" intensity={8} distance={8} decay={2} />
+        <LifeGlow at={[0, 0, 0]} venue="mansion" base={8} fxOn={fxOn} />
       </group>
       {/* a red runner carpet from the table to the back */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y + 0.004, -4.5]}><planeGeometry args={[1.6, 5]} /><meshStandardMaterial color="#7a0f1c" roughness={0.9} /></mesh>
@@ -365,7 +391,7 @@ function Rooftop() {
   );
 }
 
-function Speakeasy() {
+function Speakeasy({ fxOn }: { fxOn: boolean }) {
   const bottles = useMemo(() => Array.from({ length: 22 }, (_, i) => ({ x: -3 + i * 0.28, h: 0.24 + ((i * 37) % 10) / 60, c: ['#3a7a3a', '#8a5a1a', '#c9a227', '#6a1a1a', '#2a4a7a'][i % 5]! })), []);
   return (
     <group>
@@ -383,6 +409,8 @@ function Speakeasy() {
         </group>
       ))}
       <Neon text="JAZZ" color="#ffb35c" p={[0, 0.25, -4.3]} w={1.4} />
+      {/* lounge life: the amber room glow breathes on the speakeasy channel */}
+      <LifeGlow at={[0, 0.7, -3.4]} venue="speakeasy" base={2.4} fxOn={fxOn} />
     </group>
   );
 }
@@ -457,7 +485,7 @@ function Beach({ fxOn }: { fxOn: boolean }) {
   );
 }
 
-function Grandma() {
+function Grandma({ fxOn }: { fxOn: boolean }) {
   const wallpaper = useMemo(() => {
     const t = canvasTex(128, 128, (g) => { g.fillStyle = '#efe0b8'; g.fillRect(0, 0, 128, 128); g.fillStyle = '#c98a6a'; for (let y = 0; y < 128; y += 32) for (let x = (y / 32) % 2 ? 16 : 0; x < 128; x += 32) { g.beginPath(); g.arc(x + 8, y + 8, 5, 0, Math.PI * 2); g.fill(); } g.fillStyle = '#7a9a6a'; g.fillRect(0, 0, 3, 128); g.fillRect(64, 0, 3, 128); });
     t.wrapS = t.wrapT = RepeatWrapping; t.repeat.set(10, 2.5); return t;
@@ -477,9 +505,47 @@ function Grandma() {
       <mesh position={[3.6, FLOOR_Y + 0.9, -3.8]} castShadow><boxGeometry args={[0.9, 1.8, 0.75]} /><meshStandardMaterial color="#e8e2c8" roughness={0.35} /></mesh>
       <mesh position={[2.3, FLOOR_Y + 0.45, -4.0]} castShadow><boxGeometry args={[1.6, 0.9, 0.6]} /><meshStandardMaterial color="#8a5a3a" roughness={0.6} /></mesh>
       <mesh position={[2.3, FLOOR_Y + 0.92, -4.0]}><boxGeometry args={[1.64, 0.04, 0.64]} /><meshStandardMaterial color="#d8c8a0" roughness={0.4} /></mesh>
-      {/* a sweet potato pie cooling */}
+      {/* a sweet potato pie cooling — Wave D kitchen life: steam wisps
+          off the pie on the grandma channel (6 puffs, slow, warm) */}
       <mesh position={[2.1, FLOOR_Y + 0.97, -3.95]}><cylinderGeometry args={[0.16, 0.13, 0.05, 20]} /><meshStandardMaterial color="#c8642a" roughness={0.7} /></mesh>
-      <pointLight position={[0, 1.6, -2]} color="#ffe6b8" intensity={5} distance={8} decay={2} />
+      {fxOn && <Smoke at={[2.1, FLOOR_Y + 1.0, -3.95]} venue="grandma" rise={0.5} />}
+      <LifeGlow at={[0, 1.6, -2]} venue="grandma" base={5} fxOn={fxOn} />
+    </group>
+  );
+}
+
+/**
+ * The Pj's streetlife (Wave D) — the one venue still dressed by this
+ * module, and it shipped with NO life at all: a sodium streetlight that
+ * buzzes on the blockAfterDark flicker channel (dips, never a cut —
+ * the cut is the set cover's), a kettle grill with drifting smoke, and
+ * one lit window across the street breathing on the glow channel.
+ * fxOn false = held frame: lamp steady, window lit, no smoke.
+ */
+function PjsLife({ fxOn }: { fxOn: boolean }) {
+  return (
+    <group>
+      {/* streetlight, back left over the table */}
+      <group position={[-3.4, FLOOR_Y, -3.1]}>
+        <mesh position={[0, 1.5, 0]} castShadow><cylinderGeometry args={[0.045, 0.06, 3.0, 8]} /><meshStandardMaterial color="#2c2f33" metalness={0.6} roughness={0.5} /></mesh>
+        <mesh position={[0.35, 2.98, 0]}><boxGeometry args={[0.8, 0.07, 0.07]} /><meshStandardMaterial color="#2c2f33" metalness={0.6} roughness={0.5} /></mesh>
+        <mesh position={[0.72, 2.9, 0]}><sphereGeometry args={[0.11, 12, 10]} /><meshBasicMaterial color="#ffb45c" toneMapped={false} /></mesh>
+        <LifeGlow at={[0.72, 2.82, 0]} venue="blockAfterDark" base={7} fxOn={fxOn} flicker />
+      </group>
+      {/* kettle grill, back right, smoke on the street channel */}
+      <group position={[3.2, FLOOR_Y, -2.5]} scale={0.8}>
+        <mesh position={[0, 0.78, 0]} castShadow><sphereGeometry args={[0.32, 20, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2]} /><meshStandardMaterial color="#111" metalness={0.6} roughness={0.35} side={DoubleSide} /></mesh>
+        <mesh position={[0, 0.74, 0]}><cylinderGeometry args={[0.24, 0.24, 0.02, 20]} /><meshBasicMaterial color="#8a2a0a" toneMapped={false} /></mesh>
+        {[0, 2.1, 4.2].map((a, i) => <mesh key={i} position={[Math.cos(a) * 0.22, 0.32, Math.sin(a) * 0.22]}><cylinderGeometry args={[0.015, 0.015, 0.7, 6]} /><meshStandardMaterial color="#333" /></mesh>)}
+      </group>
+      {fxOn && <Smoke at={[3.2, -0.02, -2.5]} venue="blockAfterDark" />}
+      {/* one lit window across the street */}
+      <group position={[4.6, FLOOR_Y, -4.4]}>
+        <mesh position={[0, 1.5, 0]}><planeGeometry args={[0.7, 0.95]} /><meshBasicMaterial color="#ffcf8a" toneMapped={false} /></mesh>
+        <mesh position={[0, 1.5, 0.01]}><boxGeometry args={[0.05, 0.95, 0.02]} /><meshStandardMaterial color="#1a140d" /></mesh>
+        <mesh position={[0, 1.5, 0.01]}><boxGeometry args={[0.7, 0.05, 0.02]} /><meshStandardMaterial color="#1a140d" /></mesh>
+        <LifeGlow at={[0, 1.5, 0.5]} venue="blockAfterDark" base={1.6} fxOn={fxOn} />
+      </group>
     </group>
   );
 }
@@ -490,7 +556,9 @@ function Yacht({ fxOn }: { fxOn: boolean }) {
     const t = canvasTex(256, 256, (g) => { g.fillStyle = '#1b4e78'; g.fillRect(0, 0, 256, 256); for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '160,210,255' : '10,40,70'},${0.08 + Math.random() * 0.12})`; g.fillRect(Math.random() * 256, Math.random() * 256, 6 + Math.random() * 14, 1.5); } });
     t.wrapS = t.wrapT = RepeatWrapping; t.repeat.set(14, 14); return t;
   }, []);
-  useFrame((_, dt) => { if (fxOn) { ripple.offset.x = (ripple.offset.x + dt * 0.006) % 1; ripple.offset.y = (ripple.offset.y + dt * 0.012) % 1; } });
+  // water drift is a pure function of the frame clock (seekable) — the
+  // old dt-accumulation drifted with frame rate and could never be held
+  useFrame(({ clock }) => { if (fxOn) { const t = clock.elapsedTime; ripple.offset.set((t * 0.006) % 1, (t * 0.012) % 1); } });
   const posts = useMemo(() => {
     const out: [number, number][] = [];
     for (let z = -5.8; z <= 4.6; z += 0.9) { out.push([-3.6, z], [3.6, z]); }
@@ -518,21 +586,22 @@ function Yacht({ fxOn }: { fxOn: boolean }) {
 export function VenueProps({ id, fxOn }: { id: VenueId; fxOn: boolean }) {
   switch (id) {
     case 'backyard': return <Backyard fxOn={fxOn} />;
-    case 'mansion': return <Mansion />;
+    case 'mansion': return <Mansion fxOn={fxOn} />;
     case 'barbershop': return null; // production cube room: three/BarbershopRoom.tsx (mounted by Scene)
     case 'church': return <Church />;
     case 'rooftop': return <Rooftop />;
-    case 'speakeasy': return <Speakeasy />;
+    case 'speakeasy': return <Speakeasy fxOn={fxOn} />;
     case 'vegas': return <Vegas />;
     case 'beach': return <Beach fxOn={fxOn} />;
-    case 'grandma': return <Grandma />;
+    case 'grandma': return <Grandma fxOn={fxOn} />;
     case 'yacht': return <Yacht fxOn={fxOn} />;
+    case 'blockAfterDark': return <PjsLife fxOn={fxOn} />;
     default: return null;
   }
 }
 
 /** venues with ambient motion (only animated when effects are on) */
-const MOVES: Partial<Record<VenueId, true>> = { backyard: true, beach: true, yacht: true };
+const MOVES: Partial<Record<VenueId, true>> = { backyard: true, beach: true, yacht: true, blockAfterDark: true, grandma: true, speakeasy: true, mansion: true };
 
 /** Everything around the table for one venue. Mounted inside the Canvas; never suspends the table. */
 export default function Venue3D({ def, quality, reduceFx }: { def: VenueDef; quality: 'high' | 'low'; reduceFx: boolean }) {

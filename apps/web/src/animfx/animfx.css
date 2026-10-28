@@ -414,20 +414,55 @@
   100% { transform: translate(var(--tx), var(--ty)) scale(.62); opacity: .85; }
 }
 
-/* ---- 13. Pj's calm headlight drive-by ---- */
-.animfx-headlights {
-  position: absolute; inset: 0; pointer-events: none; opacity: 0;
-  background: linear-gradient(100deg, transparent 30%, rgba(255, 236, 180, .13) 46%, rgba(255, 244, 205, .22) 50%, rgba(255, 236, 180, .13) 54%, transparent 70%);
-  background-size: 260% 100%;
-  animation: animfx-headlights 4.6s ease-in-out forwards;
+/* ---- 13. Pj's calm headlight drive-by — Wave D rebuild (§A1 row 13) ----
+   Two beams, fence-shadow striping and a taillight afterglow, keyframed
+   from the pure sweep model (venueLife.headlightSweepAt): travel is
+   LINEAR like the audio pan (-11 -> +11 over 4.4 s), brightness follows
+   the gain envelope (peak abreast ~2.2 s, gone by 4.6 s), and the whole
+   pass stays the HELD 4.6 s. Motion is transform/opacity only — the old
+   background-position paint sweep is retired. Calm = the held frame:
+   beams parked abreast as one soft glow, no travel, no striping. */
+.animfx-headlights { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.animfx-hl-beam {
+  position: absolute; top: 16%; height: 48%; width: 18vw; left: 0; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 244, 205, .34), rgba(255, 236, 180, .13) 48%, transparent 72%);
+  animation: animfx-hl-beam 4.6s linear forwards; will-change: transform, opacity;
 }
-.animfx-headlights.calm { animation-duration: 4.6s; opacity: 0; background: radial-gradient(ellipse at 50% 40%, rgba(255, 240, 200, .12), transparent 65%); animation-name: animfx-headlights-calm; }
-@keyframes animfx-headlights {
-  0% { opacity: 0; background-position: 115% 0; }
-  22% { opacity: 1; }
-  78% { opacity: 1; }
-  100% { opacity: 0; background-position: -115% 0; }
+.animfx-hl-beam.b1 { margin-left: -4.5vw; }
+.animfx-hl-beam.b2 { margin-left: 4.5vw; }
+@keyframes animfx-hl-beam {
+  0% { transform: translateX(-29vw); opacity: 0; }
+  16% { transform: translateX(-6.6vw); opacity: .8; }
+  39% { transform: translateX(25.6vw); opacity: 1; }
+  65% { transform: translateX(62vw); opacity: .82; }
+  80% { transform: translateX(82.7vw); opacity: .45; }
+  100% { transform: translateX(111vw); opacity: 0; }
 }
+.animfx-hl-fence {
+  position: absolute; inset: 0; opacity: 0;
+  background: repeating-linear-gradient(90deg, rgba(2, 4, 8, .30) 0 6px, transparent 6px 34px);
+  animation: animfx-hl-fence 4.6s linear forwards; will-change: transform, opacity;
+}
+@keyframes animfx-hl-fence {
+  0% { transform: translateX(7px); opacity: 0; }
+  25% { transform: translateX(-5px); opacity: .5; }
+  50% { transform: translateX(-17px); opacity: .65; }
+  75% { transform: translateX(-30px); opacity: .4; }
+  100% { transform: translateX(-42px); opacity: 0; }
+}
+.animfx-hl-tail {
+  position: absolute; top: 28%; height: 32%; width: 14vw; left: 0; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 64, 48, .38), rgba(220, 40, 30, .12) 50%, transparent 72%);
+  animation: animfx-hl-tail 4.6s linear forwards; will-change: transform, opacity;
+}
+@keyframes animfx-hl-tail {
+  0%, 52% { transform: translateX(35vw); opacity: 0; }
+  72% { transform: translateX(43.8vw); opacity: .55; }
+  86% { transform: translateX(63.4vw); opacity: .6; }
+  100% { transform: translateX(83vw); opacity: 0; }
+}
+.animfx-headlights.calm { animation: animfx-headlights-calm 4.6s ease-in-out forwards; opacity: 0; background: radial-gradient(ellipse at 50% 40%, rgba(255, 240, 200, .12), transparent 65%); }
+.animfx-headlights.calm .animfx-hl-beam, .animfx-headlights.calm .animfx-hl-fence, .animfx-headlights.calm .animfx-hl-tail { display: none; }
 @keyframes animfx-headlights-calm { 0%, 100% { opacity: 0; } 35%, 65% { opacity: 1; } }
 
 /* ================= wave 2 (owner addendum, 2026-10-20) ================= */

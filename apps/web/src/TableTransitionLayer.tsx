@@ -23,6 +23,30 @@
  *
  * Family discipline: WAAPI transform/opacity only, zero per-frame
  * painting; input locked only while a cover is up.
+ *
+ * WAVE D (2026-10-28, §A6 rows 65–66): §A6 asks the Deal and the
+ * Book Sweep to reuse the table's own 3D deal/gather flights. Those
+ * flights live in the table's three.js scene, and two standing laws
+ * bar importing them here: the transitions' compositor-only
+ * invariant (transform/opacity/clip-path/filter ONLY) and the
+ * entry-graph law (no static three.js imports into entry-reachable
+ * modules — this layer mounts in Root). So Wave D re-expresses the
+ * same motions in CSS 3D within the invariant, and flags the
+ * substitution as a coordinator item in the wave report:
+ *  - THE DEAL: each card now flies an ARC — it leaves the corner,
+ *    rises and tips (rotateX) at mid-flight, overshoots its slot's
+ *    rotation a breath, and settles flat. Same 320 ms flight, same
+ *    50 ms stagger, same 700 ms dwell: the last card still lands
+ *    inside the dwell, and the ready-driven lifecycle is untouched.
+ *    The reveal gather rides the same arc home (the shipped reveal
+ *    teleported each card to the corner on its first frame — its
+ *    opening keyframe sat at the corner, not at the slot; the arc
+ *    home removes the jump).
+ *  - THE BOOK SWEEP: the reveal no longer shrinks the whole panel
+ *    away. The felt fades through to the menu while the won-book
+ *    stack peels off card by card and gathers along an arc to the
+ *    SAME bottom-left dealer corner the Deal deals from — one
+ *    continuous motion language for entering and leaving a table.
  */
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { SPADE_PATH_D } from './SprayLayer';
@@ -48,6 +72,15 @@ function dealGeo() {
   const vh = window.innerHeight;
   const w = Math.min(vw * 0.21, vh * 0.16);
   return { w, h: w * 1.42, vw, vh };
+}
+
+/** Wave D: the Deal flight's arc height (px) for a card travelling
+ *  (dx, dy) from the dealer corner to its slot — proportional to the
+ *  distance, clamped so short hops stay flat and long ones sail.
+ *  Pure, so the flight model is pinned by tests, not eyeballing. */
+export function dealArcHeight(dx: number, dy: number): number {
+  const dist = Math.hypot(dx, dy);
+  return Math.round(Math.min(120, Math.max(24, dist * 0.16)));
 }
 
 function sweepGeo() {
@@ -89,13 +122,36 @@ export default function TableTransitionLayer() {
           duration: 380,
           easing: 'ease-out',
         });
-        qa('deal-card').forEach((el, i) => {
-          const slot = DEAL_SLOTS[i] ?? DEAL_SLOTS[0];
+        // Each slot's landing shadow gathers as its card comes
+        // down — the flight's weight, on transform/opacity only.
+        qa('deal-shadow').forEach((el, i) => {
           run(
             el,
             [
-              { transform: 'rotate(0deg)', opacity: '0' },
-              { transform: `translate(${el.dataset.dx}px, ${el.dataset.dy}px) rotate(${slot[2]}deg)`, opacity: '1' },
+              { transform: 'scale(0.55)', opacity: '0' },
+              { transform: 'scale(1)', opacity: '0.38' },
+            ],
+            { duration: 180, delay: i * 50 + 140, easing: 'ease-out' },
+          );
+        });
+        qa('deal-card').forEach((el, i) => {
+          const slot = DEAL_SLOTS[i] ?? DEAL_SLOTS[0];
+          const dx = Number(el.dataset.dx ?? 0);
+          const dy = Number(el.dataset.dy ?? 0);
+          const arc = dealArcHeight(dx, dy);
+          run(
+            el,
+            [
+              { transform: 'translate(0px, 0px) rotate(0deg) rotateX(0deg) scale(0.94)', opacity: '0' },
+              {
+                transform: `translate(${dx * 0.55}px, ${dy * 0.55 - arc}px) rotate(${slot[2] * 0.6}deg) rotateX(16deg) scale(1.03)`,
+                opacity: '1',
+                offset: 0.55,
+              },
+              {
+                transform: `translate(${dx}px, ${dy}px) rotate(${slot[2]}deg) rotateX(0deg) scale(1)`,
+                opacity: '1',
+              },
             ],
             { duration: 320, delay: i * 50, easing: 'cubic-bezier(0.22, 0.9, 0.3, 1)' },
           );
@@ -110,13 +166,31 @@ export default function TableTransitionLayer() {
           delay: 60,
           easing: 'ease-out',
         });
+        qa('deal-shadow').forEach((el, i) => {
+          run(el, [{ transform: 'scale(1)', opacity: '0.38' }, { transform: 'scale(0.8)', opacity: '0' }], {
+            duration: 160,
+            delay: i * 16,
+            easing: 'ease-out',
+          });
+        });
         qa('deal-card').forEach((el, i) => {
           const slot = DEAL_SLOTS[i] ?? DEAL_SLOTS[0];
+          const dx = Number(el.dataset.dx ?? 0);
+          const dy = Number(el.dataset.dy ?? 0);
+          const arc = dealArcHeight(dx, dy);
+          // Wave D: the gather home starts AT the slot (the shipped
+          // first keyframe sat at the corner — a one-frame teleport)
+          // and rides the flight arc back down to the corner pile.
           run(
             el,
             [
-              { transform: `translate(0px, 0px) rotate(${slot[2]}deg)`, opacity: '1' },
-              { transform: `translate(${-Number(el.dataset.dx ?? 0)}px, ${-Number(el.dataset.dy ?? 0)}px) rotate(0deg)`, opacity: '0' },
+              { transform: `translate(${dx}px, ${dy}px) rotate(${slot[2]}deg) rotateX(0deg) scale(1)`, opacity: '1' },
+              {
+                transform: `translate(${dx * 0.45}px, ${dy * 0.45 - arc * 0.7}px) rotate(${slot[2] * 0.4}deg) rotateX(12deg) scale(0.97)`,
+                opacity: '1',
+                offset: 0.5,
+              },
+              { transform: 'translate(0px, 0px) rotate(0deg) rotateX(0deg) scale(0.94)', opacity: '0' },
             ],
             { duration: DEAL.revealMs * 0.8, delay: i * 16, easing: 'cubic-bezier(0.5, 0, 0.75, 0.4)' },
           );
@@ -129,15 +203,50 @@ export default function TableTransitionLayer() {
           duration: SWEEP.coverMs,
           easing: 'cubic-bezier(0.22, 0.9, 0.3, 1)',
         });
+        // The book stack rides the panel's leading edge in — it is a
+        // sibling of the panel now (so the reveal can fade the felt
+        // without fading the books), travelling the same distance on
+        // the same curve.
+        const vw = window.innerWidth;
+        run(q('sweep-stack'), [{ transform: `translateX(${vw}px)` }, { transform: 'translateX(0px)' }], {
+          duration: SWEEP.coverMs,
+          easing: 'cubic-bezier(0.22, 0.9, 0.3, 1)',
+        });
       } else {
+        // Wave D reveal: the felt fades through to the menu while
+        // the won books peel off the stack one by one and gather
+        // along an arc to the dealer corner (the Deal's own corner).
         run(
           q('sweep-panel'),
           [
-            { transform: 'translateX(0%) translateY(0%) scale(1)', opacity: '1' },
-            { transform: 'translateX(-34%) translateY(26%) scale(0.55)', opacity: '0' },
+            { transform: 'translateX(0%)', opacity: '1' },
+            { transform: 'translateX(-4%)', opacity: '0' },
           ],
-          { duration: SWEEP.revealMs, easing: 'cubic-bezier(0.5, 0, 0.75, 0.4)' },
+          { duration: SWEEP.revealMs * 0.72, easing: 'ease-out' },
         );
+        qa('sweep-card').forEach((el, i) => {
+          const dx = Number(el.dataset.dx ?? 0);
+          const dy = Number(el.dataset.dy ?? 0);
+          const bx = i * 5;
+          const by = -i * 5;
+          const rot = -6 + i * 3;
+          run(
+            el,
+            [
+              { transform: `translate(${bx}px, ${by}px) rotate(${rot}deg)`, opacity: '1' },
+              {
+                transform: `translate(${dx * 0.5 + bx}px, ${dy * 0.5 + by - 36}px) rotate(${rot * 0.5}deg)`,
+                opacity: '1',
+                offset: 0.55,
+              },
+              {
+                transform: `translate(${dx + bx}px, ${dy + by}px) rotate(${rot * 0.3}deg)`,
+                opacity: '0',
+              },
+            ],
+            { duration: SWEEP.revealMs * 0.7, delay: 30 + i * 30, easing: 'cubic-bezier(0.5, 0, 0.75, 0.4)' },
+          );
+        });
       }
     }
   }, [active, phase, episodeId, program]);
@@ -159,6 +268,24 @@ export default function TableTransitionLayer() {
         aria-hidden="true"
       >
         <div data-anim="deal-felt" className="tt-felt" style={{ opacity: phase === 'cover' ? 0 : 1 }} />
+        {DEAL_SLOTS.map((slot, i) => {
+          const x = (slot[0] / 100) * g.vw;
+          const y = (slot[1] / 100) * g.vh;
+          return (
+            <div
+              key={`shadow-${i}`}
+              data-anim="deal-shadow"
+              className="tt-deal-shadow"
+              style={{
+                left: x - g.w * 0.08,
+                top: y - g.h * 0.05,
+                width: g.w * 1.16,
+                height: g.h * 1.1,
+                opacity: phase === 'cover' ? 0 : 0.38,
+              }}
+            />
+          );
+        })}
         {DEAL_SLOTS.map((slot, i) => {
           const x = (slot[0] / 100) * g.vw;
           const y = (slot[1] / 100) * g.vh;
@@ -192,6 +319,15 @@ export default function TableTransitionLayer() {
   }
 
   const g = sweepGeo();
+  // Wave D gather geometry: the stack sits at the scoop's leading
+  // edge (explicit px, so the gather math below is exact), and the
+  // dealer corner it gathers to is the Deal's own corner.
+  const stackX = 26;
+  const stackY = g.vh / 2 - g.h / 2;
+  const cornerX = g.vw * 0.04;
+  const cornerY = g.vh - g.h - g.vh * 0.04;
+  const sdx = cornerX - stackX;
+  const sdy = cornerY - stackY;
   return (
     <div
       ref={ref}
@@ -204,21 +340,35 @@ export default function TableTransitionLayer() {
     >
       <div data-anim="sweep-panel" className="tt-scoop" style={{ transform: phase === 'cover' ? 'translateX(103%)' : 'translateX(0%)' }}>
         <div className="tt-scoop-edge" />
-        <div className="tt-stack" style={{ width: g.w, height: g.h }}>
-          {[0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="tfan-card tt-stack-card"
-              style={{ transform: `translate(${i * 5}px, ${-i * 5}px) rotate(${-6 + i * 3}deg)` }}
-            >
-              {i === 3 && (
-                <svg className="tfan-mark" viewBox="0 0 64 64" aria-hidden="true">
-                  <path d={SPADE_PATH_D} fill="currentColor" />
-                </svg>
-              )}
-            </div>
-          ))}
-        </div>
+      </div>
+      <div
+        data-anim="sweep-stack"
+        className="tt-stack"
+        style={{
+          left: stackX,
+          top: stackY,
+          marginTop: 0,
+          width: g.w,
+          height: g.h,
+          transform: phase === 'cover' ? `translateX(${g.vw}px)` : 'translateX(0px)',
+        }}
+      >
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            data-anim="sweep-card"
+            data-dx={sdx}
+            data-dy={sdy}
+            className="tfan-card tt-stack-card"
+            style={{ transform: `translate(${i * 5}px, ${-i * 5}px) rotate(${-6 + i * 3}deg)` }}
+          >
+            {i === 3 && (
+              <svg className="tfan-mark" viewBox="0 0 64 64" aria-hidden="true">
+                <path d={SPADE_PATH_D} fill="currentColor" />
+              </svg>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

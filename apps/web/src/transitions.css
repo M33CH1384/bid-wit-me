@@ -10,6 +10,9 @@
   z-index: 2000;
   overflow: hidden;
   touch-action: none;
+  /* Wave D: the fan's 3D stage — card faces tilt in this perspective
+     (transform-style chains through .tfan-card below). */
+  perspective: 1100px;
 }
 .tfan-shade {
   position: absolute;
@@ -54,6 +57,44 @@
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
+/* Wave D — the fan card's 3D face: inset inside the card body (whose
+   flat rectangle is the pinned cover), tilted in the layer's
+   perspective; the body showing around it reads as the card's edge.
+   The Deal/Sweep cards reuse .tfan-card without a face and are
+   untouched by these rules. */
+.tfan-card {
+  transform-style: preserve-3d;
+}
+.tfan-face {
+  position: absolute;
+  inset: 3% 4.5%;
+  border-radius: 9px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(155deg, #26334f 0%, #16203a 55%, #0e1628 100%);
+  border: 1px solid rgba(216, 182, 106, 0.4);
+  overflow: hidden;
+  pointer-events: none;
+}
+.tfan-neon .tfan-face {
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(91, 223, 255, 0.17), rgba(91, 223, 255, 0) 55%),
+    linear-gradient(155deg, #2e1860 0%, #1a0d40 55%, #0c071e 100%);
+  border-color: rgba(128, 84, 255, 0.5);
+}
+/* The light sweep's blade: a skewed sheen strip the layer tweens
+   across each face in turn (transform/opacity only). */
+.tfan-sheen {
+  position: absolute;
+  top: -12%;
+  bottom: -12%;
+  left: 0;
+  width: 42%;
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.32) 50%, rgba(255, 255, 255, 0) 100%);
+  transform: translateX(-140%) skewX(-14deg);
+  will-change: transform, opacity;
+  pointer-events: none;
+}
 /* ------------------------------------- The Deal + The Book Sweep -- */
 .tt-layer {
   position: fixed;
@@ -61,6 +102,8 @@
   z-index: 2000;
   overflow: hidden;
   touch-action: none;
+  /* Wave D: the Deal's flight arcs tip in this perspective. */
+  perspective: 1100px;
 }
 .tt-felt {
   position: absolute;
@@ -72,6 +115,15 @@
 }
 .tt-card {
   will-change: transform, opacity;
+}
+/* Wave D — a dealt card's landing shadow on the felt: a static
+   radial gradient the layer scales/fades in as the card lands. */
+.tt-deal-shadow {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 70%);
+  will-change: transform, opacity;
+  pointer-events: none;
 }
 /* The scoop: a felt panel whose leading (left) edge carries a gold
    bar and the won-book stack, like a hand gathering a trick. */
@@ -96,6 +148,9 @@
   left: 26px;
   top: 50%;
   margin-top: -12%;
+  /* Wave D: the layer positions the stack in explicit px inline (so
+     the gather-to-dealer math is exact) and tweens its ride-in. */
+  will-change: transform;
 }
 .tt-stack-card {
   position: absolute;
@@ -150,4 +205,87 @@
   border-left: 2px solid rgba(255, 217, 160, 0.85);
   box-shadow: -18px 0 44px rgba(255, 160, 70, 0.25);
   will-change: transform, opacity;
+}
+/* Wave D — destination doors (DoorwayLayer kinds). Same door
+   program, same warm light; only the panel's material and opening
+   mechanics change with the destination stop's venue. */
+/* The Porch: a screen door — mesh field with a diagonal brace. */
+.tdoor-kind-screen .tdoor-panel {
+  background: linear-gradient(100deg, #33200e 0%, #201306 55%, #170d04 100%);
+}
+.tdoor-mesh {
+  position: absolute;
+  inset: 7% 9%;
+  background:
+    linear-gradient(38deg, transparent 47.5%, rgba(255, 217, 160, 0.35) 48%, rgba(255, 217, 160, 0.35) 52%, transparent 52.5%),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.4) 0 2px, rgba(255, 235, 200, 0.06) 2px 5px),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.4) 0 2px, rgba(255, 235, 200, 0.06) 2px 5px);
+  border: 3px solid rgba(24, 14, 5, 0.9);
+  pointer-events: none;
+}
+/* The Barbershop / the Corner: storefront glass in a wood frame. */
+.tdoor-glass {
+  position: absolute;
+  inset: 9% 11% 26% 11%;
+  background: linear-gradient(115deg, rgba(255, 224, 170, 0.30) 0%, rgba(255, 190, 110, 0.10) 42%, rgba(30, 18, 8, 0.25) 100%);
+  border: 3px solid rgba(24, 14, 5, 0.9);
+  box-shadow: inset 0 0 34px rgba(255, 170, 80, 0.18);
+  pointer-events: none;
+}
+/* The Cookout / the Pj's: a slatted gate with two rails. */
+.tdoor-kind-gate .tdoor-panel {
+  background:
+    repeating-linear-gradient(90deg, #2e1c0b 0 16px, #1c1006 16px 19px);
+}
+.tdoor-rails {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 22%, rgba(16, 9, 3, 0.95) 22%, rgba(16, 9, 3, 0.95) 27%, transparent 27%),
+    linear-gradient(180deg, transparent 68%, rgba(16, 9, 3, 0.95) 68%, rgba(16, 9, 3, 0.95) 73%, transparent 73%);
+  pointer-events: none;
+}
+/* Paired doors + the elevator: two leaves meeting at a center seam.
+   The light spill and glow re-center on the seam (the panel's
+   middle), not on the side hinge. */
+.tdoor-kind-double .tdoor-light,
+.tdoor-kind-elevator .tdoor-light {
+  right: 19%;
+  width: 42%;
+}
+.tdoor-kind-double .tdoor-glow,
+.tdoor-kind-elevator .tdoor-glow {
+  left: 74%;
+}
+.tdoor-leaf {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: linear-gradient(100deg, #2b1a0a 0%, #1a0f05 60%, #120a03 100%);
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+.tdoor-leaf-l {
+  left: 0;
+  transform-origin: 0% 50%;
+  border-right: 1px solid rgba(255, 217, 160, 0.5);
+}
+.tdoor-leaf-r {
+  right: 0;
+  transform-origin: 100% 50%;
+}
+/* The High-Rise: brushed steel — the leaves slide, never swing. */
+.tdoor-kind-elevator .tdoor-panel {
+  background: #0b0d12;
+  border-left: none;
+  box-shadow: none;
+}
+.tdoor-kind-elevator .tdoor-leaf {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 2px, rgba(0, 0, 0, 0) 2px 5px),
+    linear-gradient(100deg, #4a4a55 0%, #2c2c34 55%, #1d1d24 100%);
+}
+.tdoor-kind-elevator .tdoor-leaf-l {
+  border-right: 2px solid rgba(255, 209, 130, 0.75);
 }

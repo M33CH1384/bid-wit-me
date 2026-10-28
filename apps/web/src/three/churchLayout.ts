@@ -21,5 +21,7 @@ export const CHURCH: CubeVenueConfig = {
     { p: [3.0, 0.95, -3.4], a: [0.14, 0.2, 0.42, 14], c: '#b9bcc0', r: 0.25, m: 0.9 },
     { p: [3.0, 1.2, -3.4], a: [0.2, 0.2, 0.08, 14], c: '#8b8e93', r: 0.3, m: 0.9 },
   ],
+  // Wave D life: fluorescent room light — CubeLifePulse hums it faintly on the church channel.
+  points: [{ p: [0, 2.9, -1.8], c: '#eef6ff', i: 4, d: 7 }],
 };
 export function churchTris(withProps: boolean): number { return cubeTris(withProps, CHURCH); }

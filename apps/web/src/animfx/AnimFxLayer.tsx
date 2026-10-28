@@ -293,7 +293,17 @@ function HeadlightSweep({ calm }: { calm: boolean }) {
     return () => window.removeEventListener('pj-headlights', h);
   }, []);
   if (!n) return null;
-  return <div key={n} data-testid="pj-headlights" className={`animfx-headlights${calm ? ' calm' : ''}`} aria-hidden="true" />;
+  // Wave D (§A1 row 13): two beams + fence-shadow striping + taillight
+  // afterglow, keyframed from venueLife.headlightSweepAt — the event and
+  // the 4.6 s held duration are the audio scheduler's, unchanged.
+  return (
+    <div key={n} data-testid="pj-headlights" className={`animfx-headlights${calm ? ' calm' : ''}`} aria-hidden="true">
+      <div className="animfx-hl-beam b1" />
+      <div className="animfx-hl-beam b2" />
+      <div className="animfx-hl-fence" />
+      <div className="animfx-hl-tail" />
+    </div>
+  );
 }
 
 /* -------------------------------------------------------------------- main */

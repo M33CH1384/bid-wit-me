@@ -89,6 +89,14 @@
  * extra composited tweens the shared scheduler runs when their
  * elements exist. The ink's textures are static like the spray's
  * (inkTextures.ts, rendered once).
+ *
+ * WAVE D (2026-10-28, §A6 rows 62–63): the spray's textures were
+ * re-rendered at higher fidelity (sprayTextures.ts — same beats,
+ * same timings, same favicon path verbatim), and the ink skin's
+ * tendrils were re-authored as deterministic curl-walk stroke paths
+ * grown from the spade's outline (buildInkTendrils below) with a
+ * wet-edge sheen chasing the core stroke. inkTextures.ts is
+ * untouched — the tendril treatment needed paths, not new textures.
  */
 import { useEffect, useRef, useSyncExternalStore, type CSSProperties } from 'react';
 import {
@@ -277,6 +285,88 @@ function frontierAt(
   return { x: last.x, y: last.y };
 }
 
+/* ------------------------------------------------------------------ */
+/* Ink tendrils (Wave D, §A6 row 63): the Neon spade throws curling   */
+/* tendrils as the ink blooms — each one a stroke path grown from a   */
+/* point on the spade's own outline, curling outward as it travels.   */
+/* The growth rule is a deterministic curl walk: a seeded RNG picks   */
+/* each tendril's curl and taper, the heading rotates a fixed         */
+/* fraction per step (a discrete curl field — no noise library, no    */
+/* Math.random, no Date.now), and the polyline is smoothed into       */
+/* cubics. Same seed, same tendrils, every episode, every device —    */
+/* the composition is a pure function of its constants, and the live  */
+/* layer only tweens stroke-dashoffset over the finished paths.       */
+/* ------------------------------------------------------------------ */
+
+function inkMulberry32(seed: number): () => number {
+  let a = seed | 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export interface InkTendril {
+  /** SVG path data in favicon units. */
+  d: string;
+  /** Polyline length in favicon units (dash math rides pathLength). */
+  length: number;
+  /** Stroke width in favicon units. */
+  width: number;
+}
+
+export function buildInkTendrils(): InkTendril[] {
+  const rnd = inkMulberry32(0x9e37);
+  const centroid = { x: 32, y: 33 };
+  const anchors = [0.05, 0.21, 0.37, 0.54, 0.71, 0.87];
+  const tendrils: InkTendril[] = [];
+  for (const frac of anchors) {
+    // Anchor: the outline point at this arc-length fraction.
+    const target = frac * SPADE_OUTLINE.length;
+    let anchor = SPADE_OUTLINE.pts[SPADE_OUTLINE.pts.length - 1]!;
+    for (const p of SPADE_OUTLINE.pts) {
+      if (p.cum * SPADE_OUTLINE.length >= target) {
+        anchor = p;
+        break;
+      }
+    }
+    // Curl walk: head away from the centroid, the heading rotating
+    // by a seeded curl each step, steps tapering as the tendril thins.
+    const curl = (rnd() - 0.5) * 0.62;
+    let heading = Math.atan2(anchor.y - centroid.y, anchor.x - centroid.x) + (rnd() - 0.5) * 0.35;
+    let step = 4.6 + rnd() * 1.6;
+    const walk: Array<{ x: number; y: number }> = [{ x: anchor.x, y: anchor.y }];
+    let length = 0;
+    for (let s = 0; s < 5; s++) {
+      const prev = walk[walk.length - 1]!;
+      const next = { x: prev.x + Math.cos(heading) * step, y: prev.y + Math.sin(heading) * step };
+      length += Math.hypot(next.x - prev.x, next.y - prev.y);
+      walk.push(next);
+      heading += curl;
+      step *= 0.78;
+    }
+    // Catmull-Rom smoothing of the walk into cubic segments.
+    let d = `M${walk[0]!.x.toFixed(2)} ${walk[0]!.y.toFixed(2)}`;
+    for (let i = 0; i < walk.length - 1; i++) {
+      const p0 = walk[Math.max(0, i - 1)]!;
+      const p1 = walk[i]!;
+      const p2 = walk[i + 1]!;
+      const p3 = walk[Math.min(walk.length - 1, i + 2)]!;
+      const c1x = p1.x + (p2.x - p0.x) / 6;
+      const c1y = p1.y + (p2.y - p0.y) / 6;
+      const c2x = p2.x - (p3.x - p1.x) / 6;
+      const c2y = p2.y - (p3.y - p1.y) / 6;
+      d += `C${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+    }
+    tendrils.push({ d, length, width: 0.55 + rnd() * 0.75 });
+  }
+  return tendrils;
+}
+
+export const INK_TENDRILS: InkTendril[] = buildInkTendrils();
+
 const bgOf = (url: string): string | undefined => (url ? `url(${url})` : undefined);
 
 /** A reveal grain layer's style: solid paint seen through a static
@@ -397,6 +487,38 @@ function InkCoverArt({ geo, len, coreW, wetW, speckleW, dabPx, tipX }: SpadeArtP
             strokeDashoffset={len}
             opacity={0.97}
           />
+          {/* Wet-edge sheen: a pale rim that chases the core stroke
+              and evaporates — ink reads wettest at its edge. */}
+          <path
+            data-anim="ink-sheen"
+            d={SPADE_D}
+            fill="none"
+            stroke="#dff8ff"
+            strokeWidth={coreW * 0.42}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength={len}
+            strokeDasharray={len}
+            strokeDashoffset={len}
+            opacity={0}
+          />
+          {/* Curl tendrils grown from the outline (buildInkTendrils):
+              they unfurl across the fill + bloom beats. */}
+          {INK_TENDRILS.map((t, i) => (
+            <path
+              key={i}
+              data-anim="ink-tendril"
+              d={t.d}
+              fill="none"
+              stroke="url(#ink-grad)"
+              strokeWidth={t.width}
+              strokeLinecap="round"
+              pathLength={t.length}
+              strokeDasharray={t.length}
+              strokeDashoffset={t.length}
+              opacity={0.6}
+            />
+          ))}
         </svg>
         <svg
           className="spray-svg"
@@ -547,6 +669,8 @@ export default function SprayLayer() {
     };
     const q = (name: string): Element | null =>
       root.querySelector(`[data-anim="${name}"]`);
+    const qa = (name: string): Element[] =>
+      Array.from(root.querySelectorAll(`[data-anim="${name}"]`));
 
     if (phase === 'cover') {
       const geo = spadeGeometry(window.innerWidth, window.innerHeight);
@@ -698,6 +822,38 @@ export default function SprayLayer() {
         ],
         { duration: SPRAY_COVER_MS, delay: -resumeMs, easing: 'ease-out' },
       );
+      // Wave D ink extras — the wet-edge sheen chases the core draw
+      // (starting a breath behind it) and evaporates as the fill
+      // lands; the curl tendrils unfurl from the outline across the
+      // fill and bloom beats, staggered by their anchor order. Both
+      // are stroke-dashoffset / opacity tweens on static paths —
+      // the shared scheduler's compositor discipline, unchanged.
+      run(
+        q('ink-sheen'),
+        [
+          { strokeDashoffset: String(LEN), opacity: '0', offset: 0 },
+          { opacity: '0.45', offset: 0.35 },
+          { strokeDashoffset: '0', opacity: '0', offset: 1 },
+        ],
+        {
+          duration: SPRAY_OUTLINE_MS + SPRAY_FILL_MS * 0.4,
+          delay: 80 - resumeMs,
+          easing: EASE_IN_OUT,
+        },
+      );
+      qa('ink-tendril').forEach((el, i) => {
+        const t = INK_TENDRILS[i];
+        if (!t) return;
+        run(
+          el,
+          [{ strokeDashoffset: String(t.length) }, { strokeDashoffset: '0' }],
+          {
+            duration: SPRAY_FILL_MS + SPRAY_BLOOM_MS,
+            delay: SPRAY_OUTLINE_MS - resumeMs + i * 30,
+            easing: EASE_OUT,
+          },
+        );
+      });
     } else {
       // Reveal — the HOLD first: for SPRAY_HOLD_MS nothing moves at
       // all (every fade below is delayed by it; the three paint

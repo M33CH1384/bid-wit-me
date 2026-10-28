@@ -25,6 +25,18 @@
  * overspray pulled in tight to the shapes it textures, grain finer
  * and more even. The counts and bands in these builders ARE the
  * clean discipline — the spray test pins their ceilings.
+ *
+ * WAVE D (2026-10-28, Animation Replacement Program §A6 row 62): the
+ * same recipes re-rendered at higher fidelity — the brush tile grows
+ * 160 -> 192 px and gains a micro-speckle pass and a faint overspray
+ * halo ring, the fill front gains a denser wet core band, the bloom
+ * ring gains a sparse far-overspray scatter, and the reveal grains
+ * gain a few larger dry flakes. Every addition is a second seeded
+ * pass INSIDE the same static builders (same mulberry streams, no
+ * Math.random / Date.now anywhere) and every pinned clean-pass
+ * count, band, and alpha range above is untouched — fidelity went
+ * up, the clean discipline did not move. Still rendered once, still
+ * consumed as stills; nothing here ever runs per frame.
  */
 
 const INKS = ['#060607', '#0a0a0c', '#101014', '#050505'] as const;
@@ -72,13 +84,17 @@ function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingCo
 
 /** One dab of the can: an opaque core dissolving into speckle (the v3
  *  brush recipe, now rendered once into an image instead of being
- *  stamped along a path every frame). */
+ *  stamped along a path every frame). Wave D renders the tile at
+ *  192 px and adds two seeded passes after the pinned speckle loop:
+ *  micro-speckle clustered at the core's edge (the wet rim where a
+ *  real dab breaks up) and a faint overspray halo ring just outside
+ *  the core — detail the 160 px tile smeared away. */
 function buildBrush(): string {
-  const made = makeCanvas(160, 160);
+  const made = makeCanvas(192, 192);
   if (!made) return '';
   const [c, g] = made;
-  const cx = 80;
-  const core = 160 * 0.3;
+  const cx = 96;
+  const core = 192 * 0.3;
   const grad = g.createRadialGradient(cx, cx, core * 0.25, cx, cx, core);
   grad.addColorStop(0, 'rgba(7,7,8,0.98)');
   grad.addColorStop(0.75, 'rgba(7,7,8,0.92)');
@@ -96,6 +112,29 @@ function buildBrush(): string {
     g.fillStyle = INKS[(rnd() * INKS.length) | 0]!;
     g.beginPath();
     g.arc(cx + Math.cos(a) * rr, cx + Math.sin(a) * rr, r, 0, TAU);
+    g.fill();
+  }
+  // Wave D pass 2 — micro-speckle at the wet rim: tiny dots hugging
+  // the core's edge (0.82R..1.12R), where the dab's skin tears.
+  for (let i = 0; i < 150; i++) {
+    const a = rnd() * TAU;
+    const rr = core * (0.82 + rnd() * 0.3);
+    g.globalAlpha = 0.1 + rnd() * 0.3;
+    g.fillStyle = INKS[(rnd() * INKS.length) | 0]!;
+    g.beginPath();
+    g.arc(cx + Math.cos(a) * rr, cx + Math.sin(a) * rr, 0.3 + rnd() * 0.6, 0, TAU);
+    g.fill();
+  }
+  // Wave D pass 3 — the overspray halo: a whisper of paint carried
+  // past the dab (1.18R..1.45R), alpha low enough to read as air,
+  // not as a second shape.
+  for (let i = 0; i < 70; i++) {
+    const a = rnd() * TAU;
+    const rr = core * (1.18 + rnd() * 0.27);
+    g.globalAlpha = 0.03 + rnd() * 0.07;
+    g.fillStyle = INKS[(rnd() * INKS.length) | 0]!;
+    g.beginPath();
+    g.arc(cx + Math.cos(a) * rr, cx + Math.sin(a) * rr, 0.4 + rnd() * 0.9, 0, TAU);
     g.fill();
   }
   g.globalAlpha = 1;
@@ -124,6 +163,18 @@ function buildFront(): string {
     g.arc(x, y, 0.5 + rnd() * 1.4, 0, TAU);
     g.fill();
   }
+  // Wave D — the wet core band: a denser, finer speckle concentrated
+  // at the strip's vertical middle, so the front's leading heart
+  // reads wet and heavy while its edges stay mist.
+  for (let i = 0; i < 320; i++) {
+    const x = rnd() * W;
+    const y = H * (0.5 + (rnd() + rnd() - 1) * 0.22); // clustered mid-strip
+    g.globalAlpha = 0.12 + rnd() * 0.3;
+    g.fillStyle = INKS[(rnd() * INKS.length) | 0]!;
+    g.beginPath();
+    g.arc(x, y, 0.4 + rnd() * 0.9, 0, TAU);
+    g.fill();
+  }
   g.globalAlpha = 1;
   return c.toDataURL();
 }
@@ -150,6 +201,18 @@ function buildRing(): string {
     g.arc(R + Math.cos(a) * rr, R + Math.sin(a) * rr, 0.6 + rnd() * 1.7, 0, TAU);
     g.fill();
   }
+  // Wave D — far overspray: a sparse scatter carried just past the
+  // pinned annulus (1.05R..1.16R), faint enough that the clean
+  // band still defines the bloom's edge.
+  for (let i = 0; i < 90; i++) {
+    const a = rnd() * TAU;
+    const rr = R * (1.05 + rnd() * 0.11);
+    g.globalAlpha = 0.04 + rnd() * 0.1;
+    g.fillStyle = INKS[(rnd() * INKS.length) | 0]!;
+    g.beginPath();
+    g.arc(R + Math.cos(a) * rr, R + Math.sin(a) * rr, 0.5 + rnd() * 1.1, 0, TAU);
+    g.fill();
+  }
   g.globalAlpha = 1;
   return c.toDataURL();
 }
@@ -171,6 +234,16 @@ function buildGrain(seed: number): string {
     g.fillStyle = '#fff';
     g.beginPath();
     g.arc(rnd() * S, rnd() * S, 0.7 + rnd() * 2, 0, TAU);
+    g.fill();
+  }
+  // Wave D — dry flakes: a handful of larger, fainter specks in the
+  // same pinned alpha family, so the dissolve's last moments break
+  // into flakes instead of uniform dust.
+  for (let i = 0; i < 22; i++) {
+    g.globalAlpha = 0.25 + rnd() * 0.4;
+    g.fillStyle = '#fff';
+    g.beginPath();
+    g.arc(rnd() * S, rnd() * S, 2.1 + rnd() * 1.6, 0, TAU);
     g.fill();
   }
   g.globalAlpha = 1;

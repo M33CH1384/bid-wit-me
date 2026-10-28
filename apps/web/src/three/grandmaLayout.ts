@@ -35,5 +35,8 @@ export const GRANDMA: CubeVenueConfig = {
     { p: [3.15, 1.07, -3.68], a: [0.09, 0.09, 0.02, 14], c: '#111111', r: 0.4 },
   ],
   tori: [{ p: [0, 3.85, -4.12], a: [0.22, 0.035, 10, 24], c: '#f4ead2' }],
+  // Wave D kitchen life: one warm pendant light over the counter run —
+  // CubeLifePulse breathes it on the grandma channel (steady, slow).
+  points: [{ p: [0, 2.7, -2.4], c: '#ffe6b8', i: 5, d: 7 }],
 };
 export function grandmaTris(withProps: boolean): number { return cubeTris(withProps, GRANDMA); }

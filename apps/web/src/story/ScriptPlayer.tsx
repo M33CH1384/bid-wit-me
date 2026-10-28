@@ -387,6 +387,7 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
         <>
           <div className="story-scene-glow" aria-hidden />
           <div className="story-scene-haze" aria-hidden />
+          <div className="story-scene-dust" aria-hidden />
           {stagePair.length === 2 && (
             <div className="story-stage" data-testid="story-stage" aria-hidden>
               {stagePair.map((id, ix) => {
