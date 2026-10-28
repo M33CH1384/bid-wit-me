@@ -76,10 +76,13 @@ const yawOf = (d: Vector3) => Math.atan2(d.x, d.z);
 
 /**
  * Fan rest pose (owner, 2026-10-28; state/gating in fanRest.ts): how far a
- * resting fan drops and how much its spread closes, at rest amount 1.
- * The human fan's drop is in card heights on the camera plane; the
- * opponent fan's drop is in world units. Tighten is a fraction of the
- * open spread/roll removed. Rest 0 reproduces the open pose EXACTLY.
+ * resting fan drops and how much its spread closes, at channel amount 1.
+ * The pose is two channels: DROP lowers, PINCH tightens (a fraction of
+ * the open spread/roll removed). The human fan's drop is in card heights
+ * on the camera plane; the opponent fan's drop is in world units. Both
+ * channels at 0 reproduce the open pose EXACTLY, and a caller that
+ * passes only a drop amount gets pinch = drop (the original combined
+ * pose) — sitting portrait passes pinch 0 explicitly: lower, no narrow.
  */
 export const FAN_REST_DROP_CH = 0.42;
 export const FAN_REST_TIGHTEN = 0.36;
@@ -90,21 +93,25 @@ export const OPP_FAN_REST_TIGHTEN = 0.45;
 const clampRest = (rest: number | undefined): number => (Number.isFinite(rest) && rest! > 0 ? Math.min(1, rest!) : 0);
 
 /** Opponent's held fan: upright cards near the rail, backs toward the table centre.
- *  `rest` (0..1, off-turn only — scope in fanRest.ts: Sitting at any aspect,
- *  Standing in landscape) lowers the whole fan toward the seat's edge and
- *  closes its spread; 0 = today's fan. */
-export function opponentFan(pos: SeatPos, n: number, i: number, count: number, rest = 0): Xform {
+ *  `rest` is the DROP channel (0..1, off-turn only — scope in fanRest.ts:
+ *  Sitting at any aspect, Standing in landscape): it lowers the whole fan
+ *  toward the seat's edge and settles it outward. `pinch` is the TIGHTEN
+ *  channel: it closes the fan's spread; it defaults to the drop amount
+ *  (the original combined pose), and sitting portrait passes 0 — the fan
+ *  lowers at its open width. 0/0 = today's fan. */
+export function opponentFan(pos: SeatPos, n: number, i: number, count: number, rest = 0, pinch = rest): Xform {
   const r = clampRest(rest);
+  const pc = clampRest(pinch);
   const d = seatDir(pos, n);
   const side = pos === 'left' || pos === 'right';
   const base = edgePoint(d, side ? 0.3 : 0.05).add(new Vector3(0, 0.3 - OPP_FAN_REST_DROP * r, 0)).add(d.clone().multiplyScalar(0.12 + OPP_FAN_REST_OUT * r));
   const yaw = yawOf(d);
   const off = i - (count - 1) / 2;
-  const spread = 0.038 * (1 - OPP_FAN_REST_TIGHTEN * r);
+  const spread = 0.038 * (1 - OPP_FAN_REST_TIGHTEN * pc);
   const tangent = new Vector3(Math.cos(yaw), 0, -Math.sin(yaw)); // local +x of a card facing outward
   const p = base.clone().add(tangent.multiplyScalar(off * spread)).add(new Vector3(0, -Math.abs(off) * off * 0 - off * off * 0.0016, 0)).add(d.clone().multiplyScalar(i * 0.0016));
   // face toward the owner (outward), tilted back, fanned by roll
-  return xf([p.x, p.y, p.z], [0.55, yaw, -off * 0.075 * (1 - OPP_FAN_REST_TIGHTEN * r)], 1);
+  return xf([p.x, p.y, p.z], [0.55, yaw, -off * 0.075 * (1 - OPP_FAN_REST_TIGHTEN * pc)], 1);
 }
 
 /** Trick-card scale: big enough that rank + suit read clearly on a phone. */
@@ -442,15 +449,23 @@ export interface FanOpts {
   /** Pixels added over the strip floor (headroom for a lifted card). */
   stripPad?: number;
   /**
-   * Fan rest amount 0..1 (owner 2026-10-28, fanRest.ts): 0 = the normal
-   * raised/open spread, 1 = fully lowered + tightened. Applied in
-   * handCardPlane as a pose ON TOP of the solved layout — the solver,
-   * card scale and depth stack never see it, so open and rest share one
-   * fit. Callers only pass a non-zero amount for a seat that is not the
-   * one to act, in the scopes fanRest.ts gates (Sitting at any aspect,
-   * Standing in landscape).
+   * Fan rest DROP amount 0..1 (owner 2026-10-28, fanRest.ts): 0 = the
+   * normal raised height, 1 = fully lowered. Applied in handCardPlane
+   * as a pose ON TOP of the solved layout — the solver, card scale and
+   * depth stack never see it, so open and rest share one fit. Callers
+   * only pass a non-zero amount for a seat that is not the one to act,
+   * in the scopes fanRest.ts gates (Sitting at any aspect, Standing in
+   * landscape).
    */
   rest?: number;
+  /**
+   * Fan rest PINCH amount 0..1 (owner 2026-10-28, fanRest.ts): 0 = the
+   * normal open spread, 1 = fully tightened (x and roll closed by
+   * FAN_REST_TIGHTEN). When omitted it follows `rest` — the original
+   * combined pose. Sitting portrait passes 0 explicitly: the fan
+   * lowers without narrowing.
+   */
+  pinch?: number;
 }
 
 /** Where the strip is measured, as a fraction of the card height below its top edge. */
@@ -670,12 +685,16 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
     const xo = halfN * L.step;
     lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
   }
-  // Fan rest (fanRest.ts): compress the fan toward its centre (x and roll
-  // close by FAN_REST_TIGHTEN) and drop every card by the same amount, so
-  // each card — centre and ends alike — sits lower at rest than open.
+  // Fan rest (fanRest.ts), two channels: PINCH compresses the fan toward
+  // its centre (x and roll close by FAN_REST_TIGHTEN); DROP lowers every
+  // card by the same amount, so each card — centre and ends alike — sits
+  // lower at rest than open. Pinch defaults to the drop amount when the
+  // caller doesn't split them (sitting portrait passes pinch 0: the fan
+  // lowers at its open width).
   const rest = clampRest(o.rest);
-  if (rest > 0) {
-    const tighten = 1 - FAN_REST_TIGHTEN * rest;
+  const pinchAmt = clampRest(o.pinch ?? o.rest);
+  if (pinchAmt > 0) {
+    const tighten = 1 - FAN_REST_TIGHTEN * pinchAmt;
     x *= tighten;
     roll *= tighten;
   }
