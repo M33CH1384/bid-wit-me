@@ -4,6 +4,9 @@
  * fallback, and only the chosen venue's files are fetched (a ~50 KB backdrop jpg, a ~50 KB floor jpg, plus a
  * ~100 KB .hdr for lighting in High quality). Props are procedural (no downloads).
  * Reduce effects / Low quality: no ambient particles or motion (smoke, flames, pole spin, water shimmer).
+ * The Pj's (blockAfterDark) at High quality dresses as a real 3D street instead (three/PjsStreetRoom.tsx):
+ * the environment replaces this file's backdrop + floor for that venue, and PjsLife below stands down
+ * (the room carries its own streetlight, grill and smoke). Low keeps the backdrop + floor + PjsLife.
  */
 import { Environment, useTexture } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -13,6 +16,7 @@ import {
   RepeatWrapping, SRGBColorSpace,
 } from 'three';
 import { type VenueDef, type VenueId, venueAssetUrls } from '../venues';
+import PjsStreetRoom, { SEDAN_URL } from './PjsStreetRoom';
 import { flickerAt, glowAt, smokePuffAt, venueLifeFor } from '../venueLife';
 
 const FLOOR_Y = -0.9;
@@ -583,7 +587,7 @@ function Yacht({ fxOn }: { fxOn: boolean }) {
   );
 }
 
-export function VenueProps({ id, fxOn }: { id: VenueId; fxOn: boolean }) {
+export function VenueProps({ id, fxOn, env3d = false }: { id: VenueId; fxOn: boolean; env3d?: boolean }) {
   switch (id) {
     case 'backyard': return <Backyard fxOn={fxOn} />;
     case 'mansion': return <Mansion fxOn={fxOn} />;
@@ -595,7 +599,7 @@ export function VenueProps({ id, fxOn }: { id: VenueId; fxOn: boolean }) {
     case 'beach': return <Beach fxOn={fxOn} />;
     case 'grandma': return <Grandma fxOn={fxOn} />;
     case 'yacht': return <Yacht fxOn={fxOn} />;
-    case 'blockAfterDark': return <PjsLife fxOn={fxOn} />;
+    case 'blockAfterDark': return env3d ? <PjsStreetRoom fxOn={fxOn} /> : <PjsLife fxOn={fxOn} />;
     default: return null;
   }
 }
@@ -607,15 +611,20 @@ const MOVES: Partial<Record<VenueId, true>> = { backyard: true, beach: true, yac
 export default function Venue3D({ def, quality, reduceFx }: { def: VenueDef; quality: 'high' | 'low'; reduceFx: boolean }) {
   const urls = venueAssetUrls(def.id, quality);
   const fxOn = !reduceFx && quality === 'high';
+  // The Pj's at High: the 3D street environment replaces the static backdrop + floor disc
+  // (it brings its own ground) and stands the backdrop-level PjsLife dressing down. Low
+  // quality keeps the shipped backdrop + floor + PjsLife exactly — the fallback is the
+  // current behaviour, not a new invention.
+  const envActive = def.id === 'blockAfterDark' && quality === 'high';
   const g = useRef<Group>(null);
   // for checks: which venue is dressed and whether its ambient motion runs
-  useEffect(() => { (window as unknown as { __bwmVenue?: { id: string; fx: boolean } }).__bwmVenue = { id: def.id, fx: fxOn && !!MOVES[def.id] }; }, [def.id, fxOn]);
+  useEffect(() => { (window as unknown as { __bwmVenue?: { id: string; fx: boolean; env3d?: boolean } }).__bwmVenue = { id: def.id, fx: fxOn && !!MOVES[def.id], ...(def.id === 'blockAfterDark' ? { env3d: envActive } : {}) }; }, [def.id, fxOn, envActive]);
   return (
     <group ref={g}>
-      <Suspense fallback={null}>{urls.bg && <Backdrop url={urls.bg} blur={def.bgBlur} intensity={def.bgIntensity} />}</Suspense>
+      <Suspense fallback={null}>{urls.bg && !envActive && <Backdrop url={urls.bg} blur={def.bgBlur} intensity={def.bgIntensity} />}</Suspense>
       <Suspense fallback={null}>{urls.env && <Environment files={urls.env} environmentIntensity={def.envIntensity} />}</Suspense>
-      <VenueFloor def={def} url={urls.floor} />
-      <VenueProps id={def.id} fxOn={fxOn} />
+      {!envActive && <VenueFloor def={def} url={urls.floor} />}
+      <VenueProps id={def.id} fxOn={fxOn} env3d={envActive} />
       {fxOn && MOVES[def.id] && <AmbientTicker />}
     </group>
   );
@@ -629,6 +638,8 @@ export function preloadVenueAssets(id: VenueId, quality: 'high' | 'low'): void {
   const u = venueAssetUrls(id, quality);
   if (u.rail) useTexture.preload(u.rail);
   const rest = [u.bg, u.floor, u.env].filter((x): x is string => !!x);
+  // The Pj's street environment (High only): warm the sedan GLB with the same low-priority pass.
+  if (id === 'blockAfterDark' && quality === 'high') rest.push(SEDAN_URL);
   window.setTimeout(() => rest.forEach((url) => { void fetch(url, { priority: 'low' } as RequestInit).catch(() => undefined); }), 1500);
 }
 

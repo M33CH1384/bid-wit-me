@@ -187,3 +187,7 @@ use the browser's Web Speech voice.
 - The 11 first-visit "Dee's Rundown" videos (`apps/web/public/story/rundowns/`) were generated with Grok Imagine from Dee's portrait and the venue art.
 - The voiceover is Dee's own cast recording (the `lilcuz-f` voice set). No speech synthesis was used.
 - The score is the game's own music (already credited above).
+
+## The Pj's street environment (3D venue)
+- The street around The Pj's table (fence, streetlight, facades, grill, crates, ground) is procedural geometry and code-painted textures written for the game — no third-party assets.
+- The one generated model: `apps/web/public/assets/venues/blockAfterDark/sedan.glb` (the parked sedan) was generated in-house with the TRELLIS image-to-3D model (Microsoft, MIT) via three.ws Forge, then optimized for the web. No third-party art is bundled in it.
