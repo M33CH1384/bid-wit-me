@@ -637,3 +637,40 @@ function remount() {
   root = null;
   document.body.innerHTML = '';
 }
+
+/* ================= Run It tornado ladder (owner program, 2026-10-28) ================= */
+
+describe('tornado ladder layer', () => {
+  it('the chip ticks per claim with pips = level, a partner claim ticks the SIDE ladder, and fx.tornado picks up the stamp', () => {
+    const rt = (winner: number) => ({
+      leader: 0, plays: [{ seat: winner, card: 'AS', run: true }], winner,
+    }) as unknown as PlayerView['tricks'][number];
+    const chips = () => document.querySelectorAll('[data-testid="animfx-tornchip"]');
+    try {
+      mount(view({ phase: 'playing', tricks: [] }));
+      expect(chips()).toHaveLength(0); // nothing claimed yet: no chip, no level
+      // seat 2 claims the side's first Run It of the match
+      rerender(view({ phase: 'playing', tricks: [rt(2)] }));
+      expect(chips()).toHaveLength(1);
+      const first = chips()[0]!;
+      expect(first.textContent).toContain('Level 1 · Dust Devil');
+      expect(first.querySelectorAll('.tornchip-pip.lit')).toHaveLength(1);
+      expect(first.querySelectorAll('.tornchip-pip')).toHaveLength(5);
+      // the stamp is waiting on the fx bus for Table's tornado assignment
+      fx.tornado = { start: performance.now(), reduced: false };
+      expect(fx.tornado).toMatchObject({ level: 1, side: 0, seat: 2 });
+      fx.tornado = null;
+      // the PARTNER (seat 0, same side) claims in hand 2: the side's ladder ticks to rung 2
+      rerender(view({ phase: 'playing', handNo: 2, tricks: [rt(0)] }));
+      const all = chips();
+      const second = all[all.length - 1]!;
+      expect(second.textContent).toContain('Level 2 · Twister');
+      expect(second.querySelectorAll('.tornchip-pip.lit')).toHaveLength(2);
+      fx.tornado = { start: performance.now(), reduced: false };
+      expect(fx.tornado).toMatchObject({ level: 2, side: 0, seat: 0 });
+    } finally {
+      fx.tornado = null;
+      fx.clearTornadoClaim();
+    }
+  });
+});

@@ -1,11 +1,13 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
-import { AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CylinderGeometry, DataTexture, ExtrudeGeometry, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, Points, PointsMaterial, SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, Vector3, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
+import { AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CircleGeometry, CylinderGeometry, DataTexture, ExtrudeGeometry, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, Points, PointsMaterial, SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, Vector3, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
 import { fx } from '../fx';
 import { HAPTIC, cancelHaptics, haptic } from '../haptics';
 import { COW_SPEC, cowLegFoot, cowPatch, cowPose } from './cowPath';
+import { FELT } from './layout';
 import { SENSOR_BALL_R, SENSOR_COUNT, SENSOR_FIN, SENSOR_LED_EVERY, sensorPose } from './sensorPath';
 import { slipperPose } from './slipperPath';
+import { TORNADO_PARAMS, TORNADO_POOL, lerpTornadoParams, tornadoDrawCounts, tornadoParams, type TornadoParams } from './tornadoLevel';
 
 /**
  * 'Run it!' funnel over the table centre: swirling dust / wind streaks (grey-violet, normal blend) plus brighter
@@ -13,17 +15,28 @@ import { slipperPose } from './slipperPath';
  * Riding inside it: a pair of ruby slippers (see slipperPath), a cow (see cowPath) and a stream of little
  * tracker sensors (see sensorPath), all tumbling around the funnel wall on the funnel's own clock.
  * Reads fx.tornado every frame (no React state), hidden otherwise. Not drawn under Reduce effects.
+ *
+ * The funnel is ONE parametric system driven by the Run It ladder
+ * (tornadoLevel.ts): fx.tornado's rung scales the group (height / mouth),
+ * spins the dust faster or slower (uSpin), sizes and densifies the points,
+ * gates the pool draw ranges, spreads the base dust ring, and — from the
+ * storm rung up — darkens the room and flickers the light. The baseline
+ * rung is this funnel exactly as it shipped before the ladder: unit
+ * everything, full pools, no shells. The riders keep the funnel's own
+ * unscaled clock (their path modules own their timing envelopes); because
+ * they are children of the scaled group they travel with the wall at
+ * every rung, and the rung gate hides them below the signature rung.
  */
 const vert = /* glsl */ `
   attribute vec3 aSeed;
-  uniform float uTime, uScale, uSize, uFling, uGrow;
+  uniform float uTime, uScale, uSize, uFling, uGrow, uSpin;
   varying float vA; varying float vTint;
   void main() {
     float speed = 0.35 + 0.5 * aSeed.z;
     float h = fract(aSeed.x + uTime * speed);
     float y = h * 1.9 * uGrow;
     float r = (0.07 + 0.62 * h * h + 0.08 * h + aSeed.z * 0.06) * (1.0 + uFling * 4.0);
-    float ang = aSeed.y * 6.2832 + uTime * (8.5 - 4.5 * h) + h * 3.0;
+    float ang = aSeed.y * 6.2832 + uTime * uSpin * (8.5 - 4.5 * h) + h * 3.0;
     vec3 p = vec3(cos(ang) * r, y + uFling * 0.6 * h, sin(ang) * r);
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mv;
@@ -56,7 +69,7 @@ function mat(opts: { size: number; alpha: number; a: [number, number, number]; b
     vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false,
     blending: opts.additive ? AdditiveBlending : NormalBlending,
     uniforms: {
-      uTime: { value: 0 }, uScale: { value: 600 }, uSize: { value: opts.size }, uFling: { value: 0 }, uGrow: { value: 0 }, uAlpha: { value: opts.alpha },
+      uTime: { value: 0 }, uScale: { value: 600 }, uSize: { value: opts.size }, uFling: { value: 0 }, uGrow: { value: 0 }, uAlpha: { value: opts.alpha }, uSpin: { value: 1 },
       uColA: { value: opts.a }, uColB: { value: opts.b },
     },
   });
@@ -256,11 +269,60 @@ function buildSensor(i: number): SensorRig {
 const warmedSensors: SensorRig[] = [];
 
 function tornadoParts(hi: boolean) {
+  const pool = hi ? TORNADO_POOL.high : TORNADO_POOL.low;
   return {
-    dust: cloud(hi ? 1400 : 450),
-    debris: cloud(hi ? 260 : 90),
+    dust: cloud(pool.dust),
+    debris: cloud(pool.debris),
     dustMat: mat({ size: 0.26, alpha: 0.72, a: [0.5, 0.48, 0.58], b: [0.36, 0.26, 0.55], additive: false }),
     debrisMat: mat({ size: 0.06, alpha: 1.0, a: [0.95, 0.85, 1.0], b: [0.6, 0.95, 0.7], additive: true }),
+  };
+}
+
+/* ------------------------------------------------------- ladder dressing
+ * One shared unit-circle geometry serves the base dust ring and the two
+ * room shells, so a rung adds no new particle systems — just three flat
+ * discs whose scale / opacity the frame loop drives from the rung. */
+const discGeo = new CircleGeometry(1, 48);
+
+interface TornadoShells { ring: Mesh<CircleGeometry, MeshBasicMaterial>; dark: Mesh<CircleGeometry, MeshBasicMaterial>; flash: Mesh<CircleGeometry, MeshBasicMaterial> }
+
+function buildShells(): TornadoShells {
+  const flat = (color: number, opacity: number) => {
+    const m = new Mesh(discGeo, new MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.renderOrder = 4;
+    m.visible = false;
+    return m;
+  };
+  const shells = { ring: flat(0xb2a48a, 0), dark: flat(0x05070f, 0), flash: flat(0xe6eeff, 0) };
+  // staggered a hair apart in height so the three flat discs never z-fight
+  shells.dark.position.y = 0.001;
+  shells.flash.position.y = 0.0025;
+  shells.ring.position.y = 0.004;
+  return shells;
+}
+
+/** Kept alive so the shells' basic-material program stays in the table renderer's cache after the warm pass. */
+const warmedShells: TornadoShells[] = [];
+
+/**
+ * Deterministic 18 Hz flicker hash (the prototype ladder's storm light):
+ * a pure function of the frame's time slice — no Math.random, so the
+ * flicker is identical on every client watching the same funnel clock.
+ */
+function flickerHash(u: number): number {
+  const x = Math.sin(Math.floor(u * 18) * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/** Room-shell strengths for a rung at funnel clock u: darkness that pulses
+ *  with the flicker, and the faint light flash on the hash's peaks. */
+function shellLevels(p: TornadoParams, u: number): { dark: number; flash: number } {
+  const h = flickerHash(u);
+  const pulse = p.flicker > 0 && h > 0.62 ? (h - 0.62) * 2.4 : 0;
+  return {
+    dark: p.dark * (0.55 + 0.3 * Math.min(1, pulse)),
+    flash: p.flicker > 0 && h > 0.94 ? p.flicker * 0.16 : 0,
   };
 }
 
@@ -298,6 +360,10 @@ export async function warmTornado(gl: WebGLRenderer, camera: Camera, quality: 'h
   if (warmSensor.led) warmSensor.led.opacity = 1;
   warmedSensors.push(warmSensor);
   group.add(warmSensor.group);
+  // …and the ladder's ring / room shells link here too
+  const warmShells = buildShells();
+  for (const m of [warmShells.ring, warmShells.dark, warmShells.flash]) { m.visible = true; m.material.opacity = 0.5; group.add(m); }
+  warmedShells.push(warmShells);
   const target = new WebGLRenderTarget(4, 4);
   const prev = gl.getRenderTarget();
   try {
@@ -319,7 +385,10 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
   // …and so do the cow and the tracker sensors — same stage, same suppression
   const cow = useMemo(() => buildCow(), []);
   const sensors = useMemo(() => Array.from({ length: SENSOR_COUNT }, (_, i) => buildSensor(i)), []);
+  // the ladder dressing: base dust ring + the dark / flicker room shells
+  const shells = useMemo(() => buildShells(), []);
   const dust = useRef<Points>(null), debris = useRef<Points>(null);
+  const funnel = useRef<Group>(null);
   const spun = useRef(false);
   const hit = useRef(false);
   const skipped = useRef(false);
@@ -333,11 +402,14 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     if (!show) for (const s of slippers) s.group.visible = false;
     // …and the cow and the sensors are suppressed with it too
     if (!show) { cow.group.visible = false; for (const s of sensors) s.group.visible = false; }
+    // …and the ladder dressing hides with the funnel it belongs to
+    if (!show) for (const m of [shells.ring, shells.dark, shells.flash]) m.visible = false;
     // checks (e2e): the funnel is actually being drawn this frame
     (window as unknown as { __bwmTornadoDrawn?: boolean }).__bwmTornadoDrawn = show;
     (window as unknown as { __bwmSlippersDrawn?: boolean }).__bwmSlippersDrawn = false;
     (window as unknown as { __bwmCowDrawn?: boolean }).__bwmCowDrawn = false;
     (window as unknown as { __bwmSensorsDrawn?: boolean }).__bwmSensorsDrawn = false;
+    (window as unknown as { __bwmTornadoLevel?: number }).__bwmTornadoLevel = T?.level ?? 2;
     if (!T) { spun.current = false; hit.current = false; skipped.current = false; return; }
     if (T.reduced) {
       if (!skipped.current) { skipped.current = true; cancelHaptics('tornado-skipped'); }
@@ -348,16 +420,46 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     const u = (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) + 0.4;
     if (!spun.current && u >= 0) { spun.current = true; haptic(HAPTIC.tornadoSpin, 'tornado-spin'); }
     if (!hit.current && u >= 1.65) { hit.current = true; haptic(HAPTIC.tornadoImpact, 'tornado-impact'); }
-    for (const m of [parts.dustMat, parts.debrisMat]) {
+    // the ladder: this funnel blends from the previous rung to its claimed
+    // rung across its grow phase, so the escalation is seen arriving; an
+    // unstamped tornado is the baseline rung, exactly as it always was
+    const target = tornadoParams(T.level ?? 2);
+    const prev = TORNADO_PARAMS[Math.max(0, target.level - 2)]!;
+    const grow = Math.min(1, Math.max(0, u / 0.7));
+    const P = lerpTornadoParams(prev, target, grow);
+    const counts = tornadoDrawCounts(target.level, hi);
+    parts.dust.setDrawRange(0, Math.round(counts.dust * (P.dustFrac / Math.max(target.dustFrac, 1e-6))));
+    parts.debris.setDrawRange(0, Math.round(counts.debris * (P.debrisFrac / Math.max(target.debrisFrac, 1e-6))));
+    if (funnel.current) funnel.current.scale.set(P.radiusX, P.height / 1.9, P.radiusX);
+    for (const [m, base] of [[parts.dustMat, { size: 0.26, alpha: 0.72 }], [parts.debrisMat, { size: 0.06, alpha: 1.0 }]] as const) {
       m.uniforms.uTime!.value = u;
       m.uniforms.uScale!.value = size.height * 0.9;
-      m.uniforms.uGrow!.value = Math.min(1, Math.max(0, u / 0.7));
+      m.uniforms.uGrow!.value = grow;
       m.uniforms.uFling!.value = Math.min(1, Math.max(0, (u - 1.65) / 0.6));
+      m.uniforms.uSpin!.value = P.spin;
+      m.uniforms.uSize!.value = base.size * P.pointSize;
+      m.uniforms.uAlpha!.value = base.alpha * P.body;
     }
+    // the base dust ring spreads with the rung; the room shells come up
+    // with the grow and die with the fling (renderOrder 4: over the room
+    // and the cards, under the funnel points at 5/6 and the riders at 6,
+    // so the funnel stays lit while the room goes down)
+    const fling = Math.min(1, Math.max(0, (u - 1.65) / 0.6));
+    const env = grow * (1 - fling);
+    const sl = shellLevels(P, u);
+    shells.ring.visible = env > 0.01;
+    shells.ring.scale.setScalar(Math.max(0.001, P.ringR));
+    shells.ring.material.opacity = 0.16 * P.body * env;
+    shells.dark.visible = sl.dark > 0.004 && env > 0.01;
+    shells.dark.scale.setScalar(Math.max(FELT.hx, FELT.hz) * 2.4);
+    shells.dark.material.opacity = Math.min(0.62, sl.dark) * env;
+    shells.flash.visible = sl.flash > 0.004 && env > 0.01;
+    shells.flash.scale.copy(shells.dark.scale);
+    shells.flash.material.opacity = sl.flash * env;
     let slipDrawn = false;
     slippers.forEach((s, i) => {
       const pose = slipperPose(u, i as 0 | 1);
-      s.group.visible = pose.alpha > 0.02;
+      s.group.visible = P.signature && pose.alpha > 0.02;
       if (!s.group.visible) return;
       slipDrawn = true;
       s.group.position.set(pose.x, pose.y, pose.z);
@@ -368,7 +470,7 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     (window as unknown as { __bwmSlippersDrawn?: boolean }).__bwmSlippersDrawn = slipDrawn;
     // the cow: one slow spine roll inside its heading — deadpan at funnel speed
     const cp = cowPose(u);
-    cow.group.visible = cp.alpha > 0.02;
+    cow.group.visible = P.signature && cp.alpha > 0.02;
     if (cow.group.visible) {
       cow.group.position.set(cp.x, cp.y, cp.z);
       cow.group.rotation.set(0, cp.ry, cp.rz);
@@ -380,7 +482,7 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     let sensorsDrawn = false;
     sensors.forEach((s, i) => {
       const pose = sensorPose(u, i);
-      s.group.visible = pose.alpha > 0.02;
+      s.group.visible = P.signature && pose.alpha > 0.02;
       if (!s.group.visible) return;
       sensorsDrawn = true;
       s.group.position.set(pose.x, pose.y, pose.z);
@@ -394,14 +496,19 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
   });
   return (
     <group position={[0, 0.02, 0]}>
-      <points ref={dust} geometry={parts.dust} material={parts.dustMat} frustumCulled={false} visible={false} renderOrder={5} />
-      <points ref={debris} geometry={parts.debris} material={parts.debrisMat} frustumCulled={false} visible={false} renderOrder={6} />
-      <primitive object={slippers[0]!.group} />
-      <primitive object={slippers[1]!.group} />
-      <primitive object={cow.group} />
-      {sensors.map((s, i) => (
-        <primitive key={i} object={s.group} />
-      ))}
+      <primitive object={shells.dark} />
+      <primitive object={shells.flash} />
+      <group ref={funnel}>
+        <points ref={dust} geometry={parts.dust} material={parts.dustMat} frustumCulled={false} visible={false} renderOrder={5} />
+        <points ref={debris} geometry={parts.debris} material={parts.debrisMat} frustumCulled={false} visible={false} renderOrder={6} />
+        <primitive object={slippers[0]!.group} />
+        <primitive object={slippers[1]!.group} />
+        <primitive object={cow.group} />
+        {sensors.map((s, i) => (
+          <primitive key={i} object={s.group} />
+        ))}
+      </group>
+      <primitive object={shells.ring} />
     </group>
   );
 }

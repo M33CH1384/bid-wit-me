@@ -10,6 +10,14 @@
 import { useSyncExternalStore } from 'react';
 import { HYPE_SETTLE_MAX_MS } from '@spades/protocol';
 import { type Sfx, sound } from './audio';
+import type { TornadoLevel } from './three/tornadoLevel';
+
+/** How long a noted Run It claim may wait for its tornado before the stamp goes stale (ms). */
+export const TORNADO_CLAIM_TTL_MS = 10_000;
+
+/** What fx.tornado carries: the original start/reduced pair, plus — when the claim that
+ *  produced this tornado was counted on the tornado ladder — its rung and claimant. */
+export interface TornadoFx { start: number; reduced: boolean; level?: TornadoLevel; side?: number; seat?: number }
 
 /** How long each effect stays on screen (ms): the hand-end hold waits these out. wheelsCar is released by the car itself. */
 const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
@@ -66,8 +74,35 @@ class FxBus {
   /**
    * 'Run it!' tornado, read by every Card3D (cards pulled into the funnel, spun, flung away), the funnel itself and the
    * camera sway. `start` is when the funnel starts pulling (after the claimer's cards slam down).
+   *
+   * This is an ACCESSOR, not a plain field: Table assigns the plain
+   * {start, reduced} pair exactly as it always has, and the setter stamps
+   * a pending ladder claim (see noteTornadoClaim) onto that assignment —
+   * so the funnel that a counted claim produced carries its rung, and no
+   * other tornado does. An assignment that already carries an explicit
+   * level wins over the stamp. The stamp is consumed on use and expires
+   * after TORNADO_CLAIM_TTL_MS, so a stale claim can never brand a later,
+   * unrelated tornado.
    */
-  tornado: { start: number; reduced: boolean } | null = null;
+  private _tornado: TornadoFx | null = null;
+  private pendingTornadoClaim: { level: TornadoLevel; side: number; seat: number; at: number } | null = null;
+  get tornado(): TornadoFx | null { return this._tornado; }
+  set tornado(v: TornadoFx | null) {
+    if (v) {
+      const pending = this.pendingTornadoClaim;
+      this.pendingTornadoClaim = null; // any live assignment consumes the stamp
+      if (!v.level && pending && performance.now() - pending.at <= TORNADO_CLAIM_TTL_MS) {
+        v = { ...v, level: pending.level, side: pending.side, seat: pending.seat };
+      }
+    }
+    this._tornado = v;
+  }
+  /** Record the ladder claim that is about to produce a tornado (called by the AnimFx layer the moment the claim resolves). */
+  noteTornadoClaim(claim: { level: TornadoLevel; side: number; seat: number }): void {
+    this.pendingTornadoClaim = { ...claim, at: performance.now() };
+  }
+  /** Drop any pending claim stamp (a rematch rewind must not brand the new match's first tornado with the old one's rung). */
+  clearTornadoClaim(): void { this.pendingTornadoClaim = null; }
   /** capture scripts only: pin the nuke timeline to this many seconds (frame-exact screenshots / recordings) */
   warp: number | null = null;
   setReduce(reduce: boolean) {

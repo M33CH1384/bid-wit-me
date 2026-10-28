@@ -36,6 +36,9 @@ export interface AnimFxView {
   misdealReveal?: { seat: number } | null;
   /** the viewing seat (online seat views carry it; the offline human is 0) */
   seat?: number;
+  /** the match key (GameState.seed, offline; online seat views don't carry
+   *  it, so there the tornado ladder keys off hand/history rewinds alone) */
+  seed?: string;
   /** non-standard trick counts (short/cut variants) ride the view, when present */
   trickCount?: number;
 }
@@ -51,6 +54,7 @@ import {
 } from './detect';
 import FireCanvas from '../fire/FireCanvas';
 import { SMOLDER_PARAMS, TRICK_FIRE_TIERS, trickFire, trickFireLabel } from '../streakFire';
+import { TORNADO_LEVEL_NAMES, TornadoLadderTracker } from '../three/tornadoLevel';
 import './animfx.css';
 
 /* ------------------------------------------------------------ positioning */
@@ -82,10 +86,10 @@ const slotPt = (seat: number): Pt | null => { const s = layoutWin()?.slots?.[sea
 
 type ShotKind = 'bjring' | 'glint' | 'coinflip' | 'shock' | 'broom' | 'wheel' | 'bag' | 'crack' | 'potin' | 'potout'
   | 'boardedge' | 'setbrick' | 'syncbeam' | 'firstbook' | 'misdeal' | 'ripple' | 'payback' | 'upset'
-  | 'savebeam' | 'nilseal' | 'ember' | 'wire' | 'photofinish' | 'confetti';
+  | 'savebeam' | 'nilseal' | 'ember' | 'wire' | 'photofinish' | 'confetti' | 'tornchip';
 interface CoinFlight { x: number; y: number; tx: number; ty: number; d: number }
 interface ConfettiPiece { l: number; dx: number; d: number; r: number; s: number; c: string }
-interface Shot { id: number; kind: ShotKind; x: number; y: number; w?: number; h?: number; still?: boolean; label?: string; coins?: CoinFlight[]; rects?: Rect[]; x2?: number; y2?: number; pieces?: ConfettiPiece[] }
+interface Shot { id: number; kind: ShotKind; x: number; y: number; w?: number; h?: number; still?: boolean; label?: string; coins?: CoinFlight[]; rects?: Rect[]; x2?: number; y2?: number; pieces?: ConfettiPiece[]; level?: number; name?: string }
 
 interface CellFx { side: number; x: number; y: number; w: number; h: number; heat: boolean; brink: boolean }
 
@@ -319,6 +323,12 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
   // seeded (silently) from the first view and from every resync, so a
   // mid-match resume never replays the ember — only a live flip fires it
   const spadeRef = useRef<boolean | null>(null);
+  // RUN IT TORNADO LADDER: the per-side, per-match claim tracker. Seeded
+  // silently from the first view (like the ember above) — a claim already
+  // resolved in the first held snapshot is marked counted, never ticked —
+  // and reset on rematch rewind / match-key change. Nothing is persisted.
+  const tornadoRef = useRef(new TornadoLadderTracker());
+  const tornadoSeedRef = useRef<string | undefined>(undefined);
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   // presence ratings (UPSET) + names ride the social store; read via a ref so
@@ -430,9 +440,45 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
     prevRef.current = snap;
     // first observed view: seed the spade-broken arm from reality (a resumed
     // match already past its first spade must not replay the ember)
-    if (!p) { spadeRef.current = spadePlayed(st.tricks, st.trick); return; }
+    if (!p) {
+      spadeRef.current = spadePlayed(st.tricks, st.trick);
+      // …and seed the tornado ladder the same way: a claim already resolved
+      // in the first held snapshot counts as seen, never as a new tick —
+      // pre-arrival claims are not reconstructed and not fabricated
+      tornadoRef.current.seedFrom(st.handNo, st.tricks);
+      tornadoSeedRef.current = st.seed;
+      return;
+    }
     // a new game at the same table (rematch): history/hand counts rewind — resync silently
-    if (snap.hist < p.hist || snap.handNo < p.handNo) { seenRef.current = new Set(); firstBookRef.current = false; spadeRef.current = spadePlayed(st.tricks, st.trick); return; }
+    if (snap.hist < p.hist || snap.handNo < p.handNo) {
+      seenRef.current = new Set(); firstBookRef.current = false; spadeRef.current = spadePlayed(st.tricks, st.trick);
+      tornadoRef.current.reset(st.seed);
+      tornadoSeedRef.current = st.seed;
+      fx.clearTornadoClaim();
+      return;
+    }
+
+    // RUN IT TORNADO LADDER: count the claim on the very state change that
+    // resolves it (a completed run-flagged trick with a winner). This runs
+    // ~1.5 s before Table's slam timer sets fx.tornado, so the stamp is
+    // waiting when the funnel assignment lands. A changed match key (a new
+    // match whose hand/history happened not to rewind) resets the ladder.
+    if (st.seed !== undefined && tornadoSeedRef.current !== undefined && st.seed !== tornadoSeedRef.current) {
+      tornadoRef.current.reset(st.seed);
+      fx.clearTornadoClaim();
+    }
+    if (st.seed !== undefined) tornadoSeedRef.current = st.seed;
+    const tornClaim = tornadoRef.current.observe(st.handNo, st.tricks, st.rules, st.seed);
+    if (tornClaim) {
+      fx.noteTornadoClaim(tornClaim);
+      const pt = platePt(tornClaim.seat);
+      if (pt) {
+        addShot(
+          { kind: 'tornchip', x: pt.x, y: pt.y, still: calm(), level: tornClaim.level, name: TORNADO_LEVEL_NAMES[tornClaim.level - 1] },
+          calm() ? 1700 : 2700, // the ranIt hold; the still variant just reads, shorter
+        );
+      }
+    }
 
     // bids landing inside THIS hand's bidding (a new hand's opening snapshot
     // is a resync, not a bid — books hands start at 'books' without a slam)
@@ -846,6 +892,20 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
           <div key={s.id} data-testid="animfx-nilseal" className={`animfx-nilseal${s.still ? ' still' : ''}`} style={{ left: s.x, top: s.y }}>
             <span className="seal-ring" />
             <span className="seal-label">NIL</span>
+          </div>
+        );
+      case 'tornchip':
+        // the Run It ladder badge: the prototype caption plaque, riding
+        // ABOVE the claimant's plate (CSS translate −185%), never over the
+        // name or the cards. Five pips tick up to the rung, one by one.
+        return (
+          <div key={s.id} data-testid="animfx-tornchip" className={`animfx-tornchip${s.still ? ' still' : ''}`} style={{ left: s.x, top: s.y }}>
+            <span className="tornchip-name">Level {s.level} · {s.name}</span>
+            <span className="tornchip-pips">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <span key={i} className={`tornchip-pip${i <= (s.level ?? 0) ? ' lit' : ''}`} style={{ animationDelay: `${(i - 1) * 170}ms` }} />
+              ))}
+            </span>
           </div>
         );
       case 'ember':

@@ -774,3 +774,52 @@
 @media (prefers-reduced-motion: reduce) {
   .finale-verdict { animation: none !important; }
 }
+
+/* ---- Run It tornado ladder badge (tornchip) ----
+ * The prototype ladder caption, shrunk to a plate plaque: it anchors at
+ * the claimant's plate centre and sits ABOVE the plate (translate
+ * −50%, −185%), never over the name or the cards. Rung pips tick gold one
+ * by one (170 ms stagger). Under Reduce effects / OS reduce-motion the
+ * `still` variant renders the pips pre-lit with a plain fade — the level
+ * is information, so it still reads. Neon re-skins the plaque (violet
+ * border, cyan name + pips); the information and timing are identical. */
+.animfx-tornchip {
+  position: fixed; transform: translate(-50%, -185%); pointer-events: none; z-index: 3;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 8px 14px 9px; border-radius: 12px; white-space: nowrap;
+  background: rgba(5, 8, 6, .62); border: 1.5px solid rgba(232, 201, 106, .5);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+  animation: animfx-tornchip-in .3s ease-out both;
+}
+.animfx-tornchip .tornchip-name {
+  font-family: Verdana, sans-serif; font-weight: 700; font-size: 15px; letter-spacing: .04em;
+  color: #e8c96a; line-height: 1;
+}
+.animfx-tornchip .tornchip-pips { display: flex; gap: 6px; }
+.animfx-tornchip .tornchip-pip {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: rgba(255, 255, 255, .25);
+}
+.animfx-tornchip .tornchip-pip.lit { animation: animfx-tornchip-pip .25s ease-out both; }
+@keyframes animfx-tornchip-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes animfx-tornchip-pip {
+  from { background: rgba(255, 255, 255, .25); box-shadow: none; }
+  to { background: #e8c96a; box-shadow: 0 0 8px rgba(232, 201, 106, .8); }
+}
+.animfx-tornchip.still { animation: animfx-tornchip-fade 1.7s ease forwards; }
+.animfx-tornchip.still .tornchip-pip.lit { animation: none; background: #e8c96a; }
+@keyframes animfx-tornchip-fade { 0% { opacity: 0; } 12% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+html[data-theme="neon"] .animfx-tornchip {
+  background: rgba(7, 9, 20, .72); border-color: rgba(128, 84, 255, .75);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .45), 0 0 14px rgba(128, 84, 255, .35);
+}
+html[data-theme="neon"] .animfx-tornchip .tornchip-name { color: #5bdfff; }
+html[data-theme="neon"] .animfx-tornchip .tornchip-pip.lit { background: #5bdfff; box-shadow: 0 0 8px rgba(91, 223, 255, .8); }
+html[data-theme="neon"] .animfx-tornchip.still .tornchip-pip.lit { background: #5bdfff; }
+/* the pip tick's END state lives in its keyframes, which outrank the
+ * static re-skin above — so Neon gets its own tick keyframes (cyan end) */
+html[data-theme="neon"] .animfx-tornchip .tornchip-pip.lit { animation-name: animfx-tornchip-pip-neon; }
+@keyframes animfx-tornchip-pip-neon {
+  from { background: rgba(255, 255, 255, .25); box-shadow: none; }
+  to { background: #5bdfff; box-shadow: 0 0 8px rgba(91, 223, 255, .8); }
+}

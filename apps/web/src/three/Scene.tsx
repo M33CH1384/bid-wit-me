@@ -714,7 +714,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // Two-tap / bot tosses vary a little per play (same seed → same toss on every client); reduced motion slides.
     const toss = land && !dragged ? 0.8 + ((playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card) % 1000) / 1000) * 0.5 : 1;
     const flight = props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), armed: !!props.trickArmed, ...autoDelay });
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), armed: false, ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -1656,7 +1656,7 @@ export default function Scene(props: SceneProps) {
         />
       )}
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
-      <AfterTable quality={props.quality} tableUp={textured} />
+      <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
     <div ref={badgeLayer} className="badge-layer" />
@@ -1676,7 +1676,7 @@ function EffectWarmup({ quality }: { quality: 'high' | 'low' }) {
  * Nuke and Run it! shaders, including the postprocessing library, load only after the felt is up.
  * They are not on the reload path: a cold open used to download and compile them before the table could paint.
  */
-function AfterTable({ quality, tableUp }: { quality: 'high' | 'low'; tableUp: boolean }) {
+function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low'; tableUp: boolean; trickArmed?: boolean }) {
   const [nuke, setNuke] = useState<typeof import('./Nuke3D') | null>(null);
   const [tornado, setTornado] = useState<typeof import('./Tornado3D') | null>(null);
   useEffect(() => {
@@ -1698,6 +1698,7 @@ function AfterTable({ quality, tableUp }: { quality: 'high' | 'low'; tableUp: bo
     <>
       {nuke && <nuke.NukeGlRecovery />}
       {nuke && <nuke.NukeGuard><nuke.Nuke3D quality={quality} /></nuke.NukeGuard>}
+      {nuke && <nuke.NukeArmedGlow armed={!!trickArmed} />}
       {tornado && <tornado.Tornado3D quality={quality} />}
     </>
   );

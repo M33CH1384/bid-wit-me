@@ -12,11 +12,14 @@
  *  - tier params scale monotonically: a bigger streak never burns lower.
  */
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { trickStreak } from '../src/animfx/detect';
 import {
-  HOME_FIRE_TIERS, SMOLDER_PARAMS, TRICK_FIRE_TIERS,
-  homeFireLabel, homeFireTier, homeStreakFromProfile, homeStreakFromTotals,
-  trickFire, trickFireLabel, type FireTier,
+  HOME_BREATHE_PERIOD_MS, HOME_FIRE_TIERS, SMOLDER_PARAMS, STREAK_FIRE_ATLAS, TRICK_FIRE_TIERS,
+  TIER_CROSSFADE_MS,
+  atlasEmberFrame, atlasFlameFrame, atlasGlowFrame, atlasSmokeFrame, blendFireParams,
+  homeBreatheFactor, homeFireLabel, homeFireTier, homeStreakFromProfile, homeStreakFromTotals,
+  trickFire, trickFireLabel, type FireTier, type FireTierParams,
 } from '../src/streakFire';
 
 const wt = (winner: number | null) => ({ leader: 0, plays: [], winner }) as never;
@@ -134,6 +137,108 @@ describe('in-game derivation from a scripted trick sequence', () => {
 
   it('a trick with no winner yet breaks nothing and counts nothing', () => {
     expect(run([1, 1, null])).toBeNull(); // trailing unresolved trick: the detector stops there
+  });
+});
+
+describe('Wave A atlas rebuild (rows 60–61)', () => {
+  it('the atlas asset exists, is WebP, and fits the 90 KB texture cap', () => {
+    const buf = readFileSync(new URL('../public/assets/fire/streak-fire-atlas.webp', import.meta.url));
+    expect(buf.length).toBeGreaterThan(0);
+    expect(buf.length).toBeLessThanOrEqual(90 * 1024);
+    expect(buf.subarray(0, 4).toString('ascii')).toBe('RIFF');
+    expect(buf.subarray(8, 12).toString('ascii')).toBe('WEBP');
+    expect(STREAK_FIRE_ATLAS.url).toBe('/assets/fire/streak-fire-atlas.webp');
+    expect(STREAK_FIRE_ATLAS.width).toBe(512);
+    expect(STREAK_FIRE_ATLAS.height).toBe(480);
+  });
+
+  it('every atlas frame lands in-bounds', () => {
+    const frames = [
+      atlasGlowFrame(), atlasEmberFrame(),
+      ...[0, 0.24, 0.25, 0.5, 0.99, 1, -1, 7].flatMap((life) =>
+        [-3, 0, 1, 7, 8, 100].map((variant) => atlasFlameFrame(life, variant))),
+      ...[0, 1, 2, 3, 4, -1, 99].map((variant) => atlasSmokeFrame(0.5, variant)),
+    ];
+    for (const f of frames) {
+      expect(f.w).toBeGreaterThan(0);
+      expect(f.h).toBeGreaterThan(0);
+      expect(f.x).toBeGreaterThanOrEqual(0);
+      expect(f.y).toBeGreaterThanOrEqual(0);
+      expect(f.x + f.w).toBeLessThanOrEqual(STREAK_FIRE_ATLAS.width);
+      expect(f.y + f.h).toBeLessThanOrEqual(STREAK_FIRE_ATLAS.height);
+    }
+  });
+
+  it('frame selection is seekable: frame = f(life fraction, variant), pure', () => {
+    expect(atlasFlameFrame(0, 0)).toEqual({ x: 0, y: 0, w: 64, h: 104 });
+    expect(atlasFlameFrame(0.3, 2)).toEqual({ x: 128, y: 104, w: 64, h: 104 });
+    expect(atlasFlameFrame(0.99, 7)).toEqual({ x: 448, y: 312, w: 64, h: 104 });
+    expect(atlasFlameFrame(1, 0).y).toBe(312); // life clamps to the old stage
+    expect(atlasFlameFrame(0.42, 5)).toEqual(atlasFlameFrame(0.42, 5)); // pure
+    expect(atlasSmokeFrame(0.5, 5)).toEqual({ x: 64, y: 416, w: 64, h: 64 }); // variant wraps over 4 puffs
+    expect(atlasGlowFrame()).toEqual({ x: 256, y: 416, w: 64, h: 64 });
+    expect(atlasEmberFrame()).toEqual({ x: 320, y: 416, w: 64, h: 64 });
+  });
+
+  it('the engine draws the atlas — no runtime sprite baking, no unseeded randomness', () => {
+    const src = readFileSync(new URL('../src/fire/fireEngine.ts', import.meta.url), 'utf8');
+    expect(src).toContain('STREAK_FIRE_ATLAS');
+    expect(src).toContain('atlasFlameFrame');
+    expect(src).toContain('drawImage');
+    expect(src).not.toContain('createImageData');
+    expect(src).not.toContain('makeFlameSprite');
+    expect(src).not.toContain('makeSmokeSprite');
+    expect(src).not.toContain('makeGlowDot');
+    expect(src).not.toContain('Math.random');
+  });
+
+  it('tier cross-fade: endpoints exact, midpoint blended, smoothstepped, clamped', () => {
+    const a = HOME_FIRE_TIERS[1], b = HOME_FIRE_TIERS[4];
+    expect(TIER_CROSSFADE_MS).toBe(300);
+    expect(blendFireParams(a, b, 0)).toEqual(a);
+    expect(blendFireParams(a, b, 1)).toEqual(b);
+    expect(blendFireParams(a, b, -0.5)).toEqual(a); // clamped below
+    expect(blendFireParams(a, b, 1.5)).toEqual(b); // clamped above
+    const mid = blendFireParams(a, b, 0.5);
+    const keys = ['particles', 'spawnPerSec', 'flameHeight', 'embersPerSec', 'sparksPerSec', 'glow', 'smokePerSec'] as const;
+    for (const k of keys) expect(mid[k]).toBeCloseTo((a[k] + b[k]) / 2, 9);
+    // smoothstep: a quarter of the way in TIME is less than a quarter of
+    // the way in VALUE (the blend eases in, it does not lerp linearly)
+    const quarter = blendFireParams(a, b, 0.25);
+    expect(quarter.particles).toBeGreaterThan(a.particles);
+    expect(quarter.particles).toBeLessThan(a.particles + (b.particles - a.particles) * 0.25);
+    // and it blends DOWN just as smoothly (a broken streak cools)
+    expect(blendFireParams(HOME_FIRE_TIERS[4], HOME_FIRE_TIERS[0], 0.5).particles).toBeCloseTo(48, 9);
+  });
+
+  it('particle caps, the DPR cap and the plate clip survive the rebuild', () => {
+    expect(HOME_FIRE_TIERS[4].particles).toBe(96);
+    expect(TRICK_FIRE_TIERS[4].particles).toBe(60);
+    // a blended cap never exceeds the higher endpoint tier's cap
+    const pairs: [FireTierParams, FireTierParams][] = [
+      [HOME_FIRE_TIERS[1], HOME_FIRE_TIERS[4]], [HOME_FIRE_TIERS[4], HOME_FIRE_TIERS[0]],
+      [TRICK_FIRE_TIERS[2], TRICK_FIRE_TIERS[4]], [TRICK_FIRE_TIERS[4], TRICK_FIRE_TIERS[1]],
+    ];
+    for (const [a, b] of pairs) {
+      for (let t = 0; t <= 1.0001; t += 0.1) {
+        expect(blendFireParams(a, b, t).particles).toBeLessThanOrEqual(Math.max(a.particles, b.particles) + 1e-9);
+      }
+    }
+    const src = readFileSync(new URL('../src/fire/fireEngine.ts', import.meta.url), 'utf8');
+    expect(src).toContain('MAX_DPR = 1.5');
+    expect(src).toContain("clip('evenodd')");
+  });
+
+  it('the home band breathes: 4 s period, factor bounded 0.92–1.00', () => {
+    expect(HOME_BREATHE_PERIOD_MS).toBe(4000);
+    for (let t = 0; t <= 40_000; t += 37) {
+      const f = homeBreatheFactor(t);
+      expect(f).toBeGreaterThanOrEqual(0.92 - 1e-9);
+      expect(f).toBeLessThanOrEqual(1.0 + 1e-9);
+      expect(homeBreatheFactor(t + HOME_BREATHE_PERIOD_MS)).toBeCloseTo(f, 9); // periodic
+    }
+    expect(homeBreatheFactor(1000)).toBeCloseTo(1.0, 9); // crest
+    expect(homeBreatheFactor(3000)).toBeCloseTo(0.92, 9); // trough
   });
 });
 

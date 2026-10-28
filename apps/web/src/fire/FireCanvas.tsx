@@ -13,6 +13,13 @@
  * `calm`): no loop — the engine paints ONE static frame (a gentle glow
  * with a few still tongues), the same "persistent looks stay, motion
  * goes" convention the animfx layer already follows.
+ *
+ * Wave A rebuild: the engine now draws from the one shared pre-rendered
+ * sprite atlas (streakFire.ts STREAK_FIRE_ATLAS) instead of baking
+ * sprites at runtime, and tier changes cross-fade over 300 ms. This
+ * shell is unchanged by the rebuild — same props, same DOM — so the
+ * Setup.tsx home band and the AnimFxLayer.tsx plate mounts needed no
+ * edits.
  */
 import { useEffect, useRef, type CSSProperties } from 'react';
 import type { FireTierParams } from '../streakFire';

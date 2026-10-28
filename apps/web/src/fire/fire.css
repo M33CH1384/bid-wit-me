@@ -1,6 +1,9 @@
 /* Streak fire (owner, 2026-10-27): the canvas fire for a real win streak
  * (home) and a real trick streak (in-game plate). Presentational only —
- * pointer-events none everywhere, identical in Classic and Neon. */
+ * pointer-events none everywhere, identical in Classic and Neon.
+ * Wave A rebuild: the fire now renders from the shared sprite atlas with
+ * 300 ms tier cross-fades handled inside the canvas engine — there are
+ * no CSS tier states to pop, so this sheet is unchanged by the rebuild. */
 
 .streak-fire {
   position: absolute; inset: 0;
