@@ -74,18 +74,36 @@ export function edgePoint(d: Vector3, inset = 0): Vector3 {
 
 const yawOf = (d: Vector3) => Math.atan2(d.x, d.z);
 
-/** Opponent's held fan: upright cards near the rail, backs toward the table centre. */
-export function opponentFan(pos: SeatPos, n: number, i: number, count: number): Xform {
+/**
+ * Fan rest pose (owner, 2026-10-28; state/gating in fanRest.ts): how far a
+ * resting fan drops and how much its spread closes, at rest amount 1.
+ * The human fan's drop is in card heights on the camera plane; the
+ * opponent fan's drop is in world units. Tighten is a fraction of the
+ * open spread/roll removed. Rest 0 reproduces the open pose EXACTLY.
+ */
+export const FAN_REST_DROP_CH = 0.42;
+export const FAN_REST_TIGHTEN = 0.36;
+export const OPP_FAN_REST_DROP = 0.11;
+export const OPP_FAN_REST_OUT = 0.05;
+export const OPP_FAN_REST_TIGHTEN = 0.45;
+
+const clampRest = (rest: number | undefined): number => (Number.isFinite(rest) && rest! > 0 ? Math.min(1, rest!) : 0);
+
+/** Opponent's held fan: upright cards near the rail, backs toward the table centre.
+ *  `rest` (0..1, landscape + Standing off-turn only — see fanRest.ts) lowers the
+ *  whole fan toward the seat's edge and closes its spread; 0 = today's fan. */
+export function opponentFan(pos: SeatPos, n: number, i: number, count: number, rest = 0): Xform {
+  const r = clampRest(rest);
   const d = seatDir(pos, n);
   const side = pos === 'left' || pos === 'right';
-  const base = edgePoint(d, side ? 0.3 : 0.05).add(new Vector3(0, 0.3, 0)).add(d.clone().multiplyScalar(0.12));
+  const base = edgePoint(d, side ? 0.3 : 0.05).add(new Vector3(0, 0.3 - OPP_FAN_REST_DROP * r, 0)).add(d.clone().multiplyScalar(0.12 + OPP_FAN_REST_OUT * r));
   const yaw = yawOf(d);
   const off = i - (count - 1) / 2;
-  const spread = 0.038;
+  const spread = 0.038 * (1 - OPP_FAN_REST_TIGHTEN * r);
   const tangent = new Vector3(Math.cos(yaw), 0, -Math.sin(yaw)); // local +x of a card facing outward
   const p = base.clone().add(tangent.multiplyScalar(off * spread)).add(new Vector3(0, -Math.abs(off) * off * 0 - off * off * 0.0016, 0)).add(d.clone().multiplyScalar(i * 0.0016));
   // face toward the owner (outward), tilted back, fanned by roll
-  return xf([p.x, p.y, p.z], [0.55, yaw, -off * 0.075], 1);
+  return xf([p.x, p.y, p.z], [0.55, yaw, -off * 0.075 * (1 - OPP_FAN_REST_TIGHTEN * r)], 1);
 }
 
 /** Trick-card scale: big enough that rank + suit read clearly on a phone. */
@@ -422,6 +440,15 @@ export interface FanOpts {
   pivot?: number;
   /** Pixels added over the strip floor (headroom for a lifted card). */
   stripPad?: number;
+  /**
+   * Fan rest amount 0..1 (owner 2026-10-28, fanRest.ts): 0 = the normal
+   * raised/open spread, 1 = fully lowered + tightened. Applied in
+   * handCardPlane as a pose ON TOP of the solved layout — the solver,
+   * card scale and depth stack never see it, so open and rest share one
+   * fit. Callers only pass a non-zero amount in landscape + Standing
+   * for a seat that is not the one to act.
+   */
+  rest?: number;
 }
 
 /** Where the strip is measured, as a fraction of the card height below its top edge. */
@@ -641,7 +668,16 @@ export function handCardPlane(aspect: number, count: number, i: number, lift: nu
     const xo = halfN * L.step;
     lowest = xo * xo * L.curveK + (L.ch / 2) * Math.cos(L.maxRoll) + (L.cw / 2) * Math.sin(L.maxRoll);
   }
-  const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch;
+  // Fan rest (fanRest.ts): compress the fan toward its centre (x and roll
+  // close by FAN_REST_TIGHTEN) and drop every card by the same amount, so
+  // each card — centre and ends alike — sits lower at rest than open.
+  const rest = clampRest(o.rest);
+  if (rest > 0) {
+    const tighten = 1 - FAN_REST_TIGHTEN * rest;
+    x *= tighten;
+    roll *= tighten;
+  }
+  const y = -L.viewH / 2 + L.viewH * (0.015 + (o.bottomFrac ?? 0)) + lowest - curve + lift * L.ch - rest * FAN_REST_DROP_CH * L.ch;
   // A higher index is closer by HAND_DEPTH_STEP. Playable cards, and a raised card even more,
   // come forward of the neighbours they overlap so the depth buffer matches the draw order.
   // Phones with a 16-bit depth buffer (iPhone Safari) z-fight at ~0.0003 here; the step stays well above that.

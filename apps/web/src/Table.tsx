@@ -2633,6 +2633,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           selected={runFx ? null : selected}
           turnSeat={actor === HUMAN && !spectating ? actor : null}
+          activeSeat={actor}
           winnerSeat={winnerSeat}
           promoted={promoted}
           onCardTap={onCard}

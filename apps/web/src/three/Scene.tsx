@@ -15,6 +15,7 @@ import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
 import { DEFAULT_SLAM, type DragSample, clearDrop, dragSlamIntensity, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
 import { reducedMotion } from './handLift';
+import { FAN_REST_MS, fanRestSeconds, fanRestTarget } from './fanRest';
 import { VISIBLE_FELT, landTrick, playSeed, runScatter } from './landing';
 import { shakeOffset, swayOffset } from './shake';
 import { isShortLandscape } from '../viewport';
@@ -76,6 +77,11 @@ export interface SceneProps {
   legal: Card[];
   selected: Card | null;
   turnSeat: number | null;
+  /** The seat to act right now (bidding, playing or exchange), in table seat
+   *  order — Table's `actor` (turnView/actingSeat), for EVERY seat. Distinct
+   *  from turnSeat above, which Table passes human-only for the turn ring.
+   *  Drives the fan rest pose (fanRest.ts): every other seat's fan rests. */
+  activeSeat?: number | null;
   winnerSeat: number | null;
   promoted: (c: Card) => boolean;
   onCardTap: (c: Card) => void;
@@ -635,6 +641,39 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     : portraitPhone ? { ...phoneHandFan(), view, bottomFrac: (phoneHandFan().bottomFrac ?? 0) + sittingBottom, ...strip, minStripPx: (handCounts[human] ?? 13) > 13 ? MIN_STRIP_PX : PHONE_HAND_STRIP_PX }
     : { view, ...strip };
   const trickScale = short ? 1.81 : undefined; // +25% over the old 1.45, same ratio as TRICK_SCALE
+  // Fan rest (owner 2026-10-28, fanRest.ts): in landscape + Standing, every seat's
+  // fan rests lowered + tightened while it is NOT the seat to act, and opens to the
+  // normal spread for the acting seat. Keyed to props.activeSeat — the same
+  // acting-seat signal the plates/badges use — so the human's fan starts rising
+  // the moment the turn arrives (and it is NOT exempt: off-turn it rests too).
+  // Amounts are fed to Card3D as ordinary pose targets and its tween eases them;
+  // `moving` marks the transition window, during which the human fan (whose 'lift'
+  // path snaps straight to its target) rides the 'slide' tween instead, and an
+  // opponent fan takes the rest duration instead of the deal-fly duration.
+  // Reduced motion (OS, or the app's Reduce effects) settles instantly.
+  const restReduced = reducedMotion() || !!props.reduceFx || fx.osReducedMotion;
+  const restTrack = useRef<{ hand: number; seats: Map<number, { target: number; until: number }> }>({ hand: -1, seats: new Map() });
+  if (restTrack.current.hand !== handNo) restTrack.current = { hand: handNo, seats: new Map() };
+  const restFor = (seat: number): { amount: number; moving: boolean } => {
+    const target = fanRestTarget({ aspect, view, seatIsActive: props.activeSeat != null && props.activeSeat === seat });
+    if (restReduced) { restTrack.current.seats.set(seat, { target, until: 0 }); return { amount: target, moving: false }; }
+    const track = restTrack.current.seats.get(seat);
+    if (!track) { restTrack.current.seats.set(seat, { target, until: 0 }); return { amount: target, moving: false }; }
+    if (track.target !== target) {
+      track.target = target;
+      // Card3D caps its frame dt, so on a starved canvas its tween runs behind
+      // wall clock: hold the window a beat past the tween's own length.
+      track.until = performance.now() + FAN_REST_MS + 350;
+    }
+    return { amount: target, moving: performance.now() < track.until };
+  };
+  useEffect(() => {
+    const w = window as unknown as { __bwmFanRest?: unknown };
+    w.__bwmFanRest = {
+      activeSeat: props.activeSeat ?? null, view, aspect, short, reduced: restReduced,
+      seats: Array.from({ length: n }, (_, seat) => ({ seat, target: fanRestTarget({ aspect, view, seatIsActive: props.activeSeat != null && props.activeSeat === seat }) })),
+    };
+  });
   // Last committed hand, so a play can launch from that card's own slot. Updated in an effect (not during render)
   // so a highlight change and the server ack share one set of keys and don't restart the fan.
   type Held = { handNo: number; cards: Set<string>; slots: Map<string, Xform>; count: number; seen: Set<string> };
@@ -690,7 +729,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
     const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
     const playKey = `${handNo}-${pl.card}`;
-    const fan = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1);
+    const fan = pl.seat === human ? undefined : opponentFan(positions[pl.seat]!, n, Math.max(0, handCounts[pl.seat]! - 1) / 2, handCounts[pl.seat]! + 1, restFor(pl.seat).amount);
     const launches = trickCardLaunches(playKey, openingTrick.current!, playShown.current.keys);
     // A drag drop flies from the finger point, never back through the hand slot.
     let origin = dropOrigins.current.get(playKey) ?? leftHand;
@@ -732,7 +771,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
         ? flatRest(d.dx, d.dz, d.spin, 4 + i, base.s) // flat on the felt, above any trick cards
         : { ...base, p: [(i - (k - 1) / 2) * w, base.p[1] + 0.01 * i, 0.02] };
       const leftHand = seat === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
-      const from = leftHand ?? (seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k));
+      const from = leftHand ?? (seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k, restFor(seat).amount));
       if (d) items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02 + d.delay, duration: 0.3, arc: 0.3, slam: slamFeel(i === k - 1 ? 1 : 0.85), sfxLand: i === k - 1 ? 'play,runSlam' : 'play', spatialSeat: positions[seat]!, spatialN: n });
       else items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: reduced ? 0 : 0.9, ...(reduced ? { motion: 'slide' as const } : {}), sfxLand: i === k - 1 ? 'runSlam' : undefined, spatialSeat: positions[seat]!, spatialN: n }); // slow motion
     });
@@ -749,7 +788,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       // a row (two when many) just beyond the claimer's row, so the claimer's cards stay on top and readable
       const target: Xform = { ...base, s: sc, p: [(col - (Math.min(perRow, m - row * perRow) - 1) / 2) * w, base.p[1] * 0.8 + 0.002 * i, 0.02 - (hc * 0.55 + ho * 0.5) - row * ho * 0.92] };
       const leftHand = s2 === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
-      const from = leftHand ?? (s2 === human ? undefined : opponentFan(positions[s2]!, n, 0, 1));
+      const from = leftHand ?? (s2 === human ? undefined : opponentFan(positions[s2]!, n, 0, 1, restFor(s2).amount));
       items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.38 + i * 0.03, duration: 0.18, arc: 0.25 });
     });
   }
@@ -761,7 +800,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       if (gather) {
         items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: deck, duration: 0.7, arc: 0.25, motion: 'glide', delay: seat * 0.07 + i * 0.015, sfxStart: 'sweep', spatialSeat: positions[seat]!, spatialN: n });
       } else {
-        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c), from: flight ? deck : undefined, delay: flight ? dealDelay(i, seat) : 0, holdUntilMove: flight, duration: tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
+        const rest = restFor(seat);
+        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c, rest.amount), from: flight ? deck : undefined, delay: flight ? dealDelay(i, seat) : 0, holdUntilMove: flight, duration: !flight && rest.moving ? fanRestSeconds(false) : tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
       }
     }
   }
@@ -782,7 +822,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // reserve that room and drop the entire hand on the first tap. The fan is now laid
   // out identically whether or not a card is selected: the same opts lay out every
   // mesh and every hit quad, and only the raised card moves.
-  const laid = fanOpts;
+  const humanRest = restFor(human);
+  const laid: FanOpts = { ...fanOpts, rest: humanRest.amount };
   const fan = fanLayout(aspect, Math.max(1, fanCards.length), safeFrac, laid);
   const cardPx = fanCssPx(fan, screenW).width;
   // No neighbour spread on selection: the fan anchor must not move when a card raises.
@@ -853,8 +894,13 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       // The id comes from the mesh that was hit. Fall back to this card only if the mesh has no stamp.
       tap: c && isLegal ? (hit: string) => onCardTap((hit || c) as Card) : pose === 'illegal' ? null : undefined,
       shadow: false,
-      duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : move.kind === 'slide' ? GAP_S : handSpreadProbe(spreadSeconds()),
-      motion: move.motion,
+      duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : humanRest.moving ? fanRestSeconds(false) : move.kind === 'slide' ? GAP_S : handSpreadProbe(spreadSeconds()),
+      // Rest transition: ride Card3D's slide tween (liftEase) instead of the
+      // 'lift' snap, so the fan eases down/up over FAN_REST_MS. The hit quads
+      // published this render are the destination pose, as with a gap-close
+      // slide, and the fan is fully open before the human can be asked to tap
+      // (the state keys off the same acting-seat signal as `legal`).
+      motion: humanRest.moving && (move.kind === 'lift' || move.kind === 'slide') ? 'slide' as const : move.motion,
       arc: dealIn ? 0.3 : move.arc,
       raise: c ? raiseLocalY(pose, fan.viewH, screenH, fan.ch) : 0,
       roll: plane.roll,
