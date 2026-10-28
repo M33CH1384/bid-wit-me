@@ -8,6 +8,9 @@ import { handWinner, streakLabel, streakOf, useReduceEffects } from './fx';
 import { sound } from './audio';
 import { haptic } from './haptics';
 import { SetCover } from './animfx/SetCover';
+import { PhotoFinishTape, VictoryConfetti } from './RecapFx';
+import { CONFETTI_GOLDS } from './recapfx';
+import { photoFinish, winMargin } from './animfx/detect';
 import { finaleHeadlineFor, isThirdSetEnd, resolveSetAnim, setTierForCover } from './setAnims';
 import { useClearedStoryStops } from './storyDecks';
 import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
@@ -171,6 +174,32 @@ export function Intermission({
     const t = window.setTimeout(() => setPresented(true), 350);
     return () => window.clearTimeout(t);
   }, []);
+  // The victory celebration (owner, 2026-10-28: "when this screen loads
+  // in landscape I never get to see the animation"). The confetti and
+  // the Photo Finish tape used to be fired by AnimFxLayer on the
+  // RESULT STATE's arrival — while the finished trick was still in its
+  // hold (1,150 ms plain; ~5 s behind a nuked or Run-It final trick),
+  // long before this sheet could present. Their whole 2.3 s / 3 s life
+  // elapsed over the table, and the player met only the end state.
+  // They live here now, on the presenting surface, gated on the same
+  // `presented` state as the set covers: the celebration starts when
+  // the sheet is actually on screen, plays in full view over it, and a
+  // tap anywhere clears it early. Winners get the rain; the tape
+  // prints the real final scores. Reduced motion collapses the rain
+  // to its still pose.
+  const [fxOff, setFxOff] = useState(false);
+  const iWon = decided && !!st.result && st.result.winners.includes(mySide);
+  const photo = decided && !!st.result && photoFinish(st.result)
+    ? (() => {
+        const fs = st.result!.finalScores ?? [];
+        const winners = new Set(st.result!.winners);
+        return {
+          w: Math.max(...fs.filter((_, i) => winners.has(i))),
+          l: Math.max(...fs.filter((_, i) => !winners.has(i))),
+          m: winMargin(st.result!) ?? 0,
+        };
+      })()
+    : null;
   // The recap opens at the TOP of its scrollport, every hand (owner,
   // 2026-10-21): the sheet's scroll position could survive into the next
   // recap (same scrollport node across the decided hold), opening the
@@ -183,7 +212,7 @@ export function Intermission({
     if (el) el.scrollTop = 0;
   }, [handKey]);
   return (
-    <div className={`tt-backdrop${presented ? ' presented' : ''}`} data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} data-presented={presented ? 'yes' : 'no'} role="dialog" aria-label="Hand recap">
+    <div className={`tt-backdrop${presented ? ' presented' : ''}`} data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} data-presented={presented ? 'yes' : 'no'} role="dialog" aria-label="Hand recap" onPointerDown={() => setFxOff(true)}>
       {/* 3 THE HARD WAY — the third-set ending's title card (the rule's own
           callout, game-wide, NOT an unlock). Held ~3s, then the game-over
           flow proceeds; in a story match the stop's finale set animation is
@@ -377,7 +406,16 @@ export function Intermission({
           </button>
           {onLeave && <><div className="exit-divider" aria-hidden="true" /><button type="button" className="leave-red" data-testid="recap-leave" onClick={onLeave}>Leave game</button></>}
         </footer>
+        {/* Photo Finish tape — presented-gated, riding the sheet itself
+            (the .tt in-recap placement), printing both real final scores */}
+        {photo && presented && !fxOff && (
+          <PhotoFinishTape inRecap winnerScore={photo.w} loserScore={photo.l} margin={photo.m} />
+        )}
       </div>
+      {/* Victory Confetti — presented-gated, over the presented sheet */}
+      {iWon && presented && !fxOff && (
+        <VictoryConfetti seed={st.seed ?? null} still={reduceFx} colors={[sideColor(r, mySide), CONFETTI_GOLDS[0]!, sideColor(r, mySide), CONFETTI_GOLDS[1]!]} />
+      )}
     </div>
   );
 }

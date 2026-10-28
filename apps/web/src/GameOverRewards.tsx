@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { CoinIcon } from './RepBlock';
+import { VictoryConfetti } from './RecapFx';
 import { cardDisplayName, rankGlyph } from './cardRank';
 import { fx, useReduceEffects } from './fx';
 import { PlayerCard, type CardRankData, type PlayerCardData } from './profile/PlayerCard';
@@ -344,6 +345,48 @@ function useRewardsReveal(): { play: boolean; reduced: boolean } {
 }
 
 /**
+ * The rows' own in-view gate (owner, 2026-10-28: "when this screen loads
+ * in landscape I never get to see the animation"). The reveal gate above
+ * proves the PAGE painted, but it says nothing about the ROWS: in
+ * landscape the card is far taller than the viewport and the Postgame
+ * Report sits ahead of the reward rows, so at load the rows are below
+ * the fold — the mount gate spent their slide-in and count-ups unseen,
+ * and scrolling down found the final numbers already sitting there
+ * (portrait fits the whole card, which is why only landscape lost the
+ * show). The rows now hold until they actually reach the viewport —
+ * the same in-view discipline the set covers use (the sc-wait gate) —
+ * then play exactly as before. Reduced motion skips the wait: the
+ * final state is already the presentation there.
+ */
+function useRowsInView(ref: RefObject<HTMLDivElement | null>, play: boolean, reduced: boolean): boolean {
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    if (reduced || inView || !play) return;
+    const el = ref.current;
+    if (!el) return;
+    const check = () => {
+      // A readable band of the rows (~56 px — a row's header and number)
+      // must be inside the viewport: at load in landscape only a sliver
+      // of the first row peeks past the fold, and a gate that fired on
+      // the sliver would still spend the show mostly unseen. Scrolled
+      // fully past counts too (a fast flick to the actions must not
+      // strand them).
+      if (el.getBoundingClientRect().top < window.innerHeight - 56) { setInView(true); return true; }
+      return false;
+    };
+    if (check()) return;
+    const onMove = () => { check(); };
+    window.addEventListener('scroll', onMove, { passive: true, capture: true });
+    window.addEventListener('resize', onMove);
+    return () => {
+      window.removeEventListener('scroll', onMove, { capture: true });
+      window.removeEventListener('resize', onMove);
+    };
+  }, [ref, play, reduced, inView]);
+  return reduced || inView;
+}
+
+/**
  * Ease-out cubic tween from `from` to `to`, driven by the reveal gate:
  * before the gate opens the value sits AT `from` (the pre-game value — 0
  * for the earned counters, the old rating for the rating row); reduced
@@ -554,13 +597,24 @@ export default function GameOverRewards({
   guestClaim?: GuestClaimUi;
 }) {
   const { play, reduced } = useRewardsReveal();
+  // The rows wait for their own gate: presented AND in view (in
+  // landscape they start below the fold — see useRowsInView).
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const rowsPlay = useRowsInView(rowsRef, play, reduced);
+  const rowGate = play && rowsPlay;
+  // The victory celebration on THIS screen (owner, 2026-10-28): the
+  // seeded confetti rain, fired by the reveal gate (presented — two
+  // painted frames, document visible), never at mount; a tap anywhere
+  // on the page clears it early. Wins only; reduced motion collapses
+  // it to the still pose like every other surface.
+  const [fxOff, setFxOff] = useState(false);
   let row = 0;
   const rows: React.ReactNode[] = [];
   if (data.signedIn) {
-    rows.push(<XpRow key="xp" d={data} index={row++} play={play} reduced={reduced} />);
+    rows.push(<XpRow key="xp" d={data} index={row++} play={rowGate} reduced={reduced} />);
     if (data.cardUp) rows.push(<CardUpRow key="cardup" d={data} index={row++} />);
-    if (data.coinsGained > 0) rows.push(<CoinsRow key="coins" d={data} index={row++} play={play} reduced={reduced} />);
-    rows.push(<EloRow key="elo" d={data} index={row++} play={play} reduced={reduced} />);
+    if (data.coinsGained > 0) rows.push(<CoinsRow key="coins" d={data} index={row++} play={rowGate} reduced={reduced} />);
+    rows.push(<EloRow key="elo" d={data} index={row++} play={rowGate} reduced={reduced} />);
     for (const a of data.achievements) {
       const i = row++;
       rows.push(
@@ -585,7 +639,13 @@ export default function GameOverRewards({
     }
   }
   return (
-    <div className={`rewards-page rw-armed${play ? ' rw-play' : '' }${reduced ? ' rw-reduced' : ''}`} aria-label="Match rewards" data-testid="rewards">
+    <div
+      className={`rewards-page rw-armed${play ? ' rw-play' : ''}${rowsPlay ? ' rw-rows-play' : ''}${reduced ? ' rw-reduced' : ''}`}
+      aria-label="Match rewards"
+      data-testid="rewards"
+      onPointerDown={() => setFxOff(true)}
+    >
+      {data.won && play && !fxOff && <VictoryConfetti seed={data.sub || null} still={reduced} />}
       <div className="rw-card">
         <div className="rw-head" style={{ animationDelay: '0ms' }}>
           <div className="rw-trophy">{data.won ? '🏆' : '♠'}</div>
@@ -611,7 +671,7 @@ export default function GameOverRewards({
             )}
           </div>
         )}
-        <div className="rw-rows">
+        <div className="rw-rows" ref={rowsRef}>
           {data.signedIn ? rows : guestClaim && (guestClaim.held || guestClaim.claiming) ? (
             <div className="rw-row" style={{ animationDelay: '160ms' }} aria-busy={guestClaim.claiming || undefined}>
               <div className="rw-icon">👤</div>

@@ -3626,9 +3626,15 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
    with the animation held OFF (a running timeline would already be spent).
    .rw-reduced (Reduce effects / OS reduce-motion) renders the final state
    instantly. Scoped to .rw-armed so the no-match fallback card is untouched. */
-.rewards-page.rw-armed:not(.rw-play) .rw-card,
-.rewards-page.rw-armed:not(.rw-play) .rw-row,
-.rewards-page.rw-armed:not(.rw-play) .rw-actions { animation: none; }
+.rewards-page.rw-armed:not(.rw-play) .rw-card { animation: none; }
+/* The reward rows and the actions carry a SECOND gate (owner, 2026-10-28):
+   they wait for .rw-rows-play — presented AND in view. In landscape the
+   card is taller than the viewport and the rows sit below the fold at
+   load (the Postgame Report ahead of them), so the play gate alone spent
+   their entrance unseen; scrolling down found only the end state. The
+   rows' gate is useRowsInView in GameOverRewards.tsx. */
+.rewards-page.rw-armed:not(.rw-rows-play) .rw-row,
+.rewards-page.rw-armed:not(.rw-rows-play) .rw-actions { animation: none; }
 .rewards-page.rw-armed:not(.rw-play) .rw-trophy,
 .rewards-page.rw-armed:not(.rw-play) .rw-levelup { animation: none; opacity: 0; }
 .rewards-page.rw-reduced .rw-card,
@@ -4395,7 +4401,7 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   opacity: 0; transform: translateY(14px) scale(.96);
   animation: rw-cardup-in .55s cubic-bezier(.2,1.3,.35,1) forwards; }
 @keyframes rw-cardup-in { to { opacity: 1; transform: none; } }
-.rewards-page.rw-armed:not(.rw-play) .rw-cardup { animation: none; }
+.rewards-page.rw-armed:not(.rw-rows-play) .rw-cardup { animation: none; }
 .rewards-page.rw-reduced .rw-cardup { animation: none; opacity: 1; transform: none; }
 .rw-cardup-head { font-family: var(--display); font-weight: 900; letter-spacing: .14em;
   font-size: 17px; color: var(--gold); text-shadow: 0 0 18px rgba(255,200,60,.45); }

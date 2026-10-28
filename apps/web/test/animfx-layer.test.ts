@@ -37,8 +37,8 @@ const bostonRec: HandRecord = {
 };
 
 let root: Root | null = null;
-let layerProps: { online?: boolean; names?: string[] } = {};
-function mount(v: PlayerView, opts: { online?: boolean; names?: string[] } = {}) {
+let layerProps: { online?: boolean; names?: string[]; resultPresented?: boolean } = {};
+function mount(v: PlayerView, opts: { online?: boolean; names?: string[]; resultPresented?: boolean } = {}) {
   layerProps = opts;
   document.body.innerHTML = `
     <div class="badge-layer">${[0, 1, 2, 3].map((s) => `<div class="plate" data-testid="seat-${s}"></div>`).join('')}</div>
@@ -50,6 +50,8 @@ function mount(v: PlayerView, opts: { online?: boolean; names?: string[] } = {})
   return host;
 }
 function rerender(v: PlayerView) { act(() => root!.render(createElement(AnimFxLayer, { st: v, ...layerProps }))); }
+/** Flip the host's presented signal without changing the game state. */
+function rerenderPresented(v: PlayerView) { layerProps = { ...layerProps, resultPresented: true }; rerender(v); }
 
 afterEach(() => {
   if (root) act(() => root!.unmount());
@@ -273,16 +275,24 @@ describe('animfx layer', () => {
     expect(document.querySelector('[data-testid="animfx-misdeal"]')).not.toBeNull();
   });
 
-  it('wave 2: no UPSET without real ratings; PAYBACK stamps off the winner profile h2h', async () => {
+  it('wave 2: no UPSET without real ratings; PAYBACK stamps off the winner profile h2h — on the PRESENTED edge', async () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async () => ({ ok: true, json: async () => ({ vsYou: { games: 3, wins: 2, losses: 1 } }) })) as never;
     try {
       mount(view({ phase: 'playing' }), { online: true, names: ['Me', 'Wendy', 'Part', 'Foe'] });
-      rerender(view({ phase: 'gameOver', result: { winners: [1] } as never }));
+      const over = view({ phase: 'gameOver', result: { winners: [1] } as never });
+      rerender(over);
       await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
       expect(document.querySelector('[data-testid="animfx-upset"]')).toBeNull(); // no presence ratings in the store: nothing invented
+      // 2026-10-28: the stamp is QUEUED, not fired — the result state has
+      // landed but no result surface has presented yet (the finished-trick
+      // hold is still running), and a stamp fired now would spend its
+      // whole life before the victory screen exists
+      expect(document.querySelector('[data-testid="animfx-payback"]')).toBeNull();
+      expect(document.querySelector('[data-testid="animfx-ripple"]')).not.toBeNull(); // the winning book beat is a table moment: unchanged
+      rerenderPresented(over);
       expect(document.querySelector('[data-testid="animfx-payback"]')).not.toBeNull(); // winner's vsYou: viewer leads the matchup 2-1
-      expect(document.querySelector('[data-testid="animfx-ripple"]')).not.toBeNull(); // the winning book beat
+      expect(document.querySelector('[data-testid="animfx-upset"]')).toBeNull(); // still nothing invented
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -602,20 +612,24 @@ describe('wave 3 layer', () => {
     expect(Q('animfx-wire')).not.toBeNull();
   });
 
-  it('PHOTO FINISH + CONFETTI: a 9-point win tapes and rains for the viewer (recapfx renderers, Wave B swap)', () => {
+  it('PHOTO FINISH + CONFETTI: the layer fires neither on the result state (2026-10-28 presented-gate fix)', () => {
+    // The Wave B swap fired both from here, on the result STATE's arrival —
+    // while the finished trick was still in its hold and no result surface
+    // could present, so their whole 2.3 s / 3 s life elapsed unseen (the
+    // owner's landscape report). They now live on the presenting surfaces,
+    // gated on presentation — pinned in victory-presented.test.ts (the
+    // decided recap tapes with BOTH real final scores, 505–500 there, and
+    // rains for the winner only). This test pins the layer's half: even a
+    // 9-point viewer win produces no layer shot, before or after the
+    // presented signal.
     mount(view({ phase: 'playing' }));
-    rerender(view({ phase: 'gameOver', result: { winners: [0], finalScores: [500, 491] } as unknown as PlayerView['result'] }));
-    // the tape renderer mounts with BOTH real final scores at the tape
-    const pf = Q('animfx-photofinish');
-    expect(pf).not.toBeNull();
-    expect(pf!.querySelector('[data-testid="recapfx-photofinish"]')).not.toBeNull();
-    expect(pf!.textContent).toContain('500');
-    expect(pf!.textContent).toContain('491');
-    // the confetti renderer mounts its canvas (piece counts/flutter are
-    // pinned in recapfx's own model tests — 24 pieces / 8 calm)
-    const cf = Q('animfx-confetti');
-    expect(cf).not.toBeNull();
-    expect(cf!.querySelector('[data-testid="recapfx-confetti"] canvas')).not.toBeNull();
+    const over = view({ phase: 'gameOver', result: { winners: [0], finalScores: [500, 491] } as unknown as PlayerView['result'] });
+    rerender(over);
+    expect(Q('animfx-photofinish')).toBeNull();
+    expect(Q('animfx-confetti')).toBeNull();
+    rerenderPresented(over);
+    expect(Q('animfx-photofinish')).toBeNull();
+    expect(Q('animfx-confetti')).toBeNull();
   });
 
   it('a blowout loss gets neither the stamp nor the confetti', () => {
@@ -625,15 +639,16 @@ describe('wave 3 layer', () => {
     expect(Q('animfx-confetti')).toBeNull();
   });
 
-  it('reduced motion: confetti collapses to the still renderer pose; the photo tape still lands', () => {
+  it('reduced motion: the layer still fires neither — the still pose lives on the surfaces', () => {
+    // The calm read moved with the celebration: the presenting surfaces
+    // render VictoryConfetti with still=true under reduce (the renderer's
+    // still pose is pinned in recapfx's model tests; the surfaces' gates
+    // in victory-presented.test.ts). The layer fires nothing either way.
     fx.setReduce(true);
     mount(view({ phase: 'playing' }));
     rerender(view({ phase: 'gameOver', result: { winners: [0], finalScores: [500, 499] } as unknown as PlayerView['result'] }));
-    const cf = Q('animfx-confetti');
-    expect(cf).not.toBeNull();
-    expect(cf!.classList.contains('still')).toBe(true);
-    expect(cf!.querySelector('[data-testid="recapfx-confetti"]')).not.toBeNull();
-    expect(Q('animfx-photofinish')).not.toBeNull();
+    expect(Q('animfx-confetti')).toBeNull();
+    expect(Q('animfx-photofinish')).toBeNull();
   });
 });
 

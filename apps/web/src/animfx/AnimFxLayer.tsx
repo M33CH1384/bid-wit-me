@@ -50,18 +50,18 @@ import {
   comebackSides, contractDeadSides, doubleMoonSides, heatSides, matchPointSides,
   mirrorBidSides, newlyEliminated, nineLivesSides, paybackColdPairs, shushSides,
   silentAssassinSeats, textbookSides, trickStreak,
-  nilBustedSeats, nilLiveSeats, photoFinish, ratingGap, runClaimerSeat, saveInTrick,
+  nilBustedSeats, nilLiveSeats, ratingGap, runClaimerSeat, saveInTrick,
   sealedNilSeats, seatsOfSide, setSides, sideIndexOf, spadePlayed, syncSides,
-  trickWasCut, wheelsSides, winMargin, wireSides,
+  trickWasCut, wheelsSides, wireSides,
 } from './detect';
-/* Wave B dedupe (coordinator ruling): Down to the Wire, Photo Finish and
- * Victory Confetti render through the rebuilt recapfx renderers — the
- * layer keeps their triggers and held timings, the renderers own the
- * pixels (pure seekable models in recapfx.ts). DOM/canvas only: no
- * three.js, so the entry graph stays clean. */
-import { PhotoFinishTape, VictoryConfetti, WireOverlay } from '../RecapFx';
-import { CONFETTI_GOLDS } from '../recapfx';
-import { sideColor } from '../ScorePad';
+/* Wave B dedupe (coordinator ruling): Down to the Wire renders through
+ * the rebuilt recapfx renderer — the layer keeps its trigger and held
+ * timing, the renderer owns the pixels (pure seekable models in
+ * recapfx.ts). Photo Finish and Victory Confetti used to render here
+ * too; since 2026-10-28 they live on the presenting surfaces (see the
+ * game-over block below). DOM/canvas only: no three.js, so the entry
+ * graph stays clean. */
+import { WireOverlay } from '../RecapFx';
 import FireCanvas from '../fire/FireCanvas';
 import { SMOLDER_PARAMS, TRICK_FIRE_TIERS, trickFire, trickFireLabel } from '../streakFire';
 import { TORNADO_LEVEL_NAMES, TornadoLadderTracker } from '../three/tornadoLevel';
@@ -308,7 +308,19 @@ function HeadlightSweep({ calm }: { calm: boolean }) {
 
 /* -------------------------------------------------------------------- main */
 
-export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxView; online?: boolean; names?: string[] }) {
+export default function AnimFxLayer({ st, online = false, names, resultPresented = false }: {
+  st: AnimFxView;
+  online?: boolean;
+  names?: string[];
+  /** A game-over surface (decided recap / final-results modal / victory
+   *  screen) is actually PRESENTED. The game-over stamps below gate on
+   *  this, never on the result state's arrival: the state lands while
+   *  the finished trick is still in its hold — 1,150 ms plain, ~5 s
+   *  behind a nuked or Run-It final trick — so a stamp fired on the
+   *  state spent its whole life before the surface existed (owner,
+   *  2026-10-28: the victory animation was never seen in landscape). */
+  resultPresented?: boolean;
+}) {
   const reduceFx = useReduceEffects();
   const reduced = reduceFx || fx.osReducedMotion;
   const reducedRef = useRef(reduced);
@@ -416,6 +428,25 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
     later(() => setShots((ss) => ss.filter((x) => x.id !== id)), ms);
   };
   const calm = () => reducedRef.current;
+
+  /* Game-over stamps (UPSET / PAYBACK) are presentation graphics: they
+   * queue here and fire only when the host reports the result surface
+   * presented (see the prop note). Anything queued for a result that
+   * clears before presentation is dropped with it. */
+  const pendingStamps = useRef<Array<{ shot: Omit<Shot, 'id'>; ms: number }>>([]);
+  const presentedRef = useRef(false);
+  const stampOrQueue = (shot: Omit<Shot, 'id'>, ms: number) => {
+    if (presentedRef.current) addShot(shot, ms);
+    else pendingStamps.current.push({ shot, ms });
+  };
+  useEffect(() => {
+    presentedRef.current = resultPresented;
+    if (!resultPresented) return;
+    const queued = pendingStamps.current;
+    pendingStamps.current = [];
+    for (const s of queued) addShot(s.shot, s.ms);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultPresented]);
 
   const fireAtPlate = (kind: ShotKind, seat: number, ms: number) => {
     const pt = platePt(seat);
@@ -823,6 +854,10 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
     // MISDEAL: the dealt cards scatter and swirl back into the deck before the re-deal
     if (snap.hasMisdeal && !p.hasMisdeal && !calm()) addShot({ kind: 'misdeal', x: 0, y: 0 }, 1050);
 
+    // a result that clears before its surface ever presented takes its
+    // queued stamps with it — they belong to that result, not the next
+    if (!snap.hasResult && p.hasResult) pendingStamps.current = [];
+
     // game over: THE WINNING BOOK ripples out of the final trick with a brief
     // time-stretch beat (presentational only — the victory handoff is untouched)
     if (snap.hasResult && !p.hasResult && st.result) {
@@ -833,23 +868,21 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
         scr?.classList.add('animfx-slowmo');
         later(() => scr?.classList.remove('animfx-slowmo'), 1000);
       }
-      // PHOTO FINISH + VICTORY CONFETTI: decided from the result alone, so
-      // they fire in BOTH game-over views (offline included), unlike the
-      // online-gated PAYBACK/UPSET stamps below. Confetti rains only for a
-      // viewer on a winning side — losers get none.
-      if (photoFinish(st.result)) {
-        // the tape prints BOTH final scores — the best winning total and
-        // the best losing total from the real result payload, with the
-        // real margin (photoScoresLine formats them; nothing invented)
-        const fs = st.result.finalScores ?? [];
-        const winners = new Set(st.result.winners);
-        const wScore = Math.max(...fs.filter((_, i) => winners.has(i)));
-        const lScore = Math.max(...fs.filter((_, i) => !winners.has(i)));
-        addShot({ kind: 'photofinish', x: 0, y: 0, scores: [wScore, lScore, winMargin(st.result) ?? 0] }, 3000);
-      }
-      if (st.result.winners.includes(sideIndexOf(st.rules, st.seat ?? 0))) {
-        addShot({ kind: 'confetti', x: 0, y: 0, still: calm() }, calm() ? 1300 : 2300);
-      }
+      // PHOTO FINISH + VICTORY CONFETTI no longer fire here (owner,
+      // 2026-10-28). They were decided from the result alone and fired
+      // on this state transition — but the result state lands while the
+      // finished trick is still in its hold (1,150 ms plain; TRICK_HOLD
+      // + up to 4,000 ms nuke allowance; ~5.35 s for a Run-It ending),
+      // and the result surface cannot present until the hold releases.
+      // Their whole bounded life (confetti 2.3 s, tape 3 s) elapsed over
+      // the table before the sheet existed, so the player never saw
+      // them — in landscape the flow then moved to /rewards, which had
+      // no celebration at all. Both now live on the presenting surfaces
+      // (Intermission's decided recap, Table's game-over modal and
+      // online victory screen, the /rewards screen), gated on those
+      // surfaces' own presented states. The UPSET / PAYBACK stamps
+      // below share the disease and the cure: they queue through
+      // stampOrQueue and fire on the presented edge.
       const nm = namesRef.current;
       if (online && nm) {
         // UPSET: every seat's rating must resolve from presence — one missing
@@ -870,7 +903,7 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
           ? ratingGap(wr as number[], lr as number[]) : 0;
         if (gap >= UPSET_GAP) {
           // the chyron prints the REAL rating gap under the word
-          addShot({ kind: 'upset', x: 0, y: 0, label: String(Math.round(gap)) }, 3000);
+          stampOrQueue({ kind: 'upset', x: 0, y: 0, label: String(Math.round(gap)) }, 3000);
         }
         // PAYBACK: the viewer lost, and a winner's own profile payload says
         // they've been losing this head-to-head (vsYou reads from the viewer's
@@ -886,7 +919,7 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
                 const vy = (j as { vsYou?: { games: number; wins: number; losses: number } } | null)?.vsYou;
                 if (!stamped && mountedRef.current && vy && vy.games >= 1 && vy.wins > vy.losses) {
                   stamped = true;
-                  addShot({ kind: 'payback', x: 0, y: 0 }, 3200);
+                  stampOrQueue({ kind: 'payback', x: 0, y: 0 }, 3200);
                 }
               })
               .catch(() => { /* no reachable profile: no stamp, never invented */ });
@@ -1248,27 +1281,6 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
             <WireOverlay still={!!s.still} />
           </div>
         );
-      case 'photofinish':
-        // rebuilt renderer (recapfx): the tape snaps across with both
-        // real final scores printed at it (captured at the trigger)
-        return (
-          <div key={s.id} data-testid="animfx-photofinish">
-            <PhotoFinishTape winnerScore={s.scores?.[0] ?? 0} loserScore={s.scores?.[1] ?? 0} margin={s.scores?.[2] ?? 0} />
-          </div>
-        );
-      case 'confetti': {
-        // rebuilt renderer (recapfx): canvas flutter rain, seeded by the
-        // match seed so the same game rains the same rain on every
-        // device; the winning side's colour alternates with the golds
-        const winSide = sideIndexOf(st.rules, st.seat ?? 0);
-        const sc = sideColor(st.rules, winSide);
-        const colors = [sc, CONFETTI_GOLDS[0]!, sc, CONFETTI_GOLDS[1]!];
-        return (
-          <div key={s.id} data-testid="animfx-confetti" className={s.still ? 'still' : ''}>
-            <VictoryConfetti seed={st.seed ?? null} still={!!s.still} colors={colors} />
-          </div>
-        );
-      }
       /* ------------------------------------------------ §C new scenarios */
       case 'doublemoon': {
         // two crescents rise from the partners' plates, travel to the
@@ -1334,7 +1346,7 @@ export default function AnimFxLayer({ st, online = false, names }: { st: AnimFxV
     }
   };
 
-  const isStamp = (s: Shot) => s.kind === 'ripple' || s.kind === 'payback' || s.kind === 'upset' || s.kind === 'photofinish' || s.kind === 'confetti';
+  const isStamp = (s: Shot) => s.kind === 'ripple' || s.kind === 'payback' || s.kind === 'upset';
   return (
     <>
       <div className="animfx-layer" aria-hidden="true" data-testid="animfx">

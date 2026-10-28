@@ -58,8 +58,9 @@ import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
-import { VictoryConfetti } from './RecapFx';
+import { PhotoFinishTape, VictoryConfetti } from './RecapFx';
 import { CONFETTI_GOLDS } from './recapfx';
+import { photoFinish, winMargin } from './animfx/detect';
 import { sideColor } from './ScorePad';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
@@ -2211,6 +2212,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   }, [nukeKey]);
   const winBuzzed = useRef(false);
   useEffect(() => { if (st.phase !== 'gameOver') winBuzzed.current = false; }, [st.phase]);
+  // Game-over celebration dismiss (owner rule: transient reveals clear
+  // on tap): a tap on a presented result surface clears its confetti /
+  // Photo Finish tape early. Reset per finished game so the next win
+  // celebrates again.
+  const [goFxOff, setGoFxOff] = useState(false);
+  useEffect(() => { if (st.phase !== 'gameOver') setGoFxOff(false); }, [st.phase]);
   const localWin = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result?.winners.includes(mySide) && !spectating;
   useEffect(() => {
     if (!localWin || winBuzzed.current) return;
@@ -2971,12 +2978,22 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const title = winHeadline(res.winners.map((w) => sideName(r, w, names)), r.partnerships);
         const iWon = !spectating && res.winners.includes(mySide);
         return (
-          <div className="victory-screen espn" role="dialog" aria-label="Game over" data-testid="victory">
+          <div className="victory-screen espn" role="dialog" aria-label="Game over" data-testid="victory" onPointerDown={() => setGoFxOff(true)}>
             {/* Victory confetti is ONE system (Wave B): the rebuilt seeded canvas
-                rain (RecapFx), here on the online victory screen as in the AnimFx
-                layer — winning side's colours, winners only, bounded 2.3 s. The
-                legacy infinite DOM rain (.vic-confetti) is retired. */}
-            {iWon && <VictoryConfetti seed={String(st.seed)} still={reduceFx} colors={[sideColor(r, mySide), CONFETTI_GOLDS[0]!, sideColor(r, mySide), CONFETTI_GOLDS[1]!]} />}
+                rain (RecapFx), mounted on the PRESENTING surface — this screen
+                only exists once the result is presented (showResults waits out
+                the finished-trick hold), so its clock starts in full view.
+                Winning side's colours, winners only, bounded 2.3 s; a tap
+                clears it early. The legacy infinite DOM rain (.vic-confetti)
+                is retired, and the AnimFx layer no longer fires its own copy
+                on the result state (2026-10-28: that copy's whole life elapsed
+                during the pre-presentation hold, unseen). */}
+            {iWon && !goFxOff && <VictoryConfetti seed={String(st.seed)} still={reduceFx} colors={[sideColor(r, mySide), CONFETTI_GOLDS[0]!, sideColor(r, mySide), CONFETTI_GOLDS[1]!]} />}
+            {!goFxOff && photoFinish(res) && (() => {
+              const fs = res.finalScores ?? [];
+              const winners = new Set(res.winners);
+              return <PhotoFinishTape winnerScore={Math.max(...fs.filter((_, i) => winners.has(i)))} loserScore={Math.max(...fs.filter((_, i) => !winners.has(i)))} margin={winMargin(res) ?? 0} />;
+            })()}
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={() => openRewards('home')}>✕</button>
             <h2 className="vic-head">{iWon ? (res.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : 'GAME OVER'}<small>{iWon ? '🏆' : '♠'}</small></h2>
             {(() => {
@@ -3012,7 +3029,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         );
       })()}
       {showResults && st.result && !online?.victory && (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" onPointerDown={() => setGoFxOff(true)}>
           <div className="modal glass slant gameover espn" role="dialog" aria-label="Game over">
             <button type="button" className="modal-x" aria-label={storyGame ? 'Close and continue to the story map' : 'Close and go to the main menu'} data-testid="gameover-x" onClick={() => (storyGame ? leave() : openRewards('home'))}>✕</button>
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
@@ -3066,6 +3083,20 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               )}
             </div>
           </div>
+          {/* The victory celebration, mounted on the presenting surface
+              (2026-10-28): this modal only exists once the result is
+              presented, so the confetti's clock starts in full view —
+              the AnimFx layer's state-fired copy spent its whole life
+              during the pre-presentation hold and was never seen. A tap
+              on the backdrop clears both early. */}
+          {!goFxOff && st.result.winners.includes(mySide) && !spectating && (
+            <VictoryConfetti seed={String(st.seed)} still={reduceFx} colors={[sideColor(r, mySide), CONFETTI_GOLDS[0]!, sideColor(r, mySide), CONFETTI_GOLDS[1]!]} />
+          )}
+          {!goFxOff && photoFinish(st.result) && (() => {
+            const fs = st.result.finalScores ?? [];
+            const winners = new Set(st.result.winners);
+            return <PhotoFinishTape winnerScore={Math.max(...fs.filter((_, i) => winners.has(i)))} loserScore={Math.max(...fs.filter((_, i) => !winners.has(i)))} margin={winMargin(st.result) ?? 0} />;
+          })()}
         </div>
       )}
 
@@ -3083,7 +3114,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
 
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
-      <AnimFxLayer st={st} online={!!online} names={names} />
+      <AnimFxLayer st={st} online={!!online} names={names} resultPresented={showResults || (st.phase === 'gameOver' && showRecap)} />
       {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} onLeave={st.phase === 'handOver' ? () => { setShowPad(false); if (online) leave(); else setConfirmLeave(true); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
       {/* profile modal over the table (face taps): a direct child so the .modal-open
           blur rule exempts its .modal-backdrop like every other table modal */}
