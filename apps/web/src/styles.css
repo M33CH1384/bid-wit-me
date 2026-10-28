@@ -1658,18 +1658,13 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .wheels-fx { position: absolute; inset: 0; pointer-events: none; }
 .wheels-fx.gone { display: none; }
 .wheels-smoke { position: absolute; inset: 0; width: 100%; height: 100%; }
-.wheels-car { position: absolute; left: 0; top: 52%; width: min(46vw, 440px); aspect-ratio: 360 / 110; pointer-events: auto; cursor: pointer;
+.wheels-car { position: absolute; left: 0; top: 0; width: min(36vw, 336px); aspect-ratio: 360 / 110; pointer-events: auto; cursor: pointer;
   filter: drop-shadow(0 0 14px rgba(var(--purple-rgb),.55)) drop-shadow(0 6px 10px rgba(0,0,0,.6));
-  animation: wc-drive 2.5s cubic-bezier(.4,0,.2,1) both; }
+  will-change: transform; }
 .wheels-car svg { display: block; animation: wc-rev .95s linear both; transform-origin: 30% 90%; }
 .wheels-car .wc-wheel { animation: wc-spin .2s linear infinite; }
-@keyframes wc-drive {
-  0% { transform: translate(-110%, -50%); }
-  14% { transform: translate(6vw, -50%); }
-  38% { transform: translate(6vw, -50%); }
-  44% { transform: translate(calc(6vw - 6px), -50%); }
-  100% { transform: translate(115vw, -50%); }
-}
+/* the car's driving is JS-choreographed now (wheelsDonuts.ts): swing-in, doughnuts
+   on the felt, peel-off — and the blast sweep, when a detonation catches it. */
 @keyframes wc-rev {
   0%, 12% { transform: none; }
   18% { transform: rotate(-1.6deg); } 26% { transform: rotate(.4deg); }

@@ -1,67 +1,160 @@
 import { useEffect, useRef, useState } from 'react';
+import { fx } from './fx';
+import {
+  BLAST_FLASH_S, carSweepAt, wheelPoints, wheelsBlastReaction, wheelsPoseAt,
+  type CarSweepFrom, type WheelsPose,
+} from './wheelsDonuts';
 
 /**
- * Wheels celebration (~2.5 s, non-blocking, tap the car / banner to skip): a glossy purple-and-gold supercar
- * revs at the left of the table (body rocks, exhaust puffs), then peels out across the screen, leaving
- * tyre smoke and fading skid marks, under a "WHEELS!" banner with the team / player name.
+ * Wheels celebration (~2.5 s, non-blocking, tap the car / banner to skip): the glossy
+ * purple-and-gold supercar swings onto the table under the revs and does DOUGHNUTS on
+ * the felt — tight circles around the trick centre, tyre smoke pouring, dark donut arcs
+ * laid on the felt — then peels off the right edge, under a "WHEELS!" banner with the
+ * team / player name. (Owner direction 2026-10-28: the doughnuts are the car's own
+ * signature table move — the `wheelsCar` summons is unchanged, a side taking all 10
+ * books; only the driving changed. The peelOut sound still fits: revs on the swing-in,
+ * the squeal under the doughnuts, the away-tail under the peel-off.)
+ * And if a nuke/mega detonates mid-show, the blast takes the car with everything else:
+ * blown off the table, tumbling, mega harder. wheelsDonuts.ts holds the pure poses.
  * Reduced effects: banner only (the sound still plays). Low graphics: lighter smoke.
  */
 export const CAR_MS = 2500;
-const LAUNCH = 0.95; // s: matches the engine sound's launch
+
+/** Screen centre of the felt (the trick spots) — the same layout probe Hype pops from. */
+function feltCenter(): { x: number; y: number } {
+  const L = (window as unknown as { __bwmLayout?: { trick: { x: number; y: number; w: number; h: number }[] } }).__bwmLayout;
+  if (L?.trick?.length) {
+    const xs = L.trick.map((t) => t.x + t.w / 2), ys = L.trick.map((t) => t.y + t.h / 2);
+    return { x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length };
+  }
+  return { x: window.innerWidth / 2, y: window.innerHeight * 0.45 };
+}
 
 export function WheelsCelebration({ id, who, reduced, low, onDone }: { id: number; who: string; reduced: boolean; low: boolean; onDone: () => void }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const car = useRef<HTMLDivElement>(null);
   const [gone, setGone] = useState(false);
+  const [blasted, setBlasted] = useState(false);
   const done = useRef(onDone);
   done.current = onDone;
+  const finished = useRef(false);
+  const finishRef = useRef(() => {});
+  finishRef.current = () => {
+    if (finished.current) return;
+    finished.current = true;
+    setGone(true);
+    done.current();
+  };
+  // set by the driving loop when a detonation claims the car mid-show; the end
+  // timer below defers once so the sweep gets to play out instead of unmounting.
+  const sweepRef = useRef<{ at: number; mega: boolean } | null>(null);
 
   useEffect(() => {
-    const t = window.setTimeout(() => done.current(), reduced ? 2000 : CAR_MS + 300);
+    let t = 0;
+    let rearmed = false;
+    const arm = (ms: number) => {
+      t = window.setTimeout(() => {
+        if (!reduced && sweepRef.current && !rearmed) { rearmed = true; arm(1100); return; }
+        finishRef.current();
+      }, ms);
+    };
+    arm(reduced ? 2000 : CAR_MS + 300);
     return () => clearTimeout(t);
   }, [id, reduced]);
 
   useEffect(() => {
-    if (reduced || !canvas.current) return;
+    if (reduced || !canvas.current || !car.current) return;
     const cv = canvas.current;
+    const el = car.current;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const W = window.innerWidth, H = window.innerHeight;
     cv.width = W * dpr; cv.height = H * dpr;
     const g = cv.getContext('2d')!;
     g.scale(dpr, dpr);
+    const carW = el.getBoundingClientRect().width || Math.min(W * 0.36, 336);
+    const carH = (carW * 110) / 360;
+    const view = { w: W, h: H, carW };
+    const center = feltCenter();
+    const S = carW / 360;
     interface Puff { x: number; y: number; vx: number; vy: number; r: number; life: number; max: number }
+    interface Seg { x0: number; y0: number; x1: number; y1: number; at: number }
     const puffs: Puff[] = [];
-    const skids: { x0: number; x1: number; y: number; at: number }[] = [];
+    const segs: Seg[] = [];
     const t0 = performance.now();
     let raf = 0, last = t0;
     const rate = low ? 0.35 : 1;
+    let lastPts: { rear: { x: number; y: number }; front: { x: number; y: number } } | null = null;
+    let blast: { at: number; mega: boolean; calm: boolean; from?: CarSweepFrom; burst?: boolean } | null = null;
+    // the detonation seam — the same fx event the blast itself keys off; the
+    // nuke system is not modified, the car just stops being exempt from it.
+    const offBlast = fx.on((e) => {
+      if (e.kind !== 'nuke' && e.kind !== 'mega') return;
+      const r = wheelsBlastReaction(e.kind, fx.nukeMode);
+      if (r === 'none' || blast) return;
+      blast = { at: e.at, mega: r === 'mega-swept', calm: fx.osReducedMotion };
+      sweepRef.current = { at: e.at, mega: blast.mega };
+    });
+    const spawn = (x: number, y: number, vx: number, vy: number, r: number) => {
+      puffs.push({ x, y, vx, vy, r, life: 0, max: 0.9 + Math.random() * 0.9 });
+    };
     const step = (now: number) => {
       const T = (now - t0) / 1000, dt = Math.min(0.05, (now - last) / 1000); last = now;
-      const el = car.current;
-      if (el) {
-        const r = el.getBoundingClientRect();
-        const rearX = r.left + r.width * 0.2, frontX = r.left + r.width * 0.8, groundY = r.top + r.height * 0.9;
-        const S = r.width / 360;
-        // exhaust puffs on the revs, a wall of tyre smoke on launch
-        const emit = T < LAUNCH ? (Math.sin(T * 18) > 0.6 ? 1 : 0) : T < LAUNCH + 0.7 ? 6 : T < LAUNCH + 1.1 ? 2 : 0;
-        for (let i = 0; i < emit * rate; i++) {
-          const atWheel = T >= LAUNCH;
-          puffs.push({ x: (atWheel ? rearX : r.left + r.width * 0.02) + (Math.random() - 0.5) * 20 * S, y: groundY - (atWheel ? 6 : 16) * S, vx: -(40 + Math.random() * 120) * S, vy: -(15 + Math.random() * 45) * S, r: (atWheel ? 14 : 8) * S * (0.7 + Math.random() * 0.6), life: 0, max: 0.9 + Math.random() * 0.9 });
-        }
-        // skid marks: two rubber stripes laid down while the tyres spin (first ~0.55 s of the launch)
-        if (T >= LAUNCH && T < LAUNCH + 0.55) {
-          const s0 = skids[0];
-          if (!s0) { skids.push({ x0: rearX, x1: rearX, y: groundY - 2 * S, at: T }, { x0: frontX, x1: frontX, y: groundY - 2 * S, at: T }); }
-          else { skids[0]!.x1 = Math.max(skids[0]!.x1, rearX); skids[1]!.x1 = Math.max(skids[1]!.x1, frontX); }
+      let pose: WheelsPose = wheelsPoseAt(T, view, center);
+      let airborne = false;
+      if (blast) {
+        const u = (now - blast.at) / 1000 - BLAST_FLASH_S;
+        if (u >= 0) {
+          if (!blast.from) { blast.from = { cx: pose.cx, cy: pose.cy, flip: pose.flip }; setBlasted(true); }
+          const sp = carSweepAt(u, blast.from, center, blast.mega, blast.calm, view);
+          if (sp) {
+            pose = { cx: sp.cx, cy: sp.cy, rot: sp.rot, flip: sp.flip, phase: 'swept' };
+            airborne = true;
+            el.style.opacity = String(sp.opacity);
+            if (!blast.burst) {
+              blast.burst = true;
+              for (let i = 0; i < 14; i++) spawn(pose.cx + (Math.random() - 0.5) * carW * 0.7, pose.cy + (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 160 * S, -(30 + Math.random() * 90) * S, (12 + Math.random() * 10) * S);
+            }
+            if (sp.gone) { finishRef.current(); return; }
+          }
         }
       }
+      el.style.transform = `translate(${pose.cx - carW / 2}px, ${pose.cy - carH / 2}px) rotate(${pose.rot}deg) scaleX(${pose.flip ? -1 : 1})`;
+      const pts = wheelPoints(pose, view);
+      if (!airborne) {
+        if (pose.phase === 'enter') {
+          // exhaust puffs pulsing with the revs, off the rear bumper
+          if (Math.sin(T * 18) > 0.6) spawn(pts.rear.x - 16 * S, pts.rear.y - 12 * S, -(40 + Math.random() * 120) * S, -(15 + Math.random() * 45) * S, 8 * S * (0.7 + Math.random() * 0.6));
+        } else if (pose.phase === 'donuts') {
+          // tyre smoke billowing outward off the sliding rear wheel
+          const ox = pose.cx - center.x, oy = pose.cy - center.y, ol = Math.hypot(ox, oy) || 1;
+          const n = Math.max(1, Math.round(3 * rate));
+          for (let i = 0; i < n; i++) spawn(pts.rear.x + (Math.random() - 0.5) * 16 * S, pts.rear.y + (Math.random() - 0.5) * 8 * S, ((ox / ol) * (50 + Math.random() * 80) + (Math.random() - 0.5) * 30) * S, -(25 + Math.random() * 55) * S, (15 + Math.random() * 8) * S * (0.8 + Math.random() * 0.5));
+        } else if (pose.phase === 'exit') {
+          const n = Math.max(1, Math.round(3 * rate));
+          for (let i = 0; i < n; i++) spawn(pts.rear.x + (Math.random() - 0.5) * 14 * S, pts.rear.y - 4 * S, -(60 + Math.random() * 140) * S, -(20 + Math.random() * 50) * S, (13 + Math.random() * 8) * S);
+        }
+        // donut arcs (and the peel-off stripes): stroked segments between
+        // successive wheel points, fading a beat after they're laid
+        if ((pose.phase === 'donuts' || pose.phase === 'exit') && lastPts) {
+          for (const k of ['rear', 'front'] as const) {
+            const a = lastPts[k], b = pts[k], d = Math.hypot(b.x - a.x, b.y - a.y);
+            if (d > 1.5 && d < 90) segs.push({ x0: a.x, y0: a.y, x1: b.x, y1: b.y, at: T });
+          }
+        }
+        lastPts = pts;
+      } else {
+        // airborne: a thinning smoke trail, and no rubber — the wheels are off the felt
+        if (Math.random() < 0.8 * rate) spawn(pose.cx + (Math.random() - 0.5) * carW * 0.5, pose.cy + (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 60 * S, (10 + Math.random() * 40) * S, (10 + Math.random() * 8) * S);
+        lastPts = null;
+      }
       g.clearRect(0, 0, W, H);
-      for (const s of skids) {
-        const a = Math.max(0, 0.55 - Math.max(0, T - (s.at + 0.55)) * 0.45);
+      g.lineCap = 'round';
+      for (const s of segs) {
+        const a = Math.max(0, 0.5 - Math.max(0, T - (s.at + 1.1)) * 0.4);
         if (a <= 0) continue;
-        const grd = g.createLinearGradient(s.x0, 0, s.x1, 0);
-        grd.addColorStop(0, `rgba(10,6,14,${a})`); grd.addColorStop(1, `rgba(10,6,14,${a * 0.25})`);
-        g.fillStyle = grd; g.fillRect(s.x0, s.y - 3, Math.max(0, s.x1 - s.x0), 6);
+        g.strokeStyle = `rgba(10,6,14,${a})`;
+        g.lineWidth = 5.5 * S + 1.5;
+        g.beginPath(); g.moveTo(s.x0, s.y0); g.lineTo(s.x1, s.y1); g.stroke();
       }
       for (let i = puffs.length - 1; i >= 0; i--) {
         const p = puffs[i]!;
@@ -73,13 +166,13 @@ export function WheelsCelebration({ id, who, reduced, low, onDone }: { id: numbe
         grd.addColorStop(0, `rgba(226,216,240,${al})`); grd.addColorStop(1, 'rgba(200,190,220,0)');
         g.fillStyle = grd; g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fill();
       }
-      if (T < CAR_MS / 1000 + 0.6) raf = requestAnimationFrame(step); else g.clearRect(0, 0, W, H);
+      if (T < CAR_MS / 1000 + 0.6 || airborne) raf = requestAnimationFrame(step); else g.clearRect(0, 0, W, H);
     };
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); offBlast(); };
   }, [id, reduced, low]);
 
-  const skip = () => { setGone(true); done.current(); };
+  const skip = () => finishRef.current();
   return (
     <div className={`wheels-fx ${gone ? 'gone' : ''}`} data-testid="wheels-fx">
       {!reduced && <canvas ref={canvas} className="wheels-smoke" />}
@@ -88,10 +181,12 @@ export function WheelsCelebration({ id, who, reduced, low, onDone }: { id: numbe
           <SuperCar />
         </div>
       )}
-      <div className="hype-pop wheels-banner" role="status" onClick={skip} data-testid="pop-wheelsCar">
-        <span className="hype-text">WHEELS!</span>
-        <span className="hype-sub">{who}</span>
-      </div>
+      {!blasted && (
+        <div className="hype-pop wheels-banner" role="status" onClick={skip} data-testid="pop-wheelsCar">
+          <span className="hype-text">WHEELS!</span>
+          <span className="hype-sub">{who}</span>
+        </div>
+      )}
     </div>
   );
 }

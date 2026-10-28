@@ -587,7 +587,7 @@ function Yacht({ fxOn }: { fxOn: boolean }) {
   );
 }
 
-export function VenueProps({ id, fxOn, env3d = false }: { id: VenueId; fxOn: boolean; env3d?: boolean }) {
+export function VenueProps({ id, fxOn, env3d = false, handKey }: { id: VenueId; fxOn: boolean; env3d?: boolean; handKey?: number }) {
   switch (id) {
     case 'backyard': return <Backyard fxOn={fxOn} />;
     case 'mansion': return <Mansion fxOn={fxOn} />;
@@ -599,7 +599,7 @@ export function VenueProps({ id, fxOn, env3d = false }: { id: VenueId; fxOn: boo
     case 'beach': return <Beach fxOn={fxOn} />;
     case 'grandma': return <Grandma fxOn={fxOn} />;
     case 'yacht': return <Yacht fxOn={fxOn} />;
-    case 'blockAfterDark': return env3d ? <PjsStreetRoom fxOn={fxOn} /> : <PjsLife fxOn={fxOn} />;
+    case 'blockAfterDark': return env3d ? <PjsStreetRoom fxOn={fxOn} handKey={handKey} /> : <PjsLife fxOn={fxOn} />;
     default: return null;
   }
 }
@@ -608,7 +608,7 @@ export function VenueProps({ id, fxOn, env3d = false }: { id: VenueId; fxOn: boo
 const MOVES: Partial<Record<VenueId, true>> = { backyard: true, beach: true, yacht: true, blockAfterDark: true, grandma: true, speakeasy: true, mansion: true };
 
 /** Everything around the table for one venue. Mounted inside the Canvas; never suspends the table. */
-export default function Venue3D({ def, quality, reduceFx }: { def: VenueDef; quality: 'high' | 'low'; reduceFx: boolean }) {
+export default function Venue3D({ def, quality, reduceFx, handKey }: { def: VenueDef; quality: 'high' | 'low'; reduceFx: boolean; handKey?: number }) {
   const urls = venueAssetUrls(def.id, quality);
   const fxOn = !reduceFx && quality === 'high';
   // The Pj's at High: the 3D street environment replaces the static backdrop + floor disc
@@ -624,7 +624,7 @@ export default function Venue3D({ def, quality, reduceFx }: { def: VenueDef; qua
       <Suspense fallback={null}>{urls.bg && !envActive && <Backdrop url={urls.bg} blur={def.bgBlur} intensity={def.bgIntensity} />}</Suspense>
       <Suspense fallback={null}>{urls.env && <Environment files={urls.env} environmentIntensity={def.envIntensity} />}</Suspense>
       {!envActive && <VenueFloor def={def} url={urls.floor} />}
-      <VenueProps id={def.id} fxOn={fxOn} env3d={envActive} />
+      <VenueProps id={def.id} fxOn={fxOn} env3d={envActive} handKey={handKey} />
       {fxOn && MOVES[def.id] && <AmbientTicker />}
     </group>
   );

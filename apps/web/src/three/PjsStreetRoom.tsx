@@ -27,7 +27,7 @@
  * smoke. Ambient frames come from Venue3D's AmbientTicker (this
  * venue is in its MOVES set); frameloop stays 'demand'.
  */
-import { Component, Suspense, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Component, Suspense, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import {
   AdditiveBlending, Box3, BoxGeometry, BufferGeometry, CanvasTexture, CatmullRomCurve3,
@@ -40,6 +40,8 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CHAIR_SPOTS } from './classicStudioLayout';
+import { fx } from '../fx';
+import { SEDAN_BLAST_FLASH_S, sedanBlastPoseAt, sedanBlastReaction, sedanBlastReducer, type SedanBlastState } from './pjsSedanBlast';
 
 const FLOOR_Y = -0.9;
 const SEDAN_URL = '/assets/venues/blockAfterDark/sedan.glb';
@@ -476,7 +478,7 @@ class SedanBoundary extends Component<{ children: ReactNode }, { failed: boolean
   override render() { return this.state.failed ? null : this.props.children; }
 }
 
-function ForgeSedanModel() {
+function ForgeSedanModel({ blastRef }: { blastRef: { current: SedanBlastState } }) {
   const gltf = useLoader(GLTFLoader, SEDAN_URL);
   const obj = useMemo(() => {
     const o = gltf.scene.clone(true) as Group;
@@ -499,21 +501,79 @@ function ForgeSedanModel() {
   useEffect(() => {
     (window as unknown as { __pjsSedan?: unknown }).__pjsSedan = { loaded: true, slug: 'pjs-sedan' };
   }, []);
-  return <primitive object={obj} />;
+  return <SedanFlight obj={obj} blastRef={blastRef} />;
 }
 
-function ForgeSedan() {
+/**
+ * The sedan vs a detonation (owner, 2026-10-28: "if the nuke happens the car should
+ * be blown off the table with everything else"). The parked pose is baked on the
+ * model inside this group; the group carries the blast offset — launched radially
+ * off its spot on the flash, tumbling into the fog, gone for the rest of the hand,
+ * restored when the hand changes (the next deal). Pure pose/state in pjsSedanBlast.ts.
+ */
+function SedanFlight({ obj, blastRef }: { obj: Group; blastRef: { current: SedanBlastState } }) {
+  const g = useRef<Group>(null);
+  const dirtied = useRef(false);
+  useFrame(() => {
+    const grp = g.current;
+    if (!grp) return;
+    const w = window as unknown as { __pjsSedan?: Record<string, unknown> };
+    const st = blastRef.current;
+    if (st.phase === 'parked') {
+      if (dirtied.current) {
+        grp.position.set(0, 0, 0);
+        grp.rotation.set(0, 0, 0);
+        grp.visible = true;
+        dirtied.current = false;
+        if (w.__pjsSedan) w.__pjsSedan = { ...w.__pjsSedan, blast: { flying: false, off: 0, visible: true } };
+      }
+      return;
+    }
+    const u = (performance.now() - st.at) / 1000 - SEDAN_BLAST_FLASH_S;
+    const pose = sedanBlastPoseAt(u, st);
+    grp.position.set(pose.off[0], pose.off[1], pose.off[2]);
+    grp.rotation.set(pose.rot[0], pose.rot[1], pose.rot[2]);
+    grp.visible = pose.visible;
+    dirtied.current = true;
+    if (w.__pjsSedan) w.__pjsSedan = { ...w.__pjsSedan, blast: { flying: true, off: Math.round(Math.hypot(pose.off[0], pose.off[2]) * 100) / 100, visible: pose.visible } };
+  });
+  return (
+    <group ref={g}>
+      <primitive object={obj} />
+    </group>
+  );
+}
+
+function ForgeSedan({ handKey }: { handKey?: number }) {
   const { glowTex } = assets();
+  const [blast, dispatch] = useReducer(sedanBlastReducer, { phase: 'parked' } as SedanBlastState);
+  const blastRef = useRef(blast);
+  blastRef.current = blast;
+  // the detonation seam: the same fx event Nuke3D keys off — no nuke-system changes
+  useEffect(() => fx.on((e) => {
+    if (e.kind !== 'nuke' && e.kind !== 'mega') return;
+    if (sedanBlastReaction(e.kind, fx.nukeMode) === 'none') return;
+    dispatch({ type: 'blast', at: e.at, mega: e.kind === 'mega', calm: fx.osReducedMotion });
+  }), []);
+  // restore point: the next hand's deal (the recap covers the swap between hands)
+  const prevHand = useRef(handKey);
+  useEffect(() => {
+    if (prevHand.current !== handKey) {
+      prevHand.current = handKey;
+      dispatch({ type: 'hand' });
+    }
+  }, [handKey]);
   return (
     <group>
-      {/* soft ground blob so the car sits IN the street, not on it */}
+      {/* soft ground blob so the car sits IN the street, not on it — it stays behind
+          as the parking spot when the blast takes the car */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[3.0, FLOOR_Y + 0.006, -5.9]}>
         <planeGeometry args={[5.2, 2.5]} />
         <meshBasicMaterial map={glowTex} color="#000000" transparent opacity={0.55} depthWrite={false} />
       </mesh>
       <SedanBoundary>
         <Suspense fallback={null}>
-          <ForgeSedanModel />
+          <ForgeSedanModel blastRef={blastRef} />
         </Suspense>
       </SedanBoundary>
     </group>
@@ -901,13 +961,13 @@ function EnvFog() {
 
 /* ------------------------------------------------------------------ */
 
-export default function PjsStreetRoom({ fxOn }: { fxOn: boolean }) {
+export default function PjsStreetRoom({ fxOn, handKey }: { fxOn: boolean; handKey?: number }) {
   return (
     <group>
       <EnvFog />
       <FoldingChairs />
       <PicketFence />
-      <ForgeSedan />
+      <ForgeSedan handKey={handKey} />
       <Streetlight fxOn={fxOn} />
       <BrickFacade x={-3.6} z={-8.2} w={7.4} h={5.6} seed={11} litRatio={0.5} fireEscape />
       <BrickFacade x={3.7} z={-8.2} w={7.4} h={5.6} seed={23} litRatio={0.30} />
