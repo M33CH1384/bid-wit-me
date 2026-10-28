@@ -259,13 +259,31 @@ describe('end-reason sentence never repeats the stamp', () => {
     const text = endReasonText(teamRules, st, label);
     expect(text).toBe('Them got shot two hands in a row.');
     expect(text).not.toContain('SHOT OUT');
+    // the banner above this sentence now stamps the ending's NAME (owner,
+    // 2026-10-28) — for this path SHOT BACK 2 BACK — and the sentence must
+    // not repeat any of the names either
+    expect(text).not.toContain('SHOT BACK 2 BACK');
+    expect(text).not.toContain('1ST ROUND TKO');
   });
   it('shot out on hand 1 keeps its own wording, still without the stamp', () => {
     const st = {
       history: [{ handNo: 1 }],
       result: { endReason: 'shotOut', shotOut: [0, 1], finalScores: [10, -20], placements: [1, 2], winners: [0] },
     } as unknown as GameState;
-    expect(endReasonText(teamRules, st, label)).toBe('Us & Them got shot on the first hand.');
+    const text = endReasonText(teamRules, st, label);
+    expect(text).toBe('Us & Them got shot on the first hand.');
+    expect(text).not.toContain('1ST ROUND TKO');
+    expect(text).not.toContain('SHOT OUT');
+  });
+  it('shot out across a gap (sticky): the sentence carries the detail, not any of the names', () => {
+    const rec = (handNo: number, shot: boolean) => ({ handNo, sides: [{ side: 0, shot: false }, { side: 1, shot }] });
+    const st = {
+      history: [rec(1, true), rec(2, false), rec(3, true)],
+      result: { endReason: 'shotOut', shotOut: [1], finalScores: [154, -40], placements: [1, 2], winners: [0] },
+    } as unknown as GameState;
+    const text = endReasonText(teamRules, st, label);
+    expect(text).toBe('Them got shot while on notice for good.');
+    for (const name of ['SHOT OUT', '1ST ROUND TKO', 'SHOT BACK 2 BACK']) expect(text).not.toContain(name);
   });
   it('other end reasons are untouched', () => {
     const floor = { history: [{ handNo: 1 }], result: { endReason: 'floor', finalScores: [10, -510], placements: [1, 2], winners: [0] } } as unknown as GameState;

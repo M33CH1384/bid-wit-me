@@ -1,5 +1,6 @@
 import { STORY_STOPS, storyStopById } from '@spades/bots';
 import type { GameResult, ShotCover } from '@spades/rules';
+import { SHOT_OUT_NAMES, type ShotOutPath } from './shotOut';
 
 /**
  * Per-stop SET ANIMATIONS (owner, 2026-10-21): every story stop has its own
@@ -133,6 +134,12 @@ export function finaleHeadlineFor(input: {
   /** the hand the sheeted side was eliminated on (the cover's own fact —
    *  the same number the card prints as its time of death) */
   handNo?: number | null;
+  /** how this side's shot-out ending happened (shotOutPathFor over the game
+   *  history — the same derivation the game-over banner and the chat call
+   *  read, so the plaque can never name a different ending). Only passed
+   *  for the side the final hand shot out; absent → the headline falls back
+   *  to the hand fact alone (hand 1) or the plain name. */
+  shotPath?: ShotOutPath | null;
 }): FinaleHeadline {
   if (input.decided && input.endReason === THIRD_SET_END_REASON) {
     return {
@@ -145,15 +152,19 @@ export function finaleHeadlineFor(input: {
     // was ever "on the line" — the game ended before it started. The chat
     // lines and the game-over sentence already split this same fact
     // ("got shot on the first hand" vs "got shot two hands in a row",
-    // shotOut.ts); the cover keys off it the same way.
-    if (input.handNo === 1) {
+    // shotOut.ts); the cover keys off it the same way. The headline WORDS
+    // are the owner's ending names (2026-10-28): a hand-1 ending is a
+    // 1ST ROUND TKO, two in a row is SHOT BACK 2 BACK, and the sticky
+    // ending across a gap keeps plain SHOT OUT — all read from the shared
+    // SHOT_OUT_NAMES map so the plaque, banner and chat call agree.
+    if (input.shotPath === 'first-hand' || input.handNo === 1) {
       return {
-        headline: 'SHOT OUT',
+        headline: SHOT_OUT_NAMES['first-hand'],
         sub: input.mine ? 'Set on the very first hand — over before it ever got started.' : `${input.sideName} got shot on the first hand — game over.`,
       };
     }
     return {
-      headline: 'SHOT OUT',
+      headline: input.shotPath ? SHOT_OUT_NAMES[input.shotPath] : SHOT_OUT_NAMES.sticky,
       sub: input.mine ? 'Shot with the game on the line — game over.' : `${input.sideName} got shot — game over.`,
     };
   }

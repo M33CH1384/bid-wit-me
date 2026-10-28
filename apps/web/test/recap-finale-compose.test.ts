@@ -139,7 +139,7 @@ describe('both sides shot out on the deciding hand (the owner’s screenshot gam
       // the plaque: present, the card's verdict voice…
       const verdict = card.querySelector(`[data-testid="recap-finale-headline-${side}"]`)!;
       expect(verdict, `verdict for side ${side}`).not.toBeNull();
-      expect(verdict.textContent).toContain('SHOT OUT');
+      expect(verdict.textContent).toContain('SHOT BACK 2 BACK');
       expect(verdict.textContent).toContain('game over.');
       // …in the face's FLOW — a grid sibling, never inside the cover layer
       expect(verdict.classList.contains('finale-verdict')).toBe(true);
@@ -149,9 +149,12 @@ describe('both sides shot out on the deciding hand (the owner’s screenshot gam
       // the reserved band for the banner strip
       expect(card.classList.contains('fv-band')).toBe(true);
       // ONE verdict per card: the word renders once — the plaque's —
-      // and the duplicate SHOT OUT chip is gone from the badges row,
-      // while the SET scoring chip stays
-      expect(card.textContent!.split('SHOT OUT').length - 1).toBe(1);
+      // and the duplicate verdict chip is gone from the badges row,
+      // while the SET scoring chip stays. Both sides were shot on hands
+      // 2 and 3, so the ending's name is SHOT BACK 2 BACK (owner,
+      // 2026-10-28) and plain SHOT OUT appears nowhere on the card.
+      expect(card.textContent!.split('SHOT BACK 2 BACK').length - 1).toBe(1);
+      expect(card.textContent!.split('SHOT OUT').length - 1).toBe(0);
       expect(card.querySelector('.rchip.out')).toBeNull();
       const setChip = [...card.querySelectorAll('.tt-badges .rchip')].find((e) => e.textContent === 'SET');
       expect(setChip, `SET chip stays for side ${side}`).toBeTruthy();

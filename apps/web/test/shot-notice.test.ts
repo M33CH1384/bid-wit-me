@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { type Bid, type GameState, type HandRecord, isShot, makeRules, newGame, scoreHand } from '@spades/rules';
-import { endReasonText, onNoticeSides, shotArms, shotChatLines, stickyNoticeSides } from '../src/shotOut';
+import { SHOT_OUT_NAMES, endReasonText, onNoticeSides, shotArms, shotChatLines, shotOutBannerFor, shotOutEndingName, shotOutPathFor, stickyNoticeSides } from '../src/shotOut';
 import { resultChips } from '../src/ScorePad';
 import { noticeStickyTip, noticeTip } from '../src/seatLabel';
 
@@ -112,6 +112,94 @@ describe('game-over sentence for a sticky ending', () => {
   it('back-to-back shots keep the classic wording', () => {
     const hist = [rec(1, MADE.bids, MADE.tricks), rec(2, SET0.bids, SET0.tricks), rec(3, SET0.bids, SET0.tricks)];
     expect(endReasonText(joker, over(hist), label)).toBe('Side 0 got shot two hands in a row.');
+  });
+});
+
+describe('ending names (owner, 2026-10-28): 3 the hard way is only for three sets', () => {
+  const label = (side: number) => `Side ${side}`;
+  const SET1 = { bids: [3, 5, 3, 3] as Bid[], tricks: [4, 2, 3, 4] }; // side 1 set, side 0 made
+  const SETBOTH = { bids: [5, 5, 3, 3] as Bid[], tricks: [3, 3, 3, 4] }; // both sides set
+  const overWith = (history: HandRecord[], shotOut: number[], rules = joker): GameState => ({
+    ...st(history, rules), phase: 'gameOver',
+    result: { endReason: 'shotOut', shotOut, finalScores: [40, 120], placements: [2, 1], winners: [1] },
+  });
+  const chatFor = (history: HandRecord[], shotOut: number[], rules = joker) =>
+    shotChatLines(rules, history[history.length - 1]!, { result: { endReason: 'shotOut', shotOut, finalScores: [40, 120], placements: [2, 1], winners: [1] }, history }, label);
+
+  it('the name map carries exactly the owner’s three names', () => {
+    expect(SHOT_OUT_NAMES).toEqual({ 'first-hand': '1ST ROUND TKO', 'back-to-back': 'SHOT BACK 2 BACK', sticky: 'SHOT OUT' });
+  });
+
+  it('hand 1: the path, the banner and the chat call all say 1ST ROUND TKO', () => {
+    const hist = [rec(1, SET0.bids, SET0.tricks)];
+    expect(shotOutPathFor(hist, 0)).toBe('first-hand');
+    expect(shotOutEndingName(hist, 0)).toBe('1ST ROUND TKO');
+    expect(shotOutBannerFor(overWith(hist, [0]))).toBe('1ST ROUND TKO');
+    expect(chatFor(hist, [0])).toEqual(['💀 1ST ROUND TKO: Side 0 got shot on the first hand']);
+  });
+
+  it('two in a row: the path, the banner and the chat call all say SHOT BACK 2 BACK', () => {
+    const hist = [rec(1, MADE.bids, MADE.tricks), rec(2, SET0.bids, SET0.tricks), rec(3, SET0.bids, SET0.tricks)];
+    expect(shotOutPathFor(hist, 0)).toBe('back-to-back');
+    expect(shotOutEndingName(hist, 0)).toBe('SHOT BACK 2 BACK');
+    expect(shotOutBannerFor(overWith(hist, [0]))).toBe('SHOT BACK 2 BACK');
+    expect(chatFor(hist, [0])).toEqual(['💀 SHOT BACK 2 BACK: Side 0 got shot two hands in a row']);
+  });
+
+  it('sticky across a gap: no special name — plain SHOT OUT everywhere', () => {
+    // side 0 shot on hands 2 and 4 (sticky armed), made hand 5, shot out on hand 6
+    const hist = [...timeline, rec(6, SET0.bids, SET0.tricks)];
+    expect(shotOutPathFor(hist, 0)).toBe('sticky');
+    expect(shotOutEndingName(hist, 0)).toBe('SHOT OUT');
+    expect(shotOutBannerFor(overWith(hist, [0]))).toBe('SHOT OUT');
+    expect(chatFor(hist, [0])).toEqual(['💀 SHOT OUT: Side 0 got shot while on notice for good']);
+  });
+
+  it('both sides out on the same hand by the SAME path share that path’s name on the banner', () => {
+    const hist = [rec(1, MADE.bids, MADE.tricks), rec(2, SETBOTH.bids, SETBOTH.tricks), rec(3, SETBOTH.bids, SETBOTH.tricks)];
+    expect(shotOutBannerFor(overWith(hist, [0, 1]))).toBe('SHOT BACK 2 BACK');
+  });
+
+  it('both sides out on the same hand by DIFFERENT paths: banner falls back to SHOT OUT, chat names each side’s own path', () => {
+    // side 0: shot hands 2 + 4 (sticky), made hand 5, out hand 6. side 1: first shot hand 5, out hand 6.
+    const hist = [
+      rec(1, MADE.bids, MADE.tricks), rec(2, SET0.bids, SET0.tricks), rec(3, MADE.bids, MADE.tricks),
+      rec(4, SET0.bids, SET0.tricks), rec(5, SET1.bids, SET1.tricks), rec(6, SETBOTH.bids, SETBOTH.tricks),
+    ];
+    expect(shotOutPathFor(hist, 0)).toBe('sticky');
+    expect(shotOutPathFor(hist, 1)).toBe('back-to-back');
+    expect(shotOutBannerFor(overWith(hist, [0, 1]))).toBe('SHOT OUT');
+    expect(chatFor(hist, [0, 1])).toEqual([
+      '💀 SHOT OUT: Side 0 got shot while on notice for good',
+      '💀 SHOT BACK 2 BACK: Side 1 got shot two hands in a row',
+    ]);
+  });
+
+  it('the banner reads the FINAL hand’s out rows even if the result list names an earlier side too', () => {
+    // the final record stamps side 0 out; the result list also names side 1 (an earlier
+    // elimination, cutthroat-style) — the ending’s name is side 0’s alone
+    const base = [rec(1, MADE.bids, MADE.tricks), rec(2, SET0.bids, SET0.tricks), rec(3, SET0.bids, SET0.tricks)];
+    const last = base[2]!;
+    const hist = [...base.slice(0, 2), { ...last, sides: last.sides.map((s) => (s.side === 0 ? { ...s, out: true } : s)) }];
+    expect(shotOutBannerFor(overWith(hist, [0, 1]))).toBe('SHOT BACK 2 BACK');
+  });
+
+  it('cutthroat: the same facts name a player’s elimination (back-to-back → SHOT BACK 2 BACK, sticky → SHOT OUT)', () => {
+    const ct = makeRules('cutthroat', { playerCount: 4 });
+    const setP0 = { bids: [4, 3, 3, 3] as Bid[], tricks: [2, 4, 4, 3] }; // player 0 set
+    const clean = { bids: [3, 3, 3, 3] as Bid[], tricks: [4, 3, 3, 3] };
+    const b2b = [rec(1, clean.bids, clean.tricks, ct), rec(2, setP0.bids, setP0.tricks, ct), rec(3, setP0.bids, setP0.tricks, ct)];
+    expect(shotOutPathFor(b2b, 0)).toBe('back-to-back');
+    expect(shotOutBannerFor(overWith(b2b, [0], ct))).toBe('SHOT BACK 2 BACK');
+    const sticky = [rec(1, clean.bids, clean.tricks, ct), rec(2, setP0.bids, setP0.tricks, ct), rec(3, clean.bids, clean.tricks, ct), rec(4, setP0.bids, setP0.tricks, ct), rec(5, clean.bids, clean.tricks, ct), rec(6, setP0.bids, setP0.tricks, ct)];
+    expect(shotOutPathFor(sticky, 0)).toBe('sticky');
+    expect(shotOutBannerFor(overWith(sticky, [0], ct))).toBe('SHOT OUT');
+  });
+
+  it('both game-over views stamp the shared banner helper — no literal SHOT OUT banner remains', () => {
+    const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+    expect(table.split('shotOutBannerFor(st)').length - 1).toBe(2);
+    expect(table).not.toContain('data-testid="shot-out">SHOT OUT<');
   });
 });
 

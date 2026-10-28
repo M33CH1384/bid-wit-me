@@ -36,6 +36,71 @@ export function onNoticeSides(st: Pick<GameState, 'history' | 'phase' | 'rules'>
   return [...out].sort((a, b) => a - b);
 }
 
+/**
+ * The PATH a shot-out ending took, read from history alone (owner naming,
+ * 2026-10-28): shot on hand 1, shot on the final two hands in a row, or shot
+ * across a gap while on a sticky second notice. `history` must END on the
+ * hand the side was shot out on — every caller names an ending, so its last
+ * record is the hand that ended the game.
+ */
+export type ShotOutPath = 'first-hand' | 'back-to-back' | 'sticky';
+
+/**
+ * The ending's NAME per path (owner, 2026-10-28): "3 the hard way" is ONLY
+ * for three sets (endReason 'third-set', THIRD_SET_HEADLINE below — a
+ * different ending, never renamed by this map). A shot-out ending is a
+ * 1ST ROUND TKO when it lands on hand 1, SHOT BACK 2 BACK for two in a row,
+ * and plain SHOT OUT for the sticky ending across a gap, which he named no
+ * special name — SHOT OUT is the deliberate fallback there.
+ */
+export const SHOT_OUT_NAMES: Record<ShotOutPath, string> = {
+  'first-hand': '1ST ROUND TKO',
+  'back-to-back': 'SHOT BACK 2 BACK',
+  sticky: 'SHOT OUT',
+};
+
+export function shotOutPathFor(history: readonly HandRecord[], side: number): ShotOutPath {
+  const last = history[history.length - 1];
+  if (last && last.handNo === 1) return 'first-hand';
+  const prev = history[history.length - 2];
+  const prevSide = prev?.sides?.find((x) => x.side === side);
+  // No recorded evidence about the previous hand → the classic reading stands
+  // (the same fallback endReasonText uses): the shot that ended it followed
+  // the one before it.
+  if (!prevSide || prevSide.shot) return 'back-to-back';
+  return 'sticky';
+}
+
+/**
+ * The name of the shot-out ending for ONE side. This is the ONE shared
+ * derivation every surface reads — the game-over banner, the 💀 chat call,
+ * and the recap finale plaque — so they can never name different endings
+ * for the same game.
+ */
+export function shotOutEndingName(history: readonly HandRecord[], side: number): string {
+  return SHOT_OUT_NAMES[shotOutPathFor(history, side)];
+}
+
+/**
+ * The name the game-over views stamp on the banner for a shotOut ending.
+ * The out sides are the FINAL hand's own: result.shotOut names exactly
+ * those in both team and cutthroat games (rankedResult's justOut), and the
+ * final record's out-and-shot rows are the belt-and-braces source (the
+ * same derivation endReasonText's third-set branch uses). One shared path
+ * → that path's name; both sides out on the same hand by DIFFERENT paths
+ * → plain SHOT OUT, the deterministic shared fallback (per-side surfaces
+ * still name each side's own path).
+ */
+export function shotOutBannerFor(st: Pick<GameState, 'result' | 'history'>): string {
+  const res = st.result;
+  if (!res || res.endReason !== 'shotOut') return SHOT_OUT_NAMES.sticky;
+  const last = st.history[st.history.length - 1];
+  const fresh = last?.sides?.filter((s) => s.out && s.shot).map((s) => s.side) ?? [];
+  const outs = fresh.length ? fresh : res.shotOut ?? [];
+  const names = new Set(outs.map((side) => shotOutEndingName(st.history, side)));
+  return names.size === 1 ? [...names][0]! : SHOT_OUT_NAMES.sticky;
+}
+
 /** Chat lines after a hand: who got shot, who's on notice, who's out. `label(side)` = team / player name. */
 export function shotChatLines(r: TableRules, rec: HandRecord, st: Pick<GameState, 'result' | 'history'>, label: (side: number) => string): string[] {
   if (r.shotOut === false) return [];
@@ -54,7 +119,7 @@ export function shotChatLines(r: TableRules, rec: HandRecord, st: Pick<GameState
         : !prevSide || prevSide.shot
           ? 'got shot two hands in a row'
           : 'got shot while on notice for good';
-      return [`💀 SHOT OUT: ${label(s.side)} ${how}`];
+      return [`💀 ${shotOutEndingName(hist, s.side)}: ${label(s.side)} ${how}`];
     }
     // The hand that arms a side's SECOND notice says so: this one never clears.
     if ((arms[s.side] ?? 0) >= 2) return [`⚠ ${label(s.side)} got shot · ON NOTICE FOR GOOD: one more shot and they're out — making their books won't clear it`];
@@ -74,8 +139,9 @@ export function endReasonText(r: TableRules, st: Pick<GameState, 'result' | 'his
   const res = st.result;
   if (!res) return '';
   if (res.endReason === 'shotOut') {
-    // both game-over views stamp the big SHOT OUT banner directly above this
-    // sentence, so the sentence carries only the detail — never the stamp again
+    // both game-over views stamp the ending's name (shotOutBannerFor: 1ST ROUND
+    // TKO / SHOT BACK 2 BACK / SHOT OUT) directly above this sentence, so the
+    // sentence carries only the detail — never the name again
     const who = (res.shotOut ?? []).map(label).join(' & ');
     if (st.history.length === 1) return `${who} got shot on the first hand.`;
     // "two hands in a row" unless the previous hand's record proves a gap (no shot for the

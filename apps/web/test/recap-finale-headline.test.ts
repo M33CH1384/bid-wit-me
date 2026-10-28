@@ -171,9 +171,23 @@ describe('the headline copy: keyed to the ending fact, correct from both seats',
   });
   it('shotOut on hand 1 reads as a first-hand ending, not a game-on-the-line one (owner, 2026-10-23)', () => {
     expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'You & Dee', mine: true, handNo: 1 }))
-      .toEqual({ headline: 'SHOT OUT', sub: 'Set on the very first hand — over before it ever got started.' });
+      .toEqual({ headline: '1ST ROUND TKO', sub: 'Set on the very first hand — over before it ever got started.' });
     expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'Mr. Coleman & June', mine: false, handNo: 1 }))
-      .toEqual({ headline: 'SHOT OUT', sub: 'Mr. Coleman & June got shot on the first hand — game over.' });
+      .toEqual({ headline: '1ST ROUND TKO', sub: 'Mr. Coleman & June got shot on the first hand — game over.' });
+  });
+  it('the ending names ride the path fact (owner, 2026-10-28): back-to-back is SHOT BACK 2 BACK, sticky keeps SHOT OUT', () => {
+    for (const handNo of [2, 3, 9]) {
+      expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'You & Dee', mine: true, handNo, shotPath: 'back-to-back' }))
+        .toEqual({ headline: 'SHOT BACK 2 BACK', sub: 'Shot with the game on the line — game over.' });
+      expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'Mr. Coleman & June', mine: false, handNo, shotPath: 'back-to-back' }))
+        .toEqual({ headline: 'SHOT BACK 2 BACK', sub: 'Mr. Coleman & June got shot — game over.' });
+      expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'You & Dee', mine: true, handNo, shotPath: 'sticky' }))
+        .toEqual({ headline: 'SHOT OUT', sub: 'Shot with the game on the line — game over.' });
+      expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'Mr. Coleman & June', mine: false, handNo, shotPath: 'sticky' }))
+        .toEqual({ headline: 'SHOT OUT', sub: 'Mr. Coleman & June got shot — game over.' });
+    }
+    expect(finaleHeadlineFor({ endReason: 'shotOut', decided: true, sideName: 'You & Dee', mine: true, handNo: 1, shotPath: 'first-hand' }))
+      .toEqual({ headline: '1ST ROUND TKO', sub: 'Set on the very first hand — over before it ever got started.' });
   });
   it('shotOut on any later hand keeps the game-on-the-line copy byte-for-byte', () => {
     for (const handNo of [2, 3, 9]) {
@@ -222,7 +236,7 @@ describe('the headline in the cover itself (SSR pins)', () => {
 });
 
 describe('through the real story flow: a Barbershop game ending in shotOut', () => {
-  it('viewer shot twice (consecutive sets): decided recap + finale cover + SHOT OUT headline on his card', () => {
+  it('viewer shot twice (consecutive sets): decided recap + finale cover + SHOT BACK 2 BACK headline on his card', () => {
     vi.useFakeTimers();
     const run = findGame(0, new Set([2, 3]), 'shotOut');
     expect(run, 'a consecutive-set shotOut game for the viewer').not.toBeNull();
@@ -233,7 +247,7 @@ describe('through the real story flow: a Barbershop game ending in shotOut', () 
     expect(cover?.getAttribute('data-mode')).toBe('fresh');
     expect(cover?.getAttribute('data-wait')).toBeNull(); // gates lifted — it played
     const headline = h.querySelector('[data-testid="recap-finale-headline-0"]');
-    expect(headline?.textContent).toContain('SHOT OUT');
+    expect(headline?.textContent).toContain('SHOT BACK 2 BACK');
     expect(headline?.textContent).toContain('game over.');
     // the winners' card carries no finale and no headline
     expect(h.querySelector('[data-testid="recap-setanim-1"]')).toBeNull();
@@ -248,7 +262,7 @@ describe('through the real story flow: a Barbershop game ending in shotOut', () 
     const cover = h.querySelector('[data-testid="recap-setanim-1"]');
     expect(cover?.getAttribute('data-tier')).toBe('finale');
     const headline = h.querySelector('[data-testid="recap-finale-headline-1"]');
-    expect(headline?.textContent).toContain('SHOT OUT');
+    expect(headline?.textContent).toContain('SHOT BACK 2 BACK');
     expect(headline?.textContent).toContain('got shot — game over.');
     expect(headline?.textContent).toContain('Coleman');
     expect(h.querySelector('[data-testid="recap-finale-headline-0"]')).toBeNull();
@@ -279,7 +293,7 @@ describe('through the real story flow: a Barbershop game shot out on HAND 1 (own
     expect(cover?.getAttribute('data-anim')).toBe('barbershop');
     expect(cover?.getAttribute('data-tier')).toBe('finale');
     const headline = h.querySelector('[data-testid="recap-finale-headline-0"]');
-    expect(headline?.textContent).toContain('SHOT OUT');
+    expect(headline?.textContent).toContain('1ST ROUND TKO');
     expect(headline?.textContent).toContain('Set on the very first hand — over before it ever got started.');
     expect(headline?.textContent).not.toContain('game on the line');
     // the card's own time-of-death tag agrees: it all happened on hand 1
@@ -293,7 +307,7 @@ describe('through the real story flow: a Barbershop game shot out on HAND 1 (own
     expect(run, 'a hand-1 shotOut game for the opponents').not.toBeNull();
     const h = walkToDecided(run!);
     const headline = h.querySelector('[data-testid="recap-finale-headline-1"]');
-    expect(headline?.textContent).toContain('SHOT OUT');
+    expect(headline?.textContent).toContain('1ST ROUND TKO');
     expect(headline?.textContent).toContain('Coleman');
     expect(headline?.textContent).toContain('got shot on the first hand — game over.');
     expect(headline?.textContent).not.toContain('game on the line');
@@ -323,6 +337,6 @@ describe('the bounded wait: a finale can never be gate-starved', () => {
     act(() => { vi.advanceTimersByTime(2600); });
     expect(cover()?.getAttribute('data-wait')).toBeNull();
     // and the headline is in the end state regardless of how the cover started
-    expect(h.querySelector('[data-testid="recap-finale-headline-0"]')?.textContent).toContain('SHOT OUT');
+    expect(h.querySelector('[data-testid="recap-finale-headline-0"]')?.textContent).toContain('SHOT BACK 2 BACK');
   }, 300000);
 });

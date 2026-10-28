@@ -12,6 +12,7 @@ import { PhotoFinishTape, VictoryConfetti } from './RecapFx';
 import { CONFETTI_GOLDS } from './recapfx';
 import { photoFinish, winMargin } from './animfx/detect';
 import { finaleHeadlineFor, isThirdSetEnd, resolveSetAnim, setTierForCover } from './setAnims';
+import { shotOutPathFor } from './shotOut';
 import { useClearedStoryStops } from './storyDecks';
 import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
@@ -320,6 +321,14 @@ export function Intermission({
                 // prints as its time of death, so the cover's words and the
                 // tag can never disagree about when it happened
                 handNo: cover.outHand ?? rec.handNo,
+                // the ending's path for THIS side, from the same history the
+                // game-over banner reads — passed only when this cover's out
+                // hand IS the final hand (the record shotOutPathFor reads as
+                // its last), so the plaque names the same ending the banner
+                // and the chat call name
+                shotPath: decided && st.result?.endReason === 'shotOut' && (cover.outHand ?? rec.handNo) === st.history[st.history.length - 1]?.handNo
+                  ? shotOutPathFor(st.history, s.side)
+                  : undefined,
               }) : null;
               // The finale verdict plaque (owner, 2026-10-21): when the
               // cover mounts with its headline, the plaque is the card's

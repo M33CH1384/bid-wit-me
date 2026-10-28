@@ -79,7 +79,7 @@ import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeS
 import { stashRewards } from './RewardsPage';
 import { flushLocalGames, localGameId } from './localStats';
 import { warmTableEffects } from './effects/warm';
-import { THIRD_SET_HEADLINE, endReasonText, onNoticeSides, shotChatLines, stickyNoticeSides } from './shotOut';
+import { THIRD_SET_HEADLINE, endReasonText, onNoticeSides, shotChatLines, shotOutBannerFor, stickyNoticeSides } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { sessionRoom } from './spatial';
 import { HAPTIC, haptic } from './haptics';
@@ -3076,7 +3076,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {/* the middle of the foot scrolls inside the panel (long games run
                   tall); the action buttons stay pinned below it, always reachable */}
               <div className="vic-scroll" data-testid="victory-scroll">
-                {res.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
+                {res.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">{shotOutBannerFor(st)}</div>}
                 {res.endReason === 'third-set' && <div className="shot-out-banner third-set" data-testid="third-set">{THIRD_SET_HEADLINE}</div>}
                 <ol className="placements compact">
                   {res.finalScores
@@ -3106,7 +3106,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
             <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : winHeadline(st.result.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase()}</h2>
             {seriesChip()}
-            {st.result.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">SHOT OUT</div>}
+            {st.result.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">{shotOutBannerFor(st)}</div>}
             {st.result.endReason === 'third-set' && <div className="shot-out-banner third-set" data-testid="third-set">{THIRD_SET_HEADLINE}</div>}
             <p className="muted" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
             {/* the standings are FIXED sheet content, never scroll content
