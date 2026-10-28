@@ -32,3 +32,10 @@ export function noticeTip(spectating: boolean): string {
     ? "Got shot last hand: one more shot and they're out"
     : "Got shot last hand: one more shot and you're out";
 }
+
+/** The sticky second notice (owner, 2026-10-28): shot twice this game, so the notice never clears. */
+export function noticeStickyTip(spectating: boolean): string {
+  return spectating
+    ? "On notice for good — shot twice this game: one more shot and they're out, and making a hand won't clear it"
+    : "On notice for good — shot twice this game: one more shot and you're out, and making a hand won't clear it";
+}

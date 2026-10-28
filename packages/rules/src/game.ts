@@ -889,8 +889,12 @@ function finishHand(st: GameState): GameState {
   // the same either way. The count derives from the hand records via shotCounts, so a resumed
   // game (offline or story save — both serialize the history) keeps its count exactly, and an
   // older save's records carry the same bids/sides the count is derived from.
-  const result = thirdSetResult(scores, shotCounts(r, [...st.history, record]), shotCounts(r, st.history))
-    ?? shotOutResult(scores, shotOutSides(r, st.handNo, shot, prevShot))
+  // Sticky second notice (owner, 2026-10-28): a side already shot twice before this hand is on
+  // notice for good — a shot now puts it out even after a made hand in between. The same
+  // history-derived count carries it, so save/resume restores the stickiness exactly.
+  const countsBefore = shotCounts(r, st.history);
+  const result = thirdSetResult(scores, shotCounts(r, [...st.history, record]), countsBefore)
+    ?? shotOutResult(scores, shotOutSides(r, st.handNo, shot, prevShot, countsBefore.map((c) => c >= 2)))
     ?? checkGameEnd(r, scores);
   return {
     ...st, scores, bags, history: [...st.history, record], result, turn: null,

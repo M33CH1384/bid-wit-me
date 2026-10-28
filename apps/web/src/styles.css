@@ -250,6 +250,17 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .chip.ally { background: rgba(var(--gold-rgb),.2); color: var(--gold); }
 .chip.dealer { background: #fff; color: var(--ink-deep); font-weight: 800; letter-spacing: .04em; box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 0 10px rgba(255,255,255,.35); }
 .chip.notice { background: #ff3b3b; color: #fff; font-weight: 800; letter-spacing: .04em; animation: notice-pulse 1.6s ease-in-out infinite; }
+/* Sticky second notice (owner, 2026-10-28): the avatar plate wears caution tape — a hazard-stripe
+   frame that reads "this one is worse" at table scale and stays on for the rest of the game.
+   A status dressing on the plate only (not a set cover): the stripes are theme-independent
+   hazard yellow/black so Classic and Neon carry the identical signal. */
+.plate.caution::before {
+  content: ''; position: absolute; inset: -4px; border-radius: 12px; padding: 3px;
+  background: repeating-linear-gradient(45deg, #ffd21f 0 11px, #161616 11px 22px);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none; z-index: 4;
+}
 .plate .plate-name:has(.chip + .chip) .chip { font-size: 10px; padding: 1px 4px; letter-spacing: .03em; }
 /* a side plate next to the trick cards on a narrow phone goes narrow: its chips wrap under the name (Scene.tsx Badges) */
 .plate.narrow .plate-name { flex-wrap: wrap; row-gap: 2px; max-width: 128px; white-space: normal; }

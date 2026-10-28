@@ -162,7 +162,8 @@ export function scoreHand(
 
 export interface GameResult {
   /**
-   * How the game ended. shotOut: a side was shot on hand 1 or two hands in a row (house rule
+   * How the game ended. shotOut: a side was shot on hand 1, two hands in a row, or while on a
+   * sticky second notice — shot twice earlier in the game, that notice never clears (house rule
    * "Shot = out"). third-set: a side's third set of the game (game-wide rule, always on — the
    * cumulative count, not in a row). The presentation layer keys the "3 the Hard Way" headline
    * and the finale set animation off endReason === 'third-set'.
@@ -279,6 +280,10 @@ export function shotCovers(
   const outHand = Array.from({ length: n }, () => null as number | null);
   let prevShot = Array.from({ length: n }, () => false);
   let prevOut = Array.from({ length: n }, () => false);
+  // Shots banked per side BEFORE the current hand of the walk: at two, the side's notice is
+  // sticky, so a shot on the last hand sheets it even across a gap (the engine's own rule,
+  // mirrored here for the result-omitted path).
+  const arms = Array.from({ length: n }, () => 0);
   for (let h = 0; h < history.length; h++) {
     const hand = history[h]!;
     const shot = Array.from({ length: n }, () => false);
@@ -294,7 +299,7 @@ export function shotCovers(
     const last = h === history.length - 1;
     const lost = last && result !== undefined
       ? new Set(result?.endReason === 'shotOut' || result?.endReason === 'third-set' ? result.shotOut ?? [] : [])
-      : new Set(shotOutResult(scores, shotOutSides(r, hand.handNo, shot, prevShot))?.shotOut ?? []);
+      : new Set(shotOutResult(scores, shotOutSides(r, hand.handNo, shot, prevShot, arms.map((c) => c >= 2)))?.shotOut ?? []);
     for (let side = 0; side < n; side++) {
       const isOut = lost.has(side) || markedOut.has(side);
       // The sheet stays on once a side is out, so remember the hand it went out on:
@@ -305,6 +310,7 @@ export function shotCovers(
       else if (shot[side]) covers[side] = { tape: true, sheet: false, siren: false, outHand: outHand[side] };
       else if (made[side]) covers[side] = blank();
     }
+    for (let side = 0; side < n; side++) if (shot[side]) arms[side] = (arms[side] ?? 0) + 1;
     prevShot = shot;
   }
   return covers;
@@ -424,12 +430,16 @@ export function nilBustsJustResolved<T extends {
 }
 
 /**
- * Shot = out after a hand: the sides that are out — shot on hand 1, or shot this hand AND the previous hand.
- * `prevShot[side]` = shot on the previous hand. Empty when the rule is off.
+ * Shot = out after a hand: the sides that are out — shot on hand 1, shot this hand AND the
+ * previous hand, or shot while on a STICKY second notice (owner, 2026-10-28: "After a team gets
+ * shot the second time they should stay 'on notice' — even if they make books on the next hand
+ * they can still lose the next time they don't"). `prevShot[side]` = shot on the previous hand.
+ * `sticky[side]` = the side had already been shot twice before this hand, so its second notice
+ * never cleared and this shot — whenever it came — puts it out. Empty when the rule is off.
  */
-export function shotOutSides(r: TableRules, handNo: number, shot: readonly boolean[], prevShot: readonly boolean[]): number[] {
+export function shotOutSides(r: TableRules, handNo: number, shot: readonly boolean[], prevShot: readonly boolean[], sticky?: readonly boolean[]): number[] {
   if (!shotOutOn(r)) return [];
-  return shot.flatMap((s, side) => (s && (handNo === 1 || (handNo > 2 && prevShot[side])) ? [side] : []));
+  return shot.flatMap((s, side) => (s && (handNo === 1 || (handNo > 2 && prevShot[side]) || sticky?.[side]) ? [side] : []));
 }
 
 /**

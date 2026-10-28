@@ -78,7 +78,7 @@ import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeS
 import { stashRewards } from './RewardsPage';
 import { flushLocalGames, localGameId } from './localStats';
 import { tableStillLoading, warmTableEffects } from './effects/warm';
-import { THIRD_SET_HEADLINE, endReasonText, onNoticeSides, shotChatLines } from './shotOut';
+import { THIRD_SET_HEADLINE, endReasonText, onNoticeSides, shotChatLines, stickyNoticeSides } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { sessionRoom } from './spatial';
 import { HAPTIC, haptic } from './haptics';
@@ -93,7 +93,7 @@ import { plateTally, rememberHandTally, type HandTally } from './plateStats';
 import { BOOK_GATHER_MS, landedTook, shownTook } from './tookDisplay';
 import { bidChipText, dealerChipMatches, plateTookText, popPlateTook, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
-import { biddingNote, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
+import { biddingNote, noticeStickyTip, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
 import { MinBidLine, bidChoices, minBidNote } from './minBid';
 import { type SavedGame, clearGame, saveGame } from './save';
 import { clearStoryGame, saveStoryGame } from './story/storySave';
@@ -2327,6 +2327,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     names.forEach((nm, i) => { if (isBotSeat(i)) preloadVoice(personaForName(nm), nm); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const notice = onNoticeSides(sb);
+  // Sticky second notice (owner, 2026-10-28): those plates wear the caution-tape dressing
+  // for the rest of the game; a first notice leaves the plate exactly as it has always been.
+  const stickyNotice = stickyNoticeSides(sb);
   // `legal` is empty while the play is in flight. The badge still needs the cards that were legal.
   const playableCount = st.phase === 'playing' ? view.legal.filter((c) => (hand ?? []).includes(c)).length : legal.length;
   const live = turnView({
@@ -2399,7 +2402,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     // seat extras) as an info strip with no medallion.
     const figSeat = !!seatedFigureIds?.[seat];
     return (
-      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}${figSeat ? ' plate--fig' : ''}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${platePersona(names[seat]!)}` : undefined} data-persona={isBotSeat(seat) ? platePersona(names[seat]!) : undefined}>
+      <div className={`plate ${isTurn ? 'turn' : ''} ${partner ? 'ally' : 'foe'}${figSeat ? ' plate--fig' : ''}${stickyNotice.includes(sideOf(seat, r)) ? ' caution' : ''}`} data-testid={`seat-${seat}`} title={isBotSeat(seat) ? `${names[seat]} · ${platePersona(names[seat]!)}` : undefined} data-persona={isBotSeat(seat) ? platePersona(names[seat]!) : undefined}>
         {!figSeat && (seatProfile ? (
           <button type="button" className="plate-face-tap" data-testid={`plate-profile-${seat}`} aria-label={`View ${names[seat]}'s profile`}
             onClick={() => openPlayerProfile({ id: seatUid, name: names[seat] ?? '' }, { atTable: true })}>
@@ -2407,7 +2410,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </button>
         ) : <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} bot={isBotSeat(seat)} />)}
         <div className="plate-body">
-          <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title="Got shot last hand: one more shot and they're out">ON NOTICE</span>}</div>
+          <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title={stickyNotice.includes(sideOf(seat, r)) ? noticeStickyTip(true) : "Got shot last hand: one more shot and they're out"}>ON NOTICE</span>}</div>
           <div className="plate-stats" key={st.handNo}>
             <span className="chip" data-testid={`bid-${seat}`}>{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
             <span className="chip took" data-testid={`books-${seat}`}>{plateTookText(took, st.phase)}</span>
@@ -2869,7 +2872,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           </div>
         )}
 
-        <div className={`plate me-plate ${actor === HUMAN && !spectating ? 'turn' : ''}`} data-testid="seat-0">
+        <div className={`plate me-plate ${actor === HUMAN && !spectating ? 'turn' : ''}${stickyNotice.includes(sideOf(HUMAN, r)) ? ' caution' : ''}`} data-testid="seat-0">
           {mySeatProfile ? (
             <button type="button" className="plate-face-tap" data-testid="plate-profile-0" aria-label={`View ${mySeatProfile.name}'s profile`}
               onClick={() => openPlayerProfile({ id: mySeatUid, name: mySeatProfile.name }, { atTable: true })}>
@@ -2877,7 +2880,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             </button>
           ) : <MyPlateFace name={seatInitial(face(HUMAN))} color={spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You} />}
           <div className="plate-body">
-            <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
+            <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={stickyNotice.includes(sideOf(HUMAN, r)) ? noticeStickyTip(spectating) : noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats" key={st.handNo}>
               <span className="chip" data-testid="bid-0">{bidChipText(plates.bids[HUMAN] ?? null, actor === HUMAN && st.phase === 'bidding')}</span>
               <span className="chip took" data-testid="books-0">{plateTookText(tookShown[HUMAN] ?? 0, st.phase)}</span>

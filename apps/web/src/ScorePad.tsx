@@ -11,6 +11,7 @@ import { type GameState, type HandRecord, type SideHandResult, type TableRules, 
 import { SEAT_COLORS } from './overlay';
 import { hudSeatName } from './dealerName';
 import { holeMarks, punchedLabel, rememberHoles } from './shotMarks';
+import { shotArms } from './shotOut';
 import { timerSettingLabel } from './turnTimer';
 import { wheelsMade } from './landCue';
 import { HandsStrip, bostonSides } from './BoxScore';
@@ -70,7 +71,11 @@ export function resultChips(r: TableRules, h: HandRecord, s: SideHandResult, st:
       ? { text: st.result?.endReason === 'third-set' ? 'OUT · 3RD SET' : 'SHOT OUT', kind: 'out' }
       : { text: `SHOT${lastHand && !st.result ? ' · ON NOTICE' : ''}`, kind: 'shot' });
   }
-  void r;
+  // Sticky second notice (owner, 2026-10-28): a side shot twice this game stays ON NOTICE on
+  // the pad's latest row even on a hand it made — the notice no longer clears until the game ends.
+  if (!s.shot && !endOut && lastHand && !st.result && r.shotOut !== false && (shotArms(r, st.history)[s.side] ?? 0) >= 2) {
+    out.push({ text: 'ON NOTICE', kind: 'shot' });
+  }
   return out;
 }
 
