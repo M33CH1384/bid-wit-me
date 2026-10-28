@@ -386,3 +386,167 @@ export function photoFinish(result: GameResult): boolean {
   const m = winMargin(result);
   return m !== null && m <= PHOTO_FINISH_MARGIN;
 }
+
+/* ================= wave B §C (owner slate, 2026-10-28) =================
+ * Eight NEW scenarios on the same contract as waves 1–3: pure predicates
+ * over real state. Two of them (THE SHUSH, SILENT ASSASSIN) also read the
+ * client's own session talk log — callout counts per side, tallied by the
+ * layer from the callouts the table actually displayed this hand. They are
+ * labelled session-derived wherever they are specified (§D.5); a count the
+ * log doesn't have is zero, never an estimate. */
+
+/* --------------------------------------------------------------------------
+ * N1. DOUBLE MOON — both partners of a partnership side MADE their nil in
+ * the same scored hand, and at least one of the two was a BLIND nil. Read
+ * straight off the hand record's nil entries (seat / kind / made are the
+ * engine's own scoring facts).
+ * ------------------------------------------------------------------------ */
+export function doubleMoonSides(rec: HandRecord, rules: TableRules): number[] {
+  if (!rules.partnerships) return [];
+  const out: number[] = [];
+  for (const s of rec.sides) {
+    const made = s.nils.filter((n) => n.made);
+    if (made.length >= 2 && made.some((n) => n.kind === 'blindNil')) out.push(s.side);
+  }
+  return out;
+}
+
+/* --------------------------------------------------------------------------
+ * N3. PAYBACK SERVED COLD — at hand end, side A sets side B in the latest
+ * record, and the match history holds an EARLIER hand where B set A. A
+ * "set" here is the Set detector's own fact (a failed real contract); the
+ * shooter of a hand is any side that was NOT set in it. Returns the
+ * {setter, victim} pairs of the latest hand that have the earlier receipt.
+ * ------------------------------------------------------------------------ */
+export function paybackColdPairs(history: readonly HandRecord[]): { setter: number; victim: number }[] {
+  if (history.length < 2) return [];
+  const last = history[history.length - 1]!;
+  const victims = setSides(last);
+  if (!victims.length) return [];
+  const allSides = last.sides.map((s) => s.side);
+  const out: { setter: number; victim: number }[] = [];
+  for (const victim of victims) {
+    for (const setter of allSides) {
+      if (setter === victim) continue;
+      const earlier = history.slice(0, -1).some((rec) => {
+        const v = setSides(rec);
+        return v.includes(setter) && !v.includes(victim);
+      });
+      if (earlier) out.push({ setter, victim });
+    }
+  }
+  return out;
+}
+
+/* --------------------------------------------------------------------------
+ * N4. NINE LIVES — a side TAKES THE LEAD in the latest scored hand after
+ * having trailed by NINE_LIVES_DEFICIT+ at some earlier hand-end of this
+ * match. Hand-end totals are the records' own cumulative totalScore, so
+ * "trailed" is history, not projection. Leading means strictly ahead of
+ * every other side after the latest hand.
+ * ------------------------------------------------------------------------ */
+export const NINE_LIVES_DEFICIT = 400;
+
+export function nineLivesSides(history: readonly HandRecord[]): number[] {
+  if (history.length < 2) return [];
+  const last = history[history.length - 1]!;
+  const totalOf = (rec: HandRecord, side: number) => rec.sides.find((s) => s.side === side)?.totalScore;
+  const out: number[] = [];
+  for (const s of last.sides) {
+    const mine = s.totalScore;
+    const leads = last.sides.every((o) => o.side === s.side || mine > o.totalScore);
+    if (!leads) continue;
+    const wasBuried = history.slice(0, -1).some((rec) => {
+      const myThen = totalOf(rec, s.side);
+      if (myThen === undefined) return false;
+      return rec.sides.some((o) => o.side !== s.side && (o.totalScore - myThen) >= NINE_LIVES_DEFICIT);
+    });
+    if (wasBuried) out.push(s.side);
+  }
+  return out;
+}
+
+/* --------------------------------------------------------------------------
+ * N10. TEXTBOOK — a side made its contract EXACTLY: tricks taken equal the
+ * combined bid and zero bags were added. The purist's make, read off the
+ * scored record (contract > 0, so a nil-only side never qualifies).
+ * ------------------------------------------------------------------------ */
+export function textbookSides(rec: HandRecord): number[] {
+  return rec.sides
+    .filter((s) => s.contract > 0 && s.contractMade === true && s.tricks === s.contract && s.bagsAdded === 0)
+    .map((s) => s.side);
+}
+
+/* --------------------------------------------------------------------------
+ * N5. SILENT ASSASSIN — a BLIND nil was MADE by a seat whose side produced
+ * ZERO talk callouts all hand (session talk log, per side). The seat list
+ * comes from the scored record; the silence comes from the log.
+ * ------------------------------------------------------------------------ */
+export function silentAssassinSeats(rec: HandRecord, talkBySide: readonly number[]): number[] {
+  const out: number[] = [];
+  for (const s of rec.sides) {
+    if ((talkBySide[s.side] ?? 0) > 0) continue;
+    for (const n of s.nils) if (n.made && n.kind === 'blindNil') out.push(n.seat);
+  }
+  return out;
+}
+
+/* --------------------------------------------------------------------------
+ * N2. THE SHUSH — a side is on a run of SHUSH_STREAK+ consecutive trick
+ * wins (the trailing run of the current hand) AND the opposing side(s)
+ * fired SHUSH_TALK+ talk callouts this hand (session talk log). Comedy
+ * with a receipt: no talk, no shush.
+ * ------------------------------------------------------------------------ */
+export const SHUSH_STREAK = 4;
+export const SHUSH_TALK = 2;
+
+export function shushSides(
+  st: Pick<GameState, 'tricks' | 'rules'>,
+  talkBySide: readonly number[],
+): number[] {
+  const run = trickStreak(st.tricks);
+  if (!run || run.count < SHUSH_STREAK) return [];
+  const mine = sideOf(run.seat, st.rules);
+  const oppTalked = talkBySide.some((n, side) => side !== mine && n >= SHUSH_TALK);
+  return oppTalked ? [mine] : [];
+}
+
+/* --------------------------------------------------------------------------
+ * N7. MIRROR BIDS — bidding has closed (every seat's bid is in) with both
+ * partnership sides' combined contracts EQUAL and at least MIRROR_MIN.
+ * The contract math is the engine's own booksStillNeeded at zero tricks
+ * taken (nil seats contribute no contract, exactly as scored). Cutthroat
+ * has no partnership sides to mirror.
+ * ------------------------------------------------------------------------ */
+export const MIRROR_MIN = 10;
+
+export function mirrorBidSides(st: Pick<GameState, 'rules' | 'bids'>): number[] {
+  if (!st.rules.partnerships) return [];
+  if (st.bids.some((b) => b === null || b === undefined)) return [];
+  if (st.bids.some((b) => b === 'books')) return []; // a books hand has no combined contracts to mirror
+  const zeros = st.bids.map(() => 0);
+  const c0 = booksStillNeeded(st.rules, st.bids, zeros, 0);
+  const c1 = booksStillNeeded(st.rules, st.bids, zeros, 1);
+  if (c0 === null || c1 === null) return [];
+  return c0 === c1 && c0 >= MIRROR_MIN ? [0, 1] : [];
+}
+
+/* --------------------------------------------------------------------------
+ * N9. THE GUILLOTINE — a side's contract is mathematically dead: the books
+ * it still needs (engine arithmetic) exceed the tricks still remaining.
+ * Evaluated on a mid-hand snapshot; the layer calls it per completed trick
+ * and fires on the cut that first makes it true. A side whose contract is
+ * already made (needed <= 0) or not yet countable (null) is never dead.
+ * ------------------------------------------------------------------------ */
+export function contractDeadSides(
+  st: Pick<GameState, 'rules' | 'bids' | 'tricks' | 'trickCount'>,
+  tricksWon: readonly number[],
+): number[] {
+  const remaining = tricksStillRemaining(st);
+  const out: number[] = [];
+  for (let side = 0; side < sideCount(st.rules); side++) {
+    const needed = booksStillNeeded(st.rules, st.bids, tricksWon, side);
+    if (needed !== null && needed > remaining) out.push(side);
+  }
+  return out;
+}

@@ -7,7 +7,7 @@ import { raiseSeconds, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceL
 import { type Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { blastPose } from './blastSweep';
-import { releaseTornadoCard, tornadoCardLeft } from './tornadoSweep';
+import { releaseTornadoCard, sweepParamsFor, sweepPoseAt, type SweepCardParams } from './tornadoSweep';
 import { fireCue, fx } from '../fx';
 import { restingFlightWait } from '../trickTiming';
 import { dealHoldStale, openingFlight } from './dealFlight';
@@ -299,7 +299,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
    * funnel, then flung out and gone. Reduce effects: a plain slide into the centre that shrinks away.
    * Returns true while it owns the inner offset (the nuke blast is skipped then).
    */
-  const tn = useRef({ on: false, gone: false, a0: 0, h0: 0, delay: 0, axis: new Vector3(), q: new Quaternion() });
+  const tn = useRef({ on: false, gone: false, params: null as SweepCardParams | null, axis: new Vector3(), q: new Quaternion() });
   const applyTornado = (g: Group): boolean => {
     const ig = inner.current, T = fx.tornado, st = tn.current;
     if (!ig) return false;
@@ -320,34 +320,21 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     invalidate();
     if (!st.on) {
       st.on = true;
-      // stable per-card randomness from the card's name
-      let h = 7; for (const ch of name ?? '') h = (h * 31 + ch.charCodeAt(0)) | 0;
-      const r = (k: number) => { const x = Math.sin(h * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
-      st.a0 = Math.atan2(g.position.z, g.position.x) + (r(1) - 0.5) * 0.8;
-      st.h0 = r(2);
-      st.delay = (blast === 'hand' ? 0 : 0.1) + r(3) * 0.2;
-      st.axis.set(r(4) - 0.5, r(5) - 0.5, r(6) - 0.5).normalize();
+      // Sweep geometry is parametric now (tornadoSweep.ts, Wave B): the pose is
+      // a pure function of these per-card params + local sweep time. The params
+      // reproduce the shipped per-card hash/angles/delay exactly.
+      st.params = sweepParamsFor(name ?? '', g.position.x, g.position.z, blast === 'hand');
+      st.axis.set(st.params.axis[0], st.params.axis[1], st.params.axis[2]);
     }
-    const tt = Math.max(0, u - st.delay);
-    const pull = tt <= 0 ? 0 : 1 - (1 - Math.min(1, tt / 0.5)) ** 3;
-    const w = new Vector3();
-    let spin = 0, scale = 1;
-    if (T.reduced) {
-      w.set(0, 0.06, 0);
-      scale = Math.max(0.001, 1 - Math.max(0, (tt - 0.35) / 0.4));
-    } else {
-      const FLING = 1.25;
-      const height = 0.12 + 1.35 * Math.min(1, tt / 1.3) * (0.35 + 0.65 * st.h0);
-      let radius = 0.1 + 0.3 * (height / 1.5);
-      let y = height;
-      if (tt > FLING) { const f = tt - FLING; radius += 9 * f * f + 1.5 * f; y += 2.2 * f; }
-      const ang = st.a0 + tt * (6.5 + 4 * (1 - st.h0)) + tt * tt * 1.5;
-      w.set(Math.cos(ang) * radius, y, Math.sin(ang) * radius);
-      spin = tt * 9;
-      // everything the same size in the funnel (your hand cards are bigger, near the camera)
-      scale = 1 + ((0.85 / (g.scale.x || 1)) - 1) * pull;
-    }
-    const left = tornadoCardLeft(tt, scale);
+    const params = st.params!;
+    const pose = sweepPoseAt(params, Math.max(0, u - params.delay), T.reduced);
+    const pull = pose.pull;
+    const w = new Vector3(pose.x, pose.y, pose.z);
+    const spin = pose.spin;
+    // everything the same size in the funnel (your hand cards are bigger, near the camera);
+    // the reduced path's shrink is the pose's own scale.
+    const scale = T.reduced ? pose.scale : 1 + ((0.85 / (g.scale.x || 1)) - 1) * pull;
+    const left = pose.left;
     ig.visible = !left;
     if (left) st.gone = true;
     // world funnel spot → this card's local space (offset from its resting spot)

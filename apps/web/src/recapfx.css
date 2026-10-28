@@ -1,0 +1,60 @@
+/* Recap / victory surfaces — Wave B rebuild (recapfx.ts / RecapFx.tsx).
+ * Down to the Wire · Photo Finish · Victory Confetti · Fuse Clock spark.
+ * Presentational only: pointer-events none everywhere, no input capture,
+ * nothing here sits on the bid clock or covers a player's cards.
+ * Theme parity: Classic and Neon render the same information on the same
+ * timings; only the accent tint shifts (Neon takes the violet family via
+ * the --recapfx-accent override below, set by the app's theme attribute). */
+
+/* ---- Fuse Clock: canvas spark lane (TurnRing.tsx appends it to the fuse) -- */
+.recapfx-fuse-canvas {
+  position: absolute; left: 0; right: 0; top: -7px; height: 16px;
+  width: 100%; pointer-events: none;
+}
+
+/* ---- Down to the Wire: edge light that tightens like a held breath ------- */
+.recapfx-wire {
+  position: fixed; inset: 0; pointer-events: none; z-index: 3;
+  /* box-shadow is written per-frame from wireGlowAt (recapfx.ts) */
+}
+.recapfx-wire.still { /* calm read: wireGlowAt(still) — one low outline */ }
+
+/* ---- Photo Finish: finish-line tape across the result -------------------- */
+.recapfx-photo {
+  position: fixed; left: 0; right: 0; top: 41%; z-index: 1151;
+  pointer-events: none; overflow: hidden; text-align: center;
+}
+.recapfx-photo .pf-tape {
+  display: flex; height: 14px; margin: 0 auto; width: min(92vw, 560px);
+  transform-origin: left center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .45);
+  /* transform/opacity written per-frame from photoTapeAt (recapfx.ts) */
+}
+.recapfx-photo .pf-tape i { flex: 1 1 0; }
+.recapfx-photo .pf-tape i.on { background: #eef4ff; }
+.recapfx-photo .pf-tape i.off { background: #101623; }
+.recapfx-photo .pf-head {
+  margin-top: 10px;
+  font-family: var(--display, sans-serif); font-weight: 900;
+  font-size: clamp(22px, 6vw, 34px); letter-spacing: .14em;
+  color: #bfe3ff; text-shadow: 0 2px 14px rgba(0, 0, 0, .65);
+}
+.recapfx-photo .pf-scores {
+  margin-top: 4px;
+  font-family: var(--display, sans-serif); font-weight: 700;
+  font-size: clamp(13px, 3.4vw, 16px); letter-spacing: .18em;
+  color: #fff; text-shadow: 0 1px 8px rgba(0, 0, 0, .7);
+}
+
+/* ---- Victory Confetti: canvas flutter rain, winning side only ------------ */
+.recapfx-confetti {
+  position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 1152;
+}
+.recapfx-confetti canvas { display: block; width: 100%; height: 100%; }
+
+/* In-recap placement: the tape rides the recap sheet instead of the viewport */
+.tt .recapfx-photo.in-recap { position: absolute; top: 34%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .recapfx-wire, .recapfx-photo, .recapfx-confetti { animation: none !important; transition: none !important; }
+}

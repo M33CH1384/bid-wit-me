@@ -602,13 +602,20 @@ describe('wave 3 layer', () => {
     expect(Q('animfx-wire')).not.toBeNull();
   });
 
-  it('PHOTO FINISH + CONFETTI: a 9-point win stamps and rains 24 gold spades for the viewer', () => {
+  it('PHOTO FINISH + CONFETTI: a 9-point win tapes and rains for the viewer (recapfx renderers, Wave B swap)', () => {
     mount(view({ phase: 'playing' }));
     rerender(view({ phase: 'gameOver', result: { winners: [0], finalScores: [500, 491] } as unknown as PlayerView['result'] }));
-    expect(Q('animfx-photofinish')).not.toBeNull();
+    // the tape renderer mounts with BOTH real final scores at the tape
+    const pf = Q('animfx-photofinish');
+    expect(pf).not.toBeNull();
+    expect(pf!.querySelector('[data-testid="recapfx-photofinish"]')).not.toBeNull();
+    expect(pf!.textContent).toContain('500');
+    expect(pf!.textContent).toContain('491');
+    // the confetti renderer mounts its canvas (piece counts/flutter are
+    // pinned in recapfx's own model tests — 24 pieces / 8 calm)
     const cf = Q('animfx-confetti');
     expect(cf).not.toBeNull();
-    expect(cf!.querySelectorAll('.cf-piece')).toHaveLength(24);
+    expect(cf!.querySelector('[data-testid="recapfx-confetti"] canvas')).not.toBeNull();
   });
 
   it('a blowout loss gets neither the stamp nor the confetti', () => {
@@ -618,14 +625,14 @@ describe('wave 3 layer', () => {
     expect(Q('animfx-confetti')).toBeNull();
   });
 
-  it('reduced motion: confetti collapses to a few static spades; the photo stamp still lands', () => {
+  it('reduced motion: confetti collapses to the still renderer pose; the photo tape still lands', () => {
     fx.setReduce(true);
     mount(view({ phase: 'playing' }));
     rerender(view({ phase: 'gameOver', result: { winners: [0], finalScores: [500, 499] } as unknown as PlayerView['result'] }));
     const cf = Q('animfx-confetti');
     expect(cf).not.toBeNull();
     expect(cf!.classList.contains('still')).toBe(true);
-    expect(cf!.querySelectorAll('.cf-piece')).toHaveLength(8);
+    expect(cf!.querySelector('[data-testid="recapfx-confetti"]')).not.toBeNull();
     expect(Q('animfx-photofinish')).not.toBeNull();
   });
 });

@@ -58,6 +58,9 @@ import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
 import { OfflineMediaBar } from './online/Media';
 import { fireCue, fx, useReduceEffects } from './fx';
+import { VictoryConfetti } from './RecapFx';
+import { CONFETTI_GOLDS } from './recapfx';
+import { sideColor } from './ScorePad';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { feltHandVisible } from './three/cardFace';
@@ -2968,7 +2971,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const iWon = !spectating && res.winners.includes(mySide);
         return (
           <div className="victory-screen espn" role="dialog" aria-label="Game over" data-testid="victory">
-            <div className="vic-confetti" aria-hidden>{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ left: `${(i % 2 ? 91 : 1) + ((i * 13) % 7)}%`, background: `hsl(${i * 47} 90% 60%)`, animationDuration: `${3.2 + (i % 5) * 0.5}s`, animationDelay: `${-i * 0.37}s` }} />)}</div>
+            {/* Victory confetti is ONE system (Wave B): the rebuilt seeded canvas
+                rain (RecapFx), here on the online victory screen as in the AnimFx
+                layer — winning side's colours, winners only, bounded 2.3 s. The
+                legacy infinite DOM rain (.vic-confetti) is retired. */}
+            {iWon && <VictoryConfetti seed={String(st.seed)} still={reduceFx} colors={[sideColor(r, mySide), CONFETTI_GOLDS[0]!, sideColor(r, mySide), CONFETTI_GOLDS[1]!]} />}
             <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={() => openRewards('home')}>✕</button>
             <h2 className="vic-head">{iWon ? (res.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : 'GAME OVER'}<small>{iWon ? '🏆' : '♠'}</small></h2>
             {(() => {

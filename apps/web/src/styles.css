@@ -2362,10 +2362,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .vic-foot .placements.compact li { padding: 3px 8px; font-size: 14px; }
 .vic-foot .bid-row { margin-top: 2px; }
 .vic-foot .muted.small { font-size: 12px; margin: 0; text-align: center; }
-/* confetti stays in the margins (left / right strips, behind the tiles): it never covers a face */
-.vic-confetti { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
-.vic-confetti i { position: absolute; top: -20px; width: 8px; height: 14px; border-radius: 2px; animation: vic-fall 3.5s linear infinite; opacity: .9; }
-@keyframes vic-fall { to { transform: translateY(110vh) rotate(720deg); } }
+/* (The legacy .vic-confetti DOM rain was retired in Wave B — victory confetti
+   is the single seeded canvas system in RecapFx.tsx / recapfx.css.) */
 /* narrow phones: a team's two winners stack */
 @media (max-width: 520px) {
   .vs-winners { gap: 8px; }

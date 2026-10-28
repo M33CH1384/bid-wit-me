@@ -82,6 +82,81 @@ export function ownTurnBuzz(enabled: boolean): boolean {
   try { return nav.vibrate(10) !== false; } catch { return false; }
 }
 
+/* ------------------------------------------------------------------ fuse --
+ * FUSE CLOCK (Wave B rebuild, program row "Fuse Clock"): the burn-down READ
+ * of the active player's remaining turn time through its final 5 s. This
+ * model is a pure, seekable function of (remainingMs, tMs) — the spark head
+ * crawls the fuse exactly with the remaining fraction, and a deterministic
+ * ember trail (sin-hash seeded by ember index, never Math.random/Date.now)
+ * falls off behind it. It reads the clock only: no timer is created, shifted
+ * or blocked here, and nothing appears before the 5 s window opens.
+ */
+
+/** The fuse window: the final 5 s of the clock — the ring's warn tail. */
+export const FUSE_WINDOW_MS = TURN_RING_WARN_MS;
+/** Ember particles trailing the spark head (budget: 7, far under hero caps). */
+export const FUSE_EMBER_COUNT = 7;
+
+export interface FuseEmber {
+  /** Horizontal offset from the spark head, in fuse-width fractions (≤ 0: behind the head). */
+  dx: number;
+  /** Vertical fall below the fuse line, 0..1 of the ember lane height. */
+  dy: number;
+  /** Ember diameter in px. */
+  size: number;
+  /** 0..1 opacity, hottest nearest the head. */
+  alpha: number;
+}
+
+export interface FuseSparkFrame {
+  /** Inside the final-5s window with time still on the clock. */
+  lit: boolean;
+  /** Burn progress: 0 = window just opened (5 s left), 1 = deadline. */
+  progress: number;
+  /** Spark head position along the fuse, as a fraction of its width. */
+  head: number;
+  /** Deterministic flicker 0..1 (a pure function of tMs, quantized to 40 ms). */
+  flicker: number;
+  embers: FuseEmber[];
+}
+
+function fuseHash(i: number, salt: number): number {
+  const x = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/**
+ * The spark frame at a moment. `remainingMs` is the clock read (the same
+ * sample the ring paints); `tMs` is the caller's rAF clock, passed in so the
+ * frame is reproducible for any (remaining, t) pair.
+ */
+export function fuseSparkFrame(remainingMs: number, tMs: number, calm = false): FuseSparkFrame {
+  const lit = remainingMs <= FUSE_WINDOW_MS && remainingMs > 0;
+  const progress = Math.min(1, Math.max(0, 1 - remainingMs / FUSE_WINDOW_MS));
+  const head = 1 - progress;
+  const step = calm ? 0 : Math.floor(tMs / 40);
+  const flicker = calm ? 0.65 : 0.55 + 0.45 * fuseHash(step, 7);
+  const embers: FuseEmber[] = [];
+  if (lit) {
+    for (let i = 0; i < FUSE_EMBER_COUNT; i++) {
+      // Each ember is born at the head at a seeded phase of the burn and
+      // falls behind/below it as progress advances past its birth.
+      const birth = fuseHash(i, 13) * 0.85;
+      const age = progress - birth;
+      if (age < 0) continue;
+      const life = Math.min(1, age / 0.14);
+      if (life >= 1) continue; // spent — a dead ember is not emitted
+      embers.push({
+        dx: -life * (0.02 + fuseHash(i, 17) * 0.05),
+        dy: life * life * (0.4 + fuseHash(i, 19) * 0.6),
+        size: 1 + fuseHash(i, 23) * 1.8 * (1 - life * 0.5),
+        alpha: (1 - life) * (0.35 + 0.55 * fuseHash(i, 29)),
+      });
+    }
+  }
+  return { lit, progress, head, flicker, embers };
+}
+
 export function applyTurnRing(
   root: SVGSVGElement | null,
   track: SVGCircleElement | null,
