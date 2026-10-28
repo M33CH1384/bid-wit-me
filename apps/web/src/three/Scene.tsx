@@ -43,6 +43,7 @@ import VegasRoom, { preloadVegasRoom } from './VegasRoom';
 import SpeakeasyRoom, { preloadSpeakeasyRoom } from './SpeakeasyRoom';
 import CornerStreetRoom from './CornerStreetRoom';
 import PorchDeckRoom from './PorchDeckRoom';
+import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
 import MansionRoom, { preloadMansionRoom } from './MansionRoom';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
@@ -1683,7 +1684,9 @@ export default function Scene(props: SceneProps) {
       {rooftop && textured && <RooftopRoom quality={props.quality} handNo={props.handNo} />}
       {yacht && textured && <YachtRoom quality={props.quality} handNo={props.handNo} />}
       {beach && textured && <BeachRoom quality={props.quality} handNo={props.handNo} />}
-      {backyard && textured && <BackyardRoom quality={props.quality} handNo={props.handNo} />}
+      {backyard && textured && (props.storyStopId === 'cookout' && props.quality === 'high'
+        ? <CookoutYardRoom fxOn={!props.reduceFx} />
+        : <BackyardRoom quality={props.quality} handNo={props.handNo} />)}
       {church && textured && <ChurchRoom quality={props.quality} handNo={props.handNo} />}
       {vegas && textured && <VegasRoom quality={props.quality} handNo={props.handNo} />}
       {speakeasy && textured && (props.storyStopId === 'corner' && props.quality === 'high'
