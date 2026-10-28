@@ -64,7 +64,7 @@ describe('the Porch room build', () => {
   it('ceiling is the single-sided camera-containment plane at deck + 4.0', () => {
     const room = src('src/three/PorchDeckRoom.tsx');
     expect(room).toContain('FLOOR_Y + 4.0');
-    expect(room).toContain('planeGeometry args={[7.6, 6.7]}');
+    expect(room).toContain('planeGeometry args={[7.6, 7.6]}');
   });
 
   it('the light-carrying header wood is raised and behind the standing camera (owner fix 2026-10-28)', () => {
@@ -84,12 +84,33 @@ describe('the Porch room build', () => {
   it('the deck extends behind the player seat and the entry moved to the east side (owner fix 2026-10-28)', () => {
     const room = src('src/three/PorchDeckRoom.tsx');
     // deck runs to z +4.3 — the player sits ON the porch
-    expect(room).toContain('boxGeometry args={[7.6, 0.1, 6.7]}');
+    expect(room).toContain('boxGeometry args={[7.6, 0.1, 7.6]}');
     // the front railing runs full width — no gap at his back
     expect(room).toContain('from={[-3.3, 4.0]} to={[3.3, 4.0]}');
     // the entry steps descend the EAST side, off the table axis
     expect(room).toContain('3.56 + i * 0.32');
     expect(room).not.toContain('2.62 + i * 0.3');
+  });
+
+  it('no seat backs onto the house wall — the wall line sits 0.90 m deeper (owner fix 2, 2026-10-28)', () => {
+    const room = src('src/three/PorchDeckRoom.tsx');
+    // Seat back-clearance arithmetic (CHAIR_SPOTS + chairGeos):
+    // the far seat's chair back tops out 0.316 m behind its spot
+    // (z −2.45 − 0.316 = −2.766). The shipped wall face sat at
+    // z −2.54 — the back panel was INSIDE the wall and the
+    // screen-door trim. The house line now stands at −3.52
+    // (face −3.44): 0.67 m of open deck behind the far chair
+    // back, matching the side seats' 0.68 m to their railings.
+    expect(room).toContain('position={[0, FLOOR_Y + 2.0, -3.52]}');
+    // the door and both windows ride the same line
+    expect(room).toContain('position={[0.1, FLOOR_Y, -3.4]}');
+    expect(room).toContain('position={[-1.9, FLOOR_Y, -3.4]}');
+    expect(room).toContain('position={[2.1, FLOOR_Y, -3.4]}');
+    // the side returns lengthened to meet it, front ends unmoved
+    expect(room).toContain('boxGeometry args={[0.16, 4.0, 2.9]}');
+    // nothing of the old wall line survives
+    expect(room).not.toContain('-2.62');
+    expect(room).not.toContain('FLOOR_Y, -2.5]}');
   });
 
   it('owns no table of its own and places chairs only at the game spots', () => {

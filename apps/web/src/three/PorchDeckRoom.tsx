@@ -54,6 +54,22 @@
  * runs full width, and the entry gap + steps moved to the
  * EAST side run, beside the play area where nobody sits.
  *
+ * OWNER FIX 2 (2026-10-28, device report on the fixed room):
+ * "my partner's back looks to be directly up against a wall."
+ * Measured, it was worse: the far seat's chair back (panel
+ * top 0.316 m behind the CHAIR_SPOTS origin) sat at
+ * z −2.766 against a wall face at z −2.54 — the back panel
+ * was INSIDE the wall and the screen-door trim. The front
+ * extension had cured the player's side only. Cure, same
+ * geometric kind: the whole house line (back wall, door,
+ * windows, side returns, the door's light) moves 0.90 m
+ * deeper, the deck and ceiling extend to meet it, and the
+ * far chair back now stands 0.67 m clear of the wall — the
+ * same open-deck strip the side seats have behind them to
+ * their railings (0.68 m). No seat at the table backs onto
+ * a wall or railing; the seat back-clearance gate lives in
+ * CODE-ROOMS-REPORT.md.
+ *
  * Effects discipline: the room has NO animated loops (string
  * lights burn steady at dusk), so it renders identically at
  * every effects setting — reduced motion is honored trivially
@@ -451,7 +467,7 @@ function ScreenDoor() {
     box(0.05, 0.16, 0.02, 0.36, 1.02, 0.035),
   ]), []);
   return (
-    <group position={[0.1, FLOOR_Y, -2.5]}>
+    <group position={[0.1, FLOOR_Y, -3.4]}>
       <mesh material={mats.trim}>
         <boxGeometry args={[1.02, 2.22, 0.1]} />
       </mesh>
@@ -621,7 +637,7 @@ function PorchLights() {
           at centre-felt */}
       <pointLight position={[0, 0.9, 0]} color="#ffc98a" intensity={5} distance={7} decay={1.6} />
       <pointLight position={[-2.6, 1.6, 1.6]} color="#ffab54" intensity={4} distance={6} decay={1.7} />
-      <pointLight position={[0.1, 1.4, -2.0]} color="#ff9e45" intensity={4} distance={4.5} decay={1.8} />
+      <pointLight position={[0.1, 1.4, -2.9]} color="#ff9e45" intensity={4} distance={4.5} decay={1.8} />
     </group>
   );
 }
@@ -639,26 +655,31 @@ export default function PorchDeckRoom() {
       <PorchLights />
       <FoldingChairs />
 
-      {/* plank deck, top at the floor line — EXTENDED on the
-          entrance side (owner fix, 2026-10-28): the deck now runs
-          to z +4.3, so the player's seat sits ON the porch with
-          deck behind it, not in the doorway (see the entry note
-          at the railing below) */}
-      <mesh material={mats.deckWood} position={[0, FLOOR_Y - 0.05, 0.95]} receiveShadow>
-        <boxGeometry args={[7.6, 0.1, 6.7]} />
+      {/* plank deck, top at the floor line — EXTENDED both ways
+          (owner fixes, 2026-10-28): to z +4.3 on the entrance
+          side, so the player's seat sits ON the porch with deck
+          behind it, not in the doorway (see the entry note at
+          the railing below); and to z −3.3 on the house side,
+          deepening the strip behind the far seat when the wall
+          moved back (owner fix 2, see the header) */}
+      <mesh material={mats.deckWood} position={[0, FLOOR_Y - 0.05, 0.5]} receiveShadow>
+        <boxGeometry args={[7.6, 0.1, 7.6]} />
       </mesh>
       <mesh material={mats.postPaint} position={[0, FLOOR_Y - 0.06, 4.32]}>
         <boxGeometry args={[7.6, 0.14, 0.06]} />
       </mesh>
       {/* back wall: weatherboard siding (4.0 m — raised with the
-          ceiling, see below) */}
-      <mesh material={mats.siding} position={[0, FLOOR_Y + 2.0, -2.62]} receiveShadow>
+          ceiling, see below). Set 0.90 m deeper than the first
+          ship (owner fix 2): its face at z −3.44 leaves open
+          deck behind the far seat's chair back */}
+      <mesh material={mats.siding} position={[0, FLOOR_Y + 2.0, -3.52]} receiveShadow>
         <boxGeometry args={[7.6, 4.0, 0.16]} />
       </mesh>
-      {/* side returns: the house wraps only the back portion */}
+      {/* side returns: the house wraps only the back portion —
+          lengthened with the wall, front ends unchanged */}
       {[-3.85, 3.85].map((x) => (
-        <mesh key={x} material={mats.siding} position={[x, FLOOR_Y + 2.0, -1.62]} receiveShadow>
-          <boxGeometry args={[0.16, 4.0, 2.0]} />
+        <mesh key={x} material={mats.siding} position={[x, FLOOR_Y + 2.0, -2.07]} receiveShadow>
+          <boxGeometry args={[0.16, 4.0, 2.9]} />
         </mesh>
       ))}
       {/* beadboard ceiling: single-sided downward plane at deck +
@@ -673,8 +694,8 @@ export default function PorchDeckRoom() {
           standing camera) at deck +3.88, and the beams rise with
           the ceiling — the wood frames the view's top edge and
           never crosses the table. */}
-      <mesh material={mats.beadboard} rotation={[Math.PI / 2, 0, 0]} position={[0, FLOOR_Y + 4.0, 0.95]} receiveShadow>
-        <planeGeometry args={[7.6, 6.7]} />
+      <mesh material={mats.beadboard} rotation={[Math.PI / 2, 0, 0]} position={[0, FLOOR_Y + 4.0, 0.5]} receiveShadow>
+        <planeGeometry args={[7.6, 7.6]} />
       </mesh>
       {[-1.2, 1.2].map((z) => (
         <mesh key={z} material={mats.postPaint} position={[0, FLOOR_Y + 3.93, z]}>
@@ -685,7 +706,7 @@ export default function PorchDeckRoom() {
         <boxGeometry args={[7.6, 0.26, 0.06]} />
       </mesh>
       {/* windows: warm lit left of the door, sleeping dark right */}
-      <group position={[-1.9, FLOOR_Y, -2.5]}>
+      <group position={[-1.9, FLOOR_Y, -3.4]}>
         <mesh material={mats.trim} position={[0, 1.55, 0]}>
           <boxGeometry args={[1.06, 1.36, 0.1]} />
         </mesh>
@@ -699,7 +720,7 @@ export default function PorchDeckRoom() {
           <boxGeometry args={[0.88, 0.05, 0.02]} />
         </mesh>
       </group>
-      <group position={[2.1, FLOOR_Y, -2.5]}>
+      <group position={[2.1, FLOOR_Y, -3.4]}>
         <mesh material={mats.trim} position={[0, 1.55, 0]}>
           <boxGeometry args={[1.06, 1.36, 0.1]} />
         </mesh>
@@ -801,8 +822,8 @@ export default function PorchDeckRoom() {
           the seats they frame the top and sides; the front run
           sits behind the standing camera, never across the felt */}
       <StringLights a={[-3.3, ceilY, 4.22]} b={[3.3, ceilY, 4.22]} sag={0.30} bulbs={17} />
-      <StringLights a={[-3.3, ceilY, 4.22]} b={[-3.3, ceilY, -2.35]} sag={0.34} bulbs={15} />
-      <StringLights a={[3.3, ceilY, 4.22]} b={[3.3, ceilY, -2.35]} sag={0.34} bulbs={15} />
+      <StringLights a={[-3.3, ceilY, 4.22]} b={[-3.3, ceilY, -3.25]} sag={0.34} bulbs={17} />
+      <StringLights a={[3.3, ceilY, 4.22]} b={[3.3, ceilY, -3.25]} sag={0.34} bulbs={17} />
       <StringLights a={[-3.3, FLOOR_Y + 0.92, 4.04]} b={[-0.85, FLOOR_Y + 0.92, 4.04]} sag={0.13} bulbs={7} />
       {/* dressing: rockers on the west flank, side table, plants */}
       <RockingChair spot={{ x: -3.0, z: -1.55, ry: Math.PI / 2 + 0.35 }} throwPlaid />
@@ -816,9 +837,9 @@ export default function PorchDeckRoom() {
           <sphereGeometry args={[0.17, 10, 8]} />
         </mesh>
       </group>
-      <PottedPlant spot={{ x: 2.9, z: -2.1 }} pot="terra" />
-      <PottedPlant spot={{ x: 3.15, z: -1.75, s: 0.8 }} pot="dark" />
-      <PottedPlant spot={{ x: 2.7, z: -1.8, s: 0.66 }} pot="terra" />
+      <PottedPlant spot={{ x: 2.9, z: -3.0 }} pot="terra" />
+      <PottedPlant spot={{ x: 3.15, z: -2.65, s: 0.8 }} pot="dark" />
+      <PottedPlant spot={{ x: 2.7, z: -2.7, s: 0.66 }} pot="terra" />
       <PottedPlant spot={{ x: -2.2, z: 1.75, s: 0.85 }} pot="dark" />
     </group>
   );
