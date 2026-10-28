@@ -1305,6 +1305,161 @@ html[data-theme="neon"] .animfx-spotpool { background: radial-gradient(circle, r
   .finale-verdict { animation: none !important; }
 }
 
+/* ---- 14. Wave C — set covers rebuilt (Animation Replacement Program
+ * §A4, owner decision §E.1: live code for all 22). Same selection, tiers,
+ * gates and END STATES as §11; what changes is the material and the
+ * motion inside each cover's shipped duration — every longest fresh
+ * motion below lands within ±10% of its shipped value (the per-cover
+ * anchors are pinned in animfx-wavec-css.test.ts). Keyframes redefined
+ * here supersede their §11 namesakes (last definition wins); the story
+ * register stays warm — deliberately NO Neon re-skin in this section:
+ * story surfaces keep the neighborhood register in both themes, and
+ * theme parity is identical function, timing and information. */
+
+/* -- Porch: the door SWINGS on its hinge and slams; dust off the frame;
+ *    the set side's books slide out under it (§A4 row 34/35) -- */
+.setcover[data-anim="porch"] { perspective: 520px; }
+.setcover[data-anim="porch"] .sc-door { transform-origin: 0 50%; background: repeating-linear-gradient(90deg, rgba(60, 38, 20, .13) 0 3px, transparent 3px 26px), linear-gradient(180deg, rgba(116, 76, 44, .36), rgba(94, 62, 34, .28)); }
+.setcover[data-anim="porch"] .sc-door::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 7px; background: linear-gradient(90deg, rgba(30, 18, 8, .55), transparent); }
+@keyframes sc-door-slam { 0% { transform: rotateY(-62deg); } 62% { transform: rotateY(3.5deg); } 80% { transform: rotateY(-1.6deg); } 100% { transform: rotateY(0); } }
+.setcover[data-anim="porch"] .sc-dust { position: absolute; bottom: 2px; width: 34px; height: 15px; border-radius: 50%; background: radial-gradient(ellipse, rgba(216, 200, 170, .55), rgba(216, 200, 170, 0) 70%); opacity: 0; z-index: 3; }
+.setcover[data-anim="porch"] .sc-dust:nth-of-type(1) { left: 12%; }
+.setcover[data-anim="porch"] .sc-dust:nth-of-type(2) { left: 44%; width: 46px; }
+.setcover[data-anim="porch"] .sc-dust:nth-of-type(3) { left: 74%; }
+.setcover[data-anim="porch"].fresh .sc-dust { animation: sc-dust-puff .85s ease-out calc(var(--sc-delay, 0ms) + .34s) both; }
+@keyframes sc-dust-puff { 0% { opacity: 0; transform: translateY(4px) scale(.6); } 35% { opacity: .9; } 100% { opacity: 0; transform: translate(-8px, -7px) scale(1.25); } }
+.setcover[data-anim="porch"] .sc-books { position: absolute; left: 8%; bottom: 5px; display: flex; gap: 3px; z-index: 3; }
+.setcover[data-anim="porch"] .sc-books i { display: block; width: 15px; height: 20px; border-radius: 2px; background: linear-gradient(180deg, #f4efe4, #d9d2c0); box-shadow: inset 0 0 0 1.5px rgba(40, 32, 20, .55), 0 2px 3px rgba(0, 0, 0, .4); }
+.setcover[data-anim="porch"] .sc-books i:nth-child(2) { transform: rotate(-4deg); background: linear-gradient(180deg, #e8e2d2, #c9c0aa); }
+.setcover[data-anim="porch"].fresh .sc-books { animation: sc-books-out 1.15s cubic-bezier(.3, 1.2, .4, 1) calc(var(--sc-delay, 0ms) + .45s) both; }
+@keyframes sc-books-out { 0% { opacity: 0; transform: translateX(-46px); } 30% { opacity: 1; } 100% { opacity: 1; transform: translateX(0); } }
+
+/* -- Barbershop: cloth-simulated cape (fold shading + sway in the arc),
+ *    neck strip; the finale pole WINDS DOWN instead of stopping dead
+ *    (§A4 rows 36/37) -- */
+.setcover[data-anim="barbershop"] .sc-cape { background: repeating-linear-gradient(90deg, rgba(90, 80, 60, .10) 0 14px, transparent 14px 34px), linear-gradient(160deg, #f2ede2, #cfc6b2 55%, #b3a98f); }
+.setcover[data-anim="barbershop"] .sc-neck { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 36%; height: 11px; border-radius: 0 0 8px 8px; background: linear-gradient(180deg, #3a3630, #211e1a); box-shadow: 0 2px 4px rgba(0, 0, 0, .3); }
+@keyframes sc-cape-whisk { 0% { transform: translateY(-112%) rotate(-3deg) skewX(0deg); } 30% { transform: translateY(4%) rotate(1.6deg) skewX(-2.4deg); } 44% { transform: translateY(0) rotate(.4deg) skewX(1.2deg); } 58% { transform: translateY(3%) rotate(0) skewX(0deg); } 100% { transform: translateY(118%) rotate(2deg) skewX(-1deg); } }
+@keyframes sc-cape-drape { 0% { transform: translateY(-112%) rotate(-3deg) skewX(0deg); } 40% { transform: translateY(34%) rotate(1.2deg) skewX(-2deg); } 55% { transform: translateY(26%) rotate(.3deg) skewX(.8deg); } 72% { transform: translateY(31%) rotate(0) skewX(-.5deg); } 100% { transform: translateY(30%) rotate(0) skewX(0deg); } }
+.setcover[data-anim="barbershop"].fresh.tier-finale .sc-pole i { animation: sc-pole-wind 2.4s cubic-bezier(.3, .65, .35, 1) calc(var(--sc-delay, 0ms) + .1s) 1 both; }
+@keyframes sc-pole-wind { from { transform: translateY(0); } to { transform: translateY(-100%); } }
+
+/* -- Rec Center: the banner unrolls with cloth sway on its hangers; the
+ *    buzzer's red lamp blooms on the buzz beat (§A4 rows 38/39) -- */
+.setcover[data-anim="rec-center"] .sc-banner { transform-origin: 50% -10px; }
+@keyframes sc-banner-drop { 0% { transform: translateY(-112%) rotate(1.6deg); } 55% { transform: translateY(0) rotate(-1.1deg); } 72% { transform: translateY(-2.5%) rotate(.6deg); } 86% { transform: translateY(0) rotate(-.3deg); } 100% { transform: translateY(0) rotate(0); } }
+@keyframes sc-banner-drop-back { 0% { transform: translateY(-112%) rotate(1.6deg); } 13% { transform: translateY(0) rotate(-1.1deg); } 17% { transform: translateY(-2%) rotate(.6deg); } 21% { transform: translateY(0) rotate(-.3deg); } 30% { transform: translateY(0) rotate(.35deg); } 40%, 76% { transform: translateY(0) rotate(0); } 100% { transform: translateY(-112%) rotate(-1deg); } }
+.setcover[data-anim="rec-center"] .sc-lamp { position: absolute; left: 50%; top: 55%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #ff5040; box-shadow: 0 0 16px 6px rgba(255, 64, 48, .55); opacity: 0; z-index: 3; }
+.setcover[data-anim="rec-center"].tier-finale .sc-lamp { top: 50px; }
+.setcover[data-anim="rec-center"].fresh .sc-lamp { animation: sc-lamp-bloom 2.2s ease calc(var(--sc-delay, 0ms) + .4s) both; }
+.setcover[data-anim="rec-center"].fresh.tier-finale .sc-lamp { animation-duration: .55s; }
+@keyframes sc-lamp-bloom { 0% { opacity: 0; transform: scale(.6); } 22% { opacity: 1; transform: scale(1.18); } 68% { opacity: .85; transform: scale(1); } 100% { opacity: 0; transform: scale(1); } }
+
+/* -- Cookout: two-tone smoke (dark body, lit edges) over a live ember
+ *    bed that breathes on the smoke's own clock (§A4 rows 40/41) -- */
+.setcover[data-anim="cookout"] .sc-puff.dark { background: radial-gradient(circle, rgba(86, 82, 78, .88), rgba(86, 82, 78, 0) 68%); }
+.setcover[data-anim="cookout"] .sc-ember { position: absolute; left: 6%; right: 6%; bottom: -6px; height: 26px; background: radial-gradient(ellipse at 50% 100%, rgba(255, 110, 40, .5), rgba(255, 110, 40, 0) 70%); opacity: .4; }
+.setcover[data-anim="cookout"].fresh .sc-ember { animation: sc-ember-pulse 2.8s ease-in-out var(--sc-delay, 0ms) both; }
+.setcover[data-anim="cookout"].fresh.tier-finale .sc-ember { animation-duration: 3.6s; }
+@keyframes sc-ember-pulse { 0% { opacity: .22; } 26% { opacity: .58; } 47% { opacity: .34; } 71% { opacity: .55; } 100% { opacity: .4; } }
+
+/* -- Corner: the corrugated gate rattles down LINK BY LINK under its
+ *    top rail — nine slats, each landing with a micro-rebound inside
+ *    the shipped .7 s (§A4 rows 42/43) -- */
+.setcover[data-anim="corner"] .sc-rail { position: absolute; top: 0; left: 0; right: 0; height: 10px; background: linear-gradient(180deg, #4a5058, #2c3036); box-shadow: 0 2px 5px rgba(0, 0, 0, .4); z-index: 2; }
+@keyframes sc-gate-down { 0% { clip-path: inset(0 0 100% 0); } 12% { clip-path: inset(0 0 88% 0); } 15% { clip-path: inset(0 0 90% 0); } 24% { clip-path: inset(0 0 77% 0); } 27% { clip-path: inset(0 0 79% 0); } 36% { clip-path: inset(0 0 66% 0); } 39% { clip-path: inset(0 0 68% 0); } 48% { clip-path: inset(0 0 55% 0); } 51% { clip-path: inset(0 0 57% 0); } 60% { clip-path: inset(0 0 44% 0); } 63% { clip-path: inset(0 0 46% 0); } 72% { clip-path: inset(0 0 33% 0); } 75% { clip-path: inset(0 0 35% 0); } 84% { clip-path: inset(0 0 18% 0); } 88% { clip-path: inset(0 0 21% 0); } 94% { clip-path: inset(0 0 0 0); } 97% { clip-path: inset(0 0 2.5% 0); } 100% { clip-path: inset(0 0 0 0); } }
+
+/* -- Church Basement: chairs land their stack with a soft clack settle;
+ *    the finale's last light is the EXIT sign (§A4 rows 44/45 — the
+ *    quietest cover stays the quietest) -- */
+@keyframes sc-chair-fold { 0% { transform: translateX(calc((var(--i) - 2) * 88px - 12px)) scaleY(1) rotate(0); opacity: 0; } 12% { opacity: 1; } 52% { transform: translateX(calc((var(--i) - 2) * 40px)) scaleY(1) rotate(0); } 78% { transform: translateX(calc(var(--i) * 30px)) scaleY(.38) rotate(2deg); } 90% { transform: translateX(calc(var(--i) * 30px)) scaleY(.27) rotate(3.6deg); } 100% { transform: translateX(calc(var(--i) * 30px)) scaleY(.32) rotate(3deg); } }
+.setcover[data-anim="church-basement"] .sc-exit { position: absolute; top: 8px; right: 10px; z-index: 6; padding: 1px 7px; border: 1px solid rgba(125, 255, 154, .5); border-radius: 3px; background: #12351c; color: #7dff9a; font-family: var(--display, sans-serif); font-weight: 700; font-size: 10px; letter-spacing: .24em; box-shadow: 0 0 10px rgba(60, 255, 120, .35); }
+.setcover[data-anim="church-basement"].fresh .sc-exit { animation: sc-word-soft 1.2s ease calc(var(--sc-delay, 0ms) + 2.6s) both; }
+
+/* -- Rooftop: wing-beat on the flock (the gull path flaps on the fly
+ *    clock), city haze drifting under them, the finale feather swaying
+ *    side to side as it falls (§A4 rows 46/47) -- */
+.setcover[data-anim="rooftop"] .sc-haze { position: absolute; left: 0; right: 0; bottom: 0; height: 55%; background: linear-gradient(0deg, rgba(122, 110, 142, .28), rgba(122, 110, 142, 0)); opacity: .7; }
+.setcover[data-anim="rooftop"].fresh .sc-haze { animation: sc-haze-drift 2.8s ease var(--sc-delay, 0ms) both; }
+.setcover[data-anim="rooftop"].fresh.tier-finale .sc-haze { animation-duration: 4.4s; }
+@keyframes sc-haze-drift { 0% { opacity: 0; transform: translateX(-3%); } 30% { opacity: .7; } 100% { opacity: .5; transform: translateX(3%); } }
+.setcover[data-anim="rooftop"].fresh .sc-bird path { transform-origin: 11px 7px; animation: sc-wing .26s ease-in-out calc(var(--sc-delay, 0ms) + var(--i) * 95ms) 9 alternate both; }
+.setcover[data-anim="rooftop"].fresh.tier-finale .sc-bird path { animation-iteration-count: 13; }
+@keyframes sc-wing { from { transform: scaleY(.55); } to { transform: scaleY(1.12); } }
+@keyframes sc-feather-drift { 0% { opacity: 0; transform: translate(30px, -120px) rotate(-30deg); } 18% { opacity: 1; } 38% { transform: translate(6px, -84px) rotate(52deg); } 55% { transform: translate(-14px, -55px) rotate(10deg); } 74% { transform: translate(-4px, -28px) rotate(44deg); } 100% { opacity: 1; transform: translate(0, 0) rotate(24deg); } }
+
+/* -- High-Rise: brushed steel (vertical brush streaks over the shipped
+ *    panels) and a floor counter that TICKS DOWN before the readout
+ *    lands — regular: 9·6·3·▼ inside the shipped 3 s life; finale: the
+ *    same run to L, slower, the readout landing last (§A4 rows 48/49) -- */
+.setcover[data-anim="high-rise"] .sc-elev-l { background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .05) 0 2px, transparent 2px 5px), linear-gradient(90deg, #c9ced6, #969da8 70%, #7e8593); }
+.setcover[data-anim="high-rise"] .sc-elev-r { background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .05) 0 2px, transparent 2px 5px), linear-gradient(270deg, #c9ced6, #969da8 70%, #7e8593); }
+.setcover[data-anim="high-rise"] .sc-floors { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 34px; height: 20px; z-index: 5; }
+.setcover[data-anim="high-rise"] .sc-floors span { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 4px; background: #14100a; color: #ffcf5c; font-family: var(--display, sans-serif); font-weight: 800; font-size: 13.5px; letter-spacing: .1em; opacity: 0; }
+.setcover[data-anim="high-rise"].fresh .sc-floors span { animation: sc-floorseq .55s linear calc(var(--sc-delay, 0ms) + .35s + var(--i) * .55s) both; }
+.setcover[data-anim="high-rise"].fresh .sc-floors span.last { animation: sc-floorlast .4s linear calc(var(--sc-delay, 0ms) + 2s) both; }
+.setcover[data-anim="high-rise"].fresh.tier-finale .sc-floors span { animation-delay: calc(var(--sc-delay, 0ms) + .5s + var(--i) * .8s); }
+@keyframes sc-floorseq { 0% { opacity: 0; } 12%, 82% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sc-floorlast { from { opacity: 0; } to { opacity: 1; } }
+.setcover[data-anim="high-rise"].fresh .sc-floor { animation: sc-word-soft .35s ease calc(var(--sc-delay, 0ms) + 2.3s) both; }
+.setcover[data-anim="high-rise"].fresh.tier-finale .sc-floor { animation-delay: calc(var(--sc-delay, 0ms) + 3.35s); }
+
+/* -- The Pj's: one lit window across the street — in the finale, when
+ *    the street goes dark, it is the light that stays (§A4 rows 50/51) -- */
+.setcover[data-anim="the-pjs"] .sc-window { position: absolute; right: 11%; top: 16%; width: 17px; height: 23px; border: 2px solid rgba(30, 24, 18, .8); background-image: linear-gradient(90deg, transparent 46%, rgba(30, 24, 18, .75) 46%, rgba(30, 24, 18, .75) 54%, transparent 54%), linear-gradient(0deg, transparent 46%, rgba(30, 24, 18, .75) 46%, rgba(30, 24, 18, .75) 54%, transparent 54%), linear-gradient(180deg, #ffd98c, #e8a84e); box-shadow: 0 0 9px rgba(255, 200, 110, .35); opacity: .8; z-index: 1; }
+.setcover[data-anim="the-pjs"].tier-finale .sc-window { opacity: 1; box-shadow: 0 0 16px 4px rgba(255, 205, 110, .5); }
+.setcover[data-anim="the-pjs"].fresh.tier-finale .sc-window { animation: sc-window-on .5s linear calc(var(--sc-delay, 0ms) + 1.5s) both; }
+@keyframes sc-window-on { from { opacity: .15; box-shadow: 0 0 4px rgba(255, 200, 110, .15); } to { opacity: 1; box-shadow: 0 0 16px 4px rgba(255, 205, 110, .5); } }
+
+/* -- Legends': the gold frame's rope lines DRAW IN around the stamp as
+ *    it lands, and the stamp's foil catches the light on impact
+ *    (§A4 rows 52/53) -- */
+.setcover[data-anim="legends"] .sc-frame { position: absolute; inset: 6px; width: calc(100% - 12px); height: calc(100% - 12px); z-index: 2; }
+.setcover[data-anim="legends"] .sc-frame rect { fill: none; stroke: #d8a125; stroke-width: 1.6; opacity: .8; }
+.setcover[data-anim="legends"].fresh .sc-frame rect { stroke-dasharray: 100; animation: sc-frame-draw .5s ease calc(var(--sc-delay, 0ms) + .25s) both; }
+.setcover[data-anim="legends"].fresh.tier-finale .sc-frame rect { animation-duration: 1.6s; animation-delay: calc(var(--sc-delay, 0ms) + .3s); }
+@keyframes sc-frame-draw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+.setcover[data-anim="legends"] .sc-stamp { overflow: hidden; }
+.setcover[data-anim="legends"] .sc-stamp::after { content: ""; position: absolute; inset: 0; border-radius: 5px; background: linear-gradient(115deg, transparent 32%, rgba(255, 242, 205, .5) 50%, transparent 68%); background-size: 260% 100%; background-position: 110% 0; pointer-events: none; }
+.setcover[data-anim="legends"].fresh .sc-stamp::after { animation: sc-foil .5s ease calc(var(--sc-delay, 0ms) + .3s) both; }
+@keyframes sc-foil { from { background-position: 110% 0; } to { background-position: -110% 0; } }
+
+/* -- King: a real beam cone under the narrowing dark, with dust motes
+ *    drifting in it; the finale cone dies LAST, after the room
+ *    (§A4 rows 54/55) -- */
+.setcover[data-anim="king"] .sc-cone { position: absolute; top: -6%; left: 50%; width: 64%; height: 78%; transform: translateX(-50%); background: linear-gradient(180deg, rgba(255, 226, 150, .34), rgba(255, 226, 150, .05) 78%); clip-path: polygon(44% 0, 56% 0, 96% 100%, 4% 100%); opacity: .9; }
+.setcover[data-anim="king"].fresh .sc-cone { animation: sc-cone-in 1.8s ease var(--sc-delay, 0ms) both; }
+.setcover[data-anim="king"].fresh.tier-finale .sc-cone { animation: sc-cone-life 4.4s linear var(--sc-delay, 0ms) both; }
+@keyframes sc-cone-in { from { opacity: 0; } to { opacity: .9; } }
+@keyframes sc-cone-life { 0% { opacity: 0; } 41% { opacity: .9; } 59% { opacity: .9; } 100% { opacity: .1; } }
+.setcover[data-anim="king"] .sc-mote { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: rgba(255, 232, 170, .85); box-shadow: 0 0 5px rgba(255, 220, 140, .8); left: calc(40% + var(--i) * 5%); top: calc(8% + var(--i) * 9%); opacity: 0; z-index: 5; }
+.setcover[data-anim="king"].fresh .sc-mote { animation: sc-mote-drift 1.6s ease-in-out calc(var(--sc-delay, 0ms) + var(--i) * .1s) both; }
+.setcover[data-anim="king"].fresh.tier-finale .sc-mote { animation-duration: 3.4s; animation-delay: calc(var(--sc-delay, 0ms) + var(--i) * .18s); }
+@keyframes sc-mote-drift { 0% { opacity: 0; transform: translate(0, 0); } 25% { opacity: .9; } 60% { transform: translate(-7px, 15px); } 100% { opacity: 0; transform: translate(5px, 27px); } }
+
+/* -- 3 THE HARD WAY flash (§A5 row 56): the type is SET IN METAL — it
+ *    drops, seats with a half-beat overshoot, and the gold rules draw
+ *    themselves around it; the sub-line typesets a beat behind. Total
+ *    life unchanged: 3.1 s, finale covers still sequence at 2,300 ms. -- */
+.hardway-flash .hw-rule { display: block; justify-self: center; width: min(520px, 72%); height: 3px; background: linear-gradient(90deg, transparent, #ffd940 18%, #ffd940 82%, transparent); }
+.hardway-flash:not(.still) .hw-rule { animation: hw-rule-draw .65s cubic-bezier(.3, 1, .4, 1) .18s both; }
+.hardway-flash:not(.still) .hw-rule.bot { animation-delay: .34s; }
+@keyframes hw-rule-draw { from { opacity: 0; transform: scaleX(0); } to { opacity: 1; transform: scaleX(1); } }
+@keyframes hw-slam { 0% { opacity: 0; transform: scale(2.3); } 55% { opacity: 1; transform: scale(.965); } 74% { transform: scale(1.018); } 100% { opacity: 1; transform: scale(1); } }
+.hardway-flash:not(.still) small { animation: hw-sub-in .45s ease .38s both; }
+@keyframes hw-sub-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Wave C calm: the new sub-elements freeze with everything else —
+   * the end states (door shut, gate down, stamp landed, window lit,
+   * EXIT sign, floor readout) are the information and they remain. */
+  .setcover .sc-dust, .setcover .sc-books, .setcover .sc-neck, .setcover .sc-lamp,
+  .setcover .sc-ember, .setcover .sc-rail, .setcover .sc-exit, .setcover .sc-haze,
+  .setcover .sc-floors, .setcover .sc-window, .setcover .sc-frame, .setcover .sc-cone,
+  .setcover .sc-mote { animation: none !important; transition: none !important; }
+  .hardway-flash .hw-rule, .hardway-flash small { animation: none !important; }
+}
+
 /* ---- Run It tornado ladder badge (tornchip) ----
  * The prototype ladder caption, shrunk to a plate plaque: it anchors at
  * the claimant's plate centre and sits ABOVE the plate (translate

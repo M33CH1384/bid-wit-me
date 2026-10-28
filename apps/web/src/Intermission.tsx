@@ -190,8 +190,15 @@ export function Intermission({
           delayed behind it (see SetCover delayMs) so both land in sequence. */}
       {thirdSetEnd && (
         <div className={`hardway-flash${reduceFx ? ' still' : ''}`} data-testid="hardway-flash" aria-hidden="true">
+          <i className="hw-rule top" />
           <span className="hw-big">3 THE HARD WAY</span>
-          <small>THIRD SET — GAME OVER</small>
+          {/* Wave C (§A5 row 56): the sub-line names the side the recap
+              itself bills — the engine's knocked-out side(s) for this
+              ending (result.shotOut carries the third-set side too). */}
+          <small>{(st.result?.shotOut ?? []).length > 0
+            ? `${(st.result?.shotOut ?? []).map((s) => sideName(r, s, names)).join(' & ')}’s third set — game over`
+            : 'THIRD SET — GAME OVER'}</small>
+          <i className="hw-rule bot" />
         </div>
       )}
       <div className="tt glass slant espn">

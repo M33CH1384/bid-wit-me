@@ -34,30 +34,42 @@ const Chair = ({ i }: { i: number }) => (
   </svg>
 );
 
+/* Wave C (Animation Replacement Program §A4): every cover's art gains its
+ * material sub-elements — the dust a slammed door throws, the books that
+ * slide out under it, the cape's neck strip, the buzzer's lamp, the grill's
+ * ember bed, the gate's top rail, the flock's city haze, the elevator's
+ * floor ticker, the Pj's one lit window, the Legends frame the rope lines
+ * draw inside, the King's beam cone and its dust motes. All placement is
+ * index-seeded (--i) — deterministic, no runtime randomness — and every
+ * finale-only class from the shipped roster stays finale-only. */
 const ART: Record<string, (finale: boolean) => ReactNode> = {
   porch: () => (
     <>
       <div className="sc-light" />
       <div className="sc-door"><i className="sc-mesh" /><i className="sc-door-bar" /></div>
+      <i className="sc-dust" /><i className="sc-dust" /><i className="sc-dust" />
+      <div className="sc-books"><i /><i /><i /></div>
     </>
   ),
   barbershop: (finale) => (
     <>
       <div className="sc-pole"><i /></div>
-      <div className="sc-cape" />
+      <div className="sc-cape"><i className="sc-neck" /></div>
       <span className="sc-word">{finale ? 'CLOSED' : 'NEXT!'}</span>
     </>
   ),
   'rec-center': (finale) => (
     <>
       <div className="sc-buzz" />
+      <i className="sc-lamp" />
       <div className="sc-banner"><b>SET</b><span className="sc-clock">0.0</span>{finale && <em>GAME</em>}</div>
     </>
   ),
   cookout: (finale) => (
     <>
       {finale && <div className="sc-lid"><span>LID CLOSED</span></div>}
-      <i className="sc-puff" /><i className="sc-puff" /><i className="sc-puff" /><i className="sc-puff" /><i className="sc-puff" />
+      <div className="sc-ember" />
+      <i className="sc-puff" /><i className="sc-puff dark" /><i className="sc-puff" /><i className="sc-puff" /><i className="sc-puff dark" />
       <svg className="sc-tongs" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M5 3 L12 15 M19 3 L12 15 M12 15 L12 21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         <path d="M3 3 h4 M17 3 h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -66,6 +78,7 @@ const ART: Record<string, (finale: boolean) => ReactNode> = {
   ),
   corner: (finale) => (
     <>
+      <div className="sc-rail" />
       <div className="sc-shutter"><i className="sc-shutter-bar" /></div>
       {finale && (
         <>
@@ -82,6 +95,7 @@ const ART: Record<string, (finale: boolean) => ReactNode> = {
   'church-basement': (finale) => (
     <>
       {finale && <div className="sc-halo" />}
+      {finale && <span className="sc-exit">EXIT</span>}
       <Chair i={0} /><Chair i={1} /><Chair i={2} />
       <span className="sc-word soft">SERVICE OVER</span>
     </>
@@ -89,6 +103,7 @@ const ART: Record<string, (finale: boolean) => ReactNode> = {
   rooftop: (finale) => (
     <>
       <div className="sc-dusk" />
+      <div className="sc-haze" />
       {[0, 1, 2, 3, 4, 5, 6].map((i) => <Bird key={i} i={i} />)}
       {finale && [7, 8, 9, 10].map((i) => <Bird key={i} i={i} />)}
       {finale && <i className="sc-feather" />}
@@ -97,17 +112,27 @@ const ART: Record<string, (finale: boolean) => ReactNode> = {
   'high-rise': (finale) => (
     <>
       <div className="sc-elev-l" /><div className="sc-elev-r" /><i className="sc-seam" />
+      <div className="sc-floors" aria-hidden="true">
+        <span style={{ '--i': 0 } as CSSProperties}>9</span>
+        <span style={{ '--i': 1 } as CSSProperties}>6</span>
+        <span style={{ '--i': 2 } as CSSProperties}>3</span>
+        <span className="last" style={{ '--i': 3 } as CSSProperties}>{finale ? 'L' : '▼'}</span>
+      </div>
       <div className="sc-floor">{finale ? '▼ L · LOBBY' : '▼ GOING DOWN'}</div>
     </>
   ),
   'the-pjs': () => (
     <>
       <div className="sc-beam" /><i className="sc-lamp" />
+      <div className="sc-window" />
       <div className="sc-fence" />
     </>
   ),
   legends: (finale) => (
     <>
+      <svg className="sc-frame" viewBox="0 0 100 60" preserveAspectRatio="none" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="97" height="57" pathLength={100} />
+      </svg>
       <div className="sc-stamp">RETIRED</div>
       {finale && (
         <>
@@ -120,6 +145,8 @@ const ART: Record<string, (finale: boolean) => ReactNode> = {
   king: () => (
     <>
       <div className="sc-dark" />
+      <div className="sc-cone" />
+      {[0, 1, 2, 3, 4].map((i) => <i key={i} className="sc-mote" style={{ '--i': i } as CSSProperties} />)}
       <svg className="sc-crown" viewBox="0 0 24 20" aria-hidden="true">
         <path d="M3 16 L2 6 L8 10 L12 3 L16 10 L22 6 L21 16 Z" fill="currentColor" />
         <rect x="3" y="16" width="18" height="2.4" fill="currentColor" />
