@@ -2100,6 +2100,21 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus-row.solo .versus-cell { text-align: center; font-size: 15px; }
 .versus-wait { font-size: 13px; font-weight: 600; letter-spacing: .06em; color: var(--muted); animation: tp-pulse 1.4s ease-in-out infinite; }
 .versus-skip { font-size: 11.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); opacity: .75; animation: versus-row-in .4s ease-out both; }
+/* Per-player cards under the tape (content shipped 2026-10-23; the styles
+   never landed — owner, 2026-10-28: the scouting lines read "You13–28 · 32%",
+   the name glued to its facts). The line is a flex row: the name is its own
+   gold label, the facts follow across a real gap so the two can never touch,
+   and the facts wrap inside their own span on a narrow column instead of
+   pushing off-canvas. Lines reveal on the tape rows' beat (versus-row-in;
+   the stagger delays are inline, from VersusIntro's beat sheet). */
+.versus-cards { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+.versus-card-side { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+.versus-card-headline { font: 800 12px/1.25 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); text-align: center; animation: versus-row-in .35s ease-out both; }
+.versus-card-headline.story { font-size: 13px; font-style: italic; letter-spacing: .02em; text-transform: none; }
+.versus-card-line { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 2px 8px; max-width: 100%; animation: versus-row-in .35s ease-out both; }
+.versus-card-name { font: 800 12.5px/1.2 var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); white-space: nowrap; }
+.versus-card-segs { font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--ink); opacity: .94; text-align: center; }
+
 /* Story tape: the narrative card (stakes, the pair + Dee, threat, history) in
    the same shell as the league tape — one card family, story content. */
 .versus-story-line { margin: 0; animation: versus-row-in .35s ease-out both; }
@@ -2109,6 +2124,22 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus-story-row { display: flex; flex-direction: column; gap: 1px; padding: 5px 2px; border-top: 1px solid rgba(var(--edge-rgb), .16); animation: versus-row-in .35s ease-out both; }
 .versus-story-name { font: 800 12px/1.1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
 .versus-story-text { font-size: 12.5px; line-height: 1.35; color: var(--ink); opacity: .92; }
+
+/* Portrait phones: the max-content story tape (King: stakes + three rows +
+   threat + terms + history) overflowed even a tall portrait viewport
+   (measured shell 925px in 844px). Compress ONLY cards carrying a story
+   tape — shorter stage, tighter rows and prose — so the whole intro fits
+   with no scroll; the league card keeps its portrait spacing exactly. */
+@media (max-width: 480px) {
+  .versus:has(.versus-story-row) .versus-stage { min-height: 124px; }
+  .versus:has(.versus-story-row) .versus-tape { padding: 9px 12px 7px; }
+  .versus-story-row { padding: 3px 2px; }
+  .versus-story-text { font-size: 12px; line-height: 1.3; }
+  .versus-story-line.stakes { font-size: 13px; line-height: 1.3; padding: 0 2px 4px; }
+  .versus-story-line.terms { font-size: 12.5px; line-height: 1.32; }
+  .versus-story-line.threat { padding-top: 5px; }
+  .versus-story-line.history { padding-top: 3px; }
+}
 
 /* Paint gate: until VersusIntro's gate opens (.play), every beat holds at its
    first frame — the CSS timelines and the JS story clock start together, on
@@ -2123,6 +2154,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus:not(.play) .versus-story-row,
 .versus:not(.play) .versus-story-line,
 .versus:not(.play) .versus-pot.only,
+.versus:not(.play) .versus-card-headline,
+.versus:not(.play) .versus-card-line,
 .versus:not(.play) .versus-skip { animation-play-state: paused; }
 /* finished card (skip) + static card (reduced motion): everything at rest, no animation */
 .versus.done .versus-shake, .versus.reduced .versus-shake,
@@ -2134,6 +2167,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus.done .versus-story-row, .versus.reduced .versus-story-row,
 .versus.done .versus-story-line, .versus.reduced .versus-story-line,
 .versus.done .versus-pot.only, .versus.reduced .versus-pot.only,
+.versus.done .versus-card-headline, .versus.reduced .versus-card-headline,
+.versus.done .versus-card-line, .versus.reduced .versus-card-line,
 .versus.done .versus-skip, .versus.reduced .versus-skip { animation: none; }
 .versus.done .versus-flash, .versus.reduced .versus-flash { animation: none; opacity: 0; }
 .versus.done .versus-side.left, .versus.reduced .versus-side.left { transform: translateX(6%); }
@@ -2144,7 +2179,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus.done .versus-quad.q3, .versus.reduced .versus-quad.q3 { transform: translate(-9%, -7%); }
 .versus.done .versus-vs, .versus.reduced .versus-vs { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
-  .versus-shake, .versus-side, .versus-quad, .versus-vs, .versus-flash, .versus-tape, .versus-row, .versus-story-row, .versus-story-line, .versus-pot.only, .versus-skip { animation: none !important; }
+  .versus-shake, .versus-side, .versus-quad, .versus-vs, .versus-flash, .versus-tape, .versus-row, .versus-story-row, .versus-story-line, .versus-pot.only, .versus-card-headline, .versus-card-line, .versus-skip { animation: none !important; }
   .versus-flash { opacity: 0 !important; }
 }
 /* D5 (design audit 2026-10-24): short-height compact variant for the loading /
@@ -2182,12 +2217,49 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .versus-story-line.stakes { padding: 0 2px 3px; }
   .versus-story-line.threat { padding-top: 4px; }
   .versus-story-row { padding: 3px 2px; }
+  .versus-cards { gap: 6px 12px; }
+  .versus-card-side { gap: 3px; }
+  .versus-card-headline { font-size: 11px; }
+  .versus-card-headline.story { font-size: 12px; }
+  .versus-card-name { font-size: 11.5px; }
+  .versus-card-segs { font-size: 12px; line-height: 1.25; }
 }
 /* Pre-deal setup window (online): the table is live, the first deal is held by the room */
 .predeal-note { position: absolute; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 10px 18px; border-radius: 14px; background: rgba(10, 6, 18, .82); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .35), 0 12px 28px rgba(0,0,0,.5); text-align: center; pointer-events: none; }
 .predeal-title { font: 800 16px/1.1 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
 .predeal-sub { font-size: 12.5px; font-weight: 600; color: var(--ink); opacity: .85; }
+
+/* Versus intro in LANDSCAPE (owner, 2026-10-28: "it needs to be much wider
+   on landscape so that none of the words are hidden — I shouldn't have to
+   scroll on this page"). Inside the D5 height band the versus card stops
+   being a 440px portrait column: the loading card widens, the wordmark
+   shrinks, and the shake becomes a two-pane grid — the matchup (stage) in
+   the left pane, the tape and the scouting cards in the right, the skip
+   hint spanning the foot. Solo tape rows go single-line (label + the four
+   cells across the wide pane) instead of stacking label over cells.
+   Portrait and taller screens keep the stacked card, untouched. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .bwm-loading-card:has(.versus) { width: min(100%, 920px); }
+  .bwm-loading-card:has(.versus) .bwm-loading-mark { width: min(36%, 148px); }
+  .versus-shake { display: grid; grid-template-columns: minmax(272px, 330px) minmax(0, 1fr); grid-template-areas: "stage tape" "stage cards" "skip skip"; column-gap: 22px; row-gap: 8px; align-items: start; }
+  .versus-stage { grid-area: stage; width: 100%; }
+  .versus-tape { grid-area: tape; }
+  .versus-pot.only { grid-area: tape; justify-self: center; }
+  .versus-cards { grid-area: cards; }
+  .versus-skip, .versus-wait { grid-area: skip; justify-self: center; }
+  .versus-row.solo { grid-template-columns: auto repeat(4, 1fr); grid-template-rows: none; row-gap: 0; align-items: center; }
+  .versus-row.solo .versus-row-label { grid-column: auto; text-align: left; }
+  .versus-shake:has(> .versus-tape.story) { grid-template-areas: "stage tape" "stage tape" "skip skip"; }
+  .versus-tape.story { padding: 6px 12px 5px; }
+  .versus-story-row { flex-direction: row; align-items: baseline; gap: 10px; padding: 2px; }
+  .versus-story-name { flex: none; }
+  .versus-story-text { font-size: 11.5px; line-height: 1.28; }
+  .versus-story-line.stakes { font-size: 12px; line-height: 1.28; padding: 0 2px 4px; }
+  .versus-story-line.terms { font-size: 11.5px; line-height: 1.3; }
+  .versus-story-line.threat { padding-top: 4px; }
+  .versus-story-line.history { font-size: 11.5px; padding-top: 3px; }
+}
 
 /* Stand-in table: painted on the first frame, until the 3D table has rendered (then it fades out) */
 .table-placeholder { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; display: grid; place-items: center;
