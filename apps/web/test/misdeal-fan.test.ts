@@ -62,6 +62,18 @@ vi.mock('../src/effects/warm', async (importOriginal) => {
   return { ...orig, warmTableEffects: () => Promise.resolve({}) };
 });
 
+// The asset gate (assetGate.ts, 2026-10-28) likewise waits on real file loads in
+// production — the room's assets and the deck in use. Here its loads settle at once,
+// same as the warmer above, so the loader lifts on the (mocked) scene's word.
+vi.mock('../src/assetGate', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../src/assetGate')>();
+  return { ...orig, imageSettled: () => Promise.resolve(true), fetchSettled: () => Promise.resolve(true), assetSettled: () => Promise.resolve(true) };
+});
+vi.mock('../src/decks', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../src/decks')>();
+  return { ...orig, whenDeckArtSettled: () => Promise.resolve({ total: 0, failed: [] as string[] }), whenDeckBackSettled: () => Promise.resolve(true) };
+});
+
 import Table from '../src/Table';
 import { DEFAULT_SETTINGS } from '../src/settings';
 import { versusSeenKey } from '../src/VersusIntro';
