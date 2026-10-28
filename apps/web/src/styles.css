@@ -1665,30 +1665,15 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 @media (max-width: 440px) { .wheels-tag { font-size: 7px; line-height: 10px; padding: 0 2px; } }
 .hype-pop.wheels .hype-text { color: var(--gold); text-shadow: 0 0 18px rgba(var(--gold-rgb),.8), 0 3px 0 rgb(var(--purple-deep-rgb)); }
 
-/* ---- Wheels celebration: supercar peel-out ---- */
+/* ---- Wheels celebration: the banner (the car itself is a 3D body in the
+   scene now — three/WheelsCar3D.tsx: doughnuts on the felt, blown off it by
+   a detonation; this layer keeps the banner + timing in every quality) ---- */
 .wheels-fx { position: absolute; inset: 0; pointer-events: none; }
 .wheels-fx.gone { display: none; }
-.wheels-smoke { position: absolute; inset: 0; width: 100%; height: 100%; }
-.wheels-car { position: absolute; left: 0; top: 0; width: min(36vw, 336px); aspect-ratio: 360 / 110; pointer-events: auto; cursor: pointer;
-  filter: drop-shadow(0 0 14px rgba(var(--purple-rgb),.55)) drop-shadow(0 6px 10px rgba(0,0,0,.6));
-  will-change: transform; }
-.wheels-car svg { display: block; animation: wc-rev .95s linear both; transform-origin: 30% 90%; }
-.wheels-car .wc-wheel { animation: wc-spin .2s linear infinite; }
-/* the car's driving is JS-choreographed now (wheelsDonuts.ts): swing-in, doughnuts
-   on the felt, peel-off — and the blast sweep, when a detonation catches it. */
-@keyframes wc-rev {
-  0%, 12% { transform: none; }
-  18% { transform: rotate(-1.6deg); } 26% { transform: rotate(.4deg); }
-  34% { transform: rotate(-1.8deg); } 44% { transform: rotate(.4deg); }
-  56% { transform: rotate(-2.4deg) translateY(-1px); } 66% { transform: rotate(.2deg); }
-  82% { transform: rotate(-.8deg); } 92%, 100% { transform: rotate(-3deg); }
-}
-@keyframes wc-spin { to { transform: rotate(360deg); } }
 .hype-pop.wheels-banner { top: 28%; pointer-events: auto; cursor: pointer; animation: wc-banner 2.5s ease both; }
 .hype-pop.wheels-banner .hype-text { font-family: var(--display); font-weight: 900; font-style: italic; font-size: clamp(44px, 9vw, 96px); letter-spacing: .04em; color: #fff; background: linear-gradient(180deg, #fff1b8, var(--gold) 55%, #a8741a); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 3px 0 #4b1aa6) drop-shadow(0 0 22px rgba(var(--gold-rgb),.7)); }
 .hype-pop.wheels-banner .hype-sub { color: #e9dcff; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 @keyframes wc-banner { 0%, 30% { opacity: 0; transform: translate(-50%, -50%) scale(.6) skewX(-12deg); } 40% { opacity: 1; transform: translate(-50%, -50%) scale(1.08) skewX(-8deg); } 48%, 86% { opacity: 1; transform: translate(-50%, -50%) scale(1) skewX(-8deg); } 100% { opacity: 0; transform: translate(-30%, -50%) scale(1) skewX(-8deg); } }
-@media (prefers-reduced-motion: reduce) { .wheels-car { display: none; } }
 /* over-cut: a quick flash + spark burst at the impact */
 .overcut-spark { position: absolute; width: 0; height: 0; pointer-events: none; }
 .overcut-spark::before { content: ''; position: absolute; left: -60px; top: -60px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(255,250,220,.95), rgba(var(--gold-rgb),.55) 35%, rgba(var(--purple-rgb),0) 70%); animation: oc-flash .45s ease-out both; }

@@ -1745,6 +1745,7 @@ function EffectWarmup({ quality }: { quality: 'high' | 'low' }) {
 function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low'; tableUp: boolean; trickArmed?: boolean }) {
   const [nuke, setNuke] = useState<typeof import('./Nuke3D') | null>(null);
   const [tornado, setTornado] = useState<typeof import('./Tornado3D') | null>(null);
+  const [wheels, setWheels] = useState<typeof import('./WheelsCar3D') | null>(null);
   useEffect(() => {
     if (!tableUp) return;
     let alive = true;
@@ -1752,6 +1753,9 @@ function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low';
       // A deploy can delete the hashed file this page still names. Retry, then reload once.
       void importChunk(() => import('./Nuke3D')).then((m) => { if (alive) setNuke(m); }, () => {});
       void importChunk(() => import('./Tornado3D')).then((m) => { if (alive) setTornado(m); }, () => {});
+      // The Wheels car rides the same lazy chunk family: mounting it here (its
+      // model behind Suspense) quietly preloads the GLB after the felt is up.
+      void importChunk(() => import('./WheelsCar3D')).then((m) => { if (alive) setWheels(m); }, () => {});
     };
     // Idle, after the cloth is on: the nuke shaders are not part of dealing a resumed hand back in.
     const ric = (window as unknown as { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }).requestIdleCallback;
@@ -1759,13 +1763,14 @@ function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low';
     const id = ric ? ric(start, { timeout: 2500 }) : window.setTimeout(start, 800);
     return () => { alive = false; if (ric && cancel) cancel(id as number); else clearTimeout(id as number); };
   }, [tableUp]);
-  if (!nuke && !tornado) return null;
+  if (!nuke && !tornado && !wheels) return null;
   return (
     <>
       {nuke && <nuke.NukeGlRecovery />}
       {nuke && <nuke.NukeGuard><nuke.Nuke3D quality={quality} /></nuke.NukeGuard>}
       {nuke && <nuke.NukeArmedGlow armed={!!trickArmed} />}
       {tornado && <tornado.Tornado3D quality={quality} />}
+      {wheels && <wheels.default quality={quality} />}
     </>
   );
 }
