@@ -7,7 +7,11 @@
  *    moves, this math must move with it — layout-home-fit pins the CSS
  *    side);
  *  - the puff field is a true seamless loop (every period divides the
- *    master loop) with poses that stay near their anchors;
+ *    master loop) with poses that stay within the swirl's reach of
+ *    their anchors;
+ *  - the field carries both blend families (bright screen + dark
+ *    multiply) — screen alone was invisible over the art's bright
+ *    clouds (owner, 2026-10-29);
  *  - the gate is Neon-only and yields to every calming signal.
  * Plus source pins: the layer is mounted in the home, its CSS box/mask
  * mirror the emblem layer, and the component adds no downloads.
@@ -15,8 +19,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  EMBLEM_H, EMBLEM_W, SMOKE_LOOP_S, SMOKE_PUFFS, SPADE_GLASS_PATH_D,
-  emblemPaintRect, emblemSmokeActive, puffPose,
+  EMBLEM_H, EMBLEM_W, SMOKE_DARK_TINTS, SMOKE_LOOP_S, SMOKE_PUFFS, SMOKE_TINTS, SPADE_GLASS_PATH_D,
+  SWIRL_CX, SWIRL_CY, emblemPaintRect, emblemSmokeActive, puffPose,
 } from '../src/neon/emblemSmoke';
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
@@ -60,7 +64,7 @@ describe('emblemPaintRect mirrors the ::before background math', () => {
 describe('the puff field', () => {
   it('every period divides the master loop (seamless by construction)', () => {
     for (const p of SMOKE_PUFFS) {
-      for (const per of [p.px, p.py, p.pa]) {
+      for (const per of [p.px, p.py, p.pa, p.psw, p.pr]) {
         expect(SMOKE_LOOP_S % per, `period ${per}`).toBe(0);
       }
     }
@@ -68,25 +72,53 @@ describe('the puff field', () => {
 
   it('poses repeat exactly after one master loop', () => {
     for (const p of SMOKE_PUFFS) {
-      for (const t of [0, 7.3, 41.9, 119.9]) {
+      for (const t of [0, 7.3, 41.9, 59.9]) {
         const a = puffPose(p, t);
         const b = puffPose(p, t + SMOKE_LOOP_S);
         expect(b.x).toBeCloseTo(a.x, 9);
         expect(b.y).toBeCloseTo(a.y, 9);
+        expect(b.r).toBeCloseTo(a.r, 9);
         expect(b.alpha).toBeCloseTo(a.alpha, 9);
         expect(b.rot).toBeCloseTo(a.rot, 9);
       }
     }
   });
 
-  it('poses stay near their anchors and alpha breathes within (0, peak]', () => {
+  it('carries both blend families, tint indices inside their own tables', () => {
+    const bright = SMOKE_PUFFS.filter((p) => !p.dark);
+    const dark = SMOKE_PUFFS.filter((p) => p.dark);
+    expect(bright.length).toBeGreaterThanOrEqual(17);
+    expect(dark.length).toBeGreaterThanOrEqual(6);
+    for (const p of bright) expect(p.tint).toBeLessThan(SMOKE_TINTS.length);
+    for (const p of dark) expect(p.tint).toBeLessThan(SMOKE_DARK_TINTS.length);
+    // the dark family is genuinely dark — multiply needs color density
+    for (const t of SMOKE_DARK_TINTS) {
+      expect(Math.max(...t)).toBeLessThanOrEqual(128);
+    }
+  });
+
+  it('poses stay within the swirl’s reach of their anchors; alpha + radius breathe in bounds', () => {
     for (const p of SMOKE_PUFFS) {
+      // the swirl rotates the anchor's offset from the glass center by
+      // at most |sw| radians: the offset vector moves at most the chord
+      // 2·d·sin(|sw|/2); the wander adds its own amplitude on top.
+      const d = Math.hypot((p.nx - SWIRL_CX) * EMBLEM_W, (p.ny - SWIRL_CY) * EMBLEM_H);
+      const chord = 2 * d * Math.sin(Math.abs(p.sw) / 2);
+      const boundX = chord / EMBLEM_W + p.ax;
+      const boundY = chord / EMBLEM_H + p.ay;
       for (let t = 0; t < SMOKE_LOOP_S; t += 3.7) {
         const pose = puffPose(p, t);
-        expect(Math.abs(pose.x - p.nx)).toBeLessThanOrEqual(p.ax + 1e-9);
-        expect(Math.abs(pose.y - p.ny)).toBeLessThanOrEqual(p.ay + 1e-9);
+        expect(Math.abs(pose.x - p.nx)).toBeLessThanOrEqual(boundX + 1e-9);
+        expect(Math.abs(pose.y - p.ny)).toBeLessThanOrEqual(boundY + 1e-9);
+        // hard safety: centers stay inside the painting, off the stem
+        expect(pose.x).toBeGreaterThan(0);
+        expect(pose.x).toBeLessThan(1);
+        expect(pose.y).toBeGreaterThan(0.02);
+        expect(pose.y).toBeLessThan(0.92);
         expect(pose.alpha).toBeGreaterThan(0.5 * p.alpha);
         expect(pose.alpha).toBeLessThanOrEqual(p.alpha + 1e-9);
+        expect(pose.r).toBeGreaterThanOrEqual(p.r * (1 - p.rb) - 1e-9);
+        expect(pose.r).toBeLessThanOrEqual(p.r * (1 + p.rb) + 1e-9);
       }
       // anchors live in the glass bulb, never down the stem or out at the rim
       expect(p.nx).toBeGreaterThan(0.15);
@@ -154,6 +186,7 @@ describe('source pins', () => {
     const src = read('../src/neon/EmblemSmoke.tsx');
     expect(src).not.toMatch(/fetch\(|new Image\(|XMLHttpRequest|from 'three|from "three|import\(/);
     expect(src).not.toMatch(/url\(|src=/);
+    expect(src).toContain("globalCompositeOperation = 'multiply'");
     expect(src).toContain("globalCompositeOperation = 'screen'");
     expect(src).toContain('SPADE_GLASS_PATH_D');
   });

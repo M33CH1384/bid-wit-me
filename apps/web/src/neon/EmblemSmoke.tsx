@@ -5,13 +5,17 @@
  * The Neon home emblem (styles.css `.wiz-home::before`, the
  * spade-emblem.webp painting) stays EXACTLY as it is — this layer sits
  * on top of that painting and adds only movement: a small canvas the
- * size of the emblem's own box, drawing slow violet/blue smoke wisps
- * with `screen` blending, clipped to the spade's INNER glass outline
- * (emblemSmoke.ts) so nothing ever crosses the gold rim or escapes the
- * silhouette. The painted smoke in the art is the body of the effect;
- * this layer is light moving inside it. Slow on purpose: a 120 s
- * seamless loop of drifts and breaths — embers in glass, not a
- * screensaver.
+ * size of the emblem's own box, drifting violet/blue smoke inside the
+ * spade's INNER glass outline (emblemSmoke.ts) so nothing ever crosses
+ * the gold rim or escapes the silhouette. Two blend families do the
+ * work: deep indigo puffs composited `multiply` (shadow rolling
+ * through the clouds) under bright puffs composited `screen` (light
+ * moving in the nebula). The first version was screen-only on a 120 s
+ * loop and the owner "didn't see anything moving" — screen can only
+ * lighten, so over the art's bright clouds it changed almost nothing.
+ * This field churns on a 60 s seamless loop of wander, swirl and
+ * breaths: visible within the first seconds of looking, still smoke —
+ * not a screensaver.
  *
  * Gates (any one off → no canvas at all, the emblem is byte-for-byte
  * today's static painting):
@@ -35,8 +39,8 @@ import { useTheme } from '../theme';
 import { defaultQuality, loadSettings } from '../settings';
 import { inkLowQuality } from '../ink/mode';
 import {
-  EMBLEM_H, EMBLEM_W, SMOKE_PUFFS, SMOKE_TINTS, emblemPaintRect, emblemSmokeActive, puffPose,
-  SPADE_GLASS_PATH_D, type PaintRect,
+  EMBLEM_H, EMBLEM_W, SMOKE_DARK_TINTS, SMOKE_PUFFS, SMOKE_TINTS, emblemPaintRect, emblemSmokeActive, puffPose,
+  SPADE_GLASS_PATH_D, type PaintRect, type SmokePuff,
 } from './emblemSmoke';
 
 const MAX_DPR = 1.5;
@@ -63,16 +67,34 @@ function useOsReducedMotion(): boolean {
 function lowEndDevice(): boolean {
   try {
     const nav = navigator as Navigator & { deviceMemory?: number };
+    // A stored 'low' quality counts as a USER pick only where the
+    // browser reports memory truthfully (Chrome/Android). On WebKit
+    // `deviceMemory` is absent and the load-time heuristic in
+    // settings.ts once answered 'low' on every iPhone (clamped core
+    // counts), persisting that default — and a WebKit that later
+    // reports more cores flips defaultQuality() to 'high', making the
+    // stale stored 'low' indistinguishable from a deliberate pick.
+    // Treating it as a pick would silently kill this layer on exactly
+    // the phones it was built for, so there the pick is not evidence
+    // and only inkLowQuality's positive signals (a reported memory
+    // figure ≤ 2 GB) can classify the device.
+    const userSetLow = nav.deviceMemory !== undefined
+      && loadSettings().quality === 'low' && defaultQuality() === 'high';
     return inkLowQuality({
       deviceMemory: nav.deviceMemory,
       hardwareConcurrency: nav.hardwareConcurrency,
-      userSetLow: loadSettings().quality === 'low' && defaultQuality() === 'high',
+      userSetLow,
     });
   } catch { return false; }
 }
 
-/** Deterministic sprite bake: a cluster of soft blobs per tint, edge-faded. */
-function bakeSprite(tint: [number, number, number]): HTMLCanvasElement {
+/**
+ * Deterministic sprite bake: a cluster of soft blobs per tint,
+ * edge-faded. `dense` bakes the dark (multiply) family heavier — a
+ * multiply puff works by color density, so its sprite carries more
+ * alpha in the core and satellites than a screen puff needs.
+ */
+function bakeSprite(tint: [number, number, number], dense = false): HTMLCanvasElement {
   const S = 256;
   const c = document.createElement('canvas');
   c.width = S; c.height = S;
@@ -91,16 +113,19 @@ function bakeSprite(tint: [number, number, number]): HTMLCanvasElement {
   // Structure over wash: a modest core, more satellites, and a detail
   // pass of small blobs — a drifting sprite should read as smoke with
   // internal shape, not as a brightening fog ball (first solo capture).
-  blob(S / 2, S / 2, S * 0.26, 0.34);
+  const core = dense ? 0.68 : 0.34;
+  const sat = dense ? 0.55 : 0.30;
+  const det = dense ? 0.50 : 0.36;
+  blob(S / 2, S / 2, S * (dense ? 0.30 : 0.26), core);
   for (let i = 0; i < 10; i++) {
     const ang = rnd() * Math.PI * 2;
     const dist = S * (0.06 + rnd() * 0.24);
-    blob(S / 2 + Math.cos(ang) * dist, S / 2 + Math.sin(ang) * dist, S * (0.09 + rnd() * 0.11), 0.30);
+    blob(S / 2 + Math.cos(ang) * dist, S / 2 + Math.sin(ang) * dist, S * (0.09 + rnd() * 0.11), sat);
   }
   for (let i = 0; i < 6; i++) {
     const ang = rnd() * Math.PI * 2;
     const dist = S * (0.05 + rnd() * 0.28);
-    blob(S / 2 + Math.cos(ang) * dist, S / 2 + Math.sin(ang) * dist, S * (0.04 + rnd() * 0.045), 0.36);
+    blob(S / 2 + Math.cos(ang) * dist, S / 2 + Math.sin(ang) * dist, S * (0.04 + rnd() * 0.045), det);
   }
   // guarantee a soft sprite boundary whatever the blobs did
   ctx.globalCompositeOperation = 'destination-in';
@@ -134,7 +159,12 @@ export default function EmblemSmoke() {
     try { ctx = canvas.getContext('2d'); } catch { ctx = null; }
     if (!ctx || typeof Path2D === 'undefined') return;
 
-    const sprites = SMOKE_TINTS.map(bakeSprite);
+    // one sprite strip: bright bakes first, then the dense dark bakes —
+    // a puff's sprite is at `tint` or `SMOKE_TINTS.length + tint`.
+    const sprites = [
+      ...SMOKE_TINTS.map((t) => bakeSprite(t)),
+      ...SMOKE_DARK_TINTS.map((t) => bakeSprite(t, true)),
+    ];
     const glassPath = new Path2D(SPADE_GLASS_PATH_D);
     const mqWide = window.matchMedia(MQ_WIDE);
     const mqLand = window.matchMedia(MQ_SHORT_LANDSCAPE);
@@ -167,8 +197,10 @@ export default function EmblemSmoke() {
         ctx!.scale(rect.w / EMBLEM_W, rect.h / EMBLEM_H);
         ctx!.clip(glassPath);
         ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx!.globalCompositeOperation = 'screen';
-        for (const p of SMOKE_PUFFS) {
+        // two passes inside the same clip: the dark family first
+        // (multiply — shadow rolling through the painted clouds), the
+        // bright family over it (screen — light in the nebula).
+        const drawPuff = (p: SmokePuff) => {
           const pose = puffPose(p, t);
           const cx = rect.x + pose.x * rect.w;
           const cy = rect.y + pose.y * rect.h;
@@ -177,9 +209,14 @@ export default function EmblemSmoke() {
           ctx!.translate(cx, cy);
           ctx!.rotate(pose.rot);
           ctx!.globalAlpha = pose.alpha;
-          ctx!.drawImage(sprites[p.tint]!, -rr, -rr, rr * 2, rr * 2);
+          const sprite = sprites[p.dark ? SMOKE_TINTS.length + p.tint : p.tint]!;
+          ctx!.drawImage(sprite, -rr, -rr, rr * 2, rr * 2);
           ctx!.restore();
-        }
+        };
+        ctx!.globalCompositeOperation = 'multiply';
+        for (const p of SMOKE_PUFFS) if (p.dark) drawPuff(p);
+        ctx!.globalCompositeOperation = 'screen';
+        for (const p of SMOKE_PUFFS) if (!p.dark) drawPuff(p);
         ctx!.globalAlpha = 1;
         ctx!.globalCompositeOperation = 'source-over';
         ctx!.restore();
