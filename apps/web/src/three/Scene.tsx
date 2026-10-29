@@ -43,6 +43,8 @@ import ChurchRoom, { preloadChurchRoom } from './ChurchRoom';
 import ChurchBasementRoom from './ChurchBasementRoom';
 import RecCenterGymRoom from './RecCenterGymRoom';
 import RooftopDuskRoom from './RooftopDuskRoom';
+import HighRisePenthouseRoom from './HighRisePenthouseRoom';
+import LegendsTableRoom from './LegendsTableRoom';
 import VegasRoom, { preloadVegasRoom } from './VegasRoom';
 import SpeakeasyRoom, { preloadSpeakeasyRoom } from './SpeakeasyRoom';
 import CornerStreetRoom from './CornerStreetRoom';
@@ -1704,14 +1706,18 @@ export default function Scene(props: SceneProps) {
       {church && textured && (props.storyStopId === 'church-basement' && props.quality === 'high'
         ? <ChurchBasementRoom fxOn={!props.reduceFx} />
         : <ChurchRoom quality={props.quality} handNo={props.handNo} />)}
-      {vegas && textured && <VegasRoom quality={props.quality} handNo={props.handNo} />}
+      {vegas && textured && (props.storyStopId === 'legends' && props.quality === 'high'
+        ? <LegendsTableRoom fxOn={!props.reduceFx} />
+        : <VegasRoom quality={props.quality} handNo={props.handNo} />)}
       {speakeasy && textured && (props.storyStopId === 'corner' && props.quality === 'high'
         ? <CornerStreetRoom fxOn={!props.reduceFx} />
         : <SpeakeasyRoom quality={props.quality} handNo={props.handNo} />)}
       {grandma && textured && (props.storyStopId === 'porch' && props.quality === 'high'
         ? <PorchDeckRoom />
         : <GrandmaRoom quality={props.quality} handNo={props.handNo} />)}
-      {mansion && textured && <MansionRoom quality={props.quality} handNo={props.handNo} />}
+      {mansion && textured && (props.storyStopId === 'high-rise' && props.quality === 'high'
+        ? <HighRisePenthouseRoom fxOn={!props.reduceFx} />
+        : <MansionRoom quality={props.quality} handNo={props.handNo} />)}
       {showTable && (
         <group
           ref={tableGroup}
