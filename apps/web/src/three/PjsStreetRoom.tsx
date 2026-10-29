@@ -26,13 +26,24 @@
  * ember breathing. Effects off → the same room, steady light, no
  * smoke. Ambient frames come from Venue3D's AmbientTicker (this
  * venue is in its MOVES set); frameloop stays 'demand'.
+ *
+ * PROMO-LOOK PASS (owner, 2026-10-29: "My pjs venue needs to look
+ * more like that video" — the Bid Wit Me promo's opening street):
+ * the street gains its anchor tenant, a corner LIQUOR STORE
+ * (awning, blade sign, barred glass, blue/red neon with real spill
+ * light), poster-plastered brick with a rent notice and graffiti
+ * tags, laundry lines overhead, night-haze veils with a bigger
+ * streetlight bloom, fence-line clutter (bikes, trash can,
+ * cardboard) and a taillight car down the block. All code — canvas
+ * textures + merged geometry; the sedan stays the room's one Forge
+ * mix, and no new downloads join the asset gate.
  */
 import { Component, Suspense, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import {
   AdditiveBlending, Box3, BoxGeometry, BufferGeometry, CanvasTexture, CatmullRomCurve3,
-  CircleGeometry, ConeGeometry, CylinderGeometry, DoubleSide, Fog,
-  Group, Mesh, MeshStandardMaterial,
+  CircleGeometry, Color, ConeGeometry, CylinderGeometry, DoubleSide, Float32BufferAttribute, Fog,
+  Group, Mesh, MeshBasicMaterial, MeshStandardMaterial,
   PlaneGeometry, Quaternion, RepeatWrapping, SRGBColorSpace,
   SphereGeometry, SpriteMaterial, Texture, TorusGeometry,
   TubeGeometry, Vector3,
@@ -240,6 +251,240 @@ function makeDarkWindowTexture(): CanvasTexture {
   });
 }
 
+/** Poster-plastered brick section: two layers of weathered flyers —
+ *  header bands, portrait blocks, fake text lines, tape tabs, torn
+ *  corners — over a dark brick ghost, grime rising from the foot. */
+function makePosterWallTexture(seed: number): CanvasTexture {
+  return canvasTex(1024, 512, (ctx, w, h) => {
+    const rnd = mulberry32(seed);
+    ctx.fillStyle = '#251b18';
+    ctx.fillRect(0, 0, w, h);
+    speckle(ctx, w, h, 1500, rnd, 0.10, false);
+    const palette = ['#d8cfb8', '#e5d9a8', '#c9d4d8', '#e0b7a0', '#b8cdb0', '#e8e3da', '#d9a0a8', '#a8c4d4', '#e6c87a'];
+    const flyer = (x: number, y: number, fw: number, fh: number, rot: number) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.fillStyle = 'rgba(8,6,6,0.4)';
+      ctx.fillRect(-fw / 2 + 4, -fh / 2 + 6, fw, fh); // drop shadow
+      ctx.fillStyle = palette[Math.floor(rnd() * palette.length)]!;
+      ctx.fillRect(-fw / 2, -fh / 2, fw, fh);
+      ctx.fillStyle = `rgba(96,74,50,${(rnd() * 0.16).toFixed(2)})`; // sun fade
+      ctx.fillRect(-fw / 2, -fh / 2, fw, fh);
+      ctx.fillStyle = `rgba(22,19,26,${(0.55 + rnd() * 0.3).toFixed(2)})`; // header band
+      ctx.fillRect(-fw / 2 + 6, -fh / 2 + 6, fw - 12, fh * 0.20);
+      if (rnd() > 0.45) { // portrait block + head silhouette
+        const pw = fw * 0.42, ph = fh * 0.38;
+        ctx.fillStyle = 'rgba(42,36,32,0.72)';
+        ctx.fillRect(-pw / 2, -fh / 2 + fh * 0.31, pw, ph);
+        ctx.beginPath();
+        ctx.arc(0, -fh / 2 + fh * 0.31 + ph * 0.36, pw * 0.17, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(22,18,16,0.9)';
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(30,26,26,0.62)'; // fake text lines
+      for (let ly = -fh / 2 + fh * 0.76; ly < fh / 2 - 9; ly += 10) {
+        ctx.fillRect(-fw / 2 + 8, ly, (fw - 16) * (0.55 + rnd() * 0.4), 3.5);
+      }
+      ctx.fillStyle = 'rgba(232,226,200,0.5)'; // tape tabs
+      ctx.fillRect(-fw / 2 + 4, -fh / 2 - 2, 22, 8);
+      ctx.fillRect(fw / 2 - 26, -fh / 2 - 2, 22, 8);
+      if (rnd() > 0.55) { // torn corner, brick ghosting through
+        ctx.fillStyle = '#251b18';
+        ctx.beginPath();
+        const cx = rnd() > 0.5 ? fw / 2 : -fw / 2;
+        ctx.moveTo(cx, fh / 2);
+        ctx.lineTo(cx - Math.sign(cx) * fw * 0.3, fh / 2);
+        ctx.lineTo(cx, fh / 2 - fh * 0.26);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    };
+    for (let i = 0; i < 15; i++) flyer(rnd() * w, 30 + rnd() * h * 0.88, 120 + rnd() * 130, 150 + rnd() * 165, (rnd() - 0.5) * 0.10);
+    for (let i = 0; i < 13; i++) flyer(rnd() * w, 30 + rnd() * h * 0.88, 105 + rnd() * 120, 140 + rnd() * 155, (rnd() - 0.5) * 0.15);
+    speckle(ctx, w, h, 2600, rnd, 0.12, false);
+    const grime = ctx.createLinearGradient(0, h * 0.78, 0, h);
+    grime.addColorStop(0, 'rgba(0,0,0,0)');
+    grime.addColorStop(1, 'rgba(0,0,0,0.42)');
+    ctx.fillStyle = grime;
+    ctx.fillRect(0, 0, w, h);
+  });
+}
+
+/** The one legible notice in the plaster: APARTMENTS FOR RENT. */
+function makeRentNoticeTexture(): CanvasTexture {
+  return canvasTex(256, 340, (ctx, w, h) => {
+    ctx.fillStyle = '#e9e7e0';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#274b8f';
+    ctx.fillRect(0, 0, w, 94);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 29px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('APARTMENTS', w / 2, 40);
+    ctx.fillText('FOR RENT', w / 2, 77);
+    ctx.fillStyle = 'rgba(28,28,34,0.78)';
+    const widths = [0.92, 0.78, 0.88, 0.6, 0.9, 0.72, 0.84, 0.66, 0.9, 0.58];
+    widths.forEach((f, i) => ctx.fillRect(22, 122 + i * 17, (w - 44) * f, 6));
+    ctx.fillStyle = '#274b8f';
+    ctx.fillRect(22, h - 36, 96, 15); // phone tab block — a shape, no digits
+    ctx.fillStyle = 'rgba(96,74,50,0.18)';
+    ctx.fillRect(0, h - 26, w, 26);
+  });
+}
+
+/** Graffiti tags on transparent ground: looping stroke tags with a
+ *  dark shadow pass, painted — never lettered. */
+function makeGraffitiTexture(seed: number): CanvasTexture {
+  return canvasTex(1024, 256, (ctx, w, h) => {
+    const rnd = mulberry32(seed);
+    const tag = (x: number, y: number, s: number, col: string, shadow: string) => {
+      const stroke = (width: number, style: string) => {
+        ctx.strokeStyle = style;
+        ctx.lineWidth = width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, 30);
+        ctx.bezierCurveTo(30, -38, 74, -30, 84, 8);
+        ctx.bezierCurveTo(90, 30, 66, 44, 48, 22);
+        ctx.bezierCurveTo(90, -6, 128, -8, 150, 16);
+        ctx.bezierCurveTo(162, 30, 150, 46, 132, 36);
+        ctx.bezierCurveTo(168, 12, 196, 2, 214, 20);
+        ctx.bezierCurveTo(226, 32, 210, 44, 196, 30);
+        ctx.stroke();
+      };
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(s, s);
+      stroke(17, shadow);
+      stroke(11, col);
+      ctx.restore();
+    };
+    tag(50, 108, 1.45, 'rgba(228,222,206,0.85)', 'rgba(10,8,10,0.65)');
+    tag(585, 128, 1.02, 'rgba(198,64,44,0.8)', 'rgba(10,8,10,0.6)');
+    tag(830, 96, 0.72, 'rgba(120,170,220,0.7)', 'rgba(10,8,10,0.55)');
+    ctx.fillStyle = 'rgba(228,222,206,0.45)'; // drips
+    for (const dx of [118, 296, 398]) ctx.fillRect(dx, 148, 5, 24 + rnd() * 30);
+    speckle(ctx, w, h, 260, rnd, 0.14, false);
+  });
+}
+
+/** Storefront neon on transparent ground: blue tube frame, LIQUOR in
+ *  blue, OPEN in red — drawn with glow passes, lit by its material. */
+function makeNeonTexture(): CanvasTexture {
+  return canvasTex(512, 320, (ctx, w, h) => {
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#57b6ff';
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = '#57b6ff';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 2; i++) ctx.strokeRect(18, 18, w - 36, h - 36);
+    const neon = (text: string, y: number, size: number, col: string) => {
+      ctx.font = `bold ${size}px system-ui, sans-serif`;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 26;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 3; i++) ctx.strokeText(text, w / 2, y);
+      ctx.shadowBlur = 6;
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+      ctx.lineWidth = 1.4;
+      ctx.strokeText(text, w / 2, y);
+    };
+    neon('LIQUOR', 140, 76, '#57b6ff');
+    neon('OPEN', 250, 64, '#ff5040');
+    ctx.shadowBlur = 0;
+  });
+}
+
+/** The store's painted band sign. */
+function makeStoreSignTexture(): CanvasTexture {
+  return canvasTex(1024, 144, (ctx, w, h) => {
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#6d1517');
+    grad.addColorStop(0.55, '#571011');
+    grad.addColorStop(1, '#3f0c0d');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#e8c87a';
+    ctx.fillRect(0, 8, w, 4);
+    ctx.fillRect(0, h - 12, w, 4);
+    ctx.font = 'bold 82px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f3e3bb';
+    ctx.shadowColor = 'rgba(255,160,60,0.55)';
+    ctx.shadowBlur = 10;
+    ctx.fillText('LIQUOR STORE', w / 2, h / 2 + 30);
+    ctx.shadowBlur = 0;
+  });
+}
+
+/** Projecting blade sign: LIQUOR stacked down a dark panel. */
+function makeBladeSignTexture(): CanvasTexture {
+  return canvasTex(256, 640, (ctx, w, h) => {
+    ctx.fillStyle = '#101014';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#c8a24a';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(10, 10, w - 20, h - 20);
+    ctx.font = 'bold 96px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(255,90,40,0.8)';
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = '#ff7847';
+    'LIQUOR'.split('').forEach((ch, i) => ctx.fillText(ch, w / 2, 108 + i * 92));
+    ctx.shadowBlur = 0;
+  });
+}
+
+/** Awning canvas: red stripes with a shaded foot. */
+function makeAwningTexture(): CanvasTexture {
+  return canvasTex(512, 128, (ctx, w, h) => {
+    for (let x = 0; x < w; x += 64) {
+      ctx.fillStyle = Math.floor(x / 64) % 2 ? '#7e1a1c' : '#a32426';
+      ctx.fillRect(x, 0, 64, h);
+    }
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(255,190,150,0.10)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.34)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  }, [3, 1]);
+}
+
+/** The side table's loud cloth: saturated ground, big loose blooms. */
+function makeClothTexture(): CanvasTexture {
+  return canvasTex(512, 512, (ctx, w, h) => {
+    const rnd = mulberry32(777);
+    ctx.fillStyle = '#14635e';
+    ctx.fillRect(0, 0, w, h);
+    const cols = ['#e8483f', '#f2a03d', '#f2e14c', '#e87fb0'];
+    for (let i = 0; i < 26; i++) {
+      const x = rnd() * w, y = rnd() * h, r = 13 + rnd() * 17;
+      const col = cols[Math.floor(rnd() * cols.length)]!;
+      ctx.fillStyle = col;
+      for (let p = 0; p < 5; p++) {
+        const a = (p / 5) * Math.PI * 2 + rnd() * 0.4;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(a) * r * 0.62, y + Math.sin(a) * r * 0.62, r * 0.52, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#f7ead0';
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(247,234,208,0.75)';
+    for (let i = 0; i < 130; i++) {
+      ctx.beginPath();
+      ctx.arc(rnd() * w, rnd() * h, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }, [2, 1]);
+}
+
 /** Soft radial glow (lamp halo, smoke puff, ground blob). */
 function makeGlowTexture(): CanvasTexture {
   return canvasTex(128, 128, (ctx, w, h) => {
@@ -339,6 +584,15 @@ function buildAssets() {
   const darkWinTex = makeDarkWindowTexture();
   const glowTex = makeGlowTexture();
   const grateTex = makeGrateTexture();
+  const posterTexA = makePosterWallTexture(515);
+  const posterTexB = makePosterWallTexture(902);
+  const rentNoticeTex = makeRentNoticeTexture();
+  const graffitiTex = makeGraffitiTexture(31);
+  const neonTex = makeNeonTexture();
+  const storeSignTex = makeStoreSignTexture();
+  const bladeSignTex = makeBladeSignTexture();
+  const awningTex = makeAwningTexture();
+  const clothTex = makeClothTexture();
 
   const std = (p: ConstructorParameters<typeof MeshStandardMaterial>[0]) => new MeshStandardMaterial(p);
   const mats = {
@@ -366,6 +620,27 @@ function buildAssets() {
     darkWood: std({ color: '#4a341e', roughness: 0.85, metalness: 0 }),
     oliveTop: std({ color: '#565a41', roughness: 0.6, metalness: 0.05 }),
     puddle: std({ color: '#0c1420', roughness: 0.06, metalness: 0.9 }),
+    // promo-look pass (2026-10-29): the plastered walls keep a whisper
+    // of emissive like the brick so they never read pitch black
+    posterA: std({ map: posterTexA, emissive: '#4a3423', emissiveMap: posterTexA, emissiveIntensity: 0.5, roughness: 0.95, metalness: 0 }),
+    posterB: std({ map: posterTexB, emissive: '#3c2a1e', emissiveMap: posterTexB, emissiveIntensity: 0.45, roughness: 0.95, metalness: 0 }),
+    rentNotice: std({ map: rentNoticeTex, emissive: '#8b93a8', emissiveMap: rentNoticeTex, emissiveIntensity: 0.4, roughness: 0.9, metalness: 0 }),
+    graffiti: new MeshBasicMaterial({ map: graffitiTex, transparent: true, opacity: 0.92 }),
+    neonSign: new MeshBasicMaterial({ map: neonTex, transparent: true, blending: AdditiveBlending, depthWrite: false }),
+    storeSign: std({ map: storeSignTex, emissive: '#d8a04e', emissiveMap: storeSignTex, emissiveIntensity: 0.55, roughness: 0.6, metalness: 0 }),
+    bladeSign: std({ map: bladeSignTex, emissive: '#c33d24', emissiveMap: bladeSignTex, emissiveIntensity: 0.7, roughness: 0.6, metalness: 0 }),
+    awning: std({ map: awningTex, roughness: 0.85, metalness: 0, side: DoubleSide }),
+    cloth: std({ map: clothTex, roughness: 0.9, metalness: 0 }),
+    storeDark: std({ color: '#14161a', roughness: 0.55, metalness: 0.35 }),
+    canMetal: std({ color: '#676c72', roughness: 0.48, metalness: 0.8 }),
+    cardboard: std({ color: '#7d5f38', roughness: 1, metalness: 0 }),
+    trashBag: std({ color: '#0b0c0f', roughness: 0.42, metalness: 0.08 }),
+    carFar: std({ color: '#0a0c11', roughness: 0.38, metalness: 0.6 }),
+    tailLight: std({ color: '#1c0505', emissive: '#ff2015', emissiveIntensity: 3.2, roughness: 0.4, metalness: 0 }),
+    bikeTeal: std({ color: '#2e5f5a', roughness: 0.5, metalness: 0.6 }),
+    bikeDark: std({ color: '#33363e', roughness: 0.55, metalness: 0.55 }),
+    snackRed: std({ color: '#c23b2e', roughness: 0.7, metalness: 0 }),
+    cupRed: std({ color: '#b3232a', roughness: 0.5, metalness: 0.05 }),
   };
   return { mats, glowTex };
 }
@@ -597,6 +872,7 @@ function Streetlight({ fxOn }: { fxOn: boolean }) {
   const spotRef = useRef<import('three').SpotLight>(null);
   const lensRef = useRef<MeshStandardMaterial>(null);
   const glowRef = useRef<SpriteMaterial>(null);
+  const haloRef = useRef<SpriteMaterial>(null);
   const target = useMemo(() => new Group(), []);
   const geos = useMemo(() => {
     const metal = merged([
@@ -619,9 +895,10 @@ function Streetlight({ fxOn }: { fxOn: boolean }) {
     const cell = Math.floor(t * 1.4);
     if (flickerHash(cell) > 0.93) dip = 0.74 + 0.18 * (0.5 + 0.5 * Math.sin(t * 90));
     const f = (0.95 + 0.045 * wobble) * dip;
-    if (spotRef.current) spotRef.current.intensity = 60 * f;
+    if (spotRef.current) spotRef.current.intensity = 66 * f;
     if (lensRef.current) lensRef.current.emissiveIntensity = 3.0 * f;
     if (glowRef.current) glowRef.current.opacity = 0.34 * f;
+    if (haloRef.current) haloRef.current.opacity = 0.16 * f;
   });
   return (
     <group position={[-3.5, FLOOR_Y, -3.0]}>
@@ -639,6 +916,14 @@ function Streetlight({ fxOn }: { fxOn: boolean }) {
       <sprite position={[1.38, 4.62, 0]} scale={[2.3, 2.3, 1]}>
         <spriteMaterial ref={glowRef} map={glowTex} color="#ff9c3a" transparent opacity={0.34} blending={AdditiveBlending} depthWrite={false} />
       </sprite>
+      {/* the promo's bloom: a wide, faint halo the haze gives the lamp
+          (promo-look pass) — flickers with the same mains wobble */}
+      <sprite position={[1.38, 4.62, 0]} scale={[6.8, 6.8, 1]}>
+        <spriteMaterial ref={haloRef} map={glowTex} color="#ff9c3a" transparent opacity={0.16} blending={AdditiveBlending} depthWrite={false} />
+      </sprite>
+      <sprite position={[1.38, 4.62, 0]} scale={[0.85, 0.85, 1]}>
+        <spriteMaterial map={glowTex} color="#ffd9a0" transparent opacity={0.5} blending={AdditiveBlending} depthWrite={false} />
+      </sprite>
       {/* The pool belongs on the sidewalk in front of the lamp, NOT on
           the felt: the sandbox spot (175, wide, table-centred) flooded
           the production felt tan under the venue key light — the
@@ -648,7 +933,7 @@ function Streetlight({ fxOn }: { fxOn: boolean }) {
         ref={spotRef}
         position={[1.38, 4.62, 0]}
         target={target}
-        angle={0.62} penumbra={0.85} intensity={60}
+        angle={0.62} penumbra={0.85} intensity={66}
         color="#ff9c3a" castShadow
         shadow-mapSize={[1024, 1024]} shadow-bias={-0.0004}
       />
@@ -785,7 +1070,7 @@ function Grill({ fxOn }: { fxOn: boolean }) {
 
 function GrillSmoke() {
   const { glowTex } = assets();
-  const COUNT = 16;
+  const COUNT = 20;
   const sprites = useRef<(import('three').Sprite | null)[]>([]);
   const smokeMats = useMemo(
     () => Array.from({ length: COUNT }, () => new SpriteMaterial({
@@ -800,13 +1085,13 @@ function GrillSmoke() {
       if (!sp) continue;
       const age = (t * 0.085 + i / COUNT) % 1; // ~12 s rise, deterministic
       sp.position.set(
-        Math.sin(age * 5 + i * 1.7) * 0.09 + age * 0.38, // drifts +x on the night air
-        0.80 + age * 1.65,
+        Math.sin(age * 5 + i * 1.7) * 0.09 + age * 0.5, // drifts +x on the night air
+        0.80 + age * 1.9,
         Math.cos(age * 4 + i) * 0.06,
       );
-      const s = 0.24 + age * 1.0;
+      const s = 0.26 + age * 1.15;
       sp.scale.set(s, s, 1);
-      smokeMats[i]!.opacity = 0.19 * Math.pow(Math.sin(Math.PI * Math.min(age, 1)), 1.3);
+      smokeMats[i]!.opacity = 0.24 * Math.pow(Math.sin(Math.PI * Math.min(age, 1)), 1.3);
     }
   });
   return (
@@ -893,8 +1178,17 @@ function SideTable() {
       <mesh material={mats.tableBody} position={[0, 0.70, 0]}>
         <boxGeometry args={[1.1, 0.03, 0.5]} />
       </mesh>
-      <mesh material={mats.oliveTop} position={[0, 0.735, 0]} castShadow receiveShadow>
+      {/* the promo table's loud cloth, worn by the DRESSING side table
+          only — the play surface and its felt are never touched */}
+      <mesh material={mats.cloth} position={[0, 0.735, 0]} castShadow receiveShadow>
         <boxGeometry args={[1.2, 0.035, 0.6]} />
+      </mesh>
+      {/* tabletop clutter on the cloth: a red cup + a snack box */}
+      <mesh material={mats.cupRed} position={[0.28, 0.798, 0.08]} castShadow>
+        <cylinderGeometry args={[0.036, 0.028, 0.09, 12]} />
+      </mesh>
+      <mesh material={mats.snackRed} position={[-0.22, 0.778, -0.04]} rotation={[0, 0.5, 0]} castShadow>
+        <boxGeometry args={[0.17, 0.05, 0.12]} />
       </mesh>
     </group>
   );
@@ -942,6 +1236,338 @@ function Ground() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Poster walls + graffiti (promo-look pass) — plastered over the      */
+/* brick at a proud z-ladder (wall face −8.00, glass −7.948, posters   */
+/* −7.93, graffiti −7.905, notice −7.90) so nothing sits coplanar.     */
+/* ------------------------------------------------------------------ */
+
+function PosterWalls() {
+  const { mats } = assets();
+  return (
+    <group>
+      {/* the plastered band behind the game, left facade */}
+      <mesh material={mats.posterA} position={[-3.7, FLOOR_Y + 1.12, -7.93]}>
+        <planeGeometry args={[6.6, 2.1]} />
+      </mesh>
+      {/* right facade: patches either side of the storefront */}
+      <mesh material={mats.posterA} position={[6.55, FLOOR_Y + 1.05, -7.93]}>
+        <planeGeometry args={[1.75, 1.95]} />
+      </mesh>
+      <mesh material={mats.posterB} position={[0.5, FLOOR_Y + 1.0, -7.93]}>
+        <planeGeometry args={[0.95, 1.85]} />
+      </mesh>
+      {/* the one legible notice, pinned over the plaster */}
+      <mesh material={mats.rentNotice} position={[-0.55, FLOOR_Y + 1.4, -7.90]} rotation={[0, 0, 0.02]}>
+        <planeGeometry args={[0.52, 0.69]} />
+      </mesh>
+      {/* far facade band, hazed by the fog */}
+      <mesh material={mats.posterB} position={[-3.4, FLOOR_Y + 1.25, -14.22]}>
+        <planeGeometry args={[7.4, 2.3]} />
+      </mesh>
+      {/* graffiti tags over brick and plaster alike */}
+      <mesh material={mats.graffiti} position={[3.1, FLOOR_Y + 2.95, -7.905]}>
+        <planeGeometry args={[4.6, 1.15]} />
+      </mesh>
+      <mesh material={mats.graffiti} position={[-5.0, FLOOR_Y + 0.62, -7.905]}>
+        <planeGeometry args={[3.4, 0.85]} />
+      </mesh>
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* The liquor store (promo-look pass) — the street's anchor tenant:    */
+/* a storefront bay on the right facade with barred glass, a blue/red  */
+/* neon window sign with real spill light, painted band + blade        */
+/* signs, and a striped awning.                                        */
+/* ------------------------------------------------------------------ */
+
+function LiquorStore() {
+  const { mats, glowTex } = assets();
+  const bars = useMemo(() => {
+    const parts: G[] = [];
+    for (let x = 1.52; x <= 4.5; x += 0.135) parts.push(box(0.022, 2.2, 0.022, x, FLOOR_Y + 1.28, -7.345));
+    parts.push(box(3.1, 0.03, 0.03, 3.0, FLOOR_Y + 0.5, -7.345));
+    parts.push(box(3.1, 0.03, 0.03, 3.0, FLOOR_Y + 2.06, -7.345));
+    return merged(parts);
+  }, []);
+  const rods = useMemo(() => merged([
+    tube([1.35, FLOOR_Y + 3.3, -7.9], [1.35, FLOOR_Y + 2.7, -6.42], 0.011),
+    tube([5.55, FLOOR_Y + 3.3, -7.9], [5.55, FLOOR_Y + 2.7, -6.42], 0.011),
+  ]), []);
+  return (
+    <group>
+      {/* storefront bay, proud of the right facade (face −8.0 → −7.36) */}
+      <mesh material={mats.storeDark} position={[3.45, FLOOR_Y + 1.55, -7.68]} castShadow receiveShadow>
+        <boxGeometry args={[4.7, 3.1, 0.64]} />
+      </mesh>
+      <mesh material={mats.darkWin} position={[3.0, FLOOR_Y + 1.28, -7.352]}>
+        <planeGeometry args={[3.1, 2.2]} />
+      </mesh>
+      <mesh geometry={bars} material={mats.steelBlack} />
+      {/* the neon, glowing in the window */}
+      <mesh material={mats.neonSign} position={[3.0, FLOOR_Y + 1.32, -7.33]}>
+        <planeGeometry args={[1.8, 1.12]} />
+      </mesh>
+      {/* door + push bar */}
+      <mesh material={mats.storeDark} position={[5.12, FLOOR_Y + 1.14, -7.40]} castShadow>
+        <boxGeometry args={[0.94, 2.28, 0.07]} />
+      </mesh>
+      <mesh material={mats.canMetal} position={[5.12, FLOOR_Y + 1.05, -7.35]}>
+        <boxGeometry args={[0.7, 0.035, 0.03]} />
+      </mesh>
+      {/* painted band sign */}
+      <mesh material={mats.storeDark} position={[3.45, FLOOR_Y + 3.42, -7.60]}>
+        <boxGeometry args={[4.95, 0.68, 0.18]} />
+      </mesh>
+      <mesh material={mats.storeSign} position={[3.45, FLOOR_Y + 3.42, -7.50]}>
+        <planeGeometry args={[4.95, 0.68]} />
+      </mesh>
+      {/* blade sign, perpendicular to the wall, lettered both faces */}
+      <mesh material={mats.storeDark} position={[1.06, FLOOR_Y + 3.62, -7.52]}>
+        <boxGeometry args={[0.14, 1.78, 0.66]} />
+      </mesh>
+      <mesh material={mats.bladeSign} position={[1.135, FLOOR_Y + 3.62, -7.52]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[0.66, 1.78]} />
+      </mesh>
+      <mesh material={mats.bladeSign} position={[0.985, FLOOR_Y + 3.62, -7.52]} rotation={[0, -Math.PI / 2, 0]}>
+        <planeGeometry args={[0.66, 1.78]} />
+      </mesh>
+      <mesh geometry={rods} material={mats.steelBlack} />
+      {/* striped awning, front edge dropped toward the street */}
+      <mesh material={mats.awning} position={[3.45, FLOOR_Y + 2.83, -6.81]} rotation={[0.38, 0, 0]} castShadow>
+        <boxGeometry args={[4.95, 0.05, 1.18]} />
+      </mesh>
+      {/* neon spill: blue key from the window sign, red accent, warm
+          under-awning pool — short throws, no shadows */}
+      <pointLight position={[3.0, FLOOR_Y + 1.35, -6.75]} intensity={18} distance={6.5} decay={2} color="#4d8dff" />
+      <pointLight position={[4.5, FLOOR_Y + 1.1, -6.8]} intensity={5} distance={4.5} decay={2} color="#ff4030" />
+      <pointLight position={[3.45, FLOOR_Y + 2.45, -6.9]} intensity={8} distance={5} decay={2} color="#ffb14e" />
+      {/* the spill painted on the ground in front of the store */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[3.0, FLOOR_Y + 0.008, -6.45]}>
+        <planeGeometry args={[3.4, 2.3]} />
+        <meshBasicMaterial map={glowTex} color="#4d8dff" transparent opacity={0.22} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[4.5, FLOOR_Y + 0.011, -6.6]}>
+        <planeGeometry args={[1.3, 1.0]} />
+        <meshBasicMaterial map={glowTex} color="#ff4030" transparent opacity={0.16} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[3.45, FLOOR_Y + 0.01, -6.9]}>
+        <planeGeometry args={[3.6, 1.6]} />
+        <meshBasicMaterial map={glowTex} color="#ffb14e" transparent opacity={0.12} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Laundry lines (promo-look pass) — sagging lines strung between      */
+/* the facades and to the streetlight pole, garments as vertex-        */
+/* coloured planes hanging from the line. All high over the street:    */
+/* nothing crosses the standing view near the table.                   */
+/* ------------------------------------------------------------------ */
+
+function sagPoint(a: [number, number, number], b: [number, number, number], sag: number, t: number): Vector3 {
+  const p = new Vector3(...a).lerp(new Vector3(...b), t);
+  p.y -= sag * 4 * t * (1 - t);
+  return p;
+}
+
+function LaundryLines() {
+  const { mats } = assets();
+  const { lines, cloth } = useMemo(() => {
+    const rnd = mulberry32(2029);
+    const palette = ['#cfc8b8', '#8a4a3a', '#4a5a78', '#777d84', '#b8a86a', '#5d7052'];
+    const specs: { a: [number, number, number]; b: [number, number, number]; sag: number; items: [number, number, number][] }[] = [
+      { // the long cross-street line along the facade fronts
+        a: [-6.9, FLOOR_Y + 5.0, -7.85], b: [6.9, FLOOR_Y + 4.72, -7.85], sag: 0.5,
+        items: [[0.08, 0.8, 0.7], [0.2, 0.44, 0.55], [0.33, 0.52, 0.6], [0.47, 0.85, 0.72], [0.6, 0.4, 0.5], [0.72, 0.55, 0.62], [0.84, 0.44, 0.52], [0.93, 0.7, 0.66]],
+      },
+      { // facade → streetlight pole, over the sidewalk's far edge
+        a: [-0.3, FLOOR_Y + 4.5, -7.85], b: [-3.42, FLOOR_Y + 4.3, -3.12], sag: 0.3,
+        items: [[0.25, 0.5, 0.55], [0.52, 0.42, 0.5], [0.76, 0.62, 0.6]],
+      },
+      { // off to the far facade, for depth
+        a: [6.9, FLOOR_Y + 4.85, -7.85], b: [2.0, FLOOR_Y + 5.3, -14.2], sag: 0.42,
+        items: [[0.2, 0.55, 0.6], [0.45, 0.44, 0.5], [0.7, 0.66, 0.64]],
+      },
+    ];
+    const lineGeos: G[] = [];
+    const clothGeos: G[] = [];
+    for (const spec of specs) {
+      const pts: Vector3[] = [];
+      for (let i = 0; i <= 8; i++) pts.push(sagPoint(spec.a, spec.b, spec.sag, i / 8));
+      lineGeos.push(new TubeGeometry(new CatmullRomCurve3(pts), 32, 0.008, 6));
+      const dir = new Vector3(...spec.b).sub(new Vector3(...spec.a));
+      const ry = Math.atan2(dir.x, dir.z) - Math.PI / 2;
+      for (const [t, w, h] of spec.items) {
+        const g = new PlaneGeometry(w, h);
+        g.translate(0, -h / 2, 0); // hang from the top edge
+        const col = new Color(palette[Math.floor(rnd() * palette.length)]!);
+        const n = g.attributes.position!.count;
+        const colors = new Float32Array(n * 3);
+        for (let v = 0; v < n; v++) {
+          colors[v * 3] = col.r;
+          colors[v * 3 + 1] = col.g;
+          colors[v * 3 + 2] = col.b;
+        }
+        g.setAttribute('color', new Float32BufferAttribute(colors, 3));
+        g.rotateY(ry + (rnd() - 0.5) * 0.2);
+        g.rotateZ((rnd() - 0.5) * 0.07);
+        const p = sagPoint(spec.a, spec.b, spec.sag, t);
+        g.translate(p.x, p.y, p.z);
+        clothGeos.push(g);
+      }
+    }
+    return { lines: merged(lineGeos), cloth: merged(clothGeos) };
+  }, []);
+  const clothMat = useMemo(
+    () => new MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0, side: DoubleSide }),
+    [],
+  );
+  return (
+    <group>
+      <mesh geometry={lines} material={mats.lampMetal} />
+      <mesh geometry={cloth} material={clothMat} />
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Fence-line + curb dressing (promo-look pass): two bicycles leaning  */
+/* on the picket fence, a trash corner, flattened cardboard.           */
+/* ------------------------------------------------------------------ */
+
+function bikeGeo(): BufferGeometry {
+  const parts: G[] = [];
+  for (const wx of [-0.52, 0.52]) {
+    const wheel = new TorusGeometry(0.335, 0.016, 8, 28);
+    wheel.translate(wx, 0.335, 0);
+    parts.push(wheel);
+  }
+  parts.push(tube([-0.52, 0.335, 0], [-0.05, 0.30, 0], 0.016)); // chain stay
+  parts.push(tube([-0.52, 0.335, 0], [-0.18, 0.78, 0], 0.016)); // seat stay
+  parts.push(tube([-0.18, 0.78, 0], [-0.05, 0.30, 0], 0.018)); // seat tube
+  parts.push(tube([-0.18, 0.80, 0], [0.40, 0.74, 0], 0.018));  // top tube
+  parts.push(tube([-0.05, 0.30, 0], [0.42, 0.72, 0], 0.018));  // down tube
+  parts.push(tube([0.42, 0.72, 0], [0.52, 0.335, 0], 0.014));  // fork
+  parts.push(tube([0.40, 0.74, 0], [0.44, 0.86, 0], 0.014));   // stem
+  parts.push(tube([0.44, 0.86, -0.16], [0.44, 0.86, 0.16], 0.013)); // bars
+  parts.push(box(0.22, 0.05, 0.09, -0.20, 0.82, 0));           // saddle
+  return merged(parts);
+}
+
+function Bicycles() {
+  const { mats } = assets();
+  const geo = useMemo(bikeGeo, []);
+  return (
+    <group>
+      <mesh geometry={geo} material={mats.bikeTeal} position={[-5.35, FLOOR_Y + 0.016, -3.40]} rotation={[-0.15, 0.04, 0]} castShadow />
+      <mesh geometry={geo} material={mats.bikeDark} position={[5.78, FLOOR_Y + 0.016, -3.38]} rotation={[-0.13, -0.07, 0]} castShadow />
+    </group>
+  );
+}
+
+function TrashCorner() {
+  const { mats } = assets();
+  const can = useMemo(() => {
+    const rim = new TorusGeometry(0.30, 0.02, 8, 24);
+    rim.rotateX(Math.PI / 2);
+    rim.translate(0, 0.80, 0);
+    return merged([cyl(0.30, 0.265, 0.80, 0, 0.40, 0, 18), rim]);
+  }, []);
+  const bags = useMemo(() => {
+    const b1 = new SphereGeometry(0.30, 12, 10);
+    b1.scale(1, 0.78, 1);
+    b1.translate(5.52, FLOOR_Y + 0.22, -3.22);
+    const knot = new ConeGeometry(0.07, 0.13, 8);
+    knot.translate(5.52, FLOOR_Y + 0.48, -3.22);
+    const b2 = new SphereGeometry(0.24, 12, 10);
+    b2.scale(1, 0.8, 1);
+    b2.translate(4.48, FLOOR_Y + 0.18, -2.72);
+    return merged([b1, knot, b2]);
+  }, []);
+  const cardboard = useMemo(() => merged([
+    box(0.78, 0.55, 0.016, -4.78, FLOOR_Y + 0.29, -3.46, -0.30, 0.05, 0),
+    box(0.60, 0.42, 0.016, -4.30, FLOOR_Y + 0.23, -3.42, -0.32, -0.15, 0),
+    box(0.7, 0.014, 0.5, -4.55, FLOOR_Y + 0.012, -2.85),
+  ]), []);
+  return (
+    <group>
+      <mesh geometry={can} material={mats.canMetal} position={[4.95, FLOOR_Y, -3.02]} castShadow receiveShadow />
+      {/* the can's lid, slid half off and leaning */}
+      <mesh material={mats.canMetal} position={[5.29, FLOOR_Y + 0.72, -2.90]} rotation={[0.3, 0, 0.9]} castShadow>
+        <cylinderGeometry args={[0.315, 0.315, 0.045, 18]} />
+      </mesh>
+      <mesh geometry={bags} material={mats.trashBag} castShadow />
+      <mesh geometry={cardboard} material={mats.cardboard} castShadow receiveShadow />
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* A car down the block (promo-look pass) — silhouette + taillights    */
+/* for depth. The parked sedan across the street stays the hero car.   */
+/* ------------------------------------------------------------------ */
+
+function DistantCar() {
+  const { mats, glowTex } = assets();
+  const body = useMemo(() => merged([
+    box(1.72, 0.62, 4.3, 0, 0.56, 0),
+    box(1.54, 0.52, 2.1, 0, 1.10, -0.25),
+  ]), []);
+  const lights = useMemo(() => merged([
+    box(0.30, 0.10, 0.04, -0.55, 0.74, 2.16),
+    box(0.30, 0.10, 0.04, 0.55, 0.74, 2.16),
+  ]), []);
+  const tailGlow = useMemo(() => new SpriteMaterial({
+    map: glowTex, color: '#ff3020', transparent: true, opacity: 0.5, blending: AdditiveBlending, depthWrite: false,
+  }), [glowTex]);
+  return (
+    <group position={[-10.6, FLOOR_Y, -10.6]} rotation={[0, 0.42, 0]}>
+      <mesh geometry={body} material={mats.carFar} />
+      <mesh geometry={lights} material={mats.tailLight} />
+      {[-0.55, 0.55].map((lx) => (
+        <sprite key={lx} material={tailGlow} position={[lx, 0.74, 2.34]} scale={[0.75, 0.75, 1]} />
+      ))}
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Night haze (promo-look pass) — big soft veils across the street     */
+/* plus warm smoke-glow around the streetlight: the atmosphere the     */
+/* promo's bloom reads through.                                        */
+/* ------------------------------------------------------------------ */
+
+function HazeVeils() {
+  const { glowTex } = assets();
+  const veils: [number, number, number, number, number, string][] = [
+    [-4.5, FLOOR_Y + 2.6, -6.2, 7.5, 0.055, '#93a7cc'],
+    [1.5, FLOOR_Y + 3.3, -7.6, 9.5, 0.05, '#8b93ad'],
+    [5.8, FLOOR_Y + 2.2, -6.0, 6.5, 0.06, '#a8b2c9'],
+    [-7.5, FLOOR_Y + 3.7, -9.5, 11, 0.045, '#7e8cae'],
+    [0.5, FLOOR_Y + 4.1, -11, 12, 0.04, '#76839f'],
+    // warm smoke catching the streetlight — the promo's bloom cloud
+    [-2.0, FLOOR_Y + 4.6, -3.3, 4.6, 0.085, '#c99a5e'],
+    [-1.0, FLOOR_Y + 3.9, -3.9, 3.4, 0.065, '#c99a5e'],
+    // low veils over the street itself — these sit inside the game
+    // cameras' backdrop band, where the high facade dressing cannot
+    [-0.5, FLOOR_Y + 2.5, -4.6, 8, 0.05, '#93a7cc'],
+    [2.8, FLOOR_Y + 2.3, -5.2, 6.5, 0.05, '#c99a5e'],
+  ];
+  return (
+    <group>
+      {veils.map(([x, y, z, s, o, c], i) => (
+        <sprite key={i} position={[x, y, z]} scale={[s, s, 1]}>
+          <spriteMaterial map={glowTex} color={c} transparent opacity={o} depthWrite={false} />
+        </sprite>
+      ))}
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Fog — the street's depth cue (the sandbox room's recipe). Save/     */
 /* restore on unmount, the Backdrop component's discipline, so no      */
 /* other venue ever inherits it.                                       */
@@ -977,6 +1603,15 @@ export default function PjsStreetRoom({ fxOn, handKey }: { fxOn: boolean; handKe
       <Crates />
       <SideTable />
       <Ground />
+      {/* promo-look pass (2026-10-29): store, plastered walls, laundry,
+          fence-line clutter, depth car, haze */}
+      <PosterWalls />
+      <LiquorStore />
+      <LaundryLines />
+      <Bicycles />
+      <TrashCorner />
+      <DistantCar />
+      <HazeVeils />
       {/* an off-frame streetlight to the right — its cool spill is
           what models the parked sedan across the street (the sandbox
           gate's 26 read marginal in this scene's dimmer rig; 44 gives
