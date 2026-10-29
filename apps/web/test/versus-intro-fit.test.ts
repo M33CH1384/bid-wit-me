@@ -22,6 +22,14 @@
  * portrait compression and its horizontal-row landscape form (the King
  * card is the max-content case: stakes + three rows + threat + terms +
  * history).
+ *
+ * 2026-10-29 (owner, Corner screenshot): in landscape the matchup itself
+ * turns vertical — team A upper, VS in the middle, team B lower — inside
+ * the same two-pane grid. The pins below hold that stack: the team stage
+ * becomes a centred column (the cutthroat quad is excluded), the VS badge
+ * centres on the stack, the entrances/settle/rest poses converge
+ * vertically, and faces shrink just enough (52 → 48px) for the stack to
+ * fit the short pane with nothing below the fold. Portrait is untouched.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -83,6 +91,43 @@ describe('versus fit: landscape goes wide and nothing scrolls', () => {
 
   it('solo tape rows go single-line across the wide pane', () => {
     expect(landscape).toContain('.versus-row.solo { grid-template-columns: auto repeat(4, 1fr);');
+  });
+});
+
+describe('versus fit: landscape stacks the matchup vertically (owner, 2026-10-29)', () => {
+  it('the team stage becomes a centred column filling the left pane height; the quad is excluded', () => {
+    expect(landscape).toContain('.versus-stage:not(.solo) { flex-direction: column; justify-content: center; align-items: center; align-self: stretch; gap: 44px; }');
+    expect(landscape).toContain('.versus-stage:not(.solo) .versus-side { width: auto; }');
+    // the plain stage rule stays the shipped grid placement — no column leaks onto the solo quad
+    expect(landscape).toContain('.versus-stage { grid-area: stage; width: 100%; }');
+    expect(landscape).not.toContain('.versus-stage.solo { flex-direction: column');
+  });
+
+  it('the VS badge and its flash centre on the stack, between the two teams', () => {
+    expect(landscape).toContain('.versus-stage:not(.solo) .versus-vs, .versus-stage:not(.solo) .versus-flash { top: 50%; }');
+  });
+
+  it('faces shrink to 48px inside the stack only (still large enough to read)', () => {
+    expect(landscape).toContain('.versus-stage:not(.solo) .versus-face { width: 48px !important; height: 48px !important; }');
+    expect(landscape).toContain('.versus-stage:not(.solo) .versus-face .avatar-circle, .versus-stage:not(.solo) .versus-face > span { width: 48px !important; height: 48px !important; font-size: 20px !important; }');
+  });
+
+  it('entrances converge vertically and the settle/rest poses turn with the stack', () => {
+    expect(landscape).toContain('.versus-stage:not(.solo) .versus-side.left { animation: versus-in-top');
+    expect(landscape).toContain('.versus-stage:not(.solo) .versus-side.right { animation: versus-in-bottom');
+    expect(landscape).toContain('@keyframes versus-in-top { from { transform: translateY(-38vh)');
+    expect(landscape).toContain('@keyframes versus-in-bottom { from { transform: translateY(38vh)');
+    expect(landscape).toContain('@keyframes versus-settle-t');
+    expect(landscape).toContain('@keyframes versus-settle-b');
+    expect(landscape).toContain('.versus.done .versus-stage:not(.solo) .versus-side.left, .versus.reduced .versus-stage:not(.solo) .versus-side.left { transform: translateY(5%); }');
+    expect(landscape).toContain('.versus.done .versus-stage:not(.solo) .versus-side.right, .versus.reduced .versus-stage:not(.solo) .versus-side.right { transform: translateY(-5%); }');
+  });
+
+  it('portrait keeps the shipped horizontal stage, byte for byte', () => {
+    expect(css).toContain('.versus-stage { position: relative; width: 100%; min-height: 168px; display: flex; align-items: center; justify-content: space-between; }');
+    const beforeLandscape = css.slice(0, landscapeStart);
+    expect(beforeLandscape).not.toContain('versus-in-top');
+    expect(beforeLandscape).not.toContain('.versus-stage:not(.solo)');
   });
 });
 

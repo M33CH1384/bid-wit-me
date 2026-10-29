@@ -2268,6 +2268,30 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .versus-story-line.terms { font-size: 11.5px; line-height: 1.3; }
   .versus-story-line.threat { padding-top: 4px; }
   .versus-story-line.history { font-size: 11.5px; padding-top: 3px; }
+  /* The matchup in landscape: a VERTICAL stack (owner, 2026-10-29: "one
+     team in the upper area, vs in the middle, other team in the lower
+     area"). The stage turns from a row into a centred column — team A
+     (first in DOM) on top, team B below, the VS badge centred in the gap
+     between them — and the entrances converge vertically the way they
+     used to converge horizontally (the settle offsets turn with the
+     stack, including the done/reduced rest poses, so the teams stay
+     centred on the badge instead of staggered sideways). Faces drop to
+     48px so the stack (two sides + the VS gap) fits the short pane
+     beside the tape with nothing below the fold. Portrait and the
+     cutthroat quad keep the shipped arrangement, untouched. */
+  .versus-stage:not(.solo) { flex-direction: column; justify-content: center; align-items: center; align-self: stretch; gap: 44px; }
+  .versus-stage:not(.solo) .versus-side { width: auto; }
+  .versus-stage:not(.solo) .versus-face { width: 48px !important; height: 48px !important; }
+  .versus-stage:not(.solo) .versus-face .avatar-circle, .versus-stage:not(.solo) .versus-face > span { width: 48px !important; height: 48px !important; font-size: 20px !important; }
+  .versus-stage:not(.solo) .versus-vs, .versus-stage:not(.solo) .versus-flash { top: 50%; }
+  .versus-stage:not(.solo) .versus-side.left { animation: versus-in-top 1.42s cubic-bezier(.55,.02,.75,.4) both, versus-settle-t .5s ease-out 1.5s both; }
+  .versus-stage:not(.solo) .versus-side.right { animation: versus-in-bottom 1.14s cubic-bezier(.55,.02,.75,.4) .3s both, versus-settle-b .5s ease-out 1.56s both; }
+  @keyframes versus-in-top { from { transform: translateY(-38vh) scale(.9); opacity: 0; } 55% { opacity: 1; } to { transform: translateY(5%) scale(1); opacity: 1; } }
+  @keyframes versus-in-bottom { from { transform: translateY(38vh) scale(.9); opacity: 0; } 55% { opacity: 1; } to { transform: translateY(-5%) scale(1); opacity: 1; } }
+  @keyframes versus-settle-t { 0% { transform: translateY(7.5%); } 55% { transform: translateY(3.75%); } 100% { transform: translateY(5%); } }
+  @keyframes versus-settle-b { 0% { transform: translateY(-7.5%); } 55% { transform: translateY(-3.75%); } 100% { transform: translateY(-5%); } }
+  .versus.done .versus-stage:not(.solo) .versus-side.left, .versus.reduced .versus-stage:not(.solo) .versus-side.left { transform: translateY(5%); }
+  .versus.done .versus-stage:not(.solo) .versus-side.right, .versus.reduced .versus-stage:not(.solo) .versus-side.right { transform: translateY(-5%); }
 }
 
 /* Stand-in table: painted on the first frame, until the 3D table has rendered (then it fades out) */
