@@ -56,6 +56,16 @@ function read(probe: HTMLElement | null): Viewport {
  * and the aspect class can only flip once per rotation, so a flip still
  * costs ~one table re-render.
  */
+/**
+ * Session memory of safe-area insets per orientation class (rotation round
+ * 3): insets are a property of (device, orientation), so once a class has
+ * been measured, a flip can commit that class's insets atomically with the
+ * flip itself instead of trailing them in a later commit that shifts
+ * inset-driven layout after the table has landed. The settle chain still
+ * verifies against the live env() probe and corrects any surprise.
+ */
+const safeByClass = new Map<boolean, Viewport['safe']>();
+
 export function useViewport(): Viewport {
   const [vp, setVp] = useState<Viewport>(() => read(null));
   useEffect(() => {
@@ -71,11 +81,24 @@ export function useViewport(): Viewport {
     // moved. Returns true when a commit landed.
     const commit = () => {
       raf = 0;
-      const next = read(probe);
+      let next = read(probe);
+      // Rotation round 3 (owner: warm flips "not perfect"): the flip commit
+      // landed the new orientation class at the swap, but the insets trailed
+      // in a later commit, so inset-driven layout (badge plates, fan
+      // reserve) shifted a beat AFTER the table had landed. When this
+      // session has already measured the target class, commit ITS insets
+      // with the flip — one atomic commit at final positions; the settle
+      // chain then verifies against the probe and corrects only surprises.
+      // A class's first visit has no memory and behaves exactly as before.
+      if (committed && next.short !== committed.short) {
+        const mem = safeByClass.get(next.short);
+        if (mem) next = { ...next, safe: mem };
+      }
       if (committed && next.short === committed.short
         && next.safe.l === committed.safe.l && next.safe.r === committed.safe.r
         && next.safe.t === committed.safe.t && next.safe.b === committed.safe.b) return false;
       committed = next;
+      safeByClass.set(next.short, next.safe);
       setVp(next);
       return true;
     };

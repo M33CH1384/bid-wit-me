@@ -182,6 +182,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    The wrap itself stays visible: nothing between the canvas and the screen clips the hand. */
 .table-canvas { position: absolute !important; inset: 0; touch-action: none; overflow: visible; }
 .table-canvas-wrap { position: absolute; inset: 0; overflow: visible; }
+.flip-cover { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
 .badge-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
 .loading3d { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; font-family: var(--display); letter-spacing: .1em; color: var(--muted); }
 .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(var(--purple-rgb),.25); border-top-color: var(--purple-hot); animation: spin 0.8s linear infinite; }

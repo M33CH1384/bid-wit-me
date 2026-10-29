@@ -18,6 +18,7 @@ import { reducedMotion } from './handLift';
 import { FAN_REST_MS, fanRestSeconds, fanRestTarget, type FanRestPose } from './fanRest';
 import { VISIBLE_FELT, landTrick, playSeed, runScatter } from './landing';
 import { shakeOffset, swayOffset } from './shake';
+import { captureFlipFrame, flipHeld, flipRehearsed, flipUserFlipped, markRehearsed, noteFlipSizeCommit, notePresentedFrame, noteRehearsalSize, registerCover, releaseFlipHold, setFlipHoldLock, subscribeFlipHold } from './flipHold';
 import { isShortLandscape } from '../viewport';
 import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
@@ -1785,6 +1786,8 @@ export default function Scene(props: SceneProps) {
     >
       <AspectWatcher onAspect={setAspect} />
       <SizeLeader />
+      <PresentedProbe />
+      <OrientationRehearsal ready={textured} />
       <EffectWarmup quality={props.quality} />
       <SnapHook />
       <FirstFrameSignal onFirstFrame={firstFrame} />
@@ -1882,6 +1885,7 @@ export default function Scene(props: SceneProps) {
       <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
     </Canvas>
+    <FlipCoverOverlay />
     <div ref={badgeLayer} className="badge-layer" />
     </div>
   );
@@ -1967,8 +1971,20 @@ function SizeLeader() {
       timer = 0;
       const r = el.getBoundingClientRect();
       if (!(r.width > 0 && r.height > 0)) return;
-      const cur = get().size;
+      const st = get();
+      const cur = st.size;
       if (Math.abs(cur.width - r.width) < 0.5 && Math.abs(cur.height - r.height) < 0.5) return;
+      // Rotation round 3 (owner: first flip showed a BLACK canvas inside the
+      // already-rotated chrome): a flip-class commit resets the drawing
+      // buffer, and the cleared buffer is what the compositor would show
+      // until the new size's first frame presents. Capture the live frame
+      // into the flip-hold overlay BEFORE setSize clears it — the overlay
+      // stays up until that first frame has presented (see flipHold.ts).
+      const arFlip = Math.abs(Math.log((r.width / r.height) / (cur.width / cur.height))) > 0.35;
+      if (arFlip) {
+        captureFlipFrame(st.gl, st.scene, st.camera);
+        noteFlipSizeCommit(r.width, r.height);
+      }
       setSize(r.width, r.height);
     };
     const check = () => {
@@ -1981,12 +1997,128 @@ function SizeLeader() {
     };
     const ro = new ResizeObserver(check);
     ro.observe(el);
-    const onFlip = () => { if (!timer) timer = window.setTimeout(commit, 50); };
+    const onFlip = () => {
+      // orientationchange fires while the geometry (and the canvas buffer)
+      // is still the OLD orientation — the earliest safe moment to arm the
+      // flip hold, before any size commit can clear the buffer.
+      const st = get();
+      captureFlipFrame(st.gl, st.scene, st.camera);
+      if (!timer) timer = window.setTimeout(commit, 50);
+    };
     window.addEventListener('orientationchange', onFlip);
     return () => { ro.disconnect(); window.removeEventListener('orientationchange', onFlip); if (timer) window.clearTimeout(timer); };
   }, [get, setSize]);
   return null;
 }
+
+/** Feeds presented frames to the flip hold (see flipHold.ts). */
+function PresentedProbe() {
+  const get = useThree((s) => s.get);
+  useFrame(() => {
+    const { width, height } = get().size;
+    notePresentedFrame(width, height);
+  });
+  return null;
+}
+
+/**
+ * The flip-hold overlay: a 2D canvas stretched over the WebGL canvas inside
+ * the wrap. Hidden unless flipHold holds a captured frame; while held it
+ * shows the table exactly as it was the instant before the buffer reset, so
+ * a rotation never presents the cleared (black) buffer.
+ */
+function FlipCoverOverlay() {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const [, setGen] = useState(0);
+  useEffect(() => {
+    registerCover(ref.current);
+    const off = subscribeFlipHold(() => setGen((g) => g + 1));
+    return () => { off(); registerCover(null); };
+  }, []);
+  return <canvas ref={ref} className="flip-cover" style={{ display: flipHeld() ? 'block' : 'none' }} aria-hidden="true" />;
+}
+
+/**
+ * Orientation rehearsal (rotation round 3): the FIRST flip at a table was
+ * the black one because the alternate orientation's buffer size and first
+ * full-size raster had never been trodden. Once the table is dressed and
+ * the browser goes idle, quietly rehearse the other orientation under the
+ * flip-hold cover: capture, setSize(swapped), let a frame present, restore.
+ * From then on the owner's first real flip takes the warm path. Stands down
+ * permanently if a real flip happens first; a real flip mid-rehearsal
+ * always wins (noteFlipSizeCommit unlocks the hold and this stands down).
+ */
+function OrientationRehearsal({ ready }: { ready: boolean }) {
+  const get = useThree((s) => s.get);
+  const setSize = useThree((s) => s.setSize);
+  const invalidate = useThree((s) => s.invalidate);
+  const phase = useRef<'idle' | 'armed' | 'swapped' | 'restoring' | 'done'>('idle');
+  const home = useRef<{ w: number; h: number } | null>(null);
+  const ticks = useRef(0);
+  const deadline = useRef(0);
+
+  useEffect(() => {
+    if (!ready || phase.current !== 'idle') return;
+    phase.current = 'armed';
+    let cancelled = false;
+    const start = () => {
+      if (cancelled || phase.current !== 'armed') return;
+      if (flipUserFlipped() || flipRehearsed()) { phase.current = 'done'; return; }
+      const st = get();
+      const { width: w, height: h } = st.size;
+      if (!(w > 40 && h > 40) || Math.abs(w - h) < 40) { phase.current = 'done'; return; }
+      home.current = { w, h };
+      if (!captureFlipFrame(st.gl, st.scene, st.camera)) { phase.current = 'done'; return; }
+      setFlipHoldLock(true);
+      phase.current = 'swapped';
+      ticks.current = 0;
+      deadline.current = performance.now() + 900;
+      noteRehearsalSize(h, w);
+      setSize(h, w);
+      invalidate();
+    };
+    const w = window as unknown as { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    const id = w.requestIdleCallback ? w.requestIdleCallback(start, { timeout: 2500 }) : window.setTimeout(start, 1200);
+    return () => { cancelled = true; if (w.requestIdleCallback && w.cancelIdleCallback) w.cancelIdleCallback(id as number); else window.clearTimeout(id as number); };
+  }, [ready, get, setSize, invalidate]);
+
+  useFrame(() => {
+    const ph = phase.current;
+    if (ph !== 'swapped' && ph !== 'restoring') return;
+    const homeSize = home.current;
+    if (!homeSize || flipUserFlipped()) { phase.current = 'done'; return; }
+    const { width: w, height: h } = get().size;
+    const stuck = performance.now() > deadline.current;
+    if (ph === 'swapped') {
+      const atSwapped = Math.abs(w - homeSize.h) < 1 && Math.abs(h - homeSize.w) < 1;
+      if (atSwapped) ticks.current += 1;
+      if ((atSwapped && ticks.current >= 2) || stuck) {
+        phase.current = 'restoring';
+        ticks.current = 0;
+        deadline.current = performance.now() + 900;
+        noteRehearsalSize(homeSize.w, homeSize.h);
+        setSize(homeSize.w, homeSize.h);
+      }
+      invalidate();
+      return;
+    }
+    const atHome = Math.abs(w - homeSize.w) < 1 && Math.abs(h - homeSize.h) < 1;
+    if (atHome) ticks.current += 1;
+    if ((atHome && ticks.current >= 2) || stuck) {
+      phase.current = 'done';
+      markRehearsed();
+      releaseFlipHold();
+      return;
+    }
+    invalidate();
+  });
+  return null;
+}
+
+/** Session memory of the horizontal safe-area fraction per orientation class
+ *  (rotation round 3): the fan's landscape reserve reads this fraction, and a
+ *  late env() commit after a flip used to shift the fan a beat after landing. */
+const safeFracByClass = new Map<boolean, number>();
 
 /** Largest horizontal iOS safe-area inset (notch / home indicator in landscape) as a fraction of the viewport width. */
 function useSafeFrac(): number {
@@ -1998,12 +2130,23 @@ function useSafeFrac(): number {
     const read = () => {
       const cs = getComputedStyle(probe);
       const inset = Math.max(parseFloat(cs.paddingLeft) || 0, parseFloat(cs.paddingRight) || 0);
-      setFrac(window.innerWidth > 0 ? inset / window.innerWidth : 0);
+      const next = window.innerWidth > 0 ? inset / window.innerWidth : 0;
+      safeFracByClass.set(isShortLandscape(window.innerWidth, window.innerHeight), next);
+      setFrac(next);
+    };
+    const onFlip = () => {
+      // Predict the target class's fraction from the session memory at the
+      // flip signal itself; the probe reads on resize then verify (and
+      // correct, if this device surprises us).
+      const land = (window.screen?.orientation?.type ?? '').includes('landscape');
+      const mem = safeFracByClass.get(land);
+      if (typeof mem === 'number') setFrac(mem);
+      read();
     };
     read();
     window.addEventListener('resize', read);
-    window.addEventListener('orientationchange', read);
-    return () => { window.removeEventListener('resize', read); window.removeEventListener('orientationchange', read); probe.remove(); };
+    window.addEventListener('orientationchange', onFlip);
+    return () => { window.removeEventListener('resize', read); window.removeEventListener('orientationchange', onFlip); probe.remove(); };
   }, []);
   return frac;
 }
