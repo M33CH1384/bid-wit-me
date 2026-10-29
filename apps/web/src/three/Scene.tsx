@@ -37,7 +37,9 @@ import BarbershopRoom, { preloadBarbershopRoom } from './BarbershopRoom';
 import BarbershopMirrorRoom from './BarbershopMirrorRoom';
 import RooftopRoom, { preloadRooftopRoom } from './RooftopRoom';
 import YachtRoom, { preloadYachtRoom } from './YachtRoom';
+import YachtDeckRoom from './YachtDeckRoom';
 import BeachRoom, { preloadBeachRoom } from './BeachRoom';
+import BeachCabanaRoom from './BeachCabanaRoom';
 import BackyardRoom, { preloadBackyardRoom } from './BackyardRoom';
 import ChurchRoom, { preloadChurchRoom } from './ChurchRoom';
 import ChurchBasementRoom from './ChurchBasementRoom';
@@ -1783,8 +1785,12 @@ export default function Scene(props: SceneProps) {
       {rooftop && textured && (props.storyStopId === 'rooftop' && props.quality === 'high'
         ? <RooftopDuskRoom fxOn={!props.reduceFx} />
         : <RooftopRoom quality={props.quality} handNo={props.handNo} />)}
-      {yacht && textured && <YachtRoom quality={props.quality} handNo={props.handNo} />}
-      {beach && textured && <BeachRoom quality={props.quality} handNo={props.handNo} />}
+      {yacht && textured && (props.quality === 'high'
+        ? <YachtDeckRoom fxOn={!props.reduceFx} />
+        : <YachtRoom quality={props.quality} handNo={props.handNo} />)}
+      {beach && textured && (props.quality === 'high'
+        ? <BeachCabanaRoom fxOn={!props.reduceFx} />
+        : <BeachRoom quality={props.quality} handNo={props.handNo} />)}
       {backyard && textured && (props.quality === 'high'
         ? <CookoutYardRoom fxOn={!props.reduceFx} />
         : <BackyardRoom quality={props.quality} handNo={props.handNo} />)}

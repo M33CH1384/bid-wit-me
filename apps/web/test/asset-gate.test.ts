@@ -198,7 +198,11 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
   // blockAfterDark's one seam is the king stop, whose branch lives in
   // Venue3D (the King's Lounge replaces the street room there); the Pj's
   // street room is the venue room for story Stop 9 and open tables alike.
-  // yacht/beach host no stops.
+  // NO_STORY_VENUE_ROOMS (Batch C2) is the third venue-keyed shape:
+  // yacht/beach host no stops at all — no stop-keyed row, no story
+  // branch — and their NEW bespoke rooms (the Yacht Deck, the Beach
+  // Cabana) mount for every High table, all-code, so the ledger skip
+  // holds venue-wide at High and Low keeps the ledger.
   const SEAMS: [string, string][] = [
     ['classic', 'rec-center'],
     ['rooftop', 'rooftop'],
@@ -215,6 +219,11 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
   const VENUE_ROOMS: [string, string, string, string][] = [
     ['speakeasy', 'corner', 'speakeasy', 'SpeakeasyLoungeRoom'],
     ['grandma', 'porch', 'grandma', 'GrandmasKitchenRoom'],
+  ];
+  // [venue, the Scene branch's venue flag, the new room] — no story stop
+  const NO_STORY_VENUE_ROOMS: [string, string, string][] = [
+    ['yacht', 'yacht', 'YachtDeckRoom'],
+    ['beach', 'beach', 'BeachCabanaRoom'],
   ];
 
   it('every shipped story seam mounts at High, and only at High', () => {
@@ -257,6 +266,19 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     }
   });
 
+  it('venue rooms with no story stop (Batch C2) skip the ledger at High for every table', () => {
+    for (const [venue] of NO_STORY_VENUE_ROOMS) {
+      // every High table at the venue mounts the bespoke room — the
+      // branch never reads a stop, so any stop value composes the same
+      expect(storySeamMounts(venue, 'high', null)).toBe(true);
+      expect(storySeamMounts(venue, 'high', 'rec-center')).toBe(true);
+      // Low mounts the cube fallback — its ledger files are used there
+      expect(storySeamMounts(venue, 'low', null)).toBe(false);
+      expect(gateLedgerVenue(venue, 'high', null)).toBeNull();
+      expect(gateLedgerVenue(venue, 'low', null)).toBe(venue);
+    }
+  });
+
   it('non-story tables and mismatched pairs never count as seams', () => {
     for (const [venue] of SEAMS) expect(storySeamMounts(venue, 'high', null)).toBe(false);
     expect(storySeamMounts('classic', 'high', 'porch')).toBe(false);
@@ -264,8 +286,6 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     // roomGlbUrls there. (The king stop IS a seam — pinned below.)
     expect(storySeamMounts('blockAfterDark', 'high', 'pjs')).toBe(false);
     expect(storySeamMounts('blockAfterDark', 'high', null)).toBe(false);
-    expect(storySeamMounts('yacht', 'high', null)).toBe(false);
-    expect(storySeamMounts('beach', 'high', null)).toBe(false);
   });
 
   it('the seam table stays in sync with Scene.tsx seam branches', () => {
@@ -284,6 +304,13 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
       // the story term SURVIVES here (unlike the un-scoped rooms):
       // the story branch keeps priority inside the same Scene branch
       expect(scene).toContain(`{${flag} && textured && (props.storyStopId === '${stop}' && props.quality === 'high'`);
+      expect(scene).toContain(`<${room} fxOn={!props.reduceFx} />`);
+    }
+    for (const [venue, flag, room] of NO_STORY_VENUE_ROOMS) {
+      expect(scene).toContain(`def.id === '${venue}'`);
+      // no story term: the venue's own room mounts at High, the cube
+      // room keeps Low — the same mount shape as the un-scoped rooms
+      expect(scene).toContain(`{${flag} && textured && (props.quality === 'high'`);
       expect(scene).toContain(`<${room} fxOn={!props.reduceFx} />`);
     }
   });
@@ -500,6 +527,43 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(s.total).toBe(5);
     const l = await composeGate('grandma', 'low', null).done;
     expect(l.total).toBe(9);
+  });
+
+  // Batch C2: the yacht ledger is what preloadCubeVenue(YACHT) notes —
+  // the shared chair GLB, the deck floor file, and the sky poster (no
+  // lamp: the cube config has no pendants). The all-code Yacht Deck
+  // never requests them, so a regular High table's gate excludes them;
+  // Low mounts the cube room, so the ledger folds in there as before.
+  const YACHT_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/tex/wood_floor_deck_512.jpg',
+    '/assets/venues/barbershop/room/sky-poster.jpg',
+  ];
+
+  it('venue room at regular High: the venue ledger is excluded (yacht 8 → 5)', async () => {
+    noteRoomAssets('yacht', YACHT_FILES);
+    const r = await composeGate('yacht', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    const l = await composeGate('yacht', 'low', null).done;
+    expect(l.total).toBe(8);
+  });
+
+  // Batch C2: the beach ledger is what preloadCubeVenue(BEACH) notes —
+  // the shared chair GLB, the sand floor file, and the sky poster.
+  const BEACH_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/tex/coast_sand_01_512.jpg',
+    '/assets/venues/barbershop/room/sky-poster.jpg',
+  ];
+
+  it('venue room at regular High: the venue ledger is excluded (beach 8 → 5)', async () => {
+    noteRoomAssets('beach', BEACH_FILES);
+    const r = await composeGate('beach', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    const l = await composeGate('beach', 'low', null).done;
+    expect(l.total).toBe(8);
   });
 
   it('king at High: the studio ledger rides the gate, the street ledger and sedan do not', async () => {

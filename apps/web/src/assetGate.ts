@@ -137,6 +137,13 @@ export function roomGlbUrls(
  * venue-wide at High exactly as it does for the un-scoped rooms; the
  * set membership records that Scene mounts a bespoke room for every
  * High table at the venue, whichever branch serves it.
+ *
+ * Batch C2 (yacht + beach) is the third venue-wide shape: neither
+ * venue hosts a story stop at all, so there is no stop-keyed row
+ * and no story branch in Scene — a NEW bespoke room built for the
+ * venue itself (the Yacht Deck, the Beach Cabana) mounts for every
+ * High table, all-code like the others, so the ledger skip holds
+ * venue-wide at High and Low keeps the ledger for its cube room.
  */
 const STORY_SEAMS: Readonly<Record<string, string>> = {
   classic: 'rec-center',
@@ -150,10 +157,12 @@ const STORY_SEAMS: Readonly<Record<string, string>> = {
 const VENUE_WIDE_SEAMS: ReadonlySet<string> = new Set([
   'barbershop',
   'backyard',
+  'beach',
   'church',
   'grandma',
   'mansion',
   'speakeasy',
+  'yacht',
 ]);
 
 export function storySeamMounts(
