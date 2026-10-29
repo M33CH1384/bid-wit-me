@@ -47,12 +47,30 @@ export const ASSET_GATE_CAP_MS = 20_000;
 export const SEDAN_GLB_URL = '/assets/venues/blockAfterDark/sedan.glb';
 
 /**
- * GLB files a room presents that are NOT in its venue asset set: today only
- * the shared street sedan — the Pj's own room at High, and the story Corner
- * (venue `speakeasy`, stop `corner`) which reuses the same car. The king
- * stop parks no sedan (the King's Lounge replaces the street room there);
- * its GLBs are the studio set, which rides the classic ledger instead.
- * Low quality never mounts the 3D street rooms, so it never fetches the car.
+ * The Porch pilot's cast (character phase step 2, owner go 2026-10-28):
+ * the three rigged figures seated at the solo Porch story table.
+ * three/PorchFigures.tsx imports this same list for its id -> URL map —
+ * one copy, no drift. The production GLBs are the sandbox graft batch's
+ * deliverables (Dee and Pat carry grafted hands; Ray is his 2-chain
+ * partial rig), renamed to their character ids.
+ */
+export const PORCH_FIGURE_GLBS: readonly { id: string; label: string; url: string }[] = [
+  { id: 'dee', label: 'glb figure (Porch Dee)', url: '/assets/figures/dee.glb' },
+  { id: 'uncleRay', label: 'glb figure (Porch Uncle Ray)', url: '/assets/figures/uncleRay.glb' },
+  { id: 'pat', label: 'glb figure (Porch Pat)', url: '/assets/figures/pat.glb' },
+];
+
+/**
+ * GLB files a room presents that are NOT in its venue asset set: the
+ * shared street sedan — the Pj's own room at High, and the story Corner
+ * (venue `speakeasy`, stop `corner`) which reuses the same car — and, at
+ * the Porch story seam, the pilot's three seated figures (the Porch
+ * deck ROOM is procedural, but the figures the table presents are
+ * downloads, and the gate's promise covers what the table shows). The
+ * king stop parks no sedan (the King's Lounge replaces the street room
+ * there); its GLBs are the studio set, which rides the classic ledger
+ * instead. Low quality never mounts the 3D street rooms or the
+ * figures, so it never fetches these files.
  */
 export function roomGlbUrls(
   venue: string,
@@ -67,6 +85,7 @@ export function roomGlbUrls(
     return [{ label: 'glb sedan (Pj\'s street)', url: SEDAN_GLB_URL }];
   }
   if (venue === 'speakeasy' && storyStopId === 'corner') return [{ label: 'glb sedan (Corner street)', url: SEDAN_GLB_URL }];
+  if (venue === 'grandma' && storyStopId === 'porch') return PORCH_FIGURE_GLBS.map((f) => ({ label: f.label, url: f.url }));
   return [];
 }
 

@@ -2655,6 +2655,15 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const seatedFiguresArr: (string | null)[] | undefined = seatedFigureIds
     ? Array.from({ length: n }, (_, seat) => seatedFigureIds[seat] ?? null)
     : undefined;
+  // PORCH PILOT (character phase step 2, owner go 2026-10-28): at the
+  // solo Porch story table the three bot seats get real rigged 3D
+  // figures in the scene (three/PorchFigures.tsx). Solo only:
+  // storySeatIds exists only on the solo story path (co-op runs
+  // through OnlineTable, which never sets the `story` prop this table
+  // reads), and seat 0 is the player — first-person, never a figure.
+  const porchFigureSeats: (string | null)[] | undefined = story?.scene?.stop.id === 'porch' && storySeatIds
+    ? Array.from({ length: n }, (_, seat) => (seat === 0 ? null : (storySeatIds[seat] ?? null)))
+    : undefined;
   // The crowd cue channel (three/kingRailLayout.ts): the table stamps
   // real match moments + speakers here; the 3D figures read it inside
   // useFrame. A plain mutable ref — stamping never re-renders.
@@ -2756,6 +2765,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           storyStopId={storyStopId ?? online?.storyStopId ?? null}
           kingRailCast={kingRail}
           seatedFigures={seatedFiguresArr}
+          porchFigureSeats={porchFigureSeats}
           crowdCue={crowdCue}
           crowdAnimate={!reduceFx && !fx.osReducedMotion}
           visitRail={visitSoloKing}

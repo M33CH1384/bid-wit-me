@@ -50,6 +50,7 @@ import SpeakeasyRoom, { preloadSpeakeasyRoom } from './SpeakeasyRoom';
 import CornerStreetRoom from './CornerStreetRoom';
 import SpeakeasyLoungeRoom from './SpeakeasyLoungeRoom';
 import PorchDeckRoom from './PorchDeckRoom';
+import PorchFigures from './PorchFigures';
 import GrandmasKitchenRoom from './GrandmasKitchenRoom';
 import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
@@ -57,7 +58,7 @@ import MansionRoom, { preloadMansionRoom } from './MansionRoom';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
 import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
 import {
-  CH, CW, MIN_STRIP_PX, TRICK_SCALE, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
+  CH, CW, MIN_STRIP_PX, TRICK_SCALE, type CamSpec, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
   xf,
 } from './layout';
@@ -174,6 +175,13 @@ export interface SceneProps {
   /** Per-seat seated figures (character id or null, by seat): at the
    *  King table the seated story characters render in the scene. */
   seatedFigures?: readonly (string | null)[];
+  /** Per-seat rigged 3D figures (character id or null, by seat) for the
+   *  Porch pilot (character phase step 2): Table sets this ONLY for solo
+   *  story tables at stop `porch`; the scene seats the real cast at High
+   *  quality (three/PorchFigures.tsx) and raises the Sitting camera to
+   *  the people framing while the pilot is active. Absent everywhere
+   *  else — Low, non-story, other stops and co-op never see a figure. */
+  porchFigureSeats?: readonly (string | null)[];
   /** The crowd cue channel (stirs + speakers), stamped by the table. */
   crowdCue?: CrowdCue;
   /** False under reduced effects: figures render at rest, static. */
@@ -187,7 +195,36 @@ export interface SceneProps {
   turnUp?: boolean;
 }
 
-function CameraRig({ view = 'standing' }: { view?: 'standing' | 'sitting' }) {
+/** The people framing (immersive sandbox Phase C, owner pick
+ *  2026-10-27): while the Porch pilot's figures are seated, the SITTING
+ *  camera raises +0.37 and its aim lifts +0.48 / −0.38 so the partner's
+ *  face and body clear the plate line. Applied at the Porch story seam
+ *  ONLY — this is the ratification candidate: the owner's device
+ *  verdict on the pilot settles whether it becomes the default 3D
+ *  gameplay camera. Standing is never offset. The hand fan solver
+ *  works against the STOCK camera, so Cards refits the human hand by
+ *  the matching matrix (see `peopleCam` in Cards) — the two halves of
+ *  the framing move together or the fan sinks out of frame. */
+export const PEOPLE_CAM = { raise: 0.37, lookDy: 0.48, lookDz: -0.38 } as const;
+
+/** View matrix (world -> camera) for a cameraFor-style spec, the
+ *  sandbox's camMatrix: lookAt rotation with the position set after. */
+export function camMatrixOf(pos: readonly number[], look: readonly number[]): Matrix4 {
+  const m = new Matrix4().lookAt(new Vector3(pos[0]!, pos[1]!, pos[2]!), new Vector3(look[0]!, look[1]!, look[2]!), new Vector3(0, 1, 0));
+  m.setPosition(pos[0]!, pos[1]!, pos[2]!);
+  return m;
+}
+
+/** The people-framing Sitting spec for a stock Sitting spec. */
+export function peopleSpec(spec: CamSpec): CamSpec {
+  return {
+    fov: spec.fov,
+    pos: [spec.pos[0], spec.pos[1] + PEOPLE_CAM.raise, spec.pos[2]],
+    look: [spec.look[0], spec.look[1] + PEOPLE_CAM.lookDy, spec.look[2] + PEOPLE_CAM.lookDz],
+  };
+}
+
+function CameraRig({ view = 'standing', people = false }: { view?: 'standing' | 'sitting'; people?: boolean }) {
   const { camera, size, invalidate } = useThree();
   const short = isShortLandscape(size.width, size.height);
   const anim = useRef<{ from: number[]; to: number[]; fromLook: number[]; toLook: number[]; start: number; dur: number } | null>(null);
@@ -195,14 +232,15 @@ function CameraRig({ view = 'standing' }: { view?: 'standing' | 'sitting' }) {
   const lookAtRef = useRef<number[] | null>(null);
   useLayoutEffect(() => {
     const a = size.width >= 32 && size.height >= 32 ? size.width / size.height : 9 / 16;
-    const spec = cameraFor(a, short, view);
+    const stockSpec = cameraFor(a, short, view);
+    const spec = people && view === 'sitting' ? peopleSpec(stockSpec) : stockSpec;
     const cam = camera as import('three').PerspectiveCamera;
     if (!Number.isFinite(spec.fov)) return;
     cam.fov = spec.fov;
     cam.aspect = a;
     cam.updateProjectionMatrix();
     sound.setSpatialListener(spec.pos, spec.look); // audio listener follows Sitting/Standing
-    const probe = (t: number) => { (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS }; };
+    const probe = (t: number) => { (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS }; };
     if (!booted.current) { // first frame: land exactly on the saved view, no flight
       booted.current = true;
       cam.position.set(...spec.pos); cam.lookAt(new Vector3(...spec.look));
@@ -214,7 +252,7 @@ function CameraRig({ view = 'standing' }: { view?: 'standing' | 'sitting' }) {
     anim.current = { from: [cam.position.x, cam.position.y, cam.position.z], to: [...spec.pos], fromLook: [...fromLook], toLook: [...spec.look], start: performance.now(), dur: reduced ? 0 : CAMERA_VIEW_TWEEN_MS };
     probe(0);
     invalidate();
-  }, [camera, size, short, view, invalidate]);
+  }, [camera, size, short, view, people, invalidate]);
   useFrame(() => {
     const a = anim.current; if (!a) return;
     const cam = camera as import('three').PerspectiveCamera;
@@ -662,6 +700,36 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const portraitPhone = !short && !wide && size.width < 600 && aspect < 1.05;
   const strip = { minStripPx: MIN_STRIP_PX, pxW: screenW };
   const view = props.view ?? 'standing';
+  // Porch pilot people framing: while the pilot is active CameraRig
+  // renders the raised Sitting camera, but the hand solver lays the
+  // fan out against the STOCK camera — left alone, the fan would sink
+  // out of the raised frame. Refit the human hand's slot targets by
+  // M = V · S^-1 (the sandbox's refit): a refit point projects under
+  // the live (people) camera to exactly the screen position the stock
+  // solver chose, so the fan keeps its solved screen layout while the
+  // world behind it rises. ONLY the human hand's fan slots (and the
+  // flip-in-place poses derived from them) are refit: the deal flight
+  // still leaves the real deck, the gather override still targets the
+  // deck, and the published hit quads are computed from the STOCK
+  // targets (cardScreenQuad re-derives the same screen points the
+  // refit preserves). Departure slots inherit the refit because
+  // nextSlots stores the refit targets.
+  const peopleCam = view === 'sitting' && quality === 'high' && props.venue === 'grandma'
+    && props.storyStopId === 'porch' && !!(props.porchFigureSeats?.some(Boolean));
+  const refitM = useMemo(() => {
+    if (!peopleCam) return null;
+    const stock = cameraFor(aspect, short, 'sitting');
+    const people = peopleSpec(stock);
+    return camMatrixOf(people.pos, people.look).multiply(camMatrixOf(stock.pos, stock.look).invert());
+  }, [peopleCam, aspect, short]);
+  const refitXf = (x: Xform): Xform => {
+    if (!refitM) return x;
+    const m = new Matrix4().compose(new Vector3(x.p[0], x.p[1], x.p[2]), new Quaternion(x.q[0], x.q[1], x.q[2], x.q[3]), new Vector3(x.s, x.s, x.s));
+    m.premultiply(refitM);
+    const p = new Vector3(); const q = new Quaternion(); const s = new Vector3();
+    m.decompose(p, q, s);
+    return { p: [p.x, p.y, p.z], q: [q.x, q.y, q.z, q.w], s: s.x };
+  };
   // Sitting: lift the whole fan above the iPhone home indicator + Safari bottom chrome (safe-area
   // bottom + a 12px breathing margin), in the LIVE view's camera. Standing keeps its exact framing.
   const sittingBottom = view === 'sitting' ? (safe.b + 12) / Math.max(1, screenH) : 0;
@@ -890,7 +958,11 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // The raise is screen-up. Depth and render order (handDepthOpts, handRenderOrder) put a
     // raised card in front of the neighbours it overlaps, and the raycast uses that same order.
     const opts = { ...laid, ...handDepthOpts(pose) };
-    const target = handFan(aspect, fanCards.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
+    const targetStock = handFan(aspect, fanCards.length, i, 0, safeFrac, opts, gaps[i] ?? 0, screenH);
+    // People framing (pilot): the slot the mesh flies to is the refit
+    // of the solved slot; the hit quad below keeps the stock target —
+    // the refit preserves its screen position exactly.
+    const target = refitM ? refitXf(targetStock) : targetStock;
     // One shot. Later renders (a tap, a highlight) must not pass the face-down pose again.
     const flip = flipIn && flippedHand.current !== handNo && !!c;
     const id = c ? handCardKey(c) : '';
@@ -908,7 +980,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       handQuads.push({
         id: c,
         order,
-        poly: cardScreenQuad(aspect, target, screenW, screenH, posePx(pose), !!fanOpts.short, view),
+        poly: cardScreenQuad(aspect, targetStock, screenW, screenH, posePx(pose), !!fanOpts.short, view),
       });
     }
     nextSeen.add(slotKey);
@@ -1061,7 +1133,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
           blast={it.hand ? 'hand' : 'table'}
         />
       ))}
-      {wide && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
+      {wide && !peopleCam && mine.length > 0 && <HandGlow aspect={aspect} count={mine.length} safeFrac={safeFrac} opts={fanOpts} />}
       {flight && <ShuffleDeck key={`shuffle-${handNo}`} at={deck} back={back} tl={tl} quality={quality} />}
       {props.kingGunSeat != null && positions[props.kingGunSeat] && (
         <KingGun spot={kingGunSpot(positions[props.kingGunSeat]!, n)} quality={quality} />
@@ -1634,6 +1706,10 @@ export default function Scene(props: SceneProps) {
   const grandma = def.id === 'grandma';
   const mansion = def.id === 'mansion';
   const cubeRoom = barbershop || rooftop || yacht || beach || backyard || church || vegas || speakeasy || grandma || mansion;
+  // Porch pilot (character phase step 2): the figures seat only where
+  // Table says the solo Porch cast sits, at High, on the story seam —
+  // the same conditions that mount PorchDeckRoom, plus the prop.
+  const porchFiguresActive = grandma && props.storyStopId === 'porch' && hi && !!(props.porchFigureSeats?.some(Boolean));
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -1688,7 +1764,7 @@ export default function Scene(props: SceneProps) {
       <EffectWarmup quality={props.quality} />
       <SnapHook />
       <FirstFrameSignal onFirstFrame={firstFrame} />
-      <CameraRig view={props.view} />
+      <CameraRig view={props.view} people={porchFiguresActive} />
       <FxShake table={tableGroup} />
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
@@ -1757,6 +1833,17 @@ export default function Scene(props: SceneProps) {
           visit={props.visitRail ?? false}
           aspect={aspect}
           short={!!props.short}
+        />
+      )}
+      {showTable && textured && porchFiguresActive && (
+        <PorchFigures
+          seats={props.porchFigureSeats!}
+          positions={props.positions}
+          n={props.n}
+          handCounts={props.handCounts}
+          activeSeat={props.activeSeat ?? null}
+          view={props.view ?? 'standing'}
+          animate={props.crowdAnimate ?? false}
         />
       )}
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}

@@ -137,7 +137,14 @@ describe('room asset enumeration', () => {
     expect(roomGlbUrls('speakeasy', 'high', 'corner')).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
     expect(roomGlbUrls('speakeasy', 'high', null)).toEqual([]);
     expect(roomGlbUrls('blockAfterDark', 'low', null)).toEqual([]);
-    expect(roomGlbUrls('grandma', 'high', 'porch')).toEqual([]); // the Porch deck room is all-code
+    // the Porch deck ROOM is all-code, but the pilot's seated figures are
+    // downloads the table presents — they gate at the porch seam (the
+    // dedicated pins live in porch-figures.test.ts)
+    expect(roomGlbUrls('grandma', 'high', 'porch').map((g) => g.url)).toEqual([
+      '/assets/figures/dee.glb', '/assets/figures/uncleRay.glb', '/assets/figures/pat.glb',
+    ]);
+    expect(roomGlbUrls('grandma', 'high', null)).toEqual([]);
+    expect(roomGlbUrls('grandma', 'low', 'porch')).toEqual([]);
     expect(roomGlbUrls('classic', 'high', null)).toEqual([]);
   });
 
