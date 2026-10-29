@@ -51,6 +51,18 @@ describe('the Rec Center — the Scene seam', () => {
     expect(scene).toContain(': <ClassicStudio quality={props.quality} />)}');
     expect(studio.length).toBeGreaterThan(0);
   });
+
+  it("suppresses the table model's classic ground plane at the seam (coplanar z-fight)", () => {
+    // The TableModel's classic ground plane (30×30 at y=-0.9) and the gym's
+    // court floor (FLOOR_Y -0.9) are coplanar: they z-fight across the whole
+    // court, and which surface wins varies by GPU — on the owner's phone
+    // the dark plane won in bands, so the court read as dark streaks with
+    // only patches of maple (device report 2026-10-28, "the floor isn't
+    // loading properly"). At the seam the room owns the floor: the ground
+    // plane must not render. Every other classic table keeps it.
+    expect(scene).toContain("roomFloor={classic && props.storyStopId === 'rec-center' && props.quality === 'high'}");
+    expect(scene).toContain("def.id === 'classic' && !roomFloor");
+  });
 });
 
 describe('the Rec Center — code-first, no downloads', () => {

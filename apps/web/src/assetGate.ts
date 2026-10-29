@@ -49,9 +49,10 @@ export const SEDAN_GLB_URL = '/assets/venues/blockAfterDark/sedan.glb';
 /**
  * GLB files a room presents that are NOT in its venue asset set: today only
  * the shared street sedan — the Pj's own room at High, and the story Corner
- * (venue `speakeasy`, stop `corner`) which reuses the same car. The Porch's
- * deck room and the King's props are procedural (no downloads). Low quality
- * never mounts the 3D street rooms, so it never fetches the car.
+ * (venue `speakeasy`, stop `corner`) which reuses the same car. The king
+ * stop parks no sedan (the King's Lounge replaces the street room there);
+ * its GLBs are the studio set, which rides the classic ledger instead.
+ * Low quality never mounts the 3D street rooms, so it never fetches the car.
  */
 export function roomGlbUrls(
   venue: string,
@@ -59,23 +60,32 @@ export function roomGlbUrls(
   storyStopId: string | null,
 ): { label: string; url: string }[] {
   if (quality !== 'high') return [];
-  if (venue === 'blockAfterDark') return [{ label: 'glb sedan (Pj\'s street)', url: SEDAN_GLB_URL }];
+  if (venue === 'blockAfterDark') {
+    // The King's Lounge replaces the street room at the king stop (High):
+    // no sedan is parked there, so the gate must not wait on it.
+    if (storyStopId === 'king') return [];
+    return [{ label: 'glb sedan (Pj\'s street)', url: SEDAN_GLB_URL }];
+  }
   if (venue === 'speakeasy' && storyStopId === 'corner') return [{ label: 'glb sedan (Corner street)', url: SEDAN_GLB_URL }];
   return [];
 }
 
 /**
  * Story seams: at High quality a story table's venue room never mounts — the
- * Scene swaps in an all-code story room for the stop (Scene.tsx's seam
- * branches, Venue3D has none: the Pj's street room IS its venue room, for
- * story and open tables alike). Those story rooms download nothing, so the
- * venue ledger folded into the gate would be pure dead weight: at the Rec
- * Center the gate waited on the Classic Studio's chair/lamp/floor set
- * (~678 KB) that nothing at the table would ever request, could not settle
- * inside the cap on a cold pipe, and released the loader into a room still
- * arriving piecemeal (owner device report, 2026-10-28: "Rec center is
- * having a hard time loading all the assets" / "Some pieces never show up").
- * Table therefore skips the ledger fold-in exactly when a seam mounts.
+ * Scene swaps in a bespoke story room for the stop (Scene.tsx's seam
+ * branches; Venue3D carries one: at the king stop the King's Lounge
+ * replaces the Pj's street room, which IS its venue room everywhere else).
+ * Seam rooms download nothing, so the venue ledger folded into the gate
+ * would be pure dead weight: at the Rec Center the gate waited on the
+ * Classic Studio's chair/lamp/floor set (~678 KB) that nothing at the table
+ * would ever request, could not settle inside the cap on a cold pipe, and
+ * released the loader into a room still arriving piecemeal (owner device
+ * report, 2026-10-28: "Rec center is having a hard time loading all the
+ * assets" / "Some pieces never show up"). Table therefore skips the ledger
+ * fold-in exactly when a seam mounts — with one exception: the King's
+ * Lounge is the Classic Studio's cube dressed plum-and-gold, so it loads
+ * the studio set; at the king seam the gate folds the CLASSIC ledger in
+ * place of the street's (gateLedgerVenue below).
  * Low quality mounts the venue fallback room — its files ARE used, so the
  * ledger stays gated there, as it does at every non-story table.
  *
@@ -104,6 +114,7 @@ const STORY_SEAMS: Readonly<Record<string, string>> = {
   vegas: 'legends',
   speakeasy: 'corner',
   grandma: 'porch',
+  blockAfterDark: 'king',
 };
 
 const VENUE_WIDE_SEAMS: ReadonlySet<string> = new Set([
@@ -121,6 +132,23 @@ export function storySeamMounts(
   if (quality !== 'high') return false;
   if (VENUE_WIDE_SEAMS.has(venue)) return true;
   return storyStopId !== null && STORY_SEAMS[venue] === storyStopId;
+}
+
+/**
+ * Whose asset ledger the gate folds in for a table: the venue's own at
+ * ordinary tables; NO ledger at a seam (the seam rooms download nothing —
+ * the king's lounge excepted); the CLASSIC ledger at the king seam, whose
+ * lounge loads exactly the studio files (chair/lamp GLBs + floor set) and
+ * none of the street's. Low tables mount the venue/fallback rooms, so their
+ * own ledger folds in.
+ */
+export function gateLedgerVenue(
+  venue: string,
+  quality: 'high' | 'low',
+  storyStopId: string | null,
+): string | null {
+  if (!storySeamMounts(venue, quality, storyStopId)) return venue;
+  return venue === 'blockAfterDark' && storyStopId === 'king' ? 'classic' : null;
 }
 
 /** The loader's full dismissal condition: the original dressed + effects-warm

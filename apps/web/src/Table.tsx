@@ -15,7 +15,7 @@ import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './t
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueAssetUrls, venueUnlocked } from './venues';
-import { assetSettled, createAssetGate, imageSettled, fetchSettled, loaderStillUp, notedRoomAssets, roomGlbUrls, storySeamMounts } from './assetGate';
+import { assetSettled, createAssetGate, imageSettled, fetchSettled, gateLedgerVenue, loaderStillUp, notedRoomAssets, roomGlbUrls } from './assetGate';
 import { type FormEvent, Fragment, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -2554,14 +2554,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     // files would never be requested by anything at this table — gating on
     // them only holds the loader (assetGate.ts: storySeamMounts). The warm
     // pass still runs (its fetches warm the cache for other tables); only
-    // the fold-in is skipped. Low story tables mount the venue room, so
-    // their ledger folds in as usual.
+    // the fold-in is skipped — or, at the king seam, redirected to the
+    // classic ledger the King's Lounge actually loads (gateLedgerVenue).
+    // Low story tables mount the venue room, so their ledger folds in.
     void loadScene()
-      .then((m) => { try { m.preloadTableAssets(settings.quality, venue); } catch { /* warm is best-effort */ } })
+      .then((m) => { try { m.preloadTableAssets(settings.quality, venue, stopId); } catch { /* warm is best-effort */ } })
       .catch(() => undefined)
       .then(() => {
-        if (!storySeamMounts(venue, settings.quality, stopId)) {
-          for (const url of notedRoomAssets(venue)) gate.add(url, assetSettled(url));
+        const ledgerVenue = gateLedgerVenue(venue, settings.quality, stopId);
+        if (ledgerVenue) {
+          for (const url of notedRoomAssets(ledgerVenue)) gate.add(url, assetSettled(url));
         }
         gate.seal();
         publish();

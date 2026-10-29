@@ -272,11 +272,14 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
  * doesn't show at table distance, and they were the heaviest files). The hall HDRI streams in after the cloth.
  */
 /** Warm the image cache (called from the splash / wizard via three/preload.ts). Does not suspend the table. */
-export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'classic'): void {
+export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'classic', storyStopId: string | null = null): void {
   const rail = venueAssetUrls(venue, quality).rail;
   prefetchTableTextures(quality, rail ? [rail] : []);
   // The classic hall HDRI is ~400 KB and its PMREM filter used to freeze the page after the felt appeared.
   // It starts only once the cloth is up (see ClassicHall). Other venues still warm their own files here.
+  // The King's Lounge (blockAfterDark + king + High) dresses from the Classic
+  // Studio set, so a king table notes/warms those files for its gate too.
+  if (venue === 'blockAfterDark' && storyStopId === 'king' && quality === 'high') preloadClassicStudio();
   if (venue === 'barbershop') preloadBarbershopRoom();
   else if (venue === 'rooftop') preloadRooftopRoom();
   else if (venue === 'yacht') preloadYachtRoom();
@@ -423,7 +426,7 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
   return { felt, wood, apron, floor };
 }
 
-function TableModel({ quality, lit, onReady, onTextured, def }: { quality: 'high' | 'low'; lit: boolean; onReady?: () => void; onTextured?: () => void; def: VenueDef }) {
+function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { quality: 'high' | 'low'; lit: boolean; onReady?: () => void; onTextured?: () => void; def: VenueDef; /** A story seam room provides this table's floor — suppress the classic ground plane (it sits at the same FLOOR_Y and z-fights the room's own floor; owner device report 2026-10-28: Rec Center floor rendering as dark streaks). */ roomFloor?: boolean }) {
   const railUrl = railTextureUrl(def, quality);
   const urls = useMemo(() => (railUrl ? [...tableTextureUrls(quality), railUrl] : tableTextureUrls(quality)), [quality, railUrl]);
   const { maps, settled } = useStreamedMaps(urls);
@@ -525,7 +528,7 @@ function TableModel({ quality, lit, onReady, onTextured, def }: { quality: 'high
         <ringGeometry args={[0.95, 0.965, 96]} />
         <primitive object={basic.stripe} attach="material" />
       </mesh>
-      {def.id === 'classic' && (
+      {def.id === 'classic' && !roomFloor && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow>
           <planeGeometry args={[30, 30]} />
           <primitive object={lit ? full.floor : basic.floor} attach="material" />
@@ -1727,7 +1730,7 @@ export default function Scene(props: SceneProps) {
             props.onFeltTap?.();
           }}
         >
-          <TableModel quality={props.quality} lit={lit} onReady={tableReady} onTextured={onTextured} def={def} />
+          <TableModel quality={props.quality} lit={lit} onReady={tableReady} onTextured={onTextured} def={def} roomFloor={classic && props.storyStopId === 'rec-center' && props.quality === 'high'} />
         </group>
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}

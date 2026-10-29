@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, SEDAN_GLB_URL, createAssetGate, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, SEDAN_GLB_URL, createAssetGate, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -182,8 +182,10 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
   // its story stop). VENUE_WIDE_SEAMS is venue-keyed: the venues rollout
   // (Batches A–B, 2026-10-28) un-scoped those rooms to every High table at the
   // venue, so the ledger skip follows the room, not the story flag.
-  // blockAfterDark has NO seam (the Pj's street room is the venue room for
-  // story and open tables alike), and yacht/beach host no stops.
+  // blockAfterDark's one seam is the king stop, whose branch lives in
+  // Venue3D (the King's Lounge replaces the street room there); the Pj's
+  // street room is the venue room for story Stop 9 and open tables alike.
+  // yacht/beach host no stops.
   const SEAMS: [string, string][] = [
     ['classic', 'rec-center'],
     ['rooftop', 'rooftop'],
@@ -224,9 +226,9 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     for (const [venue] of SEAMS) expect(storySeamMounts(venue, 'high', null)).toBe(false);
     expect(storySeamMounts('classic', 'high', 'porch')).toBe(false);
     expect(storySeamMounts('grandma', 'high', 'rec-center')).toBe(false);
-    // The street tables: no seam — the sedan keeps riding roomGlbUrls instead.
+    // The street tables: no seam at Stop 9 or open — the sedan keeps riding
+    // roomGlbUrls there. (The king stop IS a seam — pinned below.)
     expect(storySeamMounts('blockAfterDark', 'high', 'pjs')).toBe(false);
-    expect(storySeamMounts('blockAfterDark', 'high', 'king')).toBe(false);
     expect(storySeamMounts('blockAfterDark', 'high', null)).toBe(false);
     expect(storySeamMounts('yacht', 'high', null)).toBe(false);
     expect(storySeamMounts('beach', 'high', null)).toBe(false);
@@ -245,9 +247,39 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     }
   });
 
-  it('the sedan stays gated at the street seams via roomGlbUrls, king included', () => {
-    expect(roomGlbUrls('blockAfterDark', 'high', 'king')).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
+  it('the sedan stays gated at the street tables via roomGlbUrls — but not at the king', () => {
+    // The King's Lounge (story, stop king, High) is the Classic Studio cube:
+    // it loads no sedan and no street file (its GLBs/textures are the studio
+    // set, which rides the classic ledger via gateLedgerVenue). Stop 9
+    // (the-pjs), open blockAfterDark tables and the Corner keep the sedan.
+    expect(roomGlbUrls('blockAfterDark', 'high', 'king')).toEqual([]);
     expect(roomGlbUrls('blockAfterDark', 'low', 'king')).toEqual([]);
+    expect(roomGlbUrls('blockAfterDark', 'high', 'the-pjs')).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
+    expect(roomGlbUrls('blockAfterDark', 'high', null)).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
+    expect(roomGlbUrls('speakeasy', 'high', 'corner')).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
+  });
+
+  it("the king seam mounts at High only, in sync with Venue3D's lounge branch", () => {
+    expect(storySeamMounts('blockAfterDark', 'high', 'king')).toBe(true);
+    expect(storySeamMounts('blockAfterDark', 'low', 'king')).toBe(false);
+    const venue3d = readFileSync(new URL('../src/three/Venue3D.tsx', import.meta.url), 'utf8');
+    expect(venue3d).toContain("storyStopId === 'king' && quality === 'high'");
+  });
+
+  it('gateLedgerVenue: no ledger at a seam, the classic ledger at the king seam', () => {
+    for (const [venue, stop] of SEAMS) {
+      expect(gateLedgerVenue(venue, 'high', stop)).toBeNull();
+      expect(gateLedgerVenue(venue, 'low', stop)).toBe(venue);
+    }
+    for (const [venue, stop] of VENUE_WIDE_SEAMS) {
+      expect(gateLedgerVenue(venue, 'high', stop)).toBeNull();
+      expect(gateLedgerVenue(venue, 'high', null)).toBeNull();
+      expect(gateLedgerVenue(venue, 'low', stop)).toBe(venue);
+    }
+    expect(gateLedgerVenue('blockAfterDark', 'high', 'king')).toBe('classic');
+    expect(gateLedgerVenue('blockAfterDark', 'low', 'king')).toBe('blockAfterDark');
+    expect(gateLedgerVenue('blockAfterDark', 'high', 'the-pjs')).toBe('blockAfterDark');
+    expect(gateLedgerVenue('classic', 'high', null)).toBe('classic');
   });
 
   // Table's registration sequence, modelled on its gate effect: the deck in
@@ -267,8 +299,9 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     gate.addGroup('deck art (blacktop)', Promise.resolve({ failed: [] as string[] }));
     gate.add('card back (blacktop)', Promise.resolve(true));
     for (const p of ['dee', 'lil-man', 'trey']) gate.add(`/assets/story/faces/${p}.webp`, Promise.resolve(true));
-    if (!storySeamMounts(venue, quality, stopId)) {
-      for (const url of notedRoomAssets(venue)) gate.add(url, Promise.resolve(true));
+    const ledgerVenue = gateLedgerVenue(venue, quality, stopId);
+    if (ledgerVenue !== null) {
+      for (const url of notedRoomAssets(ledgerVenue)) gate.add(url, Promise.resolve(true));
     }
     gate.seal();
     return gate;
@@ -379,9 +412,33 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(l.total).toBe(9);
   });
 
+  it('king at High: the studio ledger rides the gate, the street ledger and sedan do not', async () => {
+    noteRoomAssets('classic', STUDIO_FILES);
+    noteRoomAssets('blockAfterDark', [
+      '/assets/venues/blockAfterDark/bg.jpg',
+      '/assets/venues/blockAfterDark/sedan.glb',
+    ]);
+    const r = await composeGate('blockAfterDark', 'high', 'king').done;
+    // 5 direct + the 5 classic studio files the lounge actually loads.
+    expect(r.total).toBe(10);
+    expect(r.cappedOut).toBe(false);
+    expect(r.pendingAtCap).toEqual([]);
+  });
+
+  it('stop 9 (the-pjs) at High: the street ledger still rides the gate', async () => {
+    noteRoomAssets('blockAfterDark', [
+      '/assets/venues/blockAfterDark/bg.jpg',
+      '/assets/venues/blockAfterDark/sedan.glb',
+    ]);
+    const r = await composeGate('blockAfterDark', 'high', 'the-pjs').done;
+    expect(r.total).toBe(7);
+    expect(r.cappedOut).toBe(false);
+  });
+
   it('Table applies the seam check at the fold-in and publishes pendingAtCap on the probe', () => {
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
-    expect(table).toContain('storySeamMounts(venue, settings.quality, stopId)');
+    expect(table).toContain('gateLedgerVenue(venue, settings.quality, stopId)');
+    expect(table).toContain('preloadTableAssets(settings.quality, venue, stopId)');
     expect(table).toContain('pendingAtCap: r.pendingAtCap');
     expect(table).toContain('pendingAtCap: extra.pendingAtCap');
   });

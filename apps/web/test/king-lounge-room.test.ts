@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { roomGlbUrls } from '../src/assetGate';
+import { gateLedgerVenue, roomGlbUrls } from '../src/assetGate';
 import { CHAIR_SPOTS, STUDIO } from '../src/three/classicStudioLayout';
 
 /**
@@ -70,14 +70,21 @@ describe("the King's Lounge — the Venue3D seam", () => {
     // kingActive's equality on 'king' is the whole scoping — the-pjs (Stop 9)
     // and null (non-story) both fall through to the shipped street branch.
     expect(venue3d).not.toContain("storyStopId === 'the-pjs'");
-    expect(roomGlbUrls('blockAfterDark', 'high', 'king')).toEqual(roomGlbUrls('blockAfterDark', 'high', 'the-pjs'));
-  });
-
-  it('adds nothing to the loader asset gate (gate composition unchanged this batch)', () => {
-    expect(roomGlbUrls('blockAfterDark', 'high', 'king')).toEqual([
+    // The street's gate is untouched: the sedan still rides roomGlbUrls there.
+    expect(roomGlbUrls('blockAfterDark', 'high', 'the-pjs')).toEqual([
       { label: expect.any(String), url: '/assets/venues/blockAfterDark/sedan.glb' },
     ]);
+    expect(roomGlbUrls('blockAfterDark', 'high', null)).toEqual(roomGlbUrls('blockAfterDark', 'high', 'the-pjs'));
+  });
+
+  it('the loader gate mirrors the lounge (follow-up to this batch): no sedan at the king, the studio set rides the classic ledger', () => {
+    // Batch 7 shipped the lounge without touching the gate (the sedan was
+    // still gated at the king, whose room never requests it). The gate
+    // follow-up removed the sedan here and folds the classic ledger — the
+    // files KingLoungeRoom actually loads — via gateLedgerVenue instead.
+    expect(roomGlbUrls('blockAfterDark', 'high', 'king')).toEqual([]);
     expect(roomGlbUrls('blockAfterDark', 'low', 'king')).toEqual([]);
+    expect(gateLedgerVenue('blockAfterDark', 'high', 'king')).toBe('classic');
     expect(room).not.toContain("from '../assetGate'");
     expect(room).not.toContain('roomGlbUrls');
     expect(room).not.toContain('noteRoomAssets');
