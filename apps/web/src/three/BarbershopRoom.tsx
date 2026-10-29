@@ -20,8 +20,15 @@ import { noteRoomAssets } from '../assetGate';
 
 const CLASSIC = '/assets/venues/classic';
 
-export function preloadBarbershopRoom(): void {
-  const files = [`${CLASSIC}/chair.glb`, `${CLASSIC}/lamp.glb`, BARBER_ASSETS.skyPoster, BARBER_ASSETS.streetPoster, BARBER_ASSETS.skyDay, BARBER_ASSETS.street];
+export function preloadBarbershopRoom(quality: 'high' | 'low' = 'high'): void {
+  // At Low the room loads only its two poster plates (the plates effect
+  // takes the poster branch; the videos and the GLB props are High
+  // only), so a Low warm pass notes and fetches just the posters —
+  // the High list below is ~3 MB of files a Low table never requests
+  // (Batch D).
+  const files = quality === 'high'
+    ? [`${CLASSIC}/chair.glb`, `${CLASSIC}/lamp.glb`, BARBER_ASSETS.skyPoster, BARBER_ASSETS.streetPoster, BARBER_ASSETS.skyDay, BARBER_ASSETS.street]
+    : [BARBER_ASSETS.skyPoster, BARBER_ASSETS.streetPoster];
   // Asset gate: note the room's files so the table loader can wait on them (assetGate.ts).
   noteRoomAssets('barbershop', files);
   window.setTimeout(() => files.forEach((url) => { void fetch(url, { priority: 'low' } as RequestInit).catch(() => undefined); }), 1500);

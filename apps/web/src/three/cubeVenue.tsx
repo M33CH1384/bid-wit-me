@@ -177,8 +177,11 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
   );
 }
 
-export function preloadCubeVenue(cfg: CubeVenueConfig): void {
-  const files = [`${CLASSIC}/chair.glb`, ...(cfg.pendants === false ? [] : [`${CLASSIC}/lamp.glb`]), ...(cfg.floorUrl ? [cfg.floorUrl] : []), ...(cfg.sky ? [BARBER_ASSETS.skyPoster] : [])];
+export function preloadCubeVenue(cfg: CubeVenueConfig, quality: 'high' | 'low' = 'high'): void {
+  // The GLB props load at High only (the props effect above stands down
+  // at Low), so a Low warm pass neither notes nor fetches them — a Low
+  // table's gate and pipe carry only what its room mounts (Batch D).
+  const files = [...(quality === 'high' ? [`${CLASSIC}/chair.glb`, ...(cfg.pendants === false ? [] : [`${CLASSIC}/lamp.glb`])] : []), ...(cfg.floorUrl ? [cfg.floorUrl] : []), ...(cfg.sky ? [BARBER_ASSETS.skyPoster] : [])];
   // Asset gate: note the room's files so the table loader can wait on them (assetGate.ts).
   noteRoomAssets(cfg.id, files);
   window.setTimeout(() => files.forEach((url) => { void fetch(url, { priority: 'low' } as RequestInit).catch(() => undefined); }), 1500);

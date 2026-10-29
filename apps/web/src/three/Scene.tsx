@@ -327,19 +327,19 @@ export function preloadTableAssets(quality: 'high' | 'low', venue: VenueId = 'cl
   // It starts only once the cloth is up (see ClassicHall). Other venues still warm their own files here.
   // The King's Lounge (blockAfterDark + king + High) dresses from the Classic
   // Studio set, so a king table notes/warms those files for its gate too.
-  if (venue === 'blockAfterDark' && storyStopId === 'king' && quality === 'high') preloadClassicStudio();
-  if (venue === 'barbershop') preloadBarbershopRoom();
-  else if (venue === 'rooftop') preloadRooftopRoom();
-  else if (venue === 'yacht') preloadYachtRoom();
-  else if (venue === 'beach') preloadBeachRoom();
-  else if (venue === 'backyard') preloadBackyardRoom();
-  else if (venue === 'church') preloadChurchRoom();
-  else if (venue === 'vegas') preloadVegasRoom();
-  else if (venue === 'speakeasy') preloadSpeakeasyRoom();
-  else if (venue === 'grandma') preloadGrandmaRoom();
-  else if (venue === 'mansion') preloadMansionRoom();
+  if (venue === 'blockAfterDark' && storyStopId === 'king' && quality === 'high') preloadClassicStudio(quality);
+  if (venue === 'barbershop') preloadBarbershopRoom(quality);
+  else if (venue === 'rooftop') preloadRooftopRoom(quality);
+  else if (venue === 'yacht') preloadYachtRoom(quality);
+  else if (venue === 'beach') preloadBeachRoom(quality);
+  else if (venue === 'backyard') preloadBackyardRoom(quality);
+  else if (venue === 'church') preloadChurchRoom(quality);
+  else if (venue === 'vegas') preloadVegasRoom(quality);
+  else if (venue === 'speakeasy') preloadSpeakeasyRoom(quality);
+  else if (venue === 'grandma') preloadGrandmaRoom(quality);
+  else if (venue === 'mansion') preloadMansionRoom(quality);
   else if (venue !== 'classic') preloadVenueAssets(venue, quality);
-  else if (quality === 'high') preloadClassicStudio();
+  else preloadClassicStudio(quality);
 }
 
 /** a venue's rail texture (marble / teak / bamboo / leather) rides with the table textures (20–35 KB) */

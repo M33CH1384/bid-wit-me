@@ -194,7 +194,8 @@ export function storySeamMounts(
  * the king's lounge excepted); the CLASSIC ledger at the king seam, whose
  * lounge loads exactly the studio files (chair/lamp GLBs + floor set) and
  * none of the street's. Low tables mount the venue/fallback rooms, so their
- * own ledger folds in.
+ * own ledger folds in — through gateLedgerFiles, which keeps a Low gate
+ * off the files only High ever loads.
  */
 export function gateLedgerVenue(
   venue: string,
@@ -371,4 +372,35 @@ export function notedRoomAssets(venue: string): string[] {
 /** For checks: the whole ledger as plain data. */
 export function roomLedgerSnapshot(): Record<string, string[]> {
   return Object.fromEntries([...roomLedger.entries()].map(([k, v]) => [k, [...v]]));
+}
+
+/**
+ * The Low fold (venues rollout Batch D, 2026-10-29): the ledger is
+ * session-global and the warm passes historically noted every file a
+ * room can load at ANY quality, so a Low table's gate waited on files
+ * its fallback room never mounts — the Rec defect's waste class at
+ * Low. Verified from the mount code, the ledger's model/video files
+ * are High-only loads, every one behind a quality gate:
+ *  - the shared chair/lamp GLBs (`/assets/venues/classic/*.glb`):
+ *    CubeVenueRoom's, ClassicStudio's and BarbershopRoom's prop
+ *    effects all return early unless quality is High;
+ *  - the street sedan GLB: PjsStreetRoom mounts at High only — Low
+ *    keeps the backdrop + PjsLife, which never fetch it (a High
+ *    session can still note it into blockAfterDark's ledger, and a
+ *    later Low table in that session must not inherit the wait);
+ *  - the Barbershop's sky/street videos (`.webm`): at Low the room
+ *    takes its poster branch and never creates the video elements.
+ * Everything else a ledger can hold — floor textures, sky/street
+ * posters, the venues' backdrop/floor/HDRI sets — a Low table really
+ * does load, so it stays gated. The warm passes also note
+ * quality-aware now (the preloads take the table's quality), so a
+ * Low-only session never notes these files at all; this filter is
+ * what keeps a mixed session's Low gate honest.
+ */
+const HIGH_ONLY_LEDGER_FILE = /\.(?:glb|webm)(?:\?.*)?$/i;
+
+/** The ledger files a table's gate actually folds in, by quality. */
+export function gateLedgerFiles(venue: string, quality: 'high' | 'low'): string[] {
+  const files = notedRoomAssets(venue);
+  return quality === 'low' ? files.filter((u) => !HIGH_ONLY_LEDGER_FILE.test(u)) : files;
 }

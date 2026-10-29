@@ -15,7 +15,7 @@ import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './t
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueAssetUrls, venueUnlocked } from './venues';
-import { assetSettled, createAssetGate, imageSettled, fetchSettled, gateLedgerVenue, loaderStillUp, notedRoomAssets, roomGlbUrls } from './assetGate';
+import { assetSettled, createAssetGate, imageSettled, fetchSettled, gateLedgerFiles, gateLedgerVenue, loaderStillUp, roomGlbUrls } from './assetGate';
 import { type FormEvent, Fragment, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -2505,7 +2505,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // the cards are loaded): register everything this table will present, once,
   // at mount. Venue files + the street rooms' sedan come from the same lists
   // the three layer fetches; the cube rooms' own files arrive via the warm-up
-  // ledger (notedRoomAssets) once the scene chunk's preload pass has run for
+  // ledger (gateLedgerFiles) once the scene chunk's preload pass has run for
   // this venue; the deck is the one in use at THIS table (settings.deck, the
   // same value setActiveDeck applied); faces are the seated art the plates
   // and loader present. Failures settle the gate — the fallbacks behind the
@@ -2563,7 +2563,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       .then(() => {
         const ledgerVenue = gateLedgerVenue(venue, settings.quality, stopId);
         if (ledgerVenue) {
-          for (const url of notedRoomAssets(ledgerVenue)) gate.add(url, assetSettled(url));
+          for (const url of gateLedgerFiles(ledgerVenue, settings.quality)) gate.add(url, assetSettled(url));
         }
         gate.seal();
         publish();

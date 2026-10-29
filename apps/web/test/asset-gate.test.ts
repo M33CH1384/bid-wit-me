@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, SEDAN_GLB_URL, createAssetGate, gateLedgerVenue, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, SEDAN_GLB_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -364,9 +364,12 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
 
   // Table's registration sequence, modelled on its gate effect: the deck in
   // use (group + back) and the seated story portraits register directly; the
-  // venue ledger folds in last, behind the seam check. The Rec table's real
-  // counts: 5 direct units (deck group, back, Dee + two opponent portraits)
-  // and the Classic Studio's 5 ledger files.
+  // venue ledger folds in last, behind the seam check — through
+  // gateLedgerFiles, so a Low fold drops the files only High ever loads
+  // (Batch D: the GLB props and the Barbershop videos; see the Batch D
+  // describe below). The Rec table's real counts: 5 direct units (deck
+  // group, back, Dee + two opponent portraits) and the Classic Studio's
+  // 5 ledger files.
   const STUDIO_FILES = [
     '/assets/venues/classic/chair.glb',
     '/assets/venues/classic/lamp.glb',
@@ -381,7 +384,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     for (const p of ['dee', 'lil-man', 'trey']) gate.add(`/assets/story/faces/${p}.webp`, Promise.resolve(true));
     const ledgerVenue = gateLedgerVenue(venue, quality, stopId);
     if (ledgerVenue !== null) {
-      for (const url of notedRoomAssets(ledgerVenue)) gate.add(url, Promise.resolve(true));
+      for (const url of gateLedgerFiles(ledgerVenue, quality)) gate.add(url, Promise.resolve(true));
     }
     gate.seal();
     return gate;
@@ -397,10 +400,12 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(r.failed).toEqual([]);
   });
 
-  it('story seam at Low: the venue ledger folds in (the fallback room mounts)', async () => {
+  it('story seam at Low: the venue ledger folds in, minus the High-only GLBs (Batch D)', async () => {
     noteRoomAssets('classic', STUDIO_FILES);
     const r = await composeGate('classic', 'low', 'rec-center').done;
-    expect(r.total).toBe(10);
+    // 5 direct + the studio's 3 floor maps; the chair/lamp GLBs are
+    // High-only loads, so a Low gate no longer waits on them.
+    expect(r.total).toBe(8);
     expect(r.cappedOut).toBe(false);
   });
 
@@ -416,7 +421,8 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
   // regular High table's gate must equal the story composition — the
   // fallback room's ledger (its chair/lamp GLBs, floor, posters, video) is
   // excluded or the Rec defect reappears at regular tables. Low mounts the
-  // fallback, so the ledger folds in there exactly as before.
+  // fallback, so the ledger folds in there (Batch D: minus the files
+  // only High ever loads — gateLedgerFiles).
   const BARBER_FILES = [
     '/assets/venues/classic/chair.glb',
     '/assets/venues/classic/lamp.glb',
@@ -446,10 +452,12 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(s.total).toBe(5);
   });
 
-  it('venue-wide seam at Low: the venue ledger folds in (the fallback room mounts)', async () => {
+  it('venue-wide seam at Low: only the files Low mounts fold in (Batch D)', async () => {
     noteRoomAssets('barbershop', BARBER_FILES);
     const r = await composeGate('barbershop', 'low', null).done;
-    expect(r.total).toBe(11);
+    // 5 direct + the 2 poster plates; the GLB props and the sky/street
+    // videos are High-only loads (Low takes the poster branch).
+    expect(r.total).toBe(7);
     expect(r.cappedOut).toBe(false);
   });
 
@@ -459,7 +467,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(r.total).toBe(5);
     expect(r.cappedOut).toBe(false);
     const l = await composeGate('backyard', 'low', null).done;
-    expect(l.total).toBe(8);
+    expect(l.total).toBe(7); // Batch D: the chair GLB no longer folds at Low
   });
 
   it('venue-wide seam at regular High: the venue ledger is excluded (church 8 → 5)', async () => {
@@ -468,7 +476,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(r.total).toBe(5);
     expect(r.cappedOut).toBe(false);
     const l = await composeGate('church', 'low', null).done;
-    expect(l.total).toBe(8);
+    expect(l.total).toBe(7); // Batch D: the chair GLB no longer folds at Low
   });
 
   // Batch B: the mansion ledger is what preloadCubeVenue(MANSION) notes —
@@ -489,7 +497,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     const s = await composeGate('mansion', 'high', 'high-rise').done;
     expect(s.total).toBe(5);
     const l = await composeGate('mansion', 'low', null).done;
-    expect(l.total).toBe(9);
+    expect(l.total).toBe(7); // Batch D: the chair/lamp GLBs no longer fold at Low
   });
 
   // Batch C1: the speakeasy ledger is what preloadCubeVenue(SPEAKEASY)
@@ -498,7 +506,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
   // them, so a regular High table's gate must equal the story
   // composition (the Corner's sedan still rides roomGlbUrls, pinned
   // above — it is not a ledger file). Low mounts the cube room, so the
-  // ledger folds in there exactly as before.
+  // ledger folds in there (Batch D: minus the High-only files).
   const SPEAKEASY_FILES = [
     '/assets/venues/classic/chair.glb',
     '/assets/venues/classic/lamp.glb',
@@ -514,7 +522,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     const s = await composeGate('speakeasy', 'high', 'corner').done;
     expect(s.total).toBe(5);
     const l = await composeGate('speakeasy', 'low', null).done;
-    expect(l.total).toBe(8);
+    expect(l.total).toBe(6); // Batch D: only the herringbone floor folds at Low
   });
 
   // Batch C1: the grandma ledger is what preloadCubeVenue(GRANDMA)
@@ -538,14 +546,15 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     const s = await composeGate('grandma', 'high', 'porch').done;
     expect(s.total).toBe(5);
     const l = await composeGate('grandma', 'low', null).done;
-    expect(l.total).toBe(9);
+    expect(l.total).toBe(7); // Batch D: the chair/lamp GLBs no longer fold at Low
   });
 
   // Batch C2: the yacht ledger is what preloadCubeVenue(YACHT) notes —
   // the shared chair GLB, the deck floor file, and the sky poster (no
   // lamp: the cube config has no pendants). The all-code Yacht Deck
   // never requests them, so a regular High table's gate excludes them;
-  // Low mounts the cube room, so the ledger folds in there as before.
+  // Low mounts the cube room, so the ledger folds in there (Batch D:
+  // minus the High-only files).
   const YACHT_FILES = [
     '/assets/venues/classic/chair.glb',
     '/assets/venues/tex/wood_floor_deck_512.jpg',
@@ -558,7 +567,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(r.total).toBe(5);
     expect(r.cappedOut).toBe(false);
     const l = await composeGate('yacht', 'low', null).done;
-    expect(l.total).toBe(8);
+    expect(l.total).toBe(7); // Batch D: the chair GLB no longer folds at Low
   });
 
   // Batch C2: the beach ledger is what preloadCubeVenue(BEACH) notes —
@@ -575,7 +584,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(r.total).toBe(5);
     expect(r.cappedOut).toBe(false);
     const l = await composeGate('beach', 'low', null).done;
-    expect(l.total).toBe(8);
+    expect(l.total).toBe(7); // Batch D: the chair GLB no longer folds at Low
   });
 
   // Batch C3: the rooftop ledger is what preloadCubeVenue(ROOFTOP)
@@ -600,7 +609,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     const s = await composeGate('rooftop', 'high', 'rooftop').done;
     expect(s.total).toBe(5);
     const l = await composeGate('rooftop', 'low', null).done;
-    expect(l.total).toBe(8);
+    expect(l.total).toBe(7); // Batch D: the chair GLB no longer folds at Low
   });
 
   // Batch C3: the vegas ledger is what preloadCubeVenue(VEGAS)
@@ -624,7 +633,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     const s = await composeGate('vegas', 'high', 'legends').done;
     expect(s.total).toBe(5);
     const l = await composeGate('vegas', 'low', null).done;
-    expect(l.total).toBe(8);
+    expect(l.total).toBe(6); // Batch D: only the dirty-carpet floor folds at Low
   });
 
   it('king at High: the studio ledger rides the gate, the street ledger and sedan do not', async () => {
@@ -656,6 +665,109 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(table).toContain('preloadTableAssets(settings.quality, venue, stopId)');
     expect(table).toContain('pendingAtCap: r.pendingAtCap');
     expect(table).toContain('pendingAtCap: extra.pendingAtCap');
+  });
+});
+
+describe('Batch D: the Low fold (venues rollout certification sweep, 2026-10-29)', () => {
+  // Verified from the mount code: at Low, CubeVenueRoom / ClassicStudio /
+  // BarbershopRoom never load their GLB props (their prop effects return
+  // early unless High), BarbershopRoom never creates its sky/street video
+  // elements (it takes the poster branch), and the Pj's mounts backdrop +
+  // floor disc + PjsLife — never the sedan. Floor textures, posters and
+  // the backdrop/floor/HDRI sets DO load at Low and stay gated.
+  it('gateLedgerFiles drops model/video files at Low and nothing else', () => {
+    noteRoomAssets('batchd-unit', [
+      '/assets/venues/classic/chair.glb',
+      '/assets/venues/classic/lamp.glb',
+      '/assets/venues/blockAfterDark/sedan.glb',
+      '/assets/venues/barbershop/room/sky-day.webm',
+      '/assets/venues/barbershop/room/street.webm',
+      '/assets/venues/tex/marble_tiles_512.jpg',
+      '/assets/venues/barbershop/room/sky-poster.jpg',
+      '/assets/venues/x/env.hdr',
+    ]);
+    expect(gateLedgerFiles('batchd-unit', 'low')).toEqual([
+      '/assets/venues/tex/marble_tiles_512.jpg',
+      '/assets/venues/barbershop/room/sky-poster.jpg',
+      '/assets/venues/x/env.hdr',
+    ]);
+    expect(gateLedgerFiles('batchd-unit', 'high')).toHaveLength(8);
+    expect(gateLedgerFiles('never-noted-venue', 'low')).toEqual([]);
+  });
+
+  it('Table folds through gateLedgerFiles, and the warm passes note quality-aware', () => {
+    const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+    expect(table).toContain('gateLedgerFiles(ledgerVenue, settings.quality)');
+    const cube = readFileSync(new URL('../src/three/cubeVenue.tsx', import.meta.url), 'utf8');
+    expect(cube).toContain("preloadCubeVenue(cfg: CubeVenueConfig, quality: 'high' | 'low' = 'high')");
+    expect(cube).toContain("quality === 'high' ? [`${CLASSIC}/chair.glb`");
+    const classic = readFileSync(new URL('../src/three/ClassicStudio.tsx', import.meta.url), 'utf8');
+    expect(classic).toContain("preloadClassicStudio(quality: 'high' | 'low' = 'high')");
+    expect(classic).toContain("quality === 'high' ? [`${BASE}/chair.glb`, `${BASE}/lamp.glb`]");
+    const barber = readFileSync(new URL('../src/three/BarbershopRoom.tsx', import.meta.url), 'utf8');
+    expect(barber).toContain("preloadBarbershopRoom(quality: 'high' | 'low' = 'high')");
+    expect(barber).toContain(': [BARBER_ASSETS.skyPoster, BARBER_ASSETS.streetPoster];');
+    const scene = readFileSync(new URL('../src/three/Scene.tsx', import.meta.url), 'utf8');
+    expect(scene).toContain('preloadBarbershopRoom(quality)');
+    expect(scene).toContain('preloadClassicStudio(quality)');
+    expect(scene).toContain('preloadBackyardRoom(quality)');
+  });
+
+  // THE CLOSING TABLE — regular-play gate composition for all 12 venues,
+  // on this suite's model (5 direct units: deck group, card back, three
+  // seated portraits; Table's venue-direct files ride on top in the app).
+  // Each venue's ledger is noted with its FULL High list — the mixed
+  // session a Low table can inherit — and the Low fold must still land
+  // on exactly the files its fallback room mounts.
+  //   venue          High (open table)   Low (open table)   Low folds
+  //   classic        10 (5 + 5 ledger)    8 (5 + 3)          floor PBR set
+  //   barbershop      5 (seam skip)       7 (5 + 2)          sky/street posters
+  //   backyard        5 (seam skip)       7 (5 + 2)          grass floor, sky poster
+  //   church          5 (seam skip)       7 (5 + 2)          linoleum, sky poster
+  //   mansion         5 (seam skip)       7 (5 + 2)          marble, sky poster
+  //   speakeasy       5 (seam skip)       6 (5 + 1)          herringbone floor
+  //   grandma         5 (seam skip)       7 (5 + 2)          linoleum, sky poster
+  //   yacht           5 (seam skip)       7 (5 + 2)          deck floor, sky poster
+  //   beach           5 (seam skip)       7 (5 + 2)          sand floor, sky poster
+  //   rooftop         5 (seam skip)       7 (5 + 2)          concrete, sky poster
+  //   vegas           5 (seam skip)       6 (5 + 1)          dirty-carpet floor
+  //   blockAfterDark  8 (5 + 3 ledger)    7 (5 + 2)          backdrop, street floor
+  const composeOpen = (venue: string, quality: 'high' | 'low') => {
+    const gate = createAssetGate(`${quality}:${venue}:blacktop:open`, 60_000);
+    gate.addGroup('deck art (blacktop)', Promise.resolve({ failed: [] as string[] }));
+    gate.add('card back (blacktop)', Promise.resolve(true));
+    for (const p of ['dee', 'lil-man', 'trey']) gate.add(`/assets/story/faces/${p}.webp`, Promise.resolve(true));
+    const ledgerVenue = gateLedgerVenue(venue, quality, null);
+    if (ledgerVenue !== null) {
+      for (const url of gateLedgerFiles(ledgerVenue, quality)) gate.add(url, Promise.resolve(true));
+    }
+    gate.seal();
+    return gate;
+  };
+  const LOW_TABLE: [string, string[], number][] = [
+    ['classic', ['/assets/venues/classic/chair.glb', '/assets/venues/classic/lamp.glb', '/assets/venues/classic/floor_diffuse_512.jpg', '/assets/venues/classic/floor_nor_gl_512.jpg', '/assets/venues/classic/floor_rough_512.jpg'], 8],
+    ['barbershop', ['/assets/venues/classic/chair.glb', '/assets/venues/classic/lamp.glb', '/assets/venues/barbershop/room/sky-poster.jpg', '/assets/venues/barbershop/room/street-poster.jpg', '/assets/venues/barbershop/room/sky-day.webm', '/assets/venues/barbershop/room/street.webm'], 7],
+    ['backyard', ['/assets/venues/classic/chair.glb', '/assets/venues/tex/leafy_grass_512.jpg', '/assets/venues/barbershop/room/sky-poster.jpg'], 7],
+    ['church', ['/assets/venues/classic/chair.glb', '/assets/venues/tex/old_linoleum_flooring_01_512.jpg', '/assets/venues/barbershop/room/sky-poster.jpg'], 7],
+    ['mansion', ['/assets/venues/classic/chair.glb', '/assets/venues/classic/lamp.glb', '/assets/venues/tex/marble_tiles_512.jpg', '/assets/venues/barbershop/room/sky-poster.jpg'], 7],
+    ['speakeasy', ['/assets/venues/classic/chair.glb', '/assets/venues/classic/lamp.glb', '/assets/venues/tex/herringbone_parquet_512.jpg'], 6],
+    ['grandma', ['/assets/venues/classic/chair.glb', '/assets/venues/classic/lamp.glb', '/assets/venues/tex/linoleum_brown_512.jpg', '/assets/venues/barbershop/room/sky-poster.jpg'], 7],
+    ['yacht', ['/assets/venues/classic/chair.glb', '/assets/venues/tex/wood_floor_deck_512.jpg', '/assets/venues/barbershop/room/sky-poster.jpg'], 7],
+    ['beach', ['/assets/venues/classic/chair.glb', '/assets/venues/tex/coast_sand_01_512.jpg', '/assets/venues/barbershop/room/sky-poster.jpg'], 7],
+    ['rooftop', ['/assets/venues/classic/chair.glb', '/assets/venues/tex/brushed_concrete_512.jpg', '/assets/venues/barbershop/room/sky-poster.jpg'], 7],
+    ['vegas', ['/assets/venues/classic/chair.glb', '/assets/venues/classic/lamp.glb', '/assets/venues/tex/dirty_carpet_512.jpg'], 6],
+    ['blockAfterDark', ['/assets/venues/blockAfterDark/bg.jpg', '/assets/venues/tex/brushed_concrete_512.jpg', '/assets/venues/blockAfterDark/sedan.glb'], 7],
+  ];
+  it('the closing table: every venue’s Low gate waits only on files Low mounts', async () => {
+    for (const [venue, files, lowTotal] of LOW_TABLE) {
+      noteRoomAssets(venue, files);
+      const r = await composeOpen(venue, 'low').done;
+      expect(r.total, `${venue} low`).toBe(lowTotal);
+      expect(r.cappedOut).toBe(false);
+    }
+    // and the two non-seam High compositions the table rests on
+    expect((await composeOpen('classic', 'high').done).total).toBe(10);
+    expect((await composeOpen('blockAfterDark', 'high').done).total).toBe(8);
   });
 });
 

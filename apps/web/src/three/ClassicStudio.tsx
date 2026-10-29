@@ -25,8 +25,11 @@ const CREAM = '#d8c9b8'; // baseboards
 const PANEL = '#542848'; // far-wall wainscot panels
 
 /** Fetch-warm the studio files at low priority (splash/wizard warm-up path; never blocks the table). */
-export function preloadClassicStudio(): void {
-  const files = [`${BASE}/chair.glb`, `${BASE}/lamp.glb`, `${BASE}/floor_diffuse_512.jpg`, `${BASE}/floor_nor_gl_512.jpg`, `${BASE}/floor_rough_512.jpg`];
+export function preloadClassicStudio(quality: 'high' | 'low' = 'high'): void {
+  // The floor PBR set loads at both qualities (the texture effect is not
+  // quality-gated); the GLB props are High only, so a Low warm pass
+  // neither notes nor fetches them (Batch D).
+  const files = [...(quality === 'high' ? [`${BASE}/chair.glb`, `${BASE}/lamp.glb`] : []), `${BASE}/floor_diffuse_512.jpg`, `${BASE}/floor_nor_gl_512.jpg`, `${BASE}/floor_rough_512.jpg`];
   // Asset gate: note the room's files so the table loader can wait on them (assetGate.ts).
   noteRoomAssets('classic', files);
   window.setTimeout(() => files.forEach((url) => { void fetch(url, { priority: 'low' } as RequestInit).catch(() => undefined); }), 1500);
