@@ -5,6 +5,7 @@ import { type VenueChoice, isVenueChoice } from '@spades/protocol';
 import { CLASSIC_JOKER, cardLabel, hostMinimum, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
 import { trumpLadderText } from './trumpLadder';
+import { DEFAULT_VIEW_ADJUST, normalizeViewAdjust, type ViewAdjust } from './viewAdjust';
 
 export type ModeKey = 'joker' | 'cutthroat4' | 'cutthroat3' | 'aceDown';
 
@@ -50,6 +51,9 @@ export interface Settings {
   venue: VenueChoice;
   /** Camera view: sitting = lower/closer (DEFAULT for new players, V-gesture slams); standing = higher/farther. A saved choice always wins. */
   view: 'standing' | 'sitting';
+  /** Adjustable table view (owner, 2026-10-29): the player's own tilt/zoom offset on top of the
+   *  stock framing, set by dragging/pinching on the table and saved with the settings. */
+  viewAdjust: ViewAdjust;
   /** Turn up (slam mode): OFF by default for everyone. When ON, Standing plays slam at max and Sitting's V-gesture slams (sent online). When OFF, NO play slams by any route (drag, flick, V-gesture, tap/toss). */
   turnUp: boolean;
   /** Card deck art pack (Desi decks; all unlocked for now, Story/purchase lock later). */
@@ -79,7 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', turnUp: false, deck: 'classic', setAnim: 'auto',
+  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', viewAdjust: { ...DEFAULT_VIEW_ADJUST }, turnUp: false, deck: 'classic', setAnim: 'auto',
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -148,6 +152,7 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
   if (!['family', 'cookout', 'nomercy'].includes(s.talkIntensity)) s.talkIntensity = 'cookout';
   if (!isVenueChoice(s.venue)) s.venue = 'classic';
   if (s.view !== 'sitting' && s.view !== 'standing') s.view = 'sitting'; // no saved preference (or junk) -> Sitting
+  s.viewAdjust = normalizeViewAdjust(s.viewAdjust); // clamped tilt/zoom; junk -> the stock framing
   if (typeof s.turnUp !== 'boolean') s.turnUp = false; // slam mode is opt-in; old saves start OFF
   if (!DECK_IDS.includes(s.deck) || s.deck === 'base') s.deck = 'classic';
   if (!isValidSetAnimSetting(s.setAnim)) s.setAnim = 'auto';

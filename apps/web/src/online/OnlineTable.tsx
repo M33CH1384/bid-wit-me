@@ -193,6 +193,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
         onRematch={() => conn.send({ t: 'rematch' })}
         onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
         onView={(view) => { const s = { ...settings, view }; setSettings(s); saveSettings({ ...loadSettings(), view }); }}
+        onViewAdjust={(viewAdjust) => { const s = { ...settings, viewAdjust }; setSettings(s); saveSettings({ ...loadSettings(), viewAdjust }); }}
         onTurnUp={(turnUp) => { const s = { ...settings, turnUp }; setSettings(s); saveSettings({ ...loadSettings(), turnUp }); }}
         online={{
           source, names, chat, seatExtra, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity,

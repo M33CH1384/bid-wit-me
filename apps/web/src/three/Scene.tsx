@@ -1,7 +1,7 @@
 import { RUN_SLAM_MS } from '../runIt';
 import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
-import { type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
@@ -11,6 +11,7 @@ import type { CrowdCue } from './kingRailLayout';
 import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
+import { ViewGestureTracker, applyViewAdjustToSpec, beginViewAdjustGesture, endViewAdjustGesture, getViewAdjustState, isDefaultViewAdjust, resetViewAdjust, subscribeViewAdjust, updateViewAdjustLive, zoomForWheelDelta, type ViewAdjust } from '../viewAdjust';
 import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
 import { DEFAULT_SLAM, type DragSample, clearDrop, dragSlamIntensity, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
@@ -235,6 +236,24 @@ function CameraRig({ view = 'standing', people = false }: { view?: 'standing' | 
   const anim = useRef<{ from: number[]; to: number[]; fromLook: number[]; toLook: number[]; start: number; dur: number } | null>(null);
   const booted = useRef(false);
   const lookAtRef = useRef<number[] | null>(null);
+  // Adjustable view (owner, 2026-10-29): the rig works in BASE space (the
+  // cameraFor spec, plus the people framing where it applies) and every
+  // placement renders applyViewAdjustToSpec(base, savedOffset) on top — so
+  // the offset survives rotation, posture tweens and new hands untouched,
+  // and at the default offset the rendered camera is the stock one exactly.
+  const vaState = useSyncExternalStore(subscribeViewAdjust, getViewAdjustState);
+  const adjRef = useRef(vaState.adj);
+  adjRef.current = vaState.adj;
+  const baseRef = useRef<{ pos: number[]; look: number[] } | null>(null);
+  const placeRef = useRef<(pos: readonly number[], look: readonly number[], t: number) => void>(() => undefined);
+  placeRef.current = (pos, look, t) => {
+    const cam = camera as import('three').PerspectiveCamera;
+    const s = applyViewAdjustToSpec({ pos, look, fov: cam.fov }, adjRef.current);
+    cam.position.set(s.pos[0]!, s.pos[1]!, s.pos[2]!);
+    cam.lookAt(new Vector3(s.look[0]!, s.look[1]!, s.look[2]!));
+    sound.setSpatialListener(s.pos, s.look); // the listener follows the ACTUAL camera
+    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom };
+  };
   useLayoutEffect(() => {
     const a = size.width >= 32 && size.height >= 32 ? size.width / size.height : 9 / 16;
     const stockSpec = cameraFor(a, short, view);
@@ -244,33 +263,112 @@ function CameraRig({ view = 'standing', people = false }: { view?: 'standing' | 
     cam.fov = spec.fov;
     cam.aspect = a;
     cam.updateProjectionMatrix();
-    sound.setSpatialListener(spec.pos, spec.look); // audio listener follows Sitting/Standing
-    const probe = (t: number) => { (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS }; };
-    if (!booted.current) { // first frame: land exactly on the saved view, no flight
+    if (!booted.current) { // first frame: land exactly on the saved view (offset included), no flight
       booted.current = true;
-      cam.position.set(...spec.pos); cam.lookAt(new Vector3(...spec.look));
-      lookAtRef.current = [...spec.look]; probe(1); invalidate(); return;
+      baseRef.current = { pos: [...spec.pos], look: [...spec.look] };
+      lookAtRef.current = [...spec.look];
+      placeRef.current(spec.pos, spec.look, 1);
+      invalidate(); return;
     }
     // Respect ONLY the real OS setting; the app's Reduce-effects pref must not kill the move.
     const reduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const fromPos = baseRef.current?.pos ?? [cam.position.x, cam.position.y, cam.position.z];
     const fromLook = lookAtRef.current ?? (() => { const d = new Vector3(); cam.getWorldDirection(d); return [cam.position.x + d.x, cam.position.y + d.y, cam.position.z + d.z]; })();
-    anim.current = { from: [cam.position.x, cam.position.y, cam.position.z], to: [...spec.pos], fromLook: [...fromLook], toLook: [...spec.look], start: performance.now(), dur: reduced ? 0 : CAMERA_VIEW_TWEEN_MS };
-    probe(0);
+    anim.current = { from: [...fromPos], to: [...spec.pos], fromLook: [...fromLook], toLook: [...spec.look], start: performance.now(), dur: reduced ? 0 : CAMERA_VIEW_TWEEN_MS };
+    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t: 0, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom };
     invalidate();
   }, [camera, size, short, view, people, invalidate]);
+  // Offset changed (a drag, a reset, a seed): re-place instantly on the
+  // current base pose. A running view tween reads the store live instead.
+  useEffect(() => {
+    if (anim.current || !baseRef.current) return;
+    placeRef.current(baseRef.current.pos, baseRef.current.look, 1);
+    invalidate();
+  }, [vaState.adj, invalidate]);
   useFrame(() => {
     const a = anim.current; if (!a) return;
-    const cam = camera as import('three').PerspectiveCamera;
     // Wall clock, never raw frame dt (see cameraPoseAt): an idle demand-loop's first dt is huge.
     const pose = cameraPoseAt(a.from, a.to, a.fromLook, a.toLook, performance.now() - a.start, a.dur);
-    cam.position.set(pose.pos[0]!, pose.pos[1]!, pose.pos[2]!);
-    cam.lookAt(new Vector3(pose.look[0]!, pose.look[1]!, pose.look[2]!));
-    sound.setSpatialListener(pose.pos, pose.look);
+    baseRef.current = { pos: pose.pos, look: pose.look };
     lookAtRef.current = pose.look;
-    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, y: cam.position.y, z: cam.position.z, x: cam.position.x, t: pose.t, tweenMs: CAMERA_VIEW_TWEEN_MS };
+    placeRef.current(pose.pos, pose.look, pose.t);
     if (pose.t >= 1) anim.current = null;
     invalidate();
   });
+  return null;
+}
+
+/**
+ * Adjustable-view gestures (owner, 2026-10-29): drag on the open table to
+ * tilt, pinch to zoom, wheel on desktop, double-tap to reset. The listeners
+ * sit on the canvas WRAP in the bubble phase and only accept presses whose
+ * target is the canvas itself — every DOM overlay (bid panel, buttons,
+ * chat, menus, the felt hand) is a different target and keeps its gestures.
+ * Presses that begin on a fan card never even arrive: HandPointer consumes
+ * them in the capture phase (and the pickHandCard check below repeats the
+ * exclusion here for the paths where it is not mounted). The tracker
+ * (viewAdjust.ts) owns the state machine; this component is only plumbing.
+ */
+function ViewAdjustControls() {
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    const el = gl.domElement;
+    const wrap = el.parentElement;
+    if (!wrap) return;
+    let raf = 0;
+    let pending: ViewAdjust | null = null;
+    const flush = () => { raf = 0; if (pending) { updateViewAdjustLive(pending); pending = null; } };
+    const queueLive = (adj: ViewAdjust) => { pending = adj; if (!raf) raf = requestAnimationFrame(flush); };
+    const settle = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } pending = null; };
+    const tracker = new ViewGestureTracker({
+      onBegin: () => beginViewAdjustGesture(),
+      onLive: (adj) => queueLive(adj),
+      onEnd: (adj) => { settle(); endViewAdjustGesture(adj); },
+      onReset: () => { settle(); resetViewAdjust(); },
+    });
+    let wheelAdj: ViewAdjust | null = null;
+    let wheelTimer: ReturnType<typeof setTimeout> | null = null;
+    const onDown = (e: PointerEvent) => {
+      if (e.target !== el) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      const rect = el.getBoundingClientRect();
+      const onTable = pickHandCard(e.clientX - rect.left, e.clientY - rect.top) === null;
+      tracker.down(e.pointerId, e.clientX, e.clientY, onTable, getViewAdjustState().adj, performance.now());
+    };
+    const onMove = (e: PointerEvent) => tracker.move(e.pointerId, e.clientX, e.clientY);
+    const onUp = (e: PointerEvent) => tracker.up(e.pointerId, e.clientX, e.clientY, performance.now());
+    const onCancel = (e: PointerEvent) => tracker.cancelPointer(e.pointerId);
+    const onWheel = (e: WheelEvent) => {
+      if (e.target !== el || tracker.active) return;
+      e.preventDefault();
+      if (!wheelAdj) beginViewAdjustGesture();
+      const base = wheelAdj ?? getViewAdjustState().adj;
+      wheelAdj = { tilt: base.tilt, zoom: zoomForWheelDelta(base.zoom, e.deltaY) };
+      queueLive(wheelAdj);
+      if (wheelTimer) clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(() => { wheelTimer = null; const a = wheelAdj; wheelAdj = null; if (a) { settle(); endViewAdjustGesture(a); } }, 350);
+    };
+    const onInterrupt = () => tracker.cancelAll();
+    wrap.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    wrap.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('resize', onInterrupt);
+    window.addEventListener('blur', onInterrupt);
+    return () => {
+      wrap.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      wrap.removeEventListener('wheel', onWheel);
+      window.removeEventListener('resize', onInterrupt);
+      window.removeEventListener('blur', onInterrupt);
+      if (wheelTimer) clearTimeout(wheelTimer);
+      settle();
+      tracker.cancelAll();
+    };
+  }, [gl]);
   return null;
 }
 
@@ -721,12 +819,21 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // nextSlots stores the refit targets.
   const peopleCam = view === 'sitting' && quality === 'high' && props.venue === 'grandma'
     && props.storyStopId === 'porch' && !!(props.porchFigureSeats?.some(Boolean));
+  // Adjustable view (owner, 2026-10-29): CameraRig renders the base spec
+  // (stock, or the people spec at the pilot) with the player's tilt/zoom on
+  // top; the fan refit generalizes the people refit to that rendered spec,
+  // so the hand keeps its solved screen layout at ANY tilt/zoom — the hit
+  // quads stay the stock ones, exactly as with the people framing. At the
+  // default offset with no pilot this is byte-identical to before (no refit).
+  const vaState = useSyncExternalStore(subscribeViewAdjust, getViewAdjustState);
   const refitM = useMemo(() => {
-    if (!peopleCam) return null;
-    const stock = cameraFor(aspect, short, 'sitting');
-    const people = peopleSpec(stock);
-    return camMatrixOf(people.pos, people.look).multiply(camMatrixOf(stock.pos, stock.look).invert());
-  }, [peopleCam, aspect, short]);
+    if (!peopleCam && isDefaultViewAdjust(vaState.adj)) return null;
+    const stock = cameraFor(aspect, short, view);
+    const base = peopleCam ? peopleSpec(stock) : stock;
+    const actual = applyViewAdjustToSpec(base, vaState.adj);
+    if (actual === stock) return null;
+    return camMatrixOf(actual.pos, actual.look).multiply(camMatrixOf(stock.pos, stock.look).invert());
+  }, [peopleCam, aspect, short, view, vaState.adj]);
   const refitXf = (x: Xform): Xform => {
     if (!refitM) return x;
     const m = new Matrix4().compose(new Vector3(x.p[0], x.p[1], x.p[2]), new Quaternion(x.q[0], x.q[1], x.q[2], x.q[3]), new Vector3(x.s, x.s, x.s));
@@ -1792,6 +1899,7 @@ export default function Scene(props: SceneProps) {
       <SnapHook />
       <FirstFrameSignal onFirstFrame={firstFrame} />
       <CameraRig view={props.view} people={porchFiguresActive} />
+      <ViewAdjustControls />
       <FxShake table={tableGroup} />
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}

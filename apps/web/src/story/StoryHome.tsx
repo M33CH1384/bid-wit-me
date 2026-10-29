@@ -923,6 +923,7 @@ export default function StoryHome() {
         onRematch={() => startGame(stop)}
         onQuality={(quality) => applySettings({ ...settings, quality })}
         onView={(view) => applySettings({ ...settings, view })}
+        onViewAdjust={(viewAdjust) => applySettings({ ...settings, viewAdjust })}
         onTurnUp={(turnUp) => applySettings({ ...settings, turnUp })}
       />
     );

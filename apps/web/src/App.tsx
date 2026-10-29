@@ -89,6 +89,7 @@ export default function App() {
       startDealer={game.dealer}
       onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
       onView={(view) => { const s = { ...game.settings, view }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
+      onViewAdjust={(viewAdjust) => { const s = { ...game.settings, viewAdjust }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
       onTurnUp={(turnUp) => { const s = { ...game.settings, turnUp }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
     />
     {/* the speaker at the table opens the same one Settings sheet (sound landing);

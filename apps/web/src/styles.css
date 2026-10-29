@@ -2265,6 +2265,16 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .predeal-title { font: 800 16px/1.1 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
 .predeal-sub { font-size: 12.5px; font-weight: 600; color: var(--ink); opacity: .85; }
 
+/* Adjustable-view readout (owner, 2026-10-29): while the player drags or
+   pinches the table (and for a short linger after), the current tilt/zoom
+   shows on screen — a tuning aid, never permanent chrome. Sits below the
+   pre-deal note's slot so the two never collide. NO entrance animation: an
+   opacity-0 first frame is the misdeal invisibility defect family. */
+.view-adjust-chip { position: absolute; left: 50%; top: calc(128px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 31; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 16px; border-radius: 999px; background: rgba(10, 6, 18, .82); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .35), 0 12px 28px rgba(0,0,0,.5); text-align: center; pointer-events: none; }
+.view-adjust-chip .va-label { font: 800 14px/1.1 var(--display); letter-spacing: .08em; color: var(--gold); white-space: nowrap; }
+.view-adjust-chip .va-hint { font-size: 11.5px; font-weight: 600; color: var(--ink); opacity: .85; white-space: nowrap; }
+
 /* Versus intro in LANDSCAPE (owner, 2026-10-28: "it needs to be much wider
    on landscape so that none of the words are hidden — I shouldn't have to
    scroll on this page"). Inside the D5 height band the versus card stops

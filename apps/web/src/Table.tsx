@@ -4,6 +4,7 @@ import { clearTableChatOpen, loadTableChatOpen, saveTableChatOpen } from './chat
 import { browsedTrick, stepTrickIndex, trickPositionLabel } from './lastTrickBrowse';
 import { RecapTrickReview } from './TrickBrowser';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
+import { getViewAdjustState, isDefaultViewAdjust, onViewAdjustCommit, seedViewAdjust, subscribeViewAdjust, viewAdjustLabel, type ViewAdjust } from './viewAdjust';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
 import { FIRST_FRAME_FALLBACK_MS, dealGateOpen } from './three/dealFlight';
@@ -16,7 +17,7 @@ import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueAssetUrls, venueUnlocked } from './venues';
 import { assetSettled, createAssetGate, imageSettled, fetchSettled, gateLedgerFiles, gateLedgerVenue, loaderStillUp, roomGlbUrls } from './assetGate';
-import { type FormEvent, Fragment, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, Fragment, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import {
   type Card, type GameState, type PlayerView, type Play, type TableRules, viewFor, hostMinimum, isFreshDeal, isNukeTrick, nukeArmed, hasBothJokers, nextDealer, bidLabel, booksHand, cardLabel, isJoker, isNilBid, isTrump, newlyOneTrickFromShot, nilBustsJustResolved, partnerOf, sideOf, sortHand, liveSeats } from '@spades/rules';
@@ -65,7 +66,6 @@ import { photoFinish, winMargin } from './animfx/detect';
 import { sideColor } from './ScorePad';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
-import { handClearPx, layoutPublishStale } from './bidPanelFit';
 import { feltHandVisible } from './three/cardFace';
 import {
   VISIT_ARRIVE_MS, VISIT_DEPART_MS, VISIT_SETTLED_MS, VISITOR_ID,
@@ -269,6 +269,8 @@ interface Props {
   startDealer?: number;
   onQuality: (q: Settings['quality']) => void;
   onView?: (v: Settings['view']) => void;
+  /** Adjustable table view: a finished tilt/zoom gesture (or a double-tap reset) saves here. */
+  onViewAdjust?: (adj: ViewAdjust) => void;
   onTurnUp?: (on: boolean) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
@@ -783,8 +785,36 @@ export function kingRailCastFor(story: Props['story']): string[] {
   return cast.filter((id) => !!STORY_CHARACTERS[id]);
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer, story }: Props) {
+/**
+ * Adjustable-view readout (owner, 2026-10-29): while the player drags or
+ * pinches the table — and for a short linger after — the current tilt/zoom
+ * shows on screen ("for now" — a tuning aid, not permanent chrome). Renders
+ * nothing at rest. Pure readout: pointer-events none, never a control.
+ */
+function ViewAdjustChip() {
+  const va = useSyncExternalStore(subscribeViewAdjust, getViewAdjustState);
+  if (!va.adjusting) return null;
+  return (
+    <div className="view-adjust-chip" data-testid="view-adjust-chip" role="status">
+      <span className="va-label">{viewAdjustLabel(va.adj)}</span>
+      {!isDefaultViewAdjust(va.adj) && <span className="va-hint">Double-tap the table to reset</span>}
+    </div>
+  );
+}
+
+export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onViewAdjust, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer, story }: Props) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
+  // Adjustable table view (owner, 2026-10-29): seed the tilt/zoom store from
+  // the saved settings during this first render — before the Scene mounts and
+  // CameraRig reads its snapshot — so the saved position is in the very first
+  // frame. The sync effect covers later external settings changes (never
+  // mid-gesture: the gesture owns the value until it commits). Commits flow
+  // back out through onViewAdjust and persist with the rest of the settings.
+  useState(() => { seedViewAdjust(settings.viewAdjust); return true; });
+  useEffect(() => { if (!getViewAdjustState().adjusting) seedViewAdjust(settings.viewAdjust); }, [settings.viewAdjust]);
+  const onViewAdjustRef = useRef(onViewAdjust);
+  onViewAdjustRef.current = onViewAdjust;
+  useEffect(() => onViewAdjustCommit((adj) => onViewAdjustRef.current?.(adj)), []);
   // Tappable faces (Demetrius 2026-10-20): while a table is mounted, avatar taps anywhere
   // open the over-table profile modal instead of the Social panel. Leaving the table
   // restores panel mode and never leaves a modal behind.
@@ -2454,21 +2484,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const tick = () => {
       const el = screenRef.current;
       if (!el) return;
-      const L = (window as unknown as { __bwmLayout?: { w: number; h: number; hand: { y: number }[] } }).__bwmLayout;
-      // Rotation with the panel already open (founder, 2026-10-29: "It's only
-      // blocked if I switch from portrait mode when the bid window is
-      // showing"): on a flip the window's innerHeight turns landscape at
-      // once, while the Scene's layout publish still carries the portrait
-      // canvas's dims + rects until its size commit lands. Mixing the two
-      // computed a negative clear that the 60px floor turned into an anchor
-      // ON the fan. A publish whose stamped dims disagree with the live
-      // window is the other orientation's geometry (bidPanelFit.ts): never
-      // anchor on it — drop the inline var so the panel rides this
-      // orientation's CSS fallback until the publish converges, then the
-      // measured clear takes over again.
-      const stale = !!L && layoutPublishStale(L, window.innerWidth, window.innerHeight);
+      const L = (window as unknown as { __bwmLayout?: { hand: { y: number }[] } }).__bwmLayout;
       let top = Infinity;
-      if (L?.hand?.length && !stale) top = Math.min(...L.hand.map((q) => q.y));
+      if (L?.hand?.length) top = Math.min(...L.hand.map((q) => q.y));
       // The flat (felt) hand publishes nothing to __bwmLayout, and on the founder's
       // iPhone the 3D layout publish cannot be relied on either (see the plate note
       // above): when the bid panel's anchor waited on the 3D publish alone, it fell
@@ -2482,21 +2500,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const r = felt.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) top = Math.min(top, r.top);
       }
-      if (!Number.isFinite(top)) {
-        if (stale) el.style.removeProperty('--hand-clear');
-        return;
-      }
-      const clear = handClearPx(top, window.innerHeight);
-      if (clear == null) {
-        if (stale) el.style.removeProperty('--hand-clear');
-        return;
-      }
-      el.style.setProperty('--hand-clear', `${clear}px`);
+      if (!Number.isFinite(top)) return;
+      el.style.setProperty('--hand-clear', `${Math.max(60, Math.round(window.innerHeight - top + 6))}px`);
     };
     tick();
     const t = window.setInterval(tick, 400);
     return () => clearInterval(t);
-  }, [measureHand, vp]);
+  }, [measureHand, vp.short]);
 
   // Versus intro model (boxing match card): sides from the seats at this table.
   // Partnership = two duo units under their team names; cutthroat = one side each.
@@ -2815,6 +2825,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         </div>
       )}
       {badge && badge.seat !== HUMAN && <SeatBadge badge={badge} />}
+      <ViewAdjustChip />
 
       {/* scorebug */}
       <header className="scorebug">
