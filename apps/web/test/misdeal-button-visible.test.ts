@@ -20,6 +20,17 @@
  *     case), the offer still arrives through the bounded forced path, survives
  *     a viewport flip and another seat's bid, and closes only on the human's
  *     own bid — the rule itself unchanged.
+ *
+ * Sibling sweep (2026-10-29, same defect class): the Run It! call rode the very
+ * same runit-in; the misdeal reveal's dwell is a wall-clock setTimeout, so a
+ * frozen rz-in first frame would have the announcement dismissed before it was
+ * ever painted; the Run zoom overlay shared rz-in against the fixed show clock;
+ * the reveal/zoom cards and the claim bubble rode opacity-0 first frames; and
+ * the spectator take-a-seat card rode spec-in into a seat someone else can
+ * claim. The pins below hold the sweep: the calls and the announcement overlays
+ * paint outright, the announcement content animations (rz-card / rz-bubble)
+ * animate transform only, and no animation named by any of these surfaces may
+ * take its element transparent in any frame.
  */
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -108,6 +119,54 @@ describe('the call never rides an opacity/transform animation', () => {
     }
     // and the base rule paints the pill outright (no opacity declaration to hide behind)
     expect(ruleBlocks(stylesCss, '.misdeal-btn').join(' ')).not.toMatch(/opacity\s*:/);
+  });
+});
+
+describe('the sibling sweep: no call or announcement rides a transparent frame', () => {
+  const onlineCss = read('../src/online/online.css');
+
+  /** Animation names named by every rule for `sel` in `css`. */
+  function namesFor(css: string, sel: string): Set<string> {
+    const blocks = ruleBlocks(css, sel);
+    expect(blocks.length, `${sel} must have at least one rule`).toBeGreaterThanOrEqual(1);
+    const names = new Set<string>();
+    for (const b of blocks) for (const n of animationNames(b)) names.add(n);
+    return names;
+  }
+
+  /** No frame of `@keyframes name` in `css` may set opacity below 1. */
+  function expectNeverTransparent(css: string, name: string, sel: string) {
+    const body = keyframesBody(css, name);
+    for (const m of body.matchAll(/opacity\s*:\s*([0-9.]+)/g)) {
+      expect(Number(m[1]!), `@keyframes ${name} on ${sel} must never take it transparent`).toBeGreaterThanOrEqual(1);
+    }
+  }
+
+  it('.run-it-btn paints outright — the pulses survive, the hiding entrance is gone', () => {
+    const base = namesFor(stylesCss, '.run-it-btn');
+    expect(base.has('runit-in')).toBe(false);
+    expect(base.has('runit-glow')).toBe(true); // the glow pulse is the look — it stays
+    const attn = namesFor(stylesCss, '.run-it-btn.attention');
+    expect(attn.has('runit-in')).toBe(false);
+    expect(attn.has('runit-attn')).toBe(true);
+    for (const n of [...base, ...attn]) expectNeverTransparent(stylesCss, n, '.run-it-btn');
+  });
+
+  it('.misdeal-reveal and .run-zoom carry no entrance animation at all', () => {
+    expect(namesFor(stylesCss, '.misdeal-reveal').size).toBe(0);
+    expect(namesFor(stylesCss, '.run-zoom').size).toBe(0);
+  });
+
+  it('the announcement content (rz-card / rz-bubble) never starts transparent', () => {
+    for (const sel of ['.misdeal-card', '.run-zoom-card', '.run-bubble']) {
+      const names = namesFor(stylesCss, sel);
+      expect(names.size, `${sel} keeps its deal-in motion`).toBeGreaterThanOrEqual(1);
+      for (const n of names) expectNeverTransparent(stylesCss, n, sel);
+    }
+  });
+
+  it('.spec-take (online.css) paints outright', () => {
+    expect(namesFor(onlineCss, '.spec-take').size).toBe(0);
   });
 });
 

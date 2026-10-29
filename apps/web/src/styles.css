@@ -1769,10 +1769,17 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* ---------------------------------------------------------------- Run it! */
 .run-it-wrap { position: fixed; left: 50%; bottom: calc(26vh + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 12; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 .run-it-wrap > * { pointer-events: auto; }
+/* NO entrance animation on the call itself — same defect class as the misdeal pill
+   (owner, 2026-10-29, commit b20bdc39cc): the button used to ride runit-in, whose first
+   frame is opacity 0 / scale .4, and a Run It! offer appears at the same stall-prone
+   moments (table load, rotation rebuild) where a frozen animation timeline parks the
+   button at that first frame, invisible, while the decision moment passes. The button
+   is visible from its first painted frame; its only animations are the glow / attention
+   pulses — box-shadow and scale >= 1 — which can never hide or shrink it. */
 .run-it-btn { font-family: var(--display); font-weight: 900; font-style: italic; font-size: 22px; letter-spacing: .05em; text-transform: uppercase; color: #fff; padding: 9px 22px 10px; border-radius: 999px; border: 2px solid rgba(255,255,255,.85); cursor: pointer;
-  background: linear-gradient(135deg, rgb(var(--purple-deep-rgb)), #b36bff 55%, #47d1ff); box-shadow: 0 0 18px rgba(179,107,255,.85), 0 0 42px rgba(71,209,255,.45), inset 0 1px 0 rgba(255,255,255,.5); text-shadow: 0 2px 0 rgba(40,0,90,.6); animation: runit-in .35s cubic-bezier(.2,1.4,.4,1) both, runit-glow 1.6s ease-in-out .35s infinite; }
+  background: linear-gradient(135deg, rgb(var(--purple-deep-rgb)), #b36bff 55%, #47d1ff); box-shadow: 0 0 18px rgba(179,107,255,.85), 0 0 42px rgba(71,209,255,.45), inset 0 1px 0 rgba(255,255,255,.5); text-shadow: 0 2px 0 rgba(40,0,90,.6); animation: runit-glow 1.6s ease-in-out infinite; }
 .run-it-btn:hover { filter: brightness(1.12); }
-.run-it-btn.attention { animation: runit-in .35s cubic-bezier(.2,1.4,.4,1) both, runit-attn 1s ease-in-out .35s infinite; }
+.run-it-btn.attention { animation: runit-attn 1s ease-in-out infinite; }
 
 /* --- misdeal: the call button (bidding only, engine-gated) and the face-up thrown hand --- */
 /* NO entrance animation on the call itself (owner, 2026-10-29: "I didn't get a misdeal
@@ -1805,7 +1812,13 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    stripped inside the panel the same way — its white label survived on plum, its
    danger paint did not. Restored, scoped to the panel it lives in. */
 .bid-panel .danger { background: linear-gradient(180deg, #ff6b88, #c2183c); color: #fff; }
-.misdeal-reveal { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 14px; pointer-events: none; animation: rz-in .25s ease both; }
+/* No fade-in on the reveal either (same sweep as the call above): its dwell is a
+   wall-clock setTimeout (MISDEAL_REVEAL_DWELL_MS), which keeps running while a stalled
+   animation timeline holds the overlay at rz-in's opacity-0 first frame — the whole
+   announcement (who called, the thrown hand, where the deal passes) would be dismissed
+   before it was ever painted. The overlay paints at full opacity from its first frame;
+   the cards inside keep their deal-in motion, which no longer starts from opacity 0. */
+.misdeal-reveal { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 14px; pointer-events: none; }
 .misdeal-panel { max-width: min(96vw, 620px); padding: 16px 18px 13px; text-align: center; border-radius: 18px; pointer-events: auto; cursor: pointer; }
 .misdeal-head { font-family: var(--display); font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: .05em; font-size: clamp(22px, 5vw, 32px); color: #ffd75e; text-shadow: 0 2px 10px rgba(0,0,0,.6); }
 .misdeal-sub { margin: 2px 0 10px; font-weight: 700; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
@@ -1816,7 +1829,6 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .misdeal-foot { margin-top: 10px; font-size: 13.5px; font-weight: 700; color: rgba(255,255,255,.92); text-shadow: 0 1px 6px rgba(0,0,0,.7); }
 .misdeal-dismiss { margin-top: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.6); }
 @media (prefers-reduced-motion: reduce) { .misdeal-btn, .misdeal-card, .misdeal-reveal { animation: none; } }
-@keyframes runit-in { from { transform: scale(.4) rotate(-8deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes runit-glow { 50% { box-shadow: 0 0 28px rgba(179,107,255,1), 0 0 64px rgba(71,209,255,.7), inset 0 1px 0 rgba(255,255,255,.5); } }
 @keyframes runit-attn { 0%, 100% { transform: scale(1); box-shadow: 0 0 18px rgba(179,107,255,.85), 0 0 0 0 rgba(255,255,255,.7); } 50% { transform: scale(1.09); box-shadow: 0 0 34px rgba(179,107,255,1), 0 0 0 14px rgba(255,255,255,0); } }
 .run-it-tip { position: relative; max-width: min(320px, 86vw); padding: 10px 12px; font-size: 14px; line-height: 1.35; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; border: 1px solid rgba(var(--gold-rgb),.7); box-shadow: 0 0 0 9999px rgba(5,2,10,.45), 0 0 24px rgba(var(--gold-rgb),.4); }
@@ -1851,8 +1863,11 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .locked-details summary { cursor: pointer; font-weight: 600; color: #ffd778; }
 
 /* ---- Run it! zoom: the claimer's cards big + face up, with their line ---- */
+/* Same no-fade rule as .misdeal-reveal: the zoom rides the fixed Run show clock, so an
+   opacity-0 entrance frame held by a stalled timeline would eat the claimer's cards
+   and line for the whole show. The overlay paints outright; the cards keep rz-card. */
 .run-zoom { position: fixed; inset: 0; z-index: 29; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(8px, 2vh, 18px); pointer-events: none;
-  background: radial-gradient(ellipse at center, rgba(10, 4, 24, .55) 0%, rgba(10, 4, 24, .25) 55%, transparent 80%); animation: rz-in .22s ease-out both; }
+  background: radial-gradient(ellipse at center, rgba(10, 4, 24, .55) 0%, rgba(10, 4, 24, .25) 55%, transparent 80%); }
 .run-zoom-who { font-family: var(--display); font-weight: 800; font-size: clamp(15px, 2.6vw, 22px); color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.7); letter-spacing: .03em; }
 .run-zoom-tag { display: inline-block; font-style: italic; font-weight: 900; padding: 2px 10px; border-radius: 999px; background: linear-gradient(90deg, #ff4fd8, var(--gold)); color: #1a0830; margin-right: 6px; }
 .run-zoom-cards { display: grid; grid-template-columns: repeat(var(--per-row), auto); gap: clamp(4px, 1vw, 10px); justify-content: center; max-width: 96vw; }
@@ -1861,9 +1876,12 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .run-bubble { position: relative; max-width: min(560px, 90vw); padding: 12px 18px; border-radius: 18px; background: #fff; color: #1a0830; font-family: var(--display); font-weight: 900; font-size: clamp(18px, 3.6vw, 30px); line-height: 1.15; text-align: center;
   box-shadow: 0 8px 30px rgba(0,0,0,.55), 0 0 0 3px var(--gold); animation: rz-bubble .38s cubic-bezier(.2,1.6,.4,1) .12s both; }
 .run-bubble::after { content: ''; position: absolute; left: 50%; bottom: -12px; width: 22px; height: 22px; background: #fff; transform: translateX(-50%) rotate(45deg); box-shadow: 3px 3px 0 0 var(--gold); }
-@keyframes rz-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes rz-card { from { opacity: 0; transform: translateY(40px) scale(.6) rotate(-6deg); } to { opacity: 1; transform: none; } }
-@keyframes rz-bubble { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: none; } }
+/* rz-card / rz-bubble animate transform only — never opacity (same sweep): under a
+   stalled animation timeline the worst case is a card resting offset / a bubble at
+   half scale for a beat, both fully visible, instead of the announcement's content
+   sitting at opacity 0 until frames flow. */
+@keyframes rz-card { from { transform: translateY(40px) scale(.6) rotate(-6deg); } to { transform: none; } }
+@keyframes rz-bubble { from { transform: scale(.5); } to { transform: none; } }
 
 /* ---- Talk trash quick chat ---- */
 .trash-wrap { position: relative; display: flex; flex-direction: column; align-items: flex-end; }
