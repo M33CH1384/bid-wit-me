@@ -124,7 +124,9 @@ describe("Pj's drive-by — visual model slaved to the audio envelope", () => {
     // case routes between the two — PjsLife still dresses every non-environment table.
     // (handKey threads the current hand into the room so the parked sedan, once a
     // nuke blows it away, restores at the next hand's deal — 2026-10-28.)
-    expect(venue3d).toContain("case 'blockAfterDark': return env3d ? <PjsStreetRoom fxOn={fxOn} handKey={handKey} /> : <PjsLife fxOn={fxOn} />");
+    // Batch 7 (2026-10-28): a story `king` table at High routes to the King's
+    // lounge ahead of the street — the streetlife routing below it is unchanged.
+    expect(venue3d).toContain("case 'blockAfterDark': return king ? <KingLoungeRoom fxOn={fxOn} /> : env3d ? <PjsStreetRoom fxOn={fxOn} handKey={handKey} /> : <PjsLife fxOn={fxOn} />");
     expect(venue3d).toContain('flickerAt'); // streetlight buzz channel
     expect(venue3d).toContain('smokePuffAt'); // deterministic smoke, seeded by the model
     expect(venue3d).not.toContain('Math.random() * spread'); // the old per-mount random smoke seeds are gone

@@ -1688,7 +1688,7 @@ export default function Scene(props: SceneProps) {
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
       {hi && classic && <HallAttach active={hallGo && textured} />}
-      {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} handKey={props.handNo} />}
+      {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} handKey={props.handNo} storyStopId={props.storyStopId ?? null} />}
       {classic && textured && (props.storyStopId === 'rec-center' && props.quality === 'high'
         ? <RecCenterGymRoom fxOn={!props.reduceFx} />
         : <ClassicStudio quality={props.quality} />)}

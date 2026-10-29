@@ -7,6 +7,9 @@
  * The Pj's (blockAfterDark) at High quality dresses as a real 3D street instead (three/PjsStreetRoom.tsx):
  * the environment replaces this file's backdrop + floor for that venue, and PjsLife below stands down
  * (the room carries its own streetlight, grill and smoke). Low keeps the backdrop + floor + PjsLife.
+ * A story table carrying stop `king` at High dresses as the King's lounge instead
+ * (three/KingLoungeRoom.tsx): the lounge replaces backdrop + floor + props for that table only —
+ * Stop 9 and non-story blockAfterDark tables keep the street, byte-for-byte.
  */
 import { Environment, useTexture } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -18,6 +21,7 @@ import {
 import { type VenueDef, type VenueId, venueAssetUrls } from '../venues';
 import { noteRoomAssets } from '../assetGate';
 import PjsStreetRoom, { SEDAN_URL } from './PjsStreetRoom';
+import KingLoungeRoom from './KingLoungeRoom';
 import { flickerAt, glowAt, smokePuffAt, venueLifeFor } from '../venueLife';
 
 const FLOOR_Y = -0.9;
@@ -588,7 +592,7 @@ function Yacht({ fxOn }: { fxOn: boolean }) {
   );
 }
 
-export function VenueProps({ id, fxOn, env3d = false, handKey }: { id: VenueId; fxOn: boolean; env3d?: boolean; handKey?: number }) {
+export function VenueProps({ id, fxOn, env3d = false, handKey, king = false }: { id: VenueId; fxOn: boolean; env3d?: boolean; handKey?: number; king?: boolean }) {
   switch (id) {
     case 'backyard': return <Backyard fxOn={fxOn} />;
     case 'mansion': return <Mansion fxOn={fxOn} />;
@@ -600,7 +604,7 @@ export function VenueProps({ id, fxOn, env3d = false, handKey }: { id: VenueId; 
     case 'beach': return <Beach fxOn={fxOn} />;
     case 'grandma': return <Grandma fxOn={fxOn} />;
     case 'yacht': return <Yacht fxOn={fxOn} />;
-    case 'blockAfterDark': return env3d ? <PjsStreetRoom fxOn={fxOn} handKey={handKey} /> : <PjsLife fxOn={fxOn} />;
+    case 'blockAfterDark': return king ? <KingLoungeRoom fxOn={fxOn} /> : env3d ? <PjsStreetRoom fxOn={fxOn} handKey={handKey} /> : <PjsLife fxOn={fxOn} />;
     default: return null;
   }
 }
@@ -609,23 +613,30 @@ export function VenueProps({ id, fxOn, env3d = false, handKey }: { id: VenueId; 
 const MOVES: Partial<Record<VenueId, true>> = { backyard: true, beach: true, yacht: true, blockAfterDark: true, grandma: true, speakeasy: true, mansion: true };
 
 /** Everything around the table for one venue. Mounted inside the Canvas; never suspends the table. */
-export default function Venue3D({ def, quality, reduceFx, handKey }: { def: VenueDef; quality: 'high' | 'low'; reduceFx: boolean; handKey?: number }) {
+export default function Venue3D({ def, quality, reduceFx, handKey, storyStopId }: { def: VenueDef; quality: 'high' | 'low'; reduceFx: boolean; handKey?: number; storyStopId?: string | null }) {
   const urls = venueAssetUrls(def.id, quality);
   const fxOn = !reduceFx && quality === 'high';
+  // The King's lounge (story Stop 11) at High: the plum-and-gold lounge
+  // (three/KingLoungeRoom.tsx) replaces the backdrop + floor + props for a
+  // table carrying story stop `king` — the King no longer inherits the Pj's
+  // street. Stop 9 (The Pj's) and every non-story blockAfterDark table keep
+  // the street path below exactly; Low keeps backdrop + floor + PjsLife.
+  const kingActive = def.id === 'blockAfterDark' && storyStopId === 'king' && quality === 'high';
   // The Pj's at High: the 3D street environment replaces the static backdrop + floor disc
   // (it brings its own ground) and stands the backdrop-level PjsLife dressing down. Low
   // quality keeps the shipped backdrop + floor + PjsLife exactly — the fallback is the
   // current behaviour, not a new invention.
-  const envActive = def.id === 'blockAfterDark' && quality === 'high';
+  const envActive = def.id === 'blockAfterDark' && quality === 'high' && !kingActive;
+  const env3d = envActive || kingActive;
   const g = useRef<Group>(null);
   // for checks: which venue is dressed and whether its ambient motion runs
-  useEffect(() => { (window as unknown as { __bwmVenue?: { id: string; fx: boolean; env3d?: boolean } }).__bwmVenue = { id: def.id, fx: fxOn && !!MOVES[def.id], ...(def.id === 'blockAfterDark' ? { env3d: envActive } : {}) }; }, [def.id, fxOn, envActive]);
+  useEffect(() => { (window as unknown as { __bwmVenue?: { id: string; fx: boolean; env3d?: boolean } }).__bwmVenue = { id: def.id, fx: fxOn && !!MOVES[def.id], ...(def.id === 'blockAfterDark' ? { env3d } : {}) }; }, [def.id, fxOn, env3d]);
   return (
     <group ref={g}>
-      <Suspense fallback={null}>{urls.bg && !envActive && <Backdrop url={urls.bg} blur={def.bgBlur} intensity={def.bgIntensity} />}</Suspense>
+      <Suspense fallback={null}>{urls.bg && !env3d && <Backdrop url={urls.bg} blur={def.bgBlur} intensity={def.bgIntensity} />}</Suspense>
       <Suspense fallback={null}>{urls.env && <Environment files={urls.env} environmentIntensity={def.envIntensity} />}</Suspense>
-      {!envActive && <VenueFloor def={def} url={urls.floor} />}
-      <VenueProps id={def.id} fxOn={fxOn} env3d={envActive} handKey={handKey} />
+      {!env3d && <VenueFloor def={def} url={urls.floor} />}
+      <VenueProps id={def.id} fxOn={fxOn} env3d={envActive} handKey={handKey} king={kingActive} />
       {fxOn && MOVES[def.id] && <AmbientTicker />}
     </group>
   );
