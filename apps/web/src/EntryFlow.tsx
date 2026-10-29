@@ -18,7 +18,7 @@ import { SignInSheet, UsernamePicker } from './account/AccountUI';
 import MoreOptions from './MoreOptions';
 import { dismissGuest, entryModalVisible, entrySuppressed, guestDismissed, markPrefsDone, prefsDone, prefsOfferVisible } from './entryFlow';
 import { idleNoticeOwed, idleNoticeVisible } from './inactivity';
-import { isOnlinePath } from './online/nav';
+import { isOnlinePath, isWatchPath } from './online/nav';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import { loadTips, type TipsPref } from './tips';
 
@@ -71,7 +71,9 @@ export default function EntryFlow({ onPrefsDone }: { onPrefsDone?: () => void })
     // The notice's own derivation, in its own (menu) scope: while it is on
     // screen the prompt waits; once dismissed, the prompt may follow.
     idleNoticeShowing: idleNoticeVisible(owed, !!user) && !isOnlinePath(path),
-    suppressed: SUPPRESSED,
+    // Watching never walls: watch routes (incl. the unauthenticated OBS
+    // broadcast frame) never raise the sign-in/guest prompt.
+    suppressed: SUPPRESSED || isWatchPath(path),
   });
   const offerVisible = prefsOfferVisible({
     firstSignInId: acct.firstSignIn?.id ?? null,

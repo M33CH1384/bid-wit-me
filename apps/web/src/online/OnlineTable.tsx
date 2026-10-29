@@ -18,14 +18,16 @@ import { clientDeadline, loadHideSpectatorChat, localNames, saveHideSpectatorCha
 import { dealerFromServer } from '../dealerName';
 import { localSeatOfServerTurn } from '../turnState';
 import { SpectatorOverlay } from './Spectators';
+import BroadcastOverlay from './BroadcastOverlay';
+import { navigate } from './nav';
 import { orientRun } from '../runPlayback';
 import type { VideoMesh } from './video';
 
 /** The 3D table, driven by the server: rotated per-seat view, real chat, video bubbles, turn clock. */
-export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versusPairNote }: { conn: TableConnection; cs: ConnState; mesh: VideoMesh | null; onLobby: () => void; onMainMenu?: () => void; /** story co-op: the pair's narrative versus headline for this stop (StoryRoom computes it from the pair context) */ versusPairNote?: string | null }) {
+export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versusPairNote, watchOnly = false, broadcast = false, initialSettings }: { conn: TableConnection; cs: ConnState; mesh: VideoMesh | null; onLobby: () => void; onMainMenu?: () => void; /** story co-op: the pair's narrative versus headline for this stop (StoryRoom computes it from the pair context) */ versusPairNote?: string | null; /** Streaming watch surface (/watch/<CODE>): chat reads but never posts, no take-seat prompt — watching is the whole surface */ watchOnly?: boolean; /** Streaming broadcast frame (/watch/<CODE>/broadcast): the OBS variant — no chat surface at all, broadcast bug instead of the spectator banner */ broadcast?: boolean; /** settings merged over the saved ones for this mount (the broadcast frame pins High quality + the sitting camera) */ initialSettings?: Partial<Settings> }) {
   const source = useOnlineSource(cs, conn);
   const vs = useVideo(mesh);
-  const [settings, setSettings] = useState<Settings>(() => ({ ...loadSettings(), speed: 'normal' }));
+  const [settings, setSettings] = useState<Settings>(() => ({ ...loadSettings(), speed: 'normal', ...initialSettings }));
   const room = cs.room!;
   const rot = source?.rot ?? null;
   // Watching (no seat): every plate, including the bottom one, is the occupant — a person or a bot — never "You".
@@ -196,7 +198,14 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
         onViewAdjust={(viewAdjust) => { const s = { ...settings, viewAdjust }; setSettings(s); saveSettings({ ...loadSettings(), viewAdjust }); }}
         onTurnUp={(turnUp) => { const s = { ...settings, turnUp }; setSettings(s); saveSettings({ ...loadSettings(), turnUp }); }}
         online={{
-          source, names, chat, seatExtra, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity,
+          source, names, seatExtra, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity,
+          // Streaming surfaces reshape the chat binding: the broadcast frame has
+          // no chat surface at all; the watch view reads chat but never posts
+          // (its one affordance sends the viewer to the play door). The server
+          // enforces the same line via the member's watchOnly flag.
+          chat: broadcast ? { ...chat, hidden: true }
+            : watchOnly ? { ...chat, readOnly: true, onReadOnly: () => navigate(`/t/${conn.code}`) }
+            : chat,
           setTeamName: cs.seat !== null && r.partnerships ? (name) => conn.send({ t: 'teamName', name }) : undefined,
           series: { series: room.series ?? null, mine: seriesMine },
           setLearning: (on) => conn.send({ t: 'learning', on }),
@@ -257,9 +266,17 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
           serverTurn: cs.view?.turn ?? null,
           viewerSeat: spectator || cs.seat === null ? null : cs.seat,
           run: cs.run ? orientRun(cs.run, spectator ? null : cs.seat, rot.n) : null,
-          overlay: <SpectatorOverlay room={room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
-            onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}
-            onTake={(seat) => conn.send({ t: 'sit', seat })} onLeave={onMainMenu} />,
+          overlay: broadcast
+            ? <BroadcastOverlay code={conn.code} handNo={source.st.handNo} mode={r.mode} playerCount={r.playerCount}
+                sides={(r.partnerships ? [0, 1] : Array.from({ length: r.playerCount }, (_, i) => i)).map((side) => ({
+                  name: teamNames?.[side] ?? sideLabel(side),
+                  score: source.st.scores[side] ?? 0,
+                  bags: source.st.bags[side] ?? 0,
+                }))}
+                watchers={room.spectators?.length ?? 0} />
+            : <SpectatorOverlay room={watchOnly ? { ...room, takeable: [] } : room} cs={cs} spectator={spectator} names={names} hideChat={hideSpec}
+              onHideChat={(on) => { setHideSpec(on); saveHideSpectatorChat(on); }}
+              onTake={(seat) => conn.send({ t: 'sit', seat })} onLeave={onMainMenu} />,
           talk: {
             secs,
             ready: { mine: !!cs.you && room.ready.includes(cs.you), count: room.ready.length, of: room.seats.filter((x) => x.kind === 'human' && x.connected).length },

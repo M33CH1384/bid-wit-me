@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import type { RoomInfo } from '@spades/protocol';
 import type { ConnState } from './connection';
+import ShareWatchButton from './ShareWatch';
 
 export function SpectatorOverlay({ room, cs, spectator, names, hideChat, onHideChat, onTake, onLeave }: {
   room: RoomInfo; cs: ConnState; spectator: boolean; names: string[]; hideChat: boolean;
@@ -42,19 +43,26 @@ export function SpectatorOverlay({ room, cs, spectator, names, hideChat, onHideC
       </div>
     );
   }
-  if (!watchers.length) return null;
+  // Seated players: the watch-link share sits with the watchers chip — one tap
+  // puts the link in anyone's hands, watchers or not. Story rooms allow no
+  // spectators at all: ShareWatchButton renders nothing for them.
   return (
-    <div className="spec-chip-wrap">
-      <button type="button" className="spec-chip" data-testid="watchers-chip" aria-expanded={open} onClick={() => setOpen(!open)} title="Spectators">
-        👁 {watchers.length}
-      </button>
-      {open && (
-        <div className="spec-pop glass slant" data-testid="watchers-pop">
-          <div className="panel-title">WATCHING ({watchers.length})</div>
-          <ul>{watchers.map((w) => <li key={w.playerId}>{w.name}</li>)}</ul>
-          <label className="row"><span className="row-label">Hide spectator chat<small>only for you</small></span><span className="row-control">
-            <button type="button" data-testid="hide-spec-chat" className={`toggle ${hideChat ? 'on' : ''}`} role="switch" aria-checked={hideChat} aria-label="Hide spectator chat" onClick={() => onHideChat(!hideChat)}><span /></button>
-          </span></label>
+    <div className="spec-tools">
+      <ShareWatchButton code={room.code} story={!!room.story} />
+      {watchers.length > 0 && (
+        <div className="spec-chip-wrap">
+          <button type="button" className="spec-chip" data-testid="watchers-chip" aria-expanded={open} onClick={() => setOpen(!open)} title="Spectators">
+            👁 {watchers.length}
+          </button>
+          {open && (
+            <div className="spec-pop glass slant" data-testid="watchers-pop">
+              <div className="panel-title">WATCHING ({watchers.length})</div>
+              <ul>{watchers.map((w) => <li key={w.playerId}>{w.name}</li>)}</ul>
+              <label className="row"><span className="row-label">Hide spectator chat<small>only for you</small></span><span className="row-control">
+                <button type="button" data-testid="hide-spec-chat" className={`toggle ${hideChat ? 'on' : ''}`} role="switch" aria-checked={hideChat} aria-label="Hide spectator chat" onClick={() => onHideChat(!hideChat)}><span /></button>
+              </span></label>
+            </div>
+          )}
         </div>
       )}
     </div>

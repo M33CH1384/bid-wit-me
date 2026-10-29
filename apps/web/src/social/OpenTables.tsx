@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import type { OpenTable } from '@spades/protocol';
 import { social, useSocial } from './store';
 import { navigate } from '../online/nav';
+import ShareWatchButton from '../online/ShareWatch';
 import { type VenueChoice, venueLabel } from '../venues';
 import { OFFERED_MODES, OFFERED_MODE_NAME, type OfferedMode, offeredKindOf, openTableModeName } from '../offeredModes';
 
@@ -76,6 +77,9 @@ function TableRow({ t }: { t: OpenTable }) {
       <div className="ot-acts">
         {canJoin && <button type="button" className="primary" data-testid={`ot-join-${t.code}`} onClick={() => navigate(`/t/${t.code}${t.seat !== undefined ? `?seat=${t.seat}` : ''}`)}>Join</button>}
         <button type="button" data-testid={`ot-watch-${t.code}`} disabled={t.watchFull} onClick={() => navigate(`/t/${t.code}?watch=1`)}>{t.watchFull ? 'Full' : 'Watch'}</button>
+        {/* Streaming: copy this table's watch link without leaving the list —
+            the link lands guests and players alike in the watch view. */}
+        <ShareWatchButton code={t.code} className="open-table-share" />
       </div>
     </li>
   );

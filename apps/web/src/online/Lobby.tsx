@@ -13,6 +13,7 @@ import type { RoomInfo, SeatInfo } from '@spades/protocol';
 import { type ModeKey, type Settings, MODES, modeTitle, rulesSummary, settingsToRules } from '../settings';
 import type { ConnState, TableConnection } from './connection';
 import { inviteLink } from './config';
+import ShareWatchButton from './ShareWatch';
 import { navigate } from './nav';
 import { MediaBar, SeatMedia } from './Media';
 import { AvatarCircle, useAvatar } from '../avatar';
@@ -113,6 +114,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             <small>{copied ? 'LINK COPIED ✓' : 'TABLE CODE · TAP TO SHARE'}</small>
             <b>{room.code}</b>
           </button>
+          {/* Streaming: the watch link sits beside the invite — anyone with it
+              (guest or player) lands straight in the watch view. Story rooms
+              allow no spectators, so the button does not exist there. */}
+          <ShareWatchButton code={room.code} story={!!room.story} />
           <SocialButton className="lobby-social" />
         </div>
         {room.tournament && <TourBanner t={room.tournament} />}

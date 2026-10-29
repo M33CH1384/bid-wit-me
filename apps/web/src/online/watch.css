@@ -1,0 +1,229 @@
+/* Streaming package: watch view, broadcast frame, score bug, share buttons.
+   Loaded only by the watch chunk. Colors ride the app theme variables, so the
+   in-app watch surface follows Classic/Neon like every other surface; the
+   broadcast frame is the Professional Spades League register — dark, clean,
+   full-bleed — at any theme. */
+
+/* ---------- frame ---------- */
+.watch-frame {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-deep, #120a1c);
+  color: var(--ink, #f6f2ff);
+  overflow: hidden;
+}
+.watch-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.watch-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 8px 12px;
+  z-index: 5;
+}
+.watch-bar-label {
+  font: 700 13px/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.14em;
+  opacity: 0.9;
+  margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.watch-join-btn,
+.watch-slate-btn {
+  font: 700 13px/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.12em;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  cursor: pointer;
+}
+.watch-slate-btn.ghost { background: transparent; opacity: 0.85; }
+
+/* The spectator dock is fixed at top:58px for the full-viewport app, where
+   the table header sits lower. In the watch frame the header rides directly
+   under the watch bar and the dock lands on the score strip (it hid a score
+   and a team name at 844x390) — drop it just below the header, over the
+   felt's empty top edge. Watch surface only; the app's spectator view is
+   unchanged. */
+.watch-frame .spec-dock {
+  top: calc(106px + env(safe-area-inset-top));
+}
+
+/* ---------- share button ---------- */
+/* The button itself is styled in styles.css: it renders on surfaces that
+   never load this chunk (lobby, open tables, the table overlay). */
+
+/* ---------- read-only chat affordance (Table.tsx ChatPanel) ---------- */
+.chat-readonly {
+  margin: 10px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: 600 13px/1.2 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  text-align: center;
+}
+.chat-readonly:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* ---------- slates (connecting / refusals / waiting / game over) ---------- */
+.watch-slate {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  text-align: center;
+}
+.watch-slate-card {
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.watch-slate-brand {
+  font: 800 15px/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.3em;
+  opacity: 0.65;
+}
+.watch-slate h1 {
+  font: 800 clamp(28px, 4.5vw, 44px)/1.05 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+.watch-slate p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  opacity: 0.85;
+  max-width: 44ch;
+}
+.watch-slate-meta { font-size: 14px; }
+.watch-final {
+  margin-top: 8px;
+  min-width: min(420px, 80vw);
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+}
+.watch-final-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 8px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  font: 700 18px/1.2 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.05em;
+}
+.watch-slate .watch-slate-btn { margin-top: 8px; }
+
+/* ---------- broadcast frame ---------- */
+.watch-frame.broadcast {
+  background: #0a0a10;
+  color: #f4f1ea;
+}
+.watch-frame.broadcast.cursor-idle,
+.watch-frame.broadcast.cursor-idle * {
+  cursor: none !important;
+}
+.broadcast-ticker {
+  position: relative;
+  z-index: 6;
+  flex: none;
+}
+/* the league ticker bar sits in-flow at the frame's bottom edge */
+.broadcast-ticker .ticker-bar {
+  position: relative;
+  inset: auto;
+}
+
+/* ---------- broadcast score bug ---------- */
+.broadcast-bug {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 30;
+  min-width: 300px;
+  max-width: min(520px, 44vw);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(8, 8, 14, 0.88);
+  border: 1px solid rgba(244, 241, 234, 0.22);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+  color: #f4f1ea;
+  font-family: 'Barlow Condensed', sans-serif;
+  pointer-events: none;
+}
+.broadcast-bug-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+  background: rgba(244, 241, 234, 0.08);
+  border-bottom: 1px solid rgba(244, 241, 234, 0.16);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+.broadcast-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ff5d5d;
+}
+.broadcast-live i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 8px #ff3b30;
+  animation: broadcast-pulse 1.6s ease-in-out infinite;
+}
+@keyframes broadcast-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.broadcast-code { opacity: 0.75; }
+.broadcast-meta { opacity: 0.9; margin-left: auto; }
+.broadcast-watchers { opacity: 0.75; }
+.broadcast-bug-sides { display: flex; flex-direction: column; }
+.broadcast-side {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 12px;
+}
+.broadcast-side + .broadcast-side { border-top: 1px solid rgba(244, 241, 234, 0.1); }
+.broadcast-side-name {
+  flex: 1;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.broadcast-side-score { font-size: 26px; font-weight: 800; }
+.broadcast-side-bags { font-size: 14px; font-weight: 600; opacity: 0.65; }
+
+/* small frames (4:3-ish fallback): the bug compacts, nothing critical leaves the frame */
+@media (max-width: 900px), (max-height: 500px) {
+  .broadcast-bug { top: 10px; left: 10px; min-width: 0; max-width: 62vw; }
+  .broadcast-bug-head { font-size: 11px; gap: 8px; padding: 5px 9px; }
+  .broadcast-side { padding: 4px 9px; gap: 8px; }
+  .broadcast-side-name { font-size: 14px; }
+  .broadcast-side-score { font-size: 19px; }
+  .broadcast-side-bags { font-size: 11px; }
+}

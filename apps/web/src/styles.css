@@ -5014,3 +5014,30 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .tt-body:has(.tt-recap:not(.crowded)) { grid-template-columns: minmax(176px, 200px) minmax(0, 1fr); column-gap: 10px; }
   .tt-recap:not(.crowded) .tt-team { padding: 8px 10px 6px; }
 }
+
+/* Streaming share button (watch links): rendered by the lobby header, the
+   open-table rows, the table's spectator overlay and the watch bar — so it
+   lives here, in the always-loaded sheet, not in the watch chunk's css.
+   Dark glass on every theme, matching the lobby's Social button. */
+.share-watch-btn {
+  font: 700 12px/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.1em;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(18, 10, 28, 0.78);
+  color: #f6f2ff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.share-watch-btn:hover { background: rgba(46, 28, 72, 0.9); }
+.spec-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+.open-table-share {
+  padding: 6px 10px;
+  font-size: 11px;
+}

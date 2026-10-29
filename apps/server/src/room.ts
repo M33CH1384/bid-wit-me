@@ -55,6 +55,12 @@ export interface Member {
   venueAccess?: boolean;
   /** Browser guest id. A reload that minted a new seat token is still this member. */
   gid?: string;
+  /** Streaming: arrived through a watch link (/watch/<CODE>). Watch-only members may
+   *  spectate but never sit and never post chat or reactions; the flag follows the
+   *  latest door — a later hello WITHOUT `watch` (the play door) clears it while the
+   *  member is seatless. Guests and signed-in watchers alike ride this flag: on the
+   *  watch surface everyone is watch-only, whatever their account could do elsewhere. */
+  watchOnly?: boolean;
   /** Epoch ms of the last socket drop. The disconnect grace is measured from here, not from each tick. */
   disconnectedAt?: number;
   /** False while this client's table is still drawing. Unset means an older client: the clock may run. */
@@ -918,6 +924,11 @@ export class Room {
       if (!m.name) m.name = name;
       if (gid && !m.gid) m.gid = gid;
       if (uid) m.uid = uid;
+      // Watch-door flag follows the latest hello: a watch link marks the member
+      // watch-only; arriving through the play door clears it while seatless (a
+      // seated member is a player — the flag never applies to them).
+      if (msg.watch) m.watchOnly = true;
+      else if (m.seat === null) delete m.watchOnly;
       delete m.disconnectedAt;
       m.timeouts = 0;
       if (d.hostId === pid) delete d.hostAwaySince;
@@ -948,8 +959,9 @@ export class Room {
       // honor a client-minted token so a second tab that stored it first lands in this same member
       const tokenTaken = !!msg.token && Object.values(d.members).some((m) => m.token === msg.token);
       const token = msg.token && this.tokenOk(msg.token) && !tokenTaken ? msg.token : this.io.randomId();
-      d.members[pid] = { name, token, seat: null, media: { cam: false, mic: false }, joinedAt: this.io.now(), ...(uid ? { uid } : {}), ...(gid ? { gid } : {}) };
-      if (!d.hostId || !d.members[d.hostId]) d.hostId = pid;
+      d.members[pid] = { name, token, seat: null, media: { cam: false, mic: false }, joinedAt: this.io.now(), ...(uid ? { uid } : {}), ...(gid ? { gid } : {}), ...(msg.watch ? { watchOnly: true } : {}) };
+      // a watch-only member never becomes host: they can't run the table
+      if ((!d.hostId || !d.members[d.hostId]) && !msg.watch) d.hostId = pid;
       this.system(`${name} joined`);
       this.conns.set(connId, pid);
     }
@@ -994,6 +1006,7 @@ export class Room {
     const n = d.rules.playerCount;
     switch (msg.t) {
       case 'sit': {
+        if (me.watchOnly) throw new RoomError('WATCH_ONLY', 'You came in through a watch link — join the table to take a seat.');
         if (msg.seat >= n) throw new RoomError('BAD_SEAT', 'No such seat');
         if (d.phase === 'playing' && (d.outPlayers?.includes(pid) || d.game?.eliminated?.[msg.seat])) throw new RoomError('ELIMINATED', 'You are out of this game');
         if (d.story) {
@@ -1190,6 +1203,7 @@ export class Room {
         break;
       }
       case 'chat': {
+        if (me.watchOnly) throw new RoomError('WATCH_ONLY', 'Watchers can read the chat but can’t post — join the table to talk.');
         const text = maskProfanity(blockLinks(cleanText(msg.text, LIMITS.chatMax)));
         if (!text) return;
         const now = this.io.now();
@@ -1243,6 +1257,8 @@ export class Room {
         return; // chat doesn't change the table state
       }
       case 'react': {
+        // watch-only members read chat but never post — reactions are posting: drop silently, like a rate limit.
+        if (me.watchOnly) return;
         // emoji reaction to a chat line: toggle, persist, broadcast the new reaction map.
         // not an error to rate-limit or to react to a missing line: silently drop it.
         const line = d.chat.find((l) => l.id === msg.id);

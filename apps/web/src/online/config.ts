@@ -24,6 +24,16 @@ export function inviteLink(code: string): string {
 }
 
 /**
+ * Streaming watch link for a table: lands the opener (guest or signed-in)
+ * straight in the watch view. `broadcast` gives the OBS browser-source frame.
+ * A watch link grants nothing but watching — the room's own admission
+ * (spectator cap, story door, host controls) still applies on the socket.
+ */
+export function watchLink(code: string, broadcast = false): string {
+  return `${location.origin}/watch/${code.toUpperCase()}${broadcast ? '/broadcast' : ''}`;
+}
+
+/**
  * ICE servers for WebRTC. Public STUN works for most home/mobile networks; strict NATs / corporate Wi-Fi need TURN.
  * TURN hook: the server's GET /api/ice returns Cloudflare Realtime TURN credentials once TURN_KEY_ID +
  * TURN_KEY_API_TOKEN secrets are set on the Worker; until then it returns STUN only. A build-time

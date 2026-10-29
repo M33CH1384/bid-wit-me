@@ -81,7 +81,13 @@ export class TableConnection {
   /** Close this socket and open again immediately, keeping the in-flight move to resend. */
   private recover = false;
 
-  constructor(public readonly code: string, private name: string) {
+  /** Streaming: this connection came through a watch link — every hello carries
+   *  `watch: true`, so the server marks the member watch-only (spectate, never
+   *  sit, never post chat) for as long as they arrive through this door. */
+  private readonly watchOnly: boolean;
+
+  constructor(public readonly code: string, private name: string, opts?: { watch?: boolean }) {
+    this.watchOnly = !!opts?.watch;
     this.onVisible = this.onVisible.bind(this);
     document.addEventListener('visibilitychange', this.onVisible);
     window.addEventListener('online', this.onVisible);
@@ -246,7 +252,7 @@ export class TableConnection {
   }
 
   private helloBody(ticket: string | null): ClientMsg {
-    return { t: 'hello', name: this.name, token: tokenFor(this.code), gid: guestSessionId(), v: 1, ...(ticket ? { ticket } : {}) };
+    return { t: 'hello', name: this.name, token: tokenFor(this.code), gid: guestSessionId(), v: 1, ...(ticket ? { ticket } : {}), ...(this.watchOnly ? { watch: true } : {}) };
   }
 
   private openWith(ticket: string | null): void {

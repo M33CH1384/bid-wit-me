@@ -166,7 +166,12 @@ export interface OnlineBinding {
   source: ReturnType<typeof useGame> & { locked?: boolean; playGate?: number };
   /** local-seat names (0 = you) */
   names: string[];
-  chat: { msgs: ChatMsg[]; push: (user: string, text: string) => void; /** emoji reaction to a line (online: sent to the server; offline: local) */ react?: (id: number, emoji: string) => void; /** reactor id for highlighting your own reactions (server pid / 'you' offline) */ youId?: string | null };
+  chat: { msgs: ChatMsg[]; push: (user: string, text: string) => void; /** emoji reaction to a line (online: sent to the server; offline: local) */ react?: (id: number, emoji: string) => void; /** reactor id for highlighting your own reactions (server pid / 'you' offline) */ youId?: string | null;
+    /** Streaming watch surface: the chat reads but never posts — the composer is
+     *  replaced by a one-line sign-in affordance (onReadOnly). */
+    readOnly?: boolean; onReadOnly?: () => void;
+    /** Streaming broadcast frame (OBS): no chat surface at all — no panel, no rail, no ticker line. */
+    hidden?: boolean };
   /** video bubble / timer chip etc. inside a seat's name plate (local seat index) */
   seatExtra: (seat: number) => ReactNode;
   /** scorebug label for a (local) side */
@@ -471,7 +476,7 @@ function TableMentionText({ text, mentions, msgs }: { text: string; mentions?: s
   return <>{segs.map((sg, i) => (sg.mention ? <b key={i} className="chat-mention">{sg.text}</b> : <Fragment key={i}>{sg.text}</Fragment>))}</>;
 }
 
-function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash, overRecap = false, onReact, myId = null, mentionCandidates }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode; /** hand recap: the log is a sheet, opened from the corner button on that screen */ overRecap?: boolean; /** emoji reaction to a line (undefined = reactions unavailable here) */ onReact?: (id: number, emoji: string) => void; /** my reactor id (server pid / 'you'), for chip highlighting */ myId?: string | null; /** @ completion candidates, best-first (friends → online → table roster); omit = no completion (offline) */ mentionCandidates?: readonly { name: string }[] }) {
+function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only', extra, trash, overRecap = false, onReact, myId = null, mentionCandidates, readOnly = false, onReadOnly, hidden = false }: { msgs: ChatMsg[]; open: boolean; onToggle: () => void; onSend: (t: string) => void; unread: number; scope?: string; extra?: ReactNode; trash?: ReactNode; /** hand recap: the log is a sheet, opened from the corner button on that screen */ overRecap?: boolean; /** emoji reaction to a line (undefined = reactions unavailable here) */ onReact?: (id: number, emoji: string) => void; /** my reactor id (server pid / 'you'), for chip highlighting */ myId?: string | null; /** @ completion candidates, best-first (friends → online → table roster); omit = no completion (offline) */ mentionCandidates?: readonly { name: string }[]; /** watch surface: read the chat, never post — composer becomes a sign-in affordance */ readOnly?: boolean; onReadOnly?: () => void; /** broadcast frame: render no chat surface at all */ hidden?: boolean }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
@@ -501,6 +506,8 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
     if (el && open && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [msgs, open]);
   const last = msgs.filter((m) => !m.system).slice(-1)[0];
+  // Broadcast frame (OBS): no chat surface at all — no panel, no control rail, no ticker line.
+  if (hidden) return null;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -544,6 +551,11 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
             </div>
           ))}
         </div>
+        {readOnly ? (
+          /* Watch surface: watching never walls, but posting needs the table —
+             one line, one tap to the play door. */
+          <button type="button" className="chat-readonly" data-testid="chat-readonly" onClick={onReadOnly}>Sign in to chat</button>
+        ) : (<>
         <form onSubmit={submit} className="chat-input">
           {mOptions.length > 0 && (
             <ul className="chat-mention-pop" role="listbox" aria-label="Mention a player" data-testid="chat-mention-pop">
@@ -573,6 +585,7 @@ function ChatPanel({ msgs, open, onToggle, onSend, unread, scope = 'local only',
         <div className="emotes">
           {['🔥', '😂', '😤', '🃏', 'gg'].map((e) => <button key={e} type="button" onClick={() => onSend(e)}>{e}</button>)}
         </div>
+        </>)}
       </aside>
     </>
   );
@@ -2984,6 +2997,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           return out;
         })() : undefined}
         onReact={(online ? online.chat : localChat).react} myId={(online ? online.chat : localChat).youId ?? null}
+        readOnly={!!online?.chat.readOnly} onReadOnly={online?.chat.onReadOnly} hidden={!!online?.chat.hidden}
         trash={!runFx && !modalOpen && !spectating ? <TrashTalkButton st={st} me={HUMAN} intensity={intensity} onSend={(t) => push('You', t)} /> : null} />
       {help && !bidTurn && view.hand && view.hand.length > 0 && st.phase !== 'handOver' && st.phase !== 'gameOver' && (
         <div className="bid-coach-float glass slant"><BidCoach view={view} startOpen title="COUNT YOUR BOOKS" onClose={() => setHelp(false)} /></div>

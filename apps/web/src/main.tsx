@@ -1,7 +1,7 @@
 import { Component, StrictMode, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-import { isOnlinePath } from './online/nav';
+import { isOnlinePath, isWatchPath, watchRoute } from './online/nav';
 import { importChunk } from './chunkLoad';
 import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
@@ -32,6 +32,7 @@ import './styles.css';
 // and with no boundary the whole app unmounts to a blank screen until a manual refresh.
 // importChunk retries cache-busted and reloads once onto the new build instead.
 const OnlineApp = lazy(() => importChunk(() => import('./online/OnlineApp')));
+const WatchApp = lazy(() => importChunk(() => import('./online/WatchApp')));
 const ProfilePage = lazy(() => importChunk(() => import('./profile/ProfilePage')));
 const StoryHome = lazy(() => importChunk(() => import('./story/StoryHome')));
 const RewardsPage = lazy(() => importChunk(() => import('./RewardsPage')));
@@ -132,6 +133,7 @@ function Root() {
         {path === '/rewards' ? <Suspense fallback={<RouteLoading />}><RewardsPage /></Suspense>
           : path === '/story' ? <Suspense fallback={<RouteLoading />}><StoryHome /></Suspense>
           : path === '/profile' ? <Suspense fallback={<RouteLoading />}><ProfilePage /></Suspense>
+          : isWatchPath(path) ? <Suspense fallback={<RouteLoading />}><WatchApp path={path} /></Suspense>
           : isOnlinePath(path) ? <Suspense fallback={<RouteLoading />}><OnlineApp path={path} /></Suspense> : <App key={path} />}
       </RouteGuard>
       <InkLayer />
@@ -140,17 +142,22 @@ function Root() {
           The full-screen /profile and /rewards routes have no slot, so the dock fell
           back to its fixed corner position and sat ON the page header (it covered the
           profile's season label — owner, 2026-10-20): no floating dock on those routes. */}
-      {path !== '/profile' && path !== '/rewards' && <SoundDock />}
-      <SocialRoot />
+      {path !== '/profile' && path !== '/rewards' && !isWatchPath(path) && <SoundDock />}
+      {/* Watch surfaces carry no app chrome of their own: the in-app watch view
+          is a viewing surface, and the broadcast frame must show nothing but
+          the table, the bug and its own in-frame ticker (an OBS source loads
+          it with no session at all — no social panel, no bonus receipt, and
+          no second ticker from the root). */}
+      {!isWatchPath(path) && <SocialRoot />}
       {/* Daily-bonus receipt (2026-10-23): the one-time "+N coins — you now
           have M" card raised when the day's grant lands (see dailyBonus.ts). */}
-      <DailyBonusReceipt />
+      {!isWatchPath(path) && <DailyBonusReceipt />}
       {/* The BottomLine, app-wide (league data wave 6a): a fixed bottom bar
           on the main surfaces with its height reserved via bwm-ticker-on.
           It hides itself at a live table, while the Social panel is
           open (the panel carries its own in-flow instance), and on
           /story (story surfaces never carry broadcast chrome). */}
-      <LeagueTickerRoot />
+      {!isWatchPath(path) && <LeagueTickerRoot />}
       {/* Spray-paint screen transitions: renders only during a spray. */}
       <SprayLayer />
       {/* The Card Fan: renders only during a profile/social move. */}
