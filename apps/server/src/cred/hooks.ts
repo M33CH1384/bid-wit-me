@@ -11,6 +11,7 @@ import { awardXp } from './xp';
 import { bumpProgress, setStreakProgress } from './challenges';
 import { ACHIEVEMENTS, checkAchievements, grantUnlock, NIGHT_VENUES, type CheckCtx } from './achievements';
 import { move } from './coins';
+import { creditPlayWell } from './playwell';
 import type { CredPushEvent } from '../push/notify';
 
 export interface CredGameCtx {
@@ -18,6 +19,9 @@ export interface CredGameCtx {
   userId: string;
   kind: RatingKind;
   won: boolean;
+  /** this player's side's final score minus the best other side's
+   *  (Play-Well Domination; negative on a shot-out win) */
+  finalMargin: number;
   stats: PlayerGameStats;
   rated: boolean;
   abandoned: boolean;
@@ -152,6 +156,21 @@ export async function onGameEnd(db: D1Database, ctx: CredGameCtx): Promise<CredP
     if (awarded.leveledUp && !ctx.vsBots) {
       try { await move(db, ctx.userId, 50 * awarded.level, 'level_up', `game:${ctx.gameId}`, now); } catch { /* best-effort */ }
     }
+    // Play-Well bonuses (owner, 2026-10-29): the game's feats pay bonus XP
+    // (and table-run coins) at the same half rate, capped per game and per
+    // day — see cred/playwell.ts. Best-effort like the coin move above: a
+    // bonus failure must never cost the player their base credit or the
+    // challenge/achievement pass below. A level crossed on the bonus award
+    // earns the same level-up coins a base-XP crossing earns.
+    try {
+      const pw = await creditPlayWell(db, {
+        gameId: ctx.gameId, userId: ctx.userId, stats: ctx.stats, won: ctx.won,
+        finalMargin: ctx.finalMargin, half, endedAt: now,
+      });
+      if (pw.leveledUp && !ctx.vsBots) {
+        try { await move(db, ctx.userId, 50 * pw.level, 'level_up', `game:${ctx.gameId}`, now); } catch { /* best-effort */ }
+      }
+    } catch { /* best-effort */ }
     // Phase 4: Rep level 20 ("Block Captain") unlocks The Pj's. Idempotent,
     // so it also grandfathers players who were already 20+ before this shipped.
     // Big Bank Take Lil Bank unlocks at the same tier (see cred/wager.ts).
@@ -262,8 +281,10 @@ export async function processGameCred(
       try { seats = JSON.parse(rec.seats as unknown as string); } catch { /* ignore */ }
       const vsBots = opponentBucket(seats, p.side) === 'bots';
       const abandoned = meta.endReason === 'abandoned';
+      const foes = rec.final.filter((_, s) => s !== p.side);
+      const finalMargin = foes.length ? (rec.final[p.side] ?? 0) - Math.max(...foes) : 0;
       events.push(...await onGameEnd(db, {
-        gameId: rec.id, userId: p.uid, kind: rec.kind, won: p.won, stats: p.stats,
+        gameId: rec.id, userId: p.uid, kind: rec.kind, won: p.won, finalMargin, stats: p.stats,
         rated: meta.rated, abandoned, leaver: abandoned && !!meta.rated && meta.leaverId === p.uid,
         vsBots, eloAfter: elo[p.uid]?.after ?? null, venue: meta.venue ?? null, endedAt: rec.endedAt,
       }));

@@ -34,6 +34,7 @@ import { badgeKey, cardFor, cleanCardShowcase, cleanCardStatus, cleanCardTags, e
 import { cleanRegion, regionOf } from './region';
 import { applySocialLinksPatch, parseSocialLinks, socialLinksOf, validateSocialLinksPatch } from './socialLinks';
 import { divisionOf, type Division } from './divisions';
+import { latestPlayWell } from './playwell';
 import { ensureSeason } from './seasons';
 import { xpSnapshot, awardXp, xpForLevel } from './xp';
 import { progressFor, dailyChallenges, weeklyChallenges, dailyPeriodId, weeklyPeriodId, type ChallengesPayload } from './challenges';
@@ -145,6 +146,15 @@ async function fullProfile(db: D1Database, userId: string, username: string, now
      *  per day. Non-granting reads carry granted:false. Self payload only:
      *  the public profile never runs the earners and never carries this. */
     dailyBonus: { granted: daily.granted, amount: daily.amount, streak: daily.streak, day: new Date(now).toISOString().slice(0, 10) },
+    /** Play-Well bonuses (owner, 2026-10-29): the player's LATEST game's
+     *  bonus row — the feat lines exactly as paid at game end, with the
+     *  game id so the postgame breakdown (a before/after diff of this
+     *  payload) can tell this match's lines from a previous match's.
+     *  Written for every credited game, feat-less ones included (lines
+     *  []), so the latest row always belongs to the latest game. Null
+     *  only for a player with no credited games. Self payload only,
+     *  like dailyBonus above. */
+    playWell: await latestPlayWell(db, userId).catch(() => null),
   };
 }
 

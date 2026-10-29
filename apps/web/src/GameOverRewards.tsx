@@ -22,7 +22,15 @@ export interface RewardsProfile {
     daily: { id: string; title: string; xp: number; coins: number; claimed: boolean; progress: number; target: number }[];
     weekly: { id: string; title: string; xp: number; coins: number; claimed: boolean; progress: number; target: number }[];
   };
+  /** Play-Well bonuses (owner, 2026-10-29): the player's LATEST game's
+   *  bonus row from the server (cred_playwell) — the feat lines exactly
+   *  as paid at game end. Optional because a before-snapshot pinned by
+   *  an older build lacks it. */
+  playWell?: { gameId: string; xp: number; coins: number; lines: PlayWellLine[] } | null;
 }
+
+/** One Play-Well feat line, exactly as paid at game end (server-computed). */
+export interface PlayWellLine { id: string; label: string; xp: number; coins: number }
 
 export interface UnlockedItem { id: string; title: string; xp: number; coins: number }
 
@@ -130,6 +138,11 @@ export interface RewardsData {
   eloKindLabel: string;
   achievements: UnlockedItem[];
   challenges: UnlockedItem[];
+  /** Play-Well bonus earned in THIS match (feat lines as paid), or null
+   *  when the match earned none. The XP/coins are already inside
+   *  xpGained/coinsGained — this section only itemizes them. Optional
+   *  like postgame: stashes written by older builds lack it. */
+  playWell?: { xp: number; coins: number; lines: PlayWellLine[] } | null;
   /** Postgame Report (league P-D) — attached by Table from the hand history */
   postgame?: PostgameData | null;
 }
@@ -163,6 +176,7 @@ export function computeRewards(
     eloKindLabel: opts.kind === 'team' ? 'Partnership' : 'Cutthroat',
     achievements: [],
     challenges: [],
+    playWell: null,
   };
   if (!before || !after) return base;
   /* The card-up test is a STEP comparison, not a level comparison: steps
@@ -197,6 +211,16 @@ export function computeRewards(
     ...after.challenges.weekly.filter((c) => c.claimed && !beforeClaimed.has(c.id)),
   ];
   base.challenges = newly.map((c) => ({ id: c.id, title: c.title, xp: c.xp, coins: c.coins }));
+  /* Play-Well: the after-snapshot's latest bonus row belongs to THIS
+   *  match when its game id isn't the one the before-snapshot already
+   *  carried (the server writes a row for every credited game, an empty
+   *  one included — so a feat-less match's row reads lines: [] and
+   *  renders nothing, and an older match's feats can never leak into
+   *  this match's breakdown). */
+  const pw = after.playWell;
+  if (pw && pw.lines.length > 0 && pw.gameId !== before.playWell?.gameId) {
+    base.playWell = { xp: pw.xp, coins: pw.coins, lines: pw.lines };
+  }
   return base;
 }
 
@@ -645,6 +669,26 @@ export default function GameOverRewards({
     if (data.cardUp) rows.push(<CardUpRow key="cardup" d={data} index={row++} />);
     if (data.coinsGained > 0) rows.push(<CoinsRow key="coins" d={data} index={row++} play={rowGate} reduced={reduced} />);
     rows.push(<EloRow key="elo" d={data} index={row++} play={rowGate} reduced={reduced} />);
+    if (data.playWell && data.playWell.lines.length > 0) {
+      const pw = data.playWell;
+      const i = row++;
+      rows.push(
+        <div key="playwell" className="rw-row rw-playwell" data-testid="rewards-playwell" style={{ animationDelay: `${i * 160}ms` }}>
+          <div className="rw-icon">⭐</div>
+          <div className="rw-body">
+            <div className="rw-top"><span>Playing well</span><b className="rw-num small">+{pw.xp} XP{pw.coins ? <> · +{pw.coins} <CoinIcon size={12} /></> : ''}</b></div>
+            <ul className="rw-playwell-lines">
+              {pw.lines.map((l) => (
+                <li key={l.id}>
+                  <span>{l.label}</span>
+                  <b>{l.xp ? `+${l.xp} XP` : ''}{l.xp && l.coins ? ' · ' : ''}{l.coins ? <>+{l.coins} <CoinIcon size={11} /></> : ''}</b>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>,
+      );
+    }
     for (const a of data.achievements) {
       const i = row++;
       rows.push(

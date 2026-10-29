@@ -17,7 +17,7 @@ const ORIGIN = 'https://example.com';
 
 const stats = (o: Partial<PlayerGameStats> = {}): PlayerGameStats => ({
   won: false, hands: 4, bids: 4, bidSum: 12, made: 3, set: 1, bags: 2, nilBids: 0, nilMade: 0, blindNilMade: 0,
-  books: 12, maxBooksHand: 5, maxDeficit: 0, foeEliminated: false, runItClaims: 0,
+  books: 12, maxBooksHand: 5, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0,
   shotsTaken: 1, shotsGiven: 2, wheels: 0, bjWins: 0, bidMs: 8000, bidN: 4, playMs: 20000, playN: 40, ...o,
 });
 const SEATS: SeatRef[] = [

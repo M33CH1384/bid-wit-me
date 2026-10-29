@@ -2512,6 +2512,15 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .rw-num.down { color: #ff8a8a; }
 .rw-num.small { font-size: 15px; color: var(--muted); }
 .rw-sub { font-family: var(--display); font-size: 12.5px; letter-spacing: .06em; color: var(--muted); }
+/* Play-Well feat lines (owner, 2026-10-29): one compact block in the rows
+   column — the feats ride as wrapping pills (each pill one line, pills
+   wrap as units) so even a seven-feat game adds only a few line-heights
+   and the short-landscape card keeps its fit. */
+.rw-playwell-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; }
+.rw-playwell-lines li { display: inline-flex; align-items: baseline; gap: 7px; white-space: nowrap;
+  padding: 3px 9px; border-radius: 999px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
+  font-family: var(--display); font-size: 12px; letter-spacing: .03em; color: var(--muted); }
+.rw-playwell-lines li b { white-space: nowrap; color: #f3ead2; font-variant-numeric: tabular-nums; }
 .rw-levelup { color: var(--gold); font-weight: 800; animation: rw-pop .5s .3s cubic-bezier(.2,.9,.3,1.4) both; }
 .rw-levelbar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; }
 .rw-levelbar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--purple-hot), var(--gold));

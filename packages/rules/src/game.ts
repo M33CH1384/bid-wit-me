@@ -29,6 +29,14 @@ export interface HandRecord {
    * absent on records written before this field existed.
    */
   nuke?: { seat: Seat };
+  /**
+   * Per seat: the longest run of consecutive tricks that seat won inside
+   * this hand (Play-Well, owner 2026-10-29 — the Streak Fire definition).
+   * Stamped by finishHand alongside `nuke`, for the same reason: the
+   * record keeps only trick counts, so without the stamp the run is
+   * unrecoverable. Absent on records written before this field existed.
+   */
+  bestRuns?: number[];
 }
 
 export interface GameState {
@@ -918,6 +926,21 @@ function finishHand(st: GameState): GameState {
     const seat = t.plays.find((p) => p.card === 'BJ')?.seat;
     if (seat !== undefined) record.nuke = { seat };
     break;
+  }
+  // Stamp each seat's longest run of consecutive trick wins while the
+  // tricks are still here (the Play-Well Best Run feat — the record
+  // itself keeps only counts, so the run is unrecoverable afterwards).
+  {
+    const best = Array(r.playerCount).fill(0) as number[];
+    let cur = -1;
+    let len = 0;
+    for (const t of st.tricks) {
+      if (t.winner == null) continue;
+      if (t.winner === cur) len++;
+      else { cur = t.winner; len = 1; }
+      if (len > (best[cur] ?? 0)) best[cur] = len;
+    }
+    record.bestRuns = best;
   }
   if (!r.partnerships) return finishCutthroat(st, sides, scores, bags, record);
   // Third set ends it (game-wide, always on): checked before Shot = out and the score endings so

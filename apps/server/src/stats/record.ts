@@ -28,6 +28,12 @@ export interface PlayerGameStats {
   books: number;
   /** most books taken in a single hand (Boston Party achievement) */
   maxBooksHand: number;
+  /** longest run of consecutive books this player took inside one hand
+   *  (the Streak Fire definition), from the engine's HandRecord.bestRuns
+   *  stamp; 0 on records whose histories predate the stamp */
+  bestRun: number;
+  /** hands in which this player personally took every book (Play-Well) */
+  tableRuns: number;
   /** worst points deficit this player's side overcame, across hands (Comeback Kid) */
   maxDeficit: number;
   /** cutthroat: an opponent was eliminated while this player survived (Undertaker) */
@@ -69,12 +75,16 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
     const ref = o.seats[seat];
     if (!ref || ref.kind !== 'user' || !ref.uid) continue;
     const side = sideOf(seat, r);
-    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0, books: 0, maxBooksHand: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0, shotsTaken: 0, shotsGiven: 0, wheels: 0, bjWins: o.live?.bj[seat] ?? 0, bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
+    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0, books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0, shotsTaken: 0, shotsGiven: 0, wheels: 0, bjWins: o.live?.bj[seat] ?? 0, bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
     for (const h of g.history) {
       const b = h.bids[seat];
       const tw = h.tricksWon[seat] ?? 0;
       st.books += tw;
       st.maxBooksHand = Math.max(st.maxBooksHand, tw);
+      st.bestRun = Math.max(st.bestRun, h.bestRuns?.[seat] ?? 0);
+      // every book in the hand, personally: this seat's count is the whole hand's trick total
+      const handTricks = h.tricksWon.reduce((a, x) => a + (x ?? 0), 0);
+      if (tw > 0 && tw === handTricks) st.tableRuns++;
       const mine = h.sides.find((s) => s.side === side);
       if (!mine) continue;
       // deficit after this hand: best opponent total minus mine (for the comeback check)
@@ -174,7 +184,7 @@ export interface SaveMeta {
 
 const emptyStats = (hands: number): PlayerGameStats => ({
   won: false, hands, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0,
-  books: 0, maxBooksHand: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0,
+  books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0,
   shotsTaken: 0, shotsGiven: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0,
 });
 

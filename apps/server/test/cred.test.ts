@@ -16,7 +16,7 @@ const ORIGIN = 'https://example.com';
 
 const stats = (o: Partial<PlayerGameStats> = {}): PlayerGameStats => ({
   won: false, hands: 4, bids: 4, bidSum: 12, made: 3, set: 1, bags: 2, nilBids: 0, nilMade: 0, blindNilMade: 0,
-  books: 12, maxBooksHand: 5, maxDeficit: 0, foeEliminated: false, runItClaims: 0,
+  books: 12, maxBooksHand: 5, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0,
   shotsTaken: 1, shotsGiven: 2, wheels: 0, bjWins: 0, bidMs: 8000, bidN: 4, playMs: 20000, playN: 40, ...o,
 });
 const SEATS: SeatRef[] = [
@@ -201,7 +201,7 @@ describe('hooks', () => {
     await saveRecord(db, rec('g1', 0), true);
     await saveRecord(db, rec('g1', 0), true); // duplicate delivery
     const xp = await db.prepare("SELECT xp FROM xp_state WHERE user_id = 'a'").first<{ xp: number }>();
-    expect(xp?.xp).toBe(150); // 25 finish + 25 win, rated vs humans, + 100 first-dub achievement
+    expect(xp?.xp).toBe(158); // 25 finish + 25 win, rated vs humans, + 100 first-dub achievement, + 8 Play-Well (the fixture's 2 shots given set them twice)
     const sr = await db.prepare("SELECT games, wins FROM season_ratings WHERE user_id = 'a' AND season_id = '2027-01'").first<{ games: number; wins: number }>();
     expect(sr).toMatchObject({ games: 1, wins: 1 });
     const n = await db.prepare("SELECT COUNT(*) AS n FROM cred_processed").first<{ n: number }>();
@@ -218,7 +218,7 @@ describe('hooks', () => {
     (r as { seats: unknown }).seats = botSeats;
     await saveRecord(db, r, false);
     const xp = await db.prepare("SELECT xp FROM xp_state WHERE user_id = 'a'").first<{ xp: number }>();
-    expect(xp?.xp).toBe(124); // 12 finish + 12 win (half), + 100 first-dub achievement
+    expect(xp?.xp).toBe(128); // 12 finish + 12 win (half), + 100 first-dub achievement, + 4 Play-Well (set-them 8 halved per line)
   });
   it('bumps challenge progress from game stats', async () => {
     await saveRecord(db, rec('g3', 0, NOW, { books: 16, shotsGiven: 3 }), true);
