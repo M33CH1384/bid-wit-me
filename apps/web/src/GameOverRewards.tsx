@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { CoinIcon } from './RepBlock';
+import { CardTakeover, CARD_TAKEOVER_DELAY_MS, CARD_TAKEOVER_EXIT_MS, cardTakeoverKey, markTakeoverCelebrated, takeoverCelebrated } from './CardTakeover';
 import { VictoryConfetti } from './RecapFx';
 import { cardDisplayName, rankGlyph } from './cardRank';
 import { fx, useReduceEffects } from './fx';
@@ -608,6 +609,35 @@ export default function GameOverRewards({
   // on the page clears it early. Wins only; reduced motion collapses
   // it to the still pose like every other surface.
   const [fxOff, setFxOff] = useState(false);
+  // Level-up CARD TAKEOVER (owner, 2026-10-29): when this report grants a
+  // new rank card, the card itself takes the screen (see CardTakeover.tsx).
+  // Armed off the ROWS' gate — the XP count and the level bar run on it —
+  // and delayed so it rises as the bar settles into the new level. Fires
+  // once per grant: the celebrated key is written when the takeover shows,
+  // so a refreshed /rewards stash or a remount never replays it. Reduced
+  // motion never arms it; the static panel is the whole show there.
+  const tKey = cardTakeoverKey(data);
+  const [takeover, setTakeover] = useState<{ key: string; leaving: boolean } | null>(null);
+  useEffect(() => {
+    if (!rowGate || reduced || !tKey) return;
+    if (takeoverCelebrated(tKey)) return;
+    // No "armed" latch: the cleanup clears the timer on ANY effect re-run
+    // (a remount-in-place, a gate flicker), so a latch would silently eat
+    // the celebration — the re-run must be free to arm again. Once per
+    // grant is guaranteed by the cleanup discipline (one live timer per
+    // instance) plus the celebrated mark written when the takeover shows.
+    const t = window.setTimeout(() => {
+      markTakeoverCelebrated(tKey);
+      setTakeover({ key: tKey, leaving: false });
+    }, CARD_TAKEOVER_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [rowGate, reduced, tKey]);
+  useEffect(() => {
+    if (!takeover?.leaving) return;
+    const t = window.setTimeout(() => setTakeover(null), CARD_TAKEOVER_EXIT_MS);
+    return () => window.clearTimeout(t);
+  }, [takeover?.leaving]);
+  const dismissTakeover = () => setTakeover((s) => (s && !s.leaving ? { ...s, leaving: true } : s));
   let row = 0;
   const rows: React.ReactNode[] = [];
   if (data.signedIn) {
@@ -702,6 +732,9 @@ export default function GameOverRewards({
           </div>
         </div>
       </div>
+      {takeover && data.cardUp && data.cardAfter && data.rankAfter && (
+        <CardTakeover d={data} leaving={takeover.leaving} onDismiss={dismissTakeover} />
+      )}
     </div>
   );
 }

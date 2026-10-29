@@ -4683,6 +4683,94 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .rw-cardup-card { width: 192px; max-width: 64vw; }
 .rw-cardup-note { margin: 0; font-size: 12.5px; letter-spacing: .03em; color: var(--muted); }
 
+/* Level-up CARD TAKEOVER (owner, 2026-10-29): when the rewards grant a
+   NEW CARD, the panel's card rises into a takeover — near-screen size,
+   leaned toward the player (negative rotateX: the top edge comes AT the
+   viewer) and rotated a touch right (positive rotate), under a stamped
+   banner, with rotating rays, a breathing glow, a shine sweep and
+   sparkles. It holds until tapped; the panel underneath is untouched.
+   Transform/opacity only. Reduced motion never renders it (the parent
+   gates on the reveal's reduced state) — the static panel is the calm
+   path. */
+.rw-takeover { position: fixed; inset: 0; z-index: 1200; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px; overflow: hidden;
+  padding: calc(18px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom));
+  cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.rw-takeover::before { content: ''; position: absolute; inset: 0;
+  background: radial-gradient(115% 85% at 50% 38%, rgba(12, 8, 26, .72), rgba(4, 3, 10, .9));
+  animation: rw-tko-fadein .35s ease both; }
+@keyframes rw-tko-fadein { from { opacity: 0; } }
+.rw-takeover-rays { position: absolute; left: 50%; top: 46%; width: 165vmin; height: 165vmin;
+  transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, rgba(var(--gold-rgb), .07) 0deg 7deg, transparent 7deg 15deg);
+  -webkit-mask-image: radial-gradient(closest-side, #000 26%, transparent 70%);
+  mask-image: radial-gradient(closest-side, #000 26%, transparent 70%);
+  animation: rw-tko-rays 48s linear infinite; transition: opacity .3s ease; }
+@keyframes rw-tko-rays { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+html[data-theme="neon"] .rw-takeover-rays { background: repeating-conic-gradient(from 0deg, rgba(var(--purple-rgb), .1) 0deg 7deg, transparent 7deg 15deg); }
+.rw-takeover-spark { position: absolute; color: var(--gold); pointer-events: none;
+  text-shadow: 0 0 12px rgba(var(--gold-rgb), .8);
+  animation: rw-tko-spark 1.9s ease-in-out infinite alternate both; }
+@keyframes rw-tko-spark { from { opacity: .15; transform: scale(.55) rotate(0deg); } to { opacity: .95; transform: scale(1.1) rotate(22deg); } }
+.rw-takeover-banner { position: relative; z-index: 1; display: flex; flex-direction: column;
+  align-items: center; gap: 3px; text-align: center; transition: opacity .25s ease; }
+.rw-takeover-head { font-family: var(--display); font-weight: 900; letter-spacing: .14em;
+  font-size: clamp(30px, 8.5vw, 46px); line-height: 1.05; color: var(--gold);
+  text-shadow: 0 0 26px rgba(255, 200, 60, .5), 0 3px 0 rgba(90, 50, 0, .55);
+  animation: rw-tko-stamp .5s cubic-bezier(.2, 1.6, .35, 1) .8s both; }
+@keyframes rw-tko-stamp { from { opacity: 0; transform: scale(2.2) rotate(-7deg); } to { opacity: 1; transform: scale(1) rotate(-2deg); } }
+.rw-takeover-flow { display: flex; align-items: center; gap: 10px; font-family: var(--display);
+  font-size: 15px; letter-spacing: .05em; color: var(--muted);
+  animation: rw-tko-rise .45s ease 1.05s both; }
+.rw-takeover-flow .is-new { color: var(--gold); font-weight: 800; }
+.rw-takeover-arrow { color: var(--muted); }
+@keyframes rw-tko-rise { from { opacity: 0; transform: translateY(8px); } }
+.rw-takeover-stage { position: relative; z-index: 1; pointer-events: none;
+  animation: rw-tko-in 1.25s cubic-bezier(.22, 1.1, .32, 1) both; }
+@keyframes rw-tko-in { 0% { opacity: 0; transform: translateY(36vh) scale(.3); }
+  18% { opacity: 1; } 72% { transform: translateY(-1.2vh) scale(1.015); }
+  100% { opacity: 1; transform: translateY(0) scale(1); } }
+.rw-takeover-stage::before { content: ''; position: absolute; inset: -13% -16%; z-index: -1;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(var(--gold-rgb), .34), rgba(var(--gold-rgb), 0) 70%);
+  animation: rw-tko-glow 3.2s ease-in-out 1.2s infinite alternate both; }
+@keyframes rw-tko-glow { from { opacity: .5; transform: scale(.96); } to { opacity: .9; transform: scale(1.05); } }
+html[data-theme="neon"] .rw-takeover-stage::before { background: radial-gradient(50% 50% at 50% 50%, rgba(var(--purple-rgb), .42), rgba(var(--purple-rgb), 0) 70%); }
+/* The held presentation: leaned toward the player, rotated right. The
+   idle drift breathes around the same tilt, so the card never sits dead. */
+.rw-takeover-card { position: relative;
+  transform: perspective(950px) rotateX(-12deg) rotateY(-6deg) rotate(4deg);
+  animation: rw-tko-idle 6.5s ease-in-out 1.35s infinite alternate both; }
+@keyframes rw-tko-idle { from { transform: perspective(950px) rotateX(-12deg) rotateY(-6deg) rotate(4deg) translateY(0); }
+  to { transform: perspective(950px) rotateX(-10.5deg) rotateY(-5deg) rotate(4.8deg) translateY(-6px); } }
+.rw-takeover .pcard-wrap[data-variant="deck"] { --cardw: min(84vw, 52dvh, 420px); }
+.rw-takeover .pcard-below { display: none; }
+.rw-takeover-shine { position: absolute; inset: 0; border-radius: 14px; overflow: hidden; pointer-events: none; }
+.rw-takeover-shine::before { content: ''; position: absolute; inset: -12% -55%;
+  background: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, .32) 50%, transparent 58%);
+  transform: translateX(-75%); animation: rw-tko-shine 6.5s ease-in-out .8s infinite; }
+@keyframes rw-tko-shine { 0% { transform: translateX(-75%); } 16% { transform: translateX(75%); } 100% { transform: translateX(75%); } }
+.rw-takeover-hint { position: relative; z-index: 1; font-family: var(--display); font-size: 13px;
+  letter-spacing: .14em; text-transform: uppercase; color: rgba(255, 255, 255, .78);
+  animation: rw-tko-hint-in .5s ease 1.55s both, rw-tko-hint-pulse 2.2s ease-in-out 2.3s infinite; }
+@keyframes rw-tko-hint-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes rw-tko-hint-pulse { 0%, 100% { opacity: .55; } 50% { opacity: .95; } }
+/* Exit: the card settles back down into the report; the field fades. */
+.rw-takeover.leaving::before { animation: rw-tko-fadeout .38s ease both; }
+.rw-takeover.leaving .rw-takeover-rays { opacity: 0; }
+.rw-takeover.leaving .rw-takeover-banner { opacity: 0; }
+.rw-takeover.leaving .rw-takeover-stage { animation: rw-tko-out .4s ease-in both; }
+@keyframes rw-tko-out { to { opacity: 0; transform: translateY(7vh) scale(.84); } }
+@keyframes rw-tko-fadeout { to { opacity: 0; } }
+/* Short landscape: the card is height-bound — banner compacts, the card
+   takes most of the height, everything in view with no scrolling. */
+@media (max-height: 520px) {
+  .rw-takeover { gap: 8px; padding: 10px 12px; }
+  .rw-takeover-head { font-size: 23px; }
+  .rw-takeover-flow { font-size: 12.5px; }
+  .rw-takeover .pcard-wrap[data-variant="deck"] { --cardw: min(60vw, 51dvh, 420px); }
+  .rw-takeover-hint { font-size: 11px; }
+}
+
 /* Daily-bonus receipt (2026-10-23): the one-time "+N coins — you now have M"
    card in the social-toast family (top-center, panel stock, drop-in), with a
    gold edge — it's money. Raised by dailyBonus.ts when the day's grant lands;
