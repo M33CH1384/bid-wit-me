@@ -1776,10 +1776,11 @@ export default function Scene(props: SceneProps) {
       // orientation LATE on a real phone ("after a while it expands") —
       // the stream runs for hundreds of ms, so the settled commit trailed
       // it by another 200ms. SizeLeader (below) restores the leading edge:
-      // it commits the first post-flip size to the store at once and caps
-      // repeats at one per 150ms; this debounced measure remains as the
-      // slow net, and where both land on the same size the second commit
-      // is a no-op.
+      // it commits ONCE when the box's aspect class flips (an orientation
+      // crossing — a cadence-based leader re-committed at intermediate
+      // sizes during continuous streams, 9–11 reallocs on the storm rig);
+      // this debounced measure remains as the slow net, and where both
+      // land on the same size the second commit is a no-op.
       resize={{ debounce: 200 }}
     >
       <AspectWatcher onAspect={setAspect} />
@@ -1940,14 +1941,20 @@ function AspectWatcher({ onAspect }: { onAspect: (a: number) => void }) {
 /**
  * Leading-edge size commits for rotation (see the Canvas resize note).
  * Observes the same box R3F's measure does (the wrapper div around the
- * canvas) and pushes size changes into the store without waiting out the
- * trailing debounce: the first size that differs from the store's commits
- * immediately, further changes inside 150ms coalesce to a single trailing
- * commit at the window's edge (a max wait — a long event stream can never
- * postpone convergence past it), and orientationchange commits at once.
- * Sizes are read with getBoundingClientRect, exactly like the measure, and
- * a commit that matches the store's size (within half a pixel) is skipped,
- * so this never fights the debounced measure over the same geometry.
+ * canvas) and pushes a size change into the store without waiting out the
+ * trailing debounce — but only when the change is an orientation CROSSING
+ * (the box's aspect class flips vs the store's size). A crossing earns one
+ * commit ~50ms later, reading the then-current rect: in a discrete phone
+ * flip that is already the final size; in a continuous resize stream it is
+ * a single mid-stream commit, and the debounced measure's trailing commit
+ * lands the exact final size — ~2 buffer reallocs per flip, never the
+ * per-step storm a cadence-based leader would reintroduce. Same-aspect
+ * drift (chrome show/hide, height settling) is left entirely to the
+ * trailing measure. orientationchange arms the same one-shot commit (a
+ * no-op when the geometry has not landed yet — the crossing rule catches
+ * the landing). Sizes are read with getBoundingClientRect, exactly like
+ * the measure, and a commit matching the store's size (within half a
+ * pixel) is skipped, so this never fights the debounced measure.
  */
 function SizeLeader() {
   const setSize = useThree((s) => s.setSize);
@@ -1955,34 +1962,26 @@ function SizeLeader() {
   useEffect(() => {
     const el = get().gl.domElement.parentElement;
     if (!el) return;
-    let lastAt = 0;
     let timer = 0;
-    let pending: { w: number; h: number } | null = null;
-    const apply = (w: number, h: number) => {
-      const cur = get().size;
-      if (Math.abs(cur.width - w) < 0.5 && Math.abs(cur.height - h) < 0.5) return;
-      lastAt = performance.now();
-      setSize(w, h);
-    };
-    const flush = () => {
+    const commit = () => {
       timer = 0;
-      if (pending) { const { w, h } = pending; pending = null; apply(w, h); }
-    };
-    const check = (bypass = false) => {
       const r = el.getBoundingClientRect();
       if (!(r.width > 0 && r.height > 0)) return;
       const cur = get().size;
-      if (Math.abs(cur.width - r.width) < 0.5 && Math.abs(cur.height - r.height) < 0.5) { pending = null; return; }
-      const now = performance.now();
-      if (bypass || now - lastAt >= 150) { pending = null; apply(r.width, r.height); }
-      else {
-        pending = { w: r.width, h: r.height };
-        if (!timer) timer = window.setTimeout(flush, Math.max(0, lastAt + 150 - now));
-      }
+      if (Math.abs(cur.width - r.width) < 0.5 && Math.abs(cur.height - r.height) < 0.5) return;
+      setSize(r.width, r.height);
     };
-    const ro = new ResizeObserver(() => check());
+    const check = () => {
+      const r = el.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) return;
+      const cur = get().size;
+      if (Math.abs(cur.width - r.width) < 0.5 && Math.abs(cur.height - r.height) < 0.5) return;
+      if ((r.width > r.height) === (cur.width > cur.height)) return; // same aspect class: the trailing net owns it
+      if (!timer) timer = window.setTimeout(commit, 50);
+    };
+    const ro = new ResizeObserver(check);
     ro.observe(el);
-    const onFlip = () => check(true);
+    const onFlip = () => { if (!timer) timer = window.setTimeout(commit, 50); };
     window.addEventListener('orientationchange', onFlip);
     return () => { ro.disconnect(); window.removeEventListener('orientationchange', onFlip); if (timer) window.clearTimeout(timer); };
   }, [get, setSize]);

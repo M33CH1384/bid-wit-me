@@ -75,12 +75,18 @@ describe('rotation convergence — the new orientation commits on the leading ed
   it('canvas size leader observes the measured box and commits leading-edge', () => {
     expect(scene).toContain('<SizeLeader />');
     expect(scene).toContain('function SizeLeader()');
-    expect(scene).toContain('new ResizeObserver(() => check())');
+    expect(scene).toContain('new ResizeObserver(check)');
     expect(scene).toContain("window.addEventListener('orientationchange', onFlip)");
   });
-  it('size leader repeats are max-wait capped at 150ms, not stream-trailing', () => {
-    expect(scene).toContain('now - lastAt >= 150');
-    expect(scene).toContain('lastAt + 150 - now');
+  it('size leader leads ONLY on an orientation crossing, never on a cadence', () => {
+    // a leading commit is earned by the aspect class flipping vs the
+    // store's size — a cadence/max-wait leader re-committed at intermediate
+    // sizes during continuous resize streams (9–11 reallocs on the storm
+    // rig), undoing the collapse the 200ms trailing measure exists for
+    expect(scene).toContain('(r.width > r.height) === (cur.width > cur.height)');
+    expect(scene).toContain('same aspect class: the trailing net owns it');
+    // one commit ~50ms after the crossing, reading the then-current rect
+    expect(scene).toContain('window.setTimeout(commit, 50)');
   });
 });
 
