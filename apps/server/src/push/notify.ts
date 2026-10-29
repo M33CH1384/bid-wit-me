@@ -191,7 +191,7 @@ export async function runScheduledPushes(db: D1Database, vapid: VapidKeys, now: 
   for (const uid of users) {
     if (!(await cooldownOk(db, uid, 'daily', day, 20 * 60_60_000, now))) continue;
     out.daily += await sendPushToUser(db, fetch, vapid, uid, {
-      title: 'Daily bonus 🪙',
+      title: 'Daily bonus',
       // No "claim" step exists: the coins auto-grant on the first profile
       // read of the day and the app receipts them in-app (dailyBonus). The
       // old "open the app to claim" copy promised an action that wasn't

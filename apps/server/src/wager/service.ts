@@ -99,7 +99,7 @@ const player = (d: WData, uid: string): WPlayer | undefined => d.players.find((p
 export const teamNamesOf = (d: WData): [string | null, string | null] => [d.teamNames?.[0] ?? null, d.teamNames?.[1] ?? null];
 const allUids = (d: WData): string[] => d.players.map((p) => p.uid);
 const fmtStart = (at: number): string => `${new Date(at).toLocaleString('en-US', { timeZone: 'UTC', weekday: 'short', hour: 'numeric', minute: '2-digit' })} UTC`;
-const terms = (d: WData): string => `${d.format === 'partnership' ? 'Partnership 2v2' : 'Cutthroat'} · ${d.wager} 🪙 a player · pot ${d.wager * 4} 🪙 · starts ${fmtStart(d.startAt)}`;
+const terms = (d: WData): string => `${d.format === 'partnership' ? 'Partnership 2v2' : 'Cutthroat'} · ${d.wager} coins a player · pot ${d.wager * 4} coins · starts ${fmtStart(d.startAt)}`;
 
 /** Blocks are respected both ways: a blocked pair can never share a challenge. */
 export async function blockedPair(db: D1Database, a: string, b: string): Promise<boolean> {
@@ -194,7 +194,7 @@ export async function create(io: WIO, c: WCreate): Promise<WData> {
   await io.save(d);
   await syncRow(io, d);
   await io.setAlarm(Math.max(now + 1000, checkinOpensAt(d)));
-  const text = `🏦 ${c.challenger.name} challenged you to Big Bank Take Lil Bank — ${terms(d)}. Accept to escrow your ${c.wager} 🪙.`;
+  const text = `🏦 ${c.challenger.name} challenged you to Big Bank Take Lil Bank — ${terms(d)}. Accept to escrow your ${c.wager} coins.`;
   for (const p of players.slice(1)) {
     await io.notify([p.uid], { text, cid: d.id });
     await io.push(d.id, p.uid, 'invite', 'Big Bank challenge 🏦', `${c.challenger.name} wants to run it: ${c.wager} coins a player.`);
@@ -249,7 +249,7 @@ export async function accept(io: WIO, d: WData, me: WPerson, partnerPick: WPerso
     await io.save(d);
     await syncRow(io, d);
     if (newPartner) {
-      const text = `🏦 ${me.name} named you their partner for a Big Bank Take Lil Bank match — ${terms(d)}. Accept to escrow your ${d.wager} 🪙.`;
+      const text = `🏦 ${me.name} named you their partner for a Big Bank Take Lil Bank match — ${terms(d)}. Accept to escrow your ${d.wager} coins.`;
       await io.notify([newPartner.uid], { text, cid: d.id });
       await io.push(d.id, newPartner.uid, 'invite', 'Big Bank challenge 🏦', `${me.name} named you their partner: ${d.wager} coins a player.`);
     }
@@ -360,7 +360,7 @@ export async function alarm(io: WIO, d: WData): Promise<WData> {
         await io.save(d);
         await syncRow(io, d);
         const mins = Math.max(1, Math.round((d.startAt - now) / 60_000));
-        const text = `🏦 Check-in is open for your Big Bank match (${d.wager} 🪙 a player): starts in ${mins} min.`;
+        const text = `🏦 Check-in is open for your Big Bank match (${d.wager} coins a player): starts in ${mins} min.`;
         await io.notify(allUids(d), { text, cid: d.id });
         for (const p of d.players) await io.push(d.id, p.uid, 'checkin', 'Big Bank check-in open 🏦', `Your match starts in ${mins} min — check in.`);
       }
@@ -429,7 +429,7 @@ async function settlePlayed(io: WIO, d: WData, r: Extract<WResult, { kind: 'play
   // settlement pairing log for manual collusion review (matches the cred tripwire culture)
   console.warn('wager', 'settled', { challenge: d.id, format: d.format, wager: d.wager, winners: winners.map((w) => w.uid), losers: d.players.filter((p) => !winners.includes(p)).map((p) => p.uid), game: r.gameId });
   const names = ordered.map((w) => w.name).join(' + ');
-  await outcome(io, d, `🏦 Big Bank settled: ${names} took the ${pot} 🪙 pot.`);
+  await outcome(io, d, `🏦 Big Bank settled: ${names} took the ${pot}-coin pot.`);
   // League Wire (item 7): a settled Big Bank match is league news.
   if (io.wire) await io.wire(`wager:${d.id}:played`, `🚨 BREAKING — ${names} took the Big Bank pot of ${pot} coins${d.tableCode ? ` at Table ${d.tableCode}` : ''}`).catch(() => undefined);
   return d;
@@ -522,7 +522,7 @@ async function settleAbandoned(io: WIO, d: WData, leaverUid: string | null, now:
   await io.save(d);
   await syncRow(io, d);
   console.warn('wager', 'abandoned', { challenge: d.id, leaver: leaver.uid, wager: w });
-  await outcome(io, d, `🏦 Big Bank: ${leaver.name} left mid-match — their ${w} 🪙 wager is split by the table.`);
+  await outcome(io, d, `🏦 Big Bank: ${leaver.name} left mid-match — their ${w}-coin wager is split by the table.`);
   return d;
 }
 
