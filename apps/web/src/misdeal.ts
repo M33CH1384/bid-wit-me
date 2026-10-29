@@ -1,3 +1,4 @@
+import { dealComplete, expectedHandCounts, type GameState, type PlayerView } from '@spades/rules';
 import { fx } from './fx';
 import { dealTimeline } from './three/dealTimeline';
 
@@ -87,4 +88,24 @@ export function heldHandForThrowIn<T>(snapshot: { handNo: number; cards: T[] } |
 export function misdealFanHand<T>(gathering: boolean, heldHand: T[] | null, liveHand: T[] | null): T[] | null {
   if (!gathering || !liveHand) return liveHand;
   return heldHand ?? [];
+}
+
+/**
+ * The offer's deal gate (owner, 2026-10-29: "make sure the cards are fully dealt
+ * before this window shows"). The engine's word (`view.canMisdeal`) covers the
+ * hand itself — spade-less, seen, unbid — but the offer additionally waits for
+ * the DEAL, and the proof is read from state, never from a clock: every seat
+ * must hold exactly the hand the deal gives it (`dealComplete`), and the
+ * viewer's own hand must be fully present in their view, not the face-down
+ * placeholder the view carries before the reveal. Neither the scene's deal
+ * report nor the flow fallback that keeps bots moving can open this gate: a
+ * partially-dealt state keeps the call hidden no matter how long the table has
+ * been waiting, and a fully-dealt state passes it even if the scene never
+ * reports. Paired with the source's `dealSettled` (the local deal clock), this
+ * is the whole gate — the call can neither arrive early nor be stranded.
+ */
+export function misdealDealGate(st: GameState, view: PlayerView): boolean {
+  if (!dealComplete(st)) return false;
+  const expected = expectedHandCounts(st);
+  return view.hand !== null && view.hand.length === expected[view.seat];
 }

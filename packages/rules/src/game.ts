@@ -707,6 +707,42 @@ function exchangeSteps(st: GameState): ExchangeStep[] {
 
 /** Applies an action and returns the new state. Throws RuleError on illegal actions. Never mutates `st`. */
 /**
+ * The number of cards each seat holds when this hand's deal is fully in — the exact
+ * counts `dealHand` produces for the state's rules, dealer and live seats. A full
+ * table splits the deck round-robin from the dealer's left (13 each at four seats,
+ * 17 each at three — always the deck the rules actually deal, removals included,
+ * never a hand-size constant); a short
+ * Cutthroat table deals every live seat the hand's book count and eliminated seats
+ * hold nothing. Meaningful while the hand is whole (bidding / exchange): once
+ * cards are played the counts walk away from the deal by design.
+ */
+export function expectedHandCounts(st: GameState): number[] {
+  const r = st.rules;
+  const n = r.playerCount;
+  const live = liveSeats(st);
+  const counts = Array<number>(n).fill(0);
+  if (live.length === n) {
+    const deck = buildDeck({ ...r, removedCards: removedForActive(r, n) });
+    for (let i = 0; i < deck.length; i++) counts[(st.dealer + 1 + i) % n]!++;
+    return counts;
+  }
+  const each = st.trickCount ?? tricksForActive(live.length);
+  for (const s of live) counts[s] = each;
+  return counts;
+}
+
+/**
+ * True when the deal is fully in: every seat holds exactly the hand `dealHand`
+ * gives it. An undealt shell (`newGameUndealt` — the server's pre-deal window)
+ * and any partially-dealt state fail; a freshly dealt state passes. This is the
+ * state-side proof a deal happened — no clock, no scene report.
+ */
+export function dealComplete(st: GameState): boolean {
+  const expected = expectedHandCounts(st);
+  return st.hands.length === expected.length && st.hands.every((h, s) => h.length === expected[s]);
+}
+
+/**
  * True when `seat` may call a misdeal: the deal is in, they have SEEN their hand (no Blind Nil peeking),
  * and the hand holds no spades at all — no spade-suit card and no Joker or trump deuce (`isTrump` covers
  * all of them in every deck). The offer lives from the deal until that seat's own bidding is done: placing

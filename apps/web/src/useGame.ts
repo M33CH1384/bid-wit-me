@@ -78,6 +78,15 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     return () => clearTimeout(tm);
   }, [revealKey, revealDone, k]);
   const busy = dealing || misdealShowing;
+  // The misdeal offer's own deal clock (owner, 2026-10-29: the cards must be fully
+  // dealt before the window shows). The offer opens on the LOCAL deal timeline —
+  // the same clock that deals the fan — once Table's state gate (`misdealDealGate`)
+  // proves every seat holds its full hand. It never waits on the scene's deal
+  // report and never rides the forced fallback above: a scene that never reports
+  // delays the bots (game flow), not the call, so the offer lands at the timeline
+  // (~2.9 s at normal speed) instead of the fallback's ~12 s. The redeal sequence
+  // still holds it — the fresh hand's window opens only once the redeal has dealt.
+  const dealSettled = !misdealShowing && (introHand === null || dealtHand === introHand);
   useEffect(() => {
     // The clock starts with the table on screen. Started behind the loader, the deal was over
     // before it showed, so YOUR TURN and the bots' lead ran under the flying cards.
@@ -205,7 +214,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     setError(null);
   }, [rules]);
 
-  return { st, view: viewFor(st, HUMAN), pause, error, apply, restart, introHand, dealing: busy, k,
+  return { st, view: viewFor(st, HUMAN), pause, error, apply, restart, introHand, dealing: busy, dealSettled, k,
     /** the hand log for the current offline game (testing) */
     handLog: (): GameHandLog | null => logRef.current?.snapshot() ?? null };
 }

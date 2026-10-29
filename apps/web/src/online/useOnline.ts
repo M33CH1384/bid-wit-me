@@ -38,6 +38,9 @@ export interface GameSource {
   handLog: () => null;
   introHand: number | null;
   dealing: boolean;
+  /** the current hand's deal has completed for the misdeal offer (Table also requires
+   *  state-proven completion via `misdealDealGate` — a partial state stays shut) */
+  dealSettled: boolean;
   k: 1;
   /** a move is in flight (hand locked until the server acknowledges it) */
   locked?: boolean;
@@ -105,6 +108,11 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   }, [pause, shown?.st.tricks.length, shown?.st.phase]);
 
   const dealing = !!intro && intro.hand === shown?.st.handNo && Date.now() < intro.until;
+  // The offer's deal clock online: the intro window IS the deal presentation (the
+  // server deals atomically and holds its own bots for the same span), so the offer
+  // settles when the window lapses. The state gate in Table does the guarding: a
+  // pre-deal or partially-dealt snapshot keeps the call hidden past this point.
+  const dealSettled = !dealing;
   useEffect(() => {
     if (!intro) return;
     const t = setTimeout(() => force((x) => x + 1), Math.max(0, intro.until - Date.now()) + 20);
@@ -137,7 +145,7 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
   return {
     st: shown.st, view: shown.view, rot: shown.rot, pause, error: err, apply, restart: () => {},
     handLog: () => null,
-    introHand: intro && intro.hand === shown.st.handNo ? intro.hand : null, dealing, k: 1, locked: cs.pending,
+    introHand: intro && intro.hand === shown.st.handNo ? intro.hand : null, dealing, dealSettled, k: 1, locked: cs.pending,
     playGate: cs.playGate ?? 0,
   };
 }

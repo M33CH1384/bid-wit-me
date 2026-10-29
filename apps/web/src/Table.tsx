@@ -113,7 +113,7 @@ import type { RunPlayback } from '@spades/protocol';
 import { RunItReview, RunZoom, faceUrl, runReviewOverTable } from './RunZoom';
 import { TrashTalkButton } from './TrashTalk';
 import { isWildDeuce } from './cardFaces';
-import { MISDEAL_DEAL_SPEED, MISDEAL_REVEAL_DWELL_MS, heldHandForThrowIn, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
+import { MISDEAL_DEAL_SPEED, MISDEAL_REVEAL_DWELL_MS, heldHandForThrowIn, misdealDealGate, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, buzzMomentFor, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, personaPortraitFor, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, storyPortraitFor, tableExchangeFor } from '@spades/bots';
@@ -649,7 +649,8 @@ function RunItButton({ onRun, tip, onDismissTip }: { onRun: () => void; tip: boo
 }
 
 /**
- * 'Call misdeal': shown only while the engine says this seat may call (spade-less hand, seen, not yet bid).
+ * 'Call misdeal': shown only while the engine says this seat may call (spade-less hand, seen, not yet bid)
+ * and the deal is fully in (see the canMisdeal gate in Table).
  * Bidding instead is the decline — the engine closes the offer the moment this seat bids.
  */
 function MisdealButton({ onCall }: { onCall: () => void }) {
@@ -821,7 +822,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const [sceneFirstFrame, setSceneFirstFrame] = useState(false);
   const [gateMountedAt] = useState(() => Date.now());
   const onSceneFirstFrame = useCallback(() => setSceneFirstFrame(true), []);
-  const { st, view, pause, error, apply, introHand, dealing, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport, dealReady, sceneDealt, !!story);
+  const { st, view, pause, error, apply, introHand, dealing, dealSettled, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport, dealReady, sceneDealt, !!story);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
@@ -1424,8 +1425,13 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // the Run it! button + its one-time spotlight tip
   const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
   // Misdeal: offered only while the engine allows it (this seat has not bid yet — other seats
-  // bidding never closes the call). A landed call runs the redeal sequence below.
-  const canMisdeal = !spectating && !dealing && st.phase === 'bidding' && !!view.canMisdeal;
+  // bidding never closes the call) AND the deal is proven fully in (owner, 2026-10-29):
+  // `dealSettled` is the source's own deal clock and `misdealDealGate` reads completion
+  // from state — every seat at its full dealt count, the human's hand fully in view.
+  // The scene's deal report and the flow fallback can neither open nor hold the window:
+  // a stalled scene no longer strands the call, and no timer can show it over a
+  // partially-dealt hand. A landed call runs the redeal sequence below.
+  const canMisdeal = !spectating && dealSettled && st.phase === 'bidding' && !!view.canMisdeal && misdealDealGate(st, view);
   // When the human's bid panel is up, the misdeal call lives INSIDE that panel (impossible to miss);
   // the floating button only covers the window while other seats are still bidding.
   const bidPanelShowing = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !autoReveal;

@@ -17,9 +17,10 @@
  *  1. CSS source: the animations named by the .misdeal-btn / .misdeal-in-panel
  *     rules may not animate opacity or transform (a re-added runit-in fails).
  *  2. Real Table: with the Scene NEVER reporting the deal (the stalled-canvas
- *     case), the offer still arrives through the bounded forced path, survives
- *     a viewport flip and another seat's bid, and closes only on the human's
- *     own bid — the rule itself unchanged.
+ *     case), the offer still arrives — since the 2026-10-29 deal gate it rides
+ *     the local deal clock plus state-proven completion, not the flow fallback —
+ *     survives a viewport flip and another seat's bid, and closes only on the
+ *     human's own bid — the rule itself unchanged.
  *
  * Sibling sweep (2026-10-29, same defect class): the Run It! call rode the very
  * same runit-in; the misdeal reveal's dwell is a wall-clock setTimeout, so a
@@ -266,8 +267,8 @@ describe('the offer survives a scene that never reports the deal', () => {
       }));
     });
     const btn = () => document.querySelector('[data-testid="misdeal"]');
-    // The scene never reports: the offer can only arrive through useGame's bounded
-    // forced path — late by design, but it must arrive, in the floating placement
+    // The scene never reports: the offer arrives on useGame's local deal clock once
+    // state proves the deal complete (the deal gate) — it must arrive, in the floating placement
     // or the panel's, while the human has not bid.
     expect(await until(() => !!btn(), 30000), 'offer arrives despite the stalled scene').toBe(true);
 
