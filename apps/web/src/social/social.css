@@ -225,13 +225,13 @@ html[data-theme="neon"] .soc-wire-byline { color: #5BDFFF; }
 
 .soc-toasts { position: fixed; z-index: 1300; top: calc(8px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 16px)); display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .soc-toasts.over-panel { top: calc(96px + env(safe-area-inset-top)); }
-.soc-toast { pointer-events: auto; background: var(--panel-2); border: 1px solid var(--edge); border-radius: 10px; padding: 9px 12px; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45); animation: soc-drop .2s ease-out; }
+.soc-toast { pointer-events: auto; background: var(--panel-2); border: 1px solid var(--edge); border-radius: 10px; padding: 14px 16px; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45); animation: soc-drop .2s ease-out; }
 .soc-toast.error { border-color: rgba(255,77,109,.7); }
 .soc-toast.ok { border-color: rgba(92,255,176,.6); }
 .soc-toast.action { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
 .soc-toast .fr-txt { flex: 1; min-width: 0; }
 .soc-toast .fr-view { flex: none; font-size: 13px; font-weight: 700; color: var(--gold); white-space: nowrap; }
-.soc-toast .fr-x { flex: none; width: 44px; height: 44px; margin: -9px -12px -9px 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; touch-action: manipulation; }
+.soc-toast .fr-x { flex: none; width: 44px; height: 44px; margin: -14px -16px -14px 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; touch-action: manipulation; }
 .soc-toast .fr-x:active { background: rgba(255,255,255,.1); }
 /* S2 slice 4: the toast dismiss ✕ is the system icon (44×44, 8px cut, glass). */
 .soc-toast .fr-x { border-radius: 0; color: var(--ink); background: rgba(20,11,34,.85); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.55); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }

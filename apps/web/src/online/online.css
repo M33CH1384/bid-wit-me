@@ -162,7 +162,7 @@
 .vb-icon.initial { font-family: var(--display); font-weight: 800; font-size: 34px; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
 .plate .vbubble .vb-icon.initial { position: relative; z-index: 1; }
 /* camera / mic error toast: top centre under the scorebug, dismissable */
-.media-toast { position: fixed; z-index: 1200; top: calc(108px + env(safe-area-inset-top)); left: 0; right: 0; margin-inline: auto; width: min(440px, calc(100vw - 24px)); display: flex; align-items: flex-start; gap: 10px; padding: 10px 10px 10px 14px; background: rgba(40,12,30,.96); box-shadow: 0 10px 28px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,120,150,.5); border-radius: 10px; color: #ffe3ea; font-size: 13px; line-height: 1.35; animation: fade-up .2s ease both; }
+.media-toast { position: fixed; z-index: 1200; top: calc(108px + env(safe-area-inset-top)); left: 0; right: 0; margin-inline: auto; width: min(440px, calc(100vw - 24px)); display: flex; align-items: flex-start; gap: 10px; padding: 14px 12px 14px 18px; background: rgba(40,12,30,.96); box-shadow: 0 10px 28px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,120,150,.5); border-radius: 10px; color: #ffe3ea; font-size: 13px; line-height: 1.35; animation: fade-up .2s ease both; }
 .media-toast .mt-icon { font-size: 20px; line-height: 1; margin-top: 1px; }
 .media-toast .mt-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .media-toast .mt-text b { font-family: var(--display); letter-spacing: .04em; font-size: 15px; color: #fff; }
