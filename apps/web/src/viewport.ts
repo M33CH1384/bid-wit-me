@@ -34,6 +34,27 @@ function read(probe: HTMLElement | null): Viewport {
  *    wiggles (chrome show/hide mid-rotation) are layout's job (dvh/CSS), not
  *    React's — no consumer reads w/h off this record (Table takes short +
  *    safe only), so w/h ride along with the last meaningful commit.
+ *
+ * Rotation convergence (owner follow-up, same day: after the lag fix the
+ * flip converged but LATE — "after a while it expands"): the guards above
+ * made the commit wait on the event stream + a rAF, and on a real phone
+ * both arrive late — Safari holds the old innerWidth until the rotation
+ * animation is well along, rAF delivery stalls mid-rotation, and the last
+ * safe-area change trails the stream. So convergence is now leading-edge:
+ *  - when an event's live geometry already shows the aspect class flipped
+ *    vs the committed record, the gated commit runs SYNCHRONOUSLY in the
+ *    handler — the new orientation never waits on a frame;
+ *  - orientationchange (and an aspect-mismatched event) arms a short
+ *    settle chain of timed gated commits (90→800ms): if the browser is
+ *    still holding stale geometry when the event fires, the chain catches
+ *    the moment the live geometry lands, event or no event. Each tick is
+ *    one gated read — a no-op once settled;
+ *  - a trailing net re-checks ~700ms after the last event of a burst (and
+ *    re-arms while commits keep landing, capped) so a late safe-area-only
+ *    drift after the stream still converges exactly.
+ * The storm collapse is untouched: pixel-only wiggles still never commit,
+ * and the aspect class can only flip once per rotation, so a flip still
+ * costs ~one table re-render.
  */
 export function useViewport(): Viewport {
   const [vp, setVp] = useState<Viewport>(() => read(null));
@@ -43,22 +64,60 @@ export function useViewport(): Viewport {
     document.body.appendChild(probe);
     let raf = 0;
     let committed: Viewport | null = null;
+    let chain: number[] = [];
+    let net = 0;
+    let netHops = 0;
+    // The gated commit: publish only when something the table consumes
+    // moved. Returns true when a commit landed.
     const commit = () => {
       raf = 0;
       const next = read(probe);
       if (committed && next.short === committed.short
         && next.safe.l === committed.safe.l && next.safe.r === committed.safe.r
-        && next.safe.t === committed.safe.t && next.safe.b === committed.safe.b) return;
+        && next.safe.t === committed.safe.t && next.safe.b === committed.safe.b) return false;
       committed = next;
       setVp(next);
+      return true;
     };
-    const on = () => { if (!raf) raf = requestAnimationFrame(commit); };
+    const stopChain = () => { chain.forEach((t) => window.clearTimeout(t)); chain = []; };
+    const armChain = () => {
+      stopChain();
+      chain = [90, 200, 350, 550, 800].map((ms) => window.setTimeout(() => { commit(); }, ms));
+    };
+    const armNet = () => {
+      if (net) window.clearTimeout(net);
+      net = window.setTimeout(() => {
+        net = 0;
+        // A commit landing this late means geometry was still moving after
+        // the stream — check once more shortly after, a few times at most.
+        if (commit() && netHops < 3) { netHops += 1; armNet(); }
+      }, 700);
+    };
+    const on = () => {
+      // Leading edge: the live aspect class already flipped — commit now,
+      // synchronously, and let the settle chain mop up any trailing drift.
+      if (!committed || isShortLandscape(window.innerWidth, window.innerHeight) !== committed.short) {
+        commit();
+        armChain();
+        armNet();
+        return;
+      }
+      if (!raf) raf = requestAnimationFrame(commit);
+      armNet();
+    };
+    const onFlip = () => {
+      // At orientationchange the geometry is usually still the OLD one —
+      // the gated commit no-ops and the chain catches the landing moment.
+      commit();
+      armChain();
+      armNet();
+    };
     commit(); // the mount read always commits (real insets replace the safe-less initial state)
     window.addEventListener('resize', on);
-    window.addEventListener('orientationchange', on);
+    window.addEventListener('orientationchange', onFlip);
     // Safari's bottom chrome shows/hides with scroll/gesture: innerHeight/dvh lag visualViewport.
     window.visualViewport?.addEventListener('resize', on);
-    return () => { if (raf) cancelAnimationFrame(raf); window.removeEventListener('resize', on); window.removeEventListener('orientationchange', on); window.visualViewport?.removeEventListener('resize', on); probe.remove(); };
+    return () => { if (raf) cancelAnimationFrame(raf); stopChain(); if (net) window.clearTimeout(net); window.removeEventListener('resize', on); window.removeEventListener('orientationchange', onFlip); window.visualViewport?.removeEventListener('resize', on); probe.remove(); };
   }, []);
   return vp;
 }

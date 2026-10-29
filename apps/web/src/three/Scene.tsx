@@ -1772,9 +1772,18 @@ export default function Scene(props: SceneProps) {
       // mount). 200ms collapses a flip to a single settled size commit;
       // the canvas CSS box already tracks the container, so the old buffer
       // simply stretches for the beat the OS spends rotating anyway.
+      // Follow-up (same day): that trailing commit also landed the new
+      // orientation LATE on a real phone ("after a while it expands") —
+      // the stream runs for hundreds of ms, so the settled commit trailed
+      // it by another 200ms. SizeLeader (below) restores the leading edge:
+      // it commits the first post-flip size to the store at once and caps
+      // repeats at one per 150ms; this debounced measure remains as the
+      // slow net, and where both land on the same size the second commit
+      // is a no-op.
       resize={{ debounce: 200 }}
     >
       <AspectWatcher onAspect={setAspect} />
+      <SizeLeader />
       <EffectWarmup quality={props.quality} />
       <SnapHook />
       <FirstFrameSignal onFirstFrame={firstFrame} />
@@ -1925,6 +1934,58 @@ function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low';
 function AspectWatcher({ onAspect }: { onAspect: (a: number) => void }) {
   const size = useThree((s) => s.size);
   useEffect(() => { onAspect(size.width / size.height); }, [size, onAspect]);
+  return null;
+}
+
+/**
+ * Leading-edge size commits for rotation (see the Canvas resize note).
+ * Observes the same box R3F's measure does (the wrapper div around the
+ * canvas) and pushes size changes into the store without waiting out the
+ * trailing debounce: the first size that differs from the store's commits
+ * immediately, further changes inside 150ms coalesce to a single trailing
+ * commit at the window's edge (a max wait — a long event stream can never
+ * postpone convergence past it), and orientationchange commits at once.
+ * Sizes are read with getBoundingClientRect, exactly like the measure, and
+ * a commit that matches the store's size (within half a pixel) is skipped,
+ * so this never fights the debounced measure over the same geometry.
+ */
+function SizeLeader() {
+  const setSize = useThree((s) => s.setSize);
+  const get = useThree((s) => s.get);
+  useEffect(() => {
+    const el = get().gl.domElement.parentElement;
+    if (!el) return;
+    let lastAt = 0;
+    let timer = 0;
+    let pending: { w: number; h: number } | null = null;
+    const apply = (w: number, h: number) => {
+      const cur = get().size;
+      if (Math.abs(cur.width - w) < 0.5 && Math.abs(cur.height - h) < 0.5) return;
+      lastAt = performance.now();
+      setSize(w, h);
+    };
+    const flush = () => {
+      timer = 0;
+      if (pending) { const { w, h } = pending; pending = null; apply(w, h); }
+    };
+    const check = (bypass = false) => {
+      const r = el.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) return;
+      const cur = get().size;
+      if (Math.abs(cur.width - r.width) < 0.5 && Math.abs(cur.height - r.height) < 0.5) { pending = null; return; }
+      const now = performance.now();
+      if (bypass || now - lastAt >= 150) { pending = null; apply(r.width, r.height); }
+      else {
+        pending = { w: r.width, h: r.height };
+        if (!timer) timer = window.setTimeout(flush, Math.max(0, lastAt + 150 - now));
+      }
+    };
+    const ro = new ResizeObserver(() => check());
+    ro.observe(el);
+    const onFlip = () => check(true);
+    window.addEventListener('orientationchange', onFlip);
+    return () => { ro.disconnect(); window.removeEventListener('orientationchange', onFlip); if (timer) window.clearTimeout(timer); };
+  }, [get, setSize]);
   return null;
 }
 

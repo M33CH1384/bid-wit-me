@@ -47,6 +47,43 @@ describe('rotation perf — WebGL size commits collapse to the settled size', ()
   });
 });
 
+describe('rotation convergence — the new orientation commits on the leading edge', () => {
+  // Owner follow-up (2026-10-29, after the lag fix shipped): the flip now
+  // converged but LATE — the table sat squeezed at portrait width in
+  // landscape, "after a while it expands". The collapse above made every
+  // commit wait on the event stream's tail (rAF + trailing debounce), and
+  // on a real phone the stream runs hundreds of ms with the geometry held
+  // stale through the first half of it. These pins hold the leading edge:
+  // an aspect flip commits synchronously, timed settle ticks catch a
+  // browser that delivers the new geometry with no event at the landing
+  // moment, and the canvas size leader caps repeats instead of trailing
+  // the stream.
+  const vp = read('../src/viewport.ts');
+  it('viewport commits synchronously when the live aspect class has flipped', () => {
+    expect(vp).toContain('isShortLandscape(window.innerWidth, window.innerHeight) !== committed.short');
+  });
+  it('orientationchange arms a timed settle chain of gated commits', () => {
+    expect(vp).toContain("window.addEventListener('orientationchange', onFlip)");
+    expect(vp).toContain('[90, 200, 350, 550, 800]');
+    expect(vp).toContain('const armChain = () => {');
+  });
+  it('a trailing net re-checks after the burst (late safe-area drift)', () => {
+    expect(vp).toContain('const armNet = () => {');
+    expect(vp).toContain('netHops < 3');
+  });
+  const scene = read('../src/three/Scene.tsx');
+  it('canvas size leader observes the measured box and commits leading-edge', () => {
+    expect(scene).toContain('<SizeLeader />');
+    expect(scene).toContain('function SizeLeader()');
+    expect(scene).toContain('new ResizeObserver(() => check())');
+    expect(scene).toContain("window.addEventListener('orientationchange', onFlip)");
+  });
+  it('size leader repeats are max-wait capped at 150ms, not stream-trailing', () => {
+    expect(scene).toContain('now - lastAt >= 150');
+    expect(scene).toContain('lastAt + 150 - now');
+  });
+});
+
 describe('rotation perf — per-event layer work is frame-coalesced', () => {
   const fx = read('../src/animfx/AnimFxLayer.tsx');
   it('shade repaint and layer tick ride rAF, not raw resize events', () => {
