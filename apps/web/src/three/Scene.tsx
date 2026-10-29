@@ -291,6 +291,10 @@ function CameraRig({ view = 'standing', people = false }: { view?: 'standing' | 
     const pose = cameraPoseAt(a.from, a.to, a.fromLook, a.toLook, performance.now() - a.start, a.dur);
     baseRef.current = { pos: pose.pos, look: pose.look };
     lookAtRef.current = pose.look;
+    sound.setSpatialListener(pose.pos, pose.look);
+    // place() then re-asserts the listener at the RENDERED pose — the base
+    // pose with the player's tilt/zoom composed on top (the same pose at
+    // the default offset).
     placeRef.current(pose.pos, pose.look, pose.t);
     if (pose.t >= 1) anim.current = null;
     invalidate();
@@ -829,10 +833,24 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const refitM = useMemo(() => {
     if (!peopleCam && isDefaultViewAdjust(vaState.adj)) return null;
     const stock = cameraFor(aspect, short, view);
-    const base = peopleCam ? peopleSpec(stock) : stock;
+    const people = peopleSpec(stock);
+    // The people refit, exactly as shipped: M = V * S^-1 against the stock
+    // spec (peopleCam only ever occurs at the sitting view, so `view` is
+    // 'sitting' whenever this matrix exists) — the fan rides the people
+    // framing or it sinks out of frame.
+    const peopleM = peopleCam
+      ? camMatrixOf(people.pos, people.look).multiply(camMatrixOf(stock.pos, stock.look).invert())
+      : null;
+    if (isDefaultViewAdjust(vaState.adj)) return peopleM;
+    // The player's tilt/zoom composes ON TOP of the base framing (the stock
+    // spec, or the people spec at the pilot): its own M = A * B^-1,
+    // multiplied onto peopleM where there is one. The product is
+    // M(actual) * S^-1 either way, so the fan keeps its solved screen
+    // layout at any offset.
+    const base = peopleCam ? people : stock;
     const actual = applyViewAdjustToSpec(base, vaState.adj);
-    if (actual === stock) return null;
-    return camMatrixOf(actual.pos, actual.look).multiply(camMatrixOf(stock.pos, stock.look).invert());
+    const adjM = camMatrixOf(actual.pos, actual.look).multiply(camMatrixOf(base.pos, base.look).invert());
+    return peopleM ? adjM.multiply(peopleM) : adjM;
   }, [peopleCam, aspect, short, view, vaState.adj]);
   const refitXf = (x: Xform): Xform => {
     if (!refitM) return x;
