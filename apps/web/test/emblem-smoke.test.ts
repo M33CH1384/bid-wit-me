@@ -12,6 +12,10 @@
  *  - the field carries both blend families (bright screen + dark
  *    multiply) — screen alone was invisible over the art's bright
  *    clouds (owner, 2026-10-29);
+ *  - the ART WARP (round 3 — the owner liked the veil but "the smoke
+ *    in the image doesn't move"): three bands of the painting itself,
+ *    each on its own loop-exact transform, amplitudes capped small,
+ *    masks forming a partition of unity over the glass;
  *  - the gate is Neon-only and yields to every calming signal.
  * Plus source pins: the layer is mounted in the home, its CSS box/mask
  * mirror the emblem layer, and the component adds no downloads.
@@ -19,8 +23,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  EMBLEM_H, EMBLEM_W, SMOKE_DARK_TINTS, SMOKE_LOOP_S, SMOKE_PUFFS, SMOKE_TINTS, SPADE_GLASS_PATH_D,
-  SWIRL_CX, SWIRL_CY, emblemPaintRect, emblemSmokeActive, puffPose,
+  ART_BANDS, EMBLEM_ART_URL, EMBLEM_H, EMBLEM_W, SMOKE_DARK_TINTS, SMOKE_LOOP_S, SMOKE_PUFFS, SMOKE_TINTS, SPADE_GLASS_PATH_D,
+  SWIRL_CX, SWIRL_CY, artBandMaskAlpha, artBandPose, emblemPaintRect, emblemSmokeActive, puffPose,
 } from '../src/neon/emblemSmoke';
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
@@ -129,6 +133,103 @@ describe('the puff field', () => {
   });
 });
 
+describe('the art warp (round 3 — the painting itself moves)', () => {
+  it('every art-motion period divides the master loop (seamless by construction)', () => {
+    for (const b of ART_BANDS) {
+      for (const per of [b.prot, b.pdx, b.pdy, b.psc]) {
+        expect(SMOKE_LOOP_S % per, `period ${per}`).toBe(0);
+      }
+    }
+  });
+
+  it('band poses repeat exactly after one master loop', () => {
+    for (const b of ART_BANDS) {
+      for (const t of [0, 7.3, 41.9, 59.9]) {
+        const a = artBandPose(b, t);
+        const c = artBandPose(b, t + SMOKE_LOOP_S);
+        expect(c.rot).toBeCloseTo(a.rot, 9);
+        expect(c.dx).toBeCloseTo(a.dx, 9);
+        expect(c.dy).toBeCloseTo(a.dy, 9);
+        expect(c.scale).toBeCloseTo(a.scale, 9);
+      }
+    }
+  });
+
+  it('amplitudes stay small — smoke motion, never an emblem wobble', () => {
+    for (const b of ART_BANDS) {
+      expect(Math.abs(b.rot)).toBeLessThanOrEqual(0.03);
+      expect(Math.abs(b.dx)).toBeLessThanOrEqual(6);
+      expect(Math.abs(b.dy)).toBeLessThanOrEqual(3);
+      expect(Math.abs(b.sc)).toBeLessThanOrEqual(0.03);
+      for (let t = 0; t < SMOKE_LOOP_S; t += 1.7) {
+        const pose = artBandPose(b, t);
+        expect(Math.abs(pose.rot)).toBeLessThanOrEqual(Math.abs(b.rot) + 1e-9);
+        expect(Math.abs(pose.dx)).toBeLessThanOrEqual(Math.abs(b.dx) + 1e-9);
+        expect(Math.abs(pose.dy)).toBeLessThanOrEqual(Math.abs(b.dy) + 1e-9);
+        expect(pose.scale).toBeGreaterThanOrEqual(1 - Math.abs(b.sc) - 1e-9);
+        expect(pose.scale).toBeLessThanOrEqual(1 + Math.abs(b.sc) + 1e-9);
+      }
+      // pivots sit inside the glass bulb
+      expect(b.cx).toBeGreaterThan(200);
+      expect(b.cx).toBeLessThan(490);
+      expect(b.cy).toBeGreaterThan(120);
+      expect(b.cy).toBeLessThan(620);
+    }
+  });
+
+  it('the motion is differential — the bands genuinely move against each other', () => {
+    expect(ART_BANDS.length).toBe(3);
+    // over the loop, some pair of bands must separate by real pixels —
+    // a single rigid transform of the whole painting would fail this.
+    let maxSep = 0;
+    for (let t = 0; t < SMOKE_LOOP_S; t += 0.5) {
+      const poses = ART_BANDS.map((b) => artBandPose(b, t));
+      for (let i = 0; i < poses.length; i++) {
+        for (let j = i + 1; j < poses.length; j++) {
+          maxSep = Math.max(maxSep, Math.abs(poses[i]!.dx - poses[j]!.dx), Math.abs(poses[i]!.rot - poses[j]!.rot) * 200);
+        }
+      }
+    }
+    expect(maxSep).toBeGreaterThan(3);
+    // and every band actually moves (no static filler band)
+    for (const b of ART_BANDS) {
+      let travel = 0;
+      for (let t = 0; t < SMOKE_LOOP_S; t += 0.5) {
+        const pose = artBandPose(b, t);
+        travel = Math.max(travel, Math.abs(pose.dx), Math.abs(pose.rot) * 200, Math.abs(pose.scale - 1) * 200);
+      }
+      expect(travel).toBeGreaterThan(1);
+    }
+  });
+
+  it('band masks form a partition of unity over the glass — one painting thick everywhere', () => {
+    // the glass bulb spans roughly y 82..596 in image coords
+    for (let y = 60; y <= 620; y += 3.1) {
+      let sum = 0;
+      for (const b of ART_BANDS) {
+        const a = artBandMaskAlpha(b, y);
+        expect(a).toBeGreaterThanOrEqual(0);
+        expect(a).toBeLessThanOrEqual(1);
+        sum += a;
+      }
+      expect(sum, `mask sum at y=${y}`).toBeCloseTo(1, 6);
+    }
+    // the windows chain: each band's fade-in completes exactly where
+    // the previous band's fade-out ends
+    expect(ART_BANDS[1]!.yTop + ART_BANDS[1]!.fadeIn).toBe(ART_BANDS[0]!.yBottom);
+    expect(ART_BANDS[2]!.yTop + ART_BANDS[2]!.fadeIn).toBe(ART_BANDS[1]!.yBottom);
+    // coverage reaches past both ends of the glass
+    expect(ART_BANDS[0]!.yTop).toBeLessThanOrEqual(82);
+    expect(ART_BANDS[2]!.yBottom).toBeGreaterThanOrEqual(596);
+  });
+
+  it('the art URL is the CSS painting’s own file', () => {
+    expect(EMBLEM_ART_URL).toBe('/assets/neon/spade-emblem.webp');
+    const css = read('../src/styles.css');
+    expect(css).toContain(`background: url('${EMBLEM_ART_URL}')`);
+  });
+});
+
 describe('the spade glass path', () => {
   it('is a closed path inside the artwork bounds', () => {
     expect(SPADE_GLASS_PATH_D.startsWith('M ')).toBe(true);
@@ -182,12 +283,26 @@ describe('source pins', () => {
     expect(before![1]).toContain("background: url('/assets/neon/spade-emblem.webp')");
   });
 
-  it('the component is procedural only — no downloads, no three.js', () => {
+  it('the component loads only the emblem’s own artwork — no other downloads, no three.js', () => {
     const src = read('../src/neon/EmblemSmoke.tsx');
-    expect(src).not.toMatch(/fetch\(|new Image\(|XMLHttpRequest|from 'three|from "three|import\(/);
-    expect(src).not.toMatch(/url\(|src=/);
+    expect(src).not.toMatch(/fetch\(|XMLHttpRequest|from 'three|from "three|import\(/);
+    expect(src).not.toMatch(/url\(/);
+    // the one image load is the artwork itself, via the pinned URL —
+    // the same file the CSS background already fetches
+    expect(src).toContain('new Image()');
+    expect(src).toContain('artImg.src = EMBLEM_ART_URL');
+    expect(src).not.toMatch(/https?:\/\//); // no external or second asset URL anywhere
     expect(src).toContain("globalCompositeOperation = 'multiply'");
     expect(src).toContain("globalCompositeOperation = 'screen'");
     expect(src).toContain('SPADE_GLASS_PATH_D');
+  });
+
+  it('the component warps the art in bands and fades it before the rim', () => {
+    const src = read('../src/neon/EmblemSmoke.tsx');
+    expect(src).toContain('ART_BANDS');
+    expect(src).toContain('artBandPose');
+    expect(src).toContain('artBandMaskAlpha'); // masks derive from the pinned math
+    expect(src).toContain("globalCompositeOperation = 'destination-in'"); // band + glass masks
+    expect(src).toContain('drawImage(artCanvas'); // warped stack composited under the veil
   });
 });

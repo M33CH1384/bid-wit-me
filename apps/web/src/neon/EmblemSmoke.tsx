@@ -17,6 +17,18 @@
  * breaths: visible within the first seconds of looking, still smoke —
  * not a screensaver.
  *
+ * Round 3 (owner, later the same day): "I see some smoke in front of
+ * the image (I like it) but the smoke in the image doesn't move." So
+ * under the (kept) puff veil, the canvas now repaints the ARTWORK
+ * ITSELF, warped: the emblem image — the same file the CSS paints, so
+ * no new download in practice — is drawn in three horizontal bands,
+ * each on its own slow rotation / drift / breathing scale, the bands
+ * cross-dissolved where they overlap (ART_BANDS in emblemSmoke.ts).
+ * The painted clouds themselves now drift and reshape at different
+ * rates. The warped copy is alpha-faded before it reaches the glass
+ * outline, so at the boundary the static painting shows through and
+ * the gold rim stays pixel-exact; outside the glass nothing changes.
+ *
  * Gates (any one off → no canvas at all, the emblem is byte-for-byte
  * today's static painting):
  *  - Neon only (the emblem exists only in Neon; Classic never had it).
@@ -31,7 +43,9 @@
  * screen, and unmount stops everything. The static painting is CSS —
  * it is on screen before this engine ever runs; the engine starts
  * after mount and pays for nothing up front (sprites are baked
- * procedurally, no downloads, no image loads).
+ * procedurally; the one image it loads is the emblem file the CSS
+ * already fetched). Until that image arrives the puff veil runs
+ * alone, exactly as round 2 shipped.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useReduceEffects } from '../fx';
@@ -39,8 +53,9 @@ import { useTheme } from '../theme';
 import { defaultQuality, loadSettings } from '../settings';
 import { inkLowQuality } from '../ink/mode';
 import {
-  EMBLEM_H, EMBLEM_W, SMOKE_DARK_TINTS, SMOKE_PUFFS, SMOKE_TINTS, emblemPaintRect, emblemSmokeActive, puffPose,
-  SPADE_GLASS_PATH_D, type PaintRect, type SmokePuff,
+  ART_BANDS, EMBLEM_ART_URL, EMBLEM_H, EMBLEM_W, SMOKE_DARK_TINTS, SMOKE_PUFFS, SMOKE_TINTS,
+  artBandMaskAlpha, artBandPose, emblemPaintRect, emblemSmokeActive, puffPose,
+  SPADE_GLASS_PATH_D, type ArtBand, type PaintRect, type SmokePuff,
 } from './emblemSmoke';
 
 const MAX_DPR = 1.5;
@@ -169,6 +184,64 @@ export default function EmblemSmoke() {
     const mqWide = window.matchMedia(MQ_WIDE);
     const mqLand = window.matchMedia(MQ_SHORT_LANDSCAPE);
 
+    // The art pass (round 3): the emblem image itself, loaded from the
+    // same URL the CSS painting uses. Until it arrives, artReady stays
+    // false and the puff veil runs alone (round 2's exact behavior).
+    const artImg = new Image();
+    let artReady = false;
+    artImg.onload = () => { artReady = true; };
+    artImg.src = EMBLEM_ART_URL;
+    if (artImg.complete && artImg.naturalWidth > 0) artReady = true;
+    // Offscreen buffers for the warp, sized to the painting at
+    // ART_RES of device resolution — nebula art is soft, the slight
+    // upscale on composite is invisible, and the per-frame cost stays
+    // in the puff field's class. Masks are baked per layout: one
+    // gradient-alpha mask per band (derived from artBandMaskAlpha, so
+    // the component and the pinned math can never drift apart) and a
+    // quarter-scale glass mask whose upscale IS the feather.
+    const ART_RES = 0.75;
+    const bandCanvas = document.createElement('canvas');
+    const artCanvas = document.createElement('canvas');
+    const bandCtx = bandCanvas.getContext('2d');
+    const artCtx = artCanvas.getContext('2d');
+    let bandMasks: HTMLCanvasElement[] = [];
+    let glassMask: HTMLCanvasElement | null = null;
+    const bakeBandMask = (band: ArtBand, w: number, h: number): HTMLCanvasElement => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const g = c.getContext('2d')!;
+      g.setTransform(w / EMBLEM_W, 0, 0, h / EMBLEM_H, 0, 0);
+      const grad = g.createLinearGradient(0, 0, 0, EMBLEM_H);
+      const stops = new Set<number>([0, EMBLEM_H]);
+      for (const y of [band.yTop, band.yTop + band.fadeIn, band.yBottom - band.fadeOut, band.yBottom]) {
+        if (y > 0 && y < EMBLEM_H) stops.add(y);
+      }
+      for (const y of [...stops].sort((a, b) => a - b)) {
+        grad.addColorStop(y / EMBLEM_H, `rgba(255,255,255,${artBandMaskAlpha(band, y)})`);
+      }
+      g.fillStyle = grad;
+      g.fillRect(0, 0, EMBLEM_W, EMBLEM_H);
+      return c;
+    };
+    const bakeGlassMask = (w: number, h: number): HTMLCanvasElement => {
+      const qw = Math.max(2, Math.round(w / 4));
+      const qh = Math.max(2, Math.round(h / 4));
+      const c = document.createElement('canvas');
+      c.width = qw; c.height = qh;
+      const g = c.getContext('2d')!;
+      g.setTransform(qw / EMBLEM_W, 0, 0, qh / EMBLEM_H, 0, 0);
+      // drawn at 96% about the glass center: the warped copy reaches
+      // full strength only inside the glass and feathers out across
+      // the boundary (the upscale smooths the edge), where the static
+      // CSS painting takes over — rim pixel-exact, no seam.
+      g.translate(345, 339);
+      g.scale(0.96, 0.96);
+      g.translate(-345, -339);
+      g.fillStyle = '#fff';
+      g.fill(glassPath);
+      return c;
+    };
+
     let rect: PaintRect = { x: 0, y: 0, w: 0, h: 0 };
     let boxW = 0;
     let boxH = 0;
@@ -180,11 +253,56 @@ export default function EmblemSmoke() {
       canvas.width = Math.max(1, Math.round(boxW * dpr));
       canvas.height = Math.max(1, Math.round(boxH * dpr));
       rect = emblemPaintRect({ boxW, boxH, wide: mqWide.matches, shortLandscape: mqLand.matches });
+      if (bandCtx && artCtx && rect.w > 0 && rect.h > 0) {
+        const aw = Math.max(2, Math.round(rect.w * dpr * ART_RES));
+        const ah = Math.max(2, Math.round(rect.h * dpr * ART_RES));
+        bandCanvas.width = aw; bandCanvas.height = ah;
+        artCanvas.width = aw; artCanvas.height = ah;
+        bandMasks = ART_BANDS.map((b) => bakeBandMask(b, aw, ah));
+        glassMask = bakeGlassMask(aw, ah);
+      }
     };
     layout();
 
     const probe: Probe = { draws: 0, lastMs: 0, maxMs: 0 };
     (window as unknown as { __emblemSmoke?: Probe }).__emblemSmoke = probe;
+
+    /**
+     * Repaint the artwork, warped, into artCanvas: each band drawn
+     * from the emblem image under its own pose, alpha-masked to its
+     * window, composited over the previous bands; the stack is then
+     * faded by the soft glass mask so it never reaches the rim.
+     */
+    const drawArt = (t: number) => {
+      if (!artReady || !bandCtx || !artCtx || !glassMask || bandMasks.length !== ART_BANDS.length) return;
+      const aw = artCanvas.width;
+      const ah = artCanvas.height;
+      artCtx.setTransform(1, 0, 0, 1, 0, 0);
+      artCtx.globalCompositeOperation = 'source-over';
+      artCtx.globalAlpha = 1;
+      artCtx.clearRect(0, 0, aw, ah);
+      ART_BANDS.forEach((band, i) => {
+        const pose = artBandPose(band, t);
+        bandCtx.setTransform(1, 0, 0, 1, 0, 0);
+        bandCtx.globalCompositeOperation = 'source-over';
+        bandCtx.globalAlpha = 1;
+        bandCtx.clearRect(0, 0, aw, ah);
+        bandCtx.setTransform(aw / EMBLEM_W, 0, 0, ah / EMBLEM_H, 0, 0);
+        bandCtx.translate(band.cx + pose.dx, band.cy + pose.dy);
+        bandCtx.rotate(pose.rot);
+        bandCtx.scale(pose.scale, pose.scale);
+        bandCtx.translate(-band.cx, -band.cy);
+        bandCtx.drawImage(artImg, 0, 0);
+        bandCtx.setTransform(1, 0, 0, 1, 0, 0);
+        bandCtx.globalCompositeOperation = 'destination-in';
+        bandCtx.drawImage(bandMasks[i]!, 0, 0);
+        artCtx.drawImage(bandCanvas, 0, 0);
+      });
+      artCtx.globalCompositeOperation = 'destination-in';
+      artCtx.imageSmoothingEnabled = true;
+      artCtx.drawImage(glassMask, 0, 0, aw, ah);
+      artCtx.globalCompositeOperation = 'source-over';
+    };
 
     const draw = (t: number) => {
       const started = performance.now();
@@ -197,6 +315,17 @@ export default function EmblemSmoke() {
         ctx!.scale(rect.w / EMBLEM_W, rect.h / EMBLEM_H);
         ctx!.clip(glassPath);
         ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+        // the art pass first (round 3): the painting itself, warped,
+        // under everything else in the clip. Capture-rig only:
+        // __emblemSmokeDebug = 'artonly' skips the puff passes so the
+        // art's own motion can be verified with the veil covered.
+        const debugMode = (window as unknown as { __emblemSmokeDebug?: string }).__emblemSmokeDebug;
+        if (artReady) {
+          drawArt(t);
+          ctx!.translate(rect.x, rect.y);
+          ctx!.drawImage(artCanvas, 0, 0, rect.w, rect.h);
+          ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
         // two passes inside the same clip: the dark family first
         // (multiply — shadow rolling through the painted clouds), the
         // bright family over it (screen — light in the nebula).
@@ -213,12 +342,14 @@ export default function EmblemSmoke() {
           ctx!.drawImage(sprite, -rr, -rr, rr * 2, rr * 2);
           ctx!.restore();
         };
-        ctx!.globalCompositeOperation = 'multiply';
-        for (const p of SMOKE_PUFFS) if (p.dark) drawPuff(p);
-        ctx!.globalCompositeOperation = 'screen';
-        for (const p of SMOKE_PUFFS) if (!p.dark) drawPuff(p);
-        ctx!.globalAlpha = 1;
-        ctx!.globalCompositeOperation = 'source-over';
+        if (debugMode !== 'artonly') {
+          ctx!.globalCompositeOperation = 'multiply';
+          for (const p of SMOKE_PUFFS) if (p.dark) drawPuff(p);
+          ctx!.globalCompositeOperation = 'screen';
+          for (const p of SMOKE_PUFFS) if (!p.dark) drawPuff(p);
+          ctx!.globalAlpha = 1;
+          ctx!.globalCompositeOperation = 'source-over';
+        }
         ctx!.restore();
         // capture-rig only: __emblemSmokeDebug = 'fill' paints the clip
         // solid so the path fit against the artwork can be eyeballed.
@@ -281,6 +412,7 @@ export default function EmblemSmoke() {
 
     return () => {
       stop();
+      artImg.onload = null;
       document.removeEventListener('visibilitychange', onVis);
       io?.disconnect();
       ro?.disconnect();

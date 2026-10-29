@@ -31,11 +31,35 @@
  * radius, all with periods that divide the loop — fast enough that the
  * churn is visible within the first seconds of looking, slow enough to
  * stay smoke, not a screensaver.
+ *
+ * Round 3 (owner, later the same day): "I see some smoke in front of
+ * the image (I like it) but the smoke in the image doesn't move." The
+ * puff veil read as a layer IN FRONT OF the painting while the
+ * painting's own nebula stayed frozen. So the canvas now also repaints
+ * the ARTWORK ITSELF, warped: the emblem image is drawn in three
+ * horizontal bands (ART_BANDS), each on its own slow transform —
+ * rotation / drift / breathing scale, all periods dividing the loop —
+ * cross-dissolved where the bands overlap, so the painted clouds
+ * themselves drift and reshape at different rates (the top swirl
+ * turns, the lower masses breathe against each other). Amplitudes stay
+ * small (≤ 6 image px of drift, ≤ 0.03 rad, ≤ 3% scale): smoke motion,
+ * never an emblem wobble. The warped copy is alpha-faded before the
+ * glass outline (a soft mask), so at the boundary the static CSS
+ * painting shows through and the rim stays pixel-exact; the puff
+ * families composite over the warped art exactly as before.
  */
 
 /** The emblem artwork's own pixel size (spade-emblem.webp). */
 export const EMBLEM_W = 690;
 export const EMBLEM_H = 770;
+
+/**
+ * The artwork URL — the very file styles.css paints as the ::before
+ * background. The engine loads the same URL (already downloaded for
+ * the CSS painting, so no new fetch in practice) to repaint the art,
+ * warped, inside the glass.
+ */
+export const EMBLEM_ART_URL = '/assets/neon/spade-emblem.webp';
 
 export interface EmblemSmokeGate {
   /** Active theme from the theme store. */
@@ -237,4 +261,78 @@ export function puffPose(p: SmokePuff, t: number): PuffPose {
     alpha: p.alpha * breathe,
     rot: p.rot * wx,
   };
+}
+
+/**
+ * The art warp (round 3): the painted nebula, repainted in three
+ * horizontal bands. Each band carries its own slow transform around
+ * its own center — differential motion, so the top swirl turns while
+ * the mid glow drifts and the lower cloud masses breathe against each
+ * other — and the bands are cross-dissolved by alpha masks whose
+ * windows (artBandMaskAlpha) form a partition of unity over the
+ * image: wherever one band fades out, the next fades in by the same
+ * amount, so the composite is always exactly one painting thick and
+ * the dissolving overlap is where cloud features visibly reshape.
+ * Every period divides SMOKE_LOOP_S; amplitudes are capped small (see
+ * the tests) — the art churns, the emblem never wobbles.
+ */
+export interface ArtBand {
+  /** transform pivot, in image coords */
+  cx: number;
+  cy: number;
+  /**
+   * Mask window in image y: alpha 0 above yTop, ramping in over
+   * fadeIn px, holding 1, ramping out over fadeOut px ending at
+   * yBottom, 0 below. (fadeIn 0 = starts at full alpha; fadeOut 0 =
+   * runs to yBottom at full alpha.)
+   */
+  yTop: number;
+  fadeIn: number;
+  yBottom: number;
+  fadeOut: number;
+  /** rotation swing (radians), period (s), phase (rad) */
+  rot: number;
+  prot: number;
+  orot: number;
+  /** drift amplitudes (image px), periods (s), phases (rad) */
+  dx: number;
+  pdx: number;
+  odx: number;
+  dy: number;
+  pdy: number;
+  ody: number;
+  /** scale breathing amplitude (fraction), period (s), phase (rad) */
+  sc: number;
+  psc: number;
+  osc: number;
+}
+
+export const ART_BANDS: ArtBand[] = [
+  // the top swirl — a slow turning curl over the starfield
+  { cx: 345, cy: 235, yTop: 0, fadeIn: 0, yBottom: 320, fadeOut: 80, rot: 0.020, prot: 30, orot: 0.0, dx: 1.2, pdx: 20, odx: 2.0, dy: 1.0, pdy: 15, ody: 0.5, sc: 0.012, psc: 20, osc: 1.1 },
+  // the mid glow — a gentle sideways drift through the center
+  { cx: 345, cy: 360, yTop: 240, fadeIn: 80, yBottom: 470, fadeOut: 80, rot: 0.006, prot: 20, orot: 2.2, dx: 3.4, pdx: 15, odx: 0.0, dy: 1.8, pdy: 20, ody: 1.0, sc: 0.016, psc: 30, osc: 2.0 },
+  // the lower cloud masses — purple and blue breathing against the mid
+  { cx: 345, cy: 500, yTop: 390, fadeIn: 80, yBottom: 770, fadeOut: 0, rot: -0.008, prot: 30, orot: 4.0, dx: -4.4, pdx: 20, odx: 0.7, dy: 1.2, pdy: 12, ody: 2.6, sc: 0.020, psc: 15, osc: 4.0 },
+];
+
+export interface ArtBandPose { rot: number; dx: number; dy: number; scale: number }
+
+/** A band's transform at time t (seconds): pure sines, loop-exact. */
+export function artBandPose(b: ArtBand, t: number): ArtBandPose {
+  return {
+    rot: b.rot * Math.sin((TAU * t) / b.prot + b.orot),
+    dx: b.dx * Math.sin((TAU * t) / b.pdx + b.odx),
+    dy: b.dy * Math.sin((TAU * t) / b.pdy + b.ody),
+    scale: 1 + b.sc * Math.sin((TAU * t) / b.psc + b.osc),
+  };
+}
+
+/** A band's mask alpha at image y (see ArtBand's window fields). */
+export function artBandMaskAlpha(b: ArtBand, y: number): number {
+  if (y < b.yTop) return 0;
+  if (b.fadeIn > 0 && y < b.yTop + b.fadeIn) return (y - b.yTop) / b.fadeIn;
+  if (y > b.yBottom) return 0;
+  if (b.fadeOut > 0 && y > b.yBottom - b.fadeOut) return (b.yBottom - y) / b.fadeOut;
+  return 1;
 }
