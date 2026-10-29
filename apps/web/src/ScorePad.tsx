@@ -10,7 +10,7 @@ import { useEscapeClose } from './useEscapeClose';
 import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotCounts, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
 import { hudSeatName } from './dealerName';
-import { holeMarks, punchedLabel, rememberHoles } from './shotMarks';
+import { HOLE_SLOTS, holeMarks, punchedLabel, rememberHoles } from './shotMarks';
 import { shotArms } from './shotOut';
 import { timerSettingLabel } from './turnTimer';
 import { wheelsMade } from './landCue';
@@ -139,6 +139,22 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
                   <b className="pad-board-total">{st.scores[side]}</b>
                   <small className="pad-board-bags">{st.bags[side]} bag{st.bags[side] === 1 ? '' : 's'}</small>
                   <small className="pad-board-sets">{sets[side] ?? 0} set{sets[side] === 1 ? '' : 's'}{sets[side] === 2 ? (r.partnerships ? ' · one more ends it' : ' · one more and out') : ''}</small>
+                  {/* Persistent bullet holes (owner, 2026-10-29): one hole per shot this game,
+                      derived from holeMarks(history) ALONE — never from the rememberHoles store
+                      or the recap's punch — so the pad shows them on any open: mid-game, after a
+                      rotation, after a save/resume or a full relaunch. The fresh slot may punch
+                      in when the pad opens in the hand's immediate aftermath (handOver, punch not
+                      already marked); every other hole is simply there. Same raster art and slot
+                      rotations as the recap's .shot-holes. */}
+                  {info.visible > 0 && (
+                    <span className="pad-board-holes" data-testid={`pad-holes-${side}`} aria-hidden="true">
+                      {Array.from({ length: info.visible }, (_, i) => (
+                        <img key={i} src="/shot/hole.png" alt=""
+                          className={i === info.fresh && !marks.punched[i] && st.phase === 'handOver' ? 'hole-in' : undefined}
+                          style={{ ['--rot' as string]: `${HOLE_SLOTS[i]?.rot ?? 0}deg` }} />
+                      ))}
+                    </span>
+                  )}
                 </div>
                 );
               })}

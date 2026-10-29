@@ -1148,7 +1148,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 }
 .tt-team.sheet-in .tod { animation: tod-key 600ms ease both; }
 @keyframes tod-key { from { opacity: 0; transform: rotate(-7deg) translateY(-10px); } to { opacity: 1; transform: rotate(-7deg); } }
-@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .shot-holes img.hole-in, .tt-team.sheet-in .shroud, .police-rim { animation: none; } .police-rim { opacity: .7; box-shadow: inset 0 0 42px 8px rgba(255, 42, 42, .4); } }
+@media (prefers-reduced-motion: reduce) { .tt-team.notice.tape-in, .tt-team.tape-in .caution-x, .tt-team.tape-in .caution-x .tape, .shot-holes img.hole-in, .pad-board-holes img.hole-in, .tt-team.sheet-in .shroud, .police-rim { animation: none; } .police-rim { opacity: .7; box-shadow: inset 0 0 42px 8px rgba(255, 42, 42, .4); } }
 @media (prefers-reduced-motion: reduce) { .tod { animation: none; opacity: 1; } .tt-team.sheet-in .shroud::after { animation: none; opacity: 0; } }
 .tt-team.mine { background: rgba(var(--gold-rgb),.08); box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(var(--gold-rgb),.25); }
 .tt-team-name { grid-area: name; display: flex; flex-direction: column; gap: 4px; }
@@ -2685,6 +2685,15 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .pad-board-total { font-size: 30px; font-weight: 800; font-family: var(--display); font-variant-numeric: tabular-nums; line-height: 1; color: var(--gold); }
 .pad-board-bags { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pad-board-sets { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Persistent bullet holes on the pad board (owner 2026-10-29): a small row under the sets
+   line, inside the side's own box — history-derived in ScorePad, so they are present on
+   every open. Pad-sized (the recap's .shot-holes are 44px on a full card; the board is
+   compact). The punch uses its own keyframes: hole-punch carries a -50%,-50% centering
+   translate for the recap's absolutely-positioned holes, which would offset in-flow imgs. */
+.pad-board-holes { display: inline-flex; align-items: center; gap: 3px; margin-top: 3px; }
+.pad-board-holes img { width: 20px; height: 20px; transform: rotate(var(--rot, 0deg)); pointer-events: none; }
+.pad-board-holes img.hole-in { animation: pad-hole-punch 120ms cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes pad-hole-punch { 0% { opacity: 0; transform: rotate(var(--rot, 0deg)) scale(1.4); } 12% { opacity: 1; transform: rotate(var(--rot, 0deg)) scale(1.28); } 100% { opacity: 1; transform: rotate(var(--rot, 0deg)) scale(1); } }
 .pad-x { position: absolute; top: 8px; right: 10px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--ink); font-size: 16px; z-index: 2; }
 .pad-rules.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; margin: 8px 0 4px; }
 .pad-cols.v2 { position: static; background: transparent; }
@@ -2727,6 +2736,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .score-pad.v2 .pad-board-name { grid-column: 2; grid-row: 1; font-family: var(--display); letter-spacing: .04em; }
   .score-pad.v2 .pad-board-bags { grid-column: 2; grid-row: 2; }
   .score-pad.v2 .pad-board-sets { grid-column: 2; grid-row: 3; }
+  .score-pad.v2 .pad-board-holes { grid-column: 2; grid-row: 4; }
+  .score-pad.v2 .pad-board-holes img { width: 22px; height: 22px; }
   .score-pad.v2 .pad-board-total { grid-column: 3; grid-row: 1 / -1; font-size: 44px; line-height: 1; color: var(--ink); }
   .score-pad.v2 .pad-hands { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px; background: rgba(255,255,255,.035); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.16); }
   .score-pad.v2 > .locked-details { grid-column: 2; grid-row: 2; margin: 0; }
