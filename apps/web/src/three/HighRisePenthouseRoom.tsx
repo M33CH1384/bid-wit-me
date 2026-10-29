@@ -13,10 +13,12 @@ const FLOOR_Y = -0.9;
 /**
  * THE HIGH-RISE — story Stop 8's 3D room (Velvet & The Accountant).
  *
- * Mounted by Scene only for a story table carrying stop
- * `high-rise` at High quality; every other mansion table — and
- * Low quality everywhere — keeps the shipped MansionRoom (the
- * cube room), untouched (pinned in test/high-rise-room.test.ts).
+ * Mounted by Scene for every mansion table at High quality —
+ * story tables carrying stop `high-rise` and regular tables
+ * alike (un-scoped in the venues rollout, owner 2026-10-28:
+ * the penthouse serves the mansion venue); Low quality
+ * everywhere keeps the shipped MansionRoom (the cube room),
+ * untouched (pinned in test/high-rise-room.test.ts).
  * Sandbox-certified (HighRiseCodeRoom in the immersive sandbox,
  * Batch 6a): a cold minimalist penthouse at night — floor-to-
  * ceiling glass on the north/east/west with the city glittering

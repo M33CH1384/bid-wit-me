@@ -1715,7 +1715,7 @@ export default function Scene(props: SceneProps) {
       {grandma && textured && (props.storyStopId === 'porch' && props.quality === 'high'
         ? <PorchDeckRoom />
         : <GrandmaRoom quality={props.quality} handNo={props.handNo} />)}
-      {mansion && textured && (props.storyStopId === 'high-rise' && props.quality === 'high'
+      {mansion && textured && (props.quality === 'high'
         ? <HighRisePenthouseRoom fxOn={!props.reduceFx} />
         : <MansionRoom quality={props.quality} handNo={props.handNo} />)}
       {showTable && (

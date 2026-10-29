@@ -3,13 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { roomGlbUrls } from '../src/assetGate';
 
 /**
- * THE HIGH-RISE — story Stop 8's 3D room (Batch 6a). Pins the
- * story-scoped seam and the room's certified identity so the
- * penthouse can't silently regress: the room mounts ONLY on a
- * mansion story table carrying stop `high-rise` at High
- * quality; every other mansion table (and Low everywhere)
- * keeps the shipped MansionRoom (the cube room), byte-for-byte
- * the same mount as before. The room itself is ALL CODE (the
+ * THE HIGH-RISE — story Stop 8's 3D room (Batch 6a), un-scoped
+ * to the whole mansion venue in the venues rollout (owner
+ * 2026-10-28: the penthouse serves the mansion). Pins the
+ * venue seam and the room's certified identity so the
+ * penthouse can't silently regress: the room mounts on EVERY
+ * mansion table at High quality — the `high-rise` story table
+ * renders exactly as it did story-scoped, and regular mansion
+ * tables now get the penthouse too; Low everywhere keeps the
+ * shipped MansionRoom (the cube room), byte-for-byte the same
+ * mount as before. The room itself is ALL CODE (the
  * owner's code-first rule) — no GLB loading anywhere — and it
  * carries the Batch 6a identity anchors: floor-to-ceiling
  * glass on N/E/W with the city far below (environment, not
@@ -38,11 +41,14 @@ describe('the High-Rise — story canon', () => {
 });
 
 describe('the High-Rise — the Scene seam', () => {
-  it('mounts HighRisePenthouseRoom only for the high-rise stop at High', () => {
+  it('mounts HighRisePenthouseRoom for every mansion table at High (un-scoped)', () => {
     expect(scene).toContain("import HighRisePenthouseRoom from './HighRisePenthouseRoom';");
     expect(scene).toContain(
-      "{mansion && textured && (props.storyStopId === 'high-rise' && props.quality === 'high'",
+      "{mansion && textured && (props.quality === 'high'",
     );
+    // The story term is gone from the branch: no mansion table is
+    // routed to the cube fallback at High anymore.
+    expect(scene).not.toContain("props.storyStopId === 'high-rise'");
     expect(scene).toContain('<HighRisePenthouseRoom fxOn={!props.reduceFx} />');
   });
 

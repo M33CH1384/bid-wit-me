@@ -94,7 +94,9 @@ export function roomGlbUrls(
  * the all-code room exactly as the story table does, so folding the venue
  * ledger in there would re-create the Rec defect at regular tables. Low
  * still mounts the venue fallback at every venue, so the ledger stays
- * gated there.
+ * gated there. Mansion joined the venue-wide set in Batch B under the
+ * owner's identity call for the adjacent penthouse ("the penthouse is
+ * the mansion fantasy done properly").
  */
 const STORY_SEAMS: Readonly<Record<string, string>> = {
   classic: 'rec-center',
@@ -102,13 +104,13 @@ const STORY_SEAMS: Readonly<Record<string, string>> = {
   vegas: 'legends',
   speakeasy: 'corner',
   grandma: 'porch',
-  mansion: 'high-rise',
 };
 
 const VENUE_WIDE_SEAMS: ReadonlySet<string> = new Set([
   'barbershop',
   'backyard',
   'church',
+  'mansion',
 ]);
 
 export function storySeamMounts(

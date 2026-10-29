@@ -180,7 +180,7 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
   // The seam tables: High only — one row per seam branch in Scene.tsx.
   // SEAMS is stop-keyed (the bespoke room mounts only on a table carrying
   // its story stop). VENUE_WIDE_SEAMS is venue-keyed: the venues rollout
-  // (Batch A, 2026-10-28) un-scoped those rooms to every High table at the
+  // (Batches A–B, 2026-10-28) un-scoped those rooms to every High table at the
   // venue, so the ledger skip follows the room, not the story flag.
   // blockAfterDark has NO seam (the Pj's street room is the venue room for
   // story and open tables alike), and yacht/beach host no stops.
@@ -190,13 +190,13 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     ['vegas', 'legends'],
     ['speakeasy', 'corner'],
     ['grandma', 'porch'],
-    ['mansion', 'high-rise'],
   ];
   // [venue, its story stop, the Scene branch's venue flag]
   const VENUE_WIDE_SEAMS: [string, string, string][] = [
     ['barbershop', 'barbershop', 'barbershop'],
     ['backyard', 'cookout', 'backyard'],
     ['church', 'church-basement', 'church'],
+    ['mansion', 'high-rise', 'mansion'],
   ];
 
   it('every shipped story seam mounts at High, and only at High', () => {
@@ -298,8 +298,8 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(r.cappedOut).toBe(false);
   });
 
-  // The venues rollout (Batch A un-scope): at barbershop / backyard /
-  // church the bespoke all-code room now mounts for EVERY High table, so a
+  // The venues rollout (Batches A–B un-scope): at barbershop / backyard /
+  // church / mansion the bespoke all-code room now mounts for EVERY High table, so a
   // regular High table's gate must equal the story composition — the
   // fallback room's ledger (its chair/lamp GLBs, floor, posters, video) is
   // excluded or the Rec defect reappears at regular tables. Low mounts the
@@ -356,6 +356,27 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(r.cappedOut).toBe(false);
     const l = await composeGate('church', 'low', null).done;
     expect(l.total).toBe(8);
+  });
+
+  // Batch B: the mansion ledger is what preloadCubeVenue(MANSION) notes —
+  // the shared chair/lamp GLBs, the marble floor file, the sky poster.
+  const MANSION_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/classic/lamp.glb',
+    '/assets/venues/tex/marble_tiles_512.jpg',
+    '/assets/venues/barbershop/room/sky-poster.jpg',
+  ];
+
+  it('venue-wide seam at regular High: the venue ledger is excluded (mansion 9 → 5)', async () => {
+    noteRoomAssets('mansion', MANSION_FILES);
+    const r = await composeGate('mansion', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    // The high-rise story table at the same venue composes identically.
+    const s = await composeGate('mansion', 'high', 'high-rise').done;
+    expect(s.total).toBe(5);
+    const l = await composeGate('mansion', 'low', null).done;
+    expect(l.total).toBe(9);
   });
 
   it('Table applies the seam check at the fold-in and publishes pendingAtCap on the probe', () => {
