@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-const block = css.slice(css.indexOf('.rw-takeover {'), css.indexOf('/* Daily-bonus receipt'));
+const block = css.slice(css.indexOf('.rw-takeover {'), css.indexOf('/* Hand recap on large screens'));
 
 describe('card takeover CSS contract', () => {
   it('the stylesheet carries the takeover', () => {
