@@ -16,8 +16,11 @@ import type { TornadoLevel } from './three/tornadoLevel';
 export const TORNADO_CLAIM_TTL_MS = 10_000;
 
 /** What fx.tornado carries: the original start/reduced pair, plus — when the claim that
- *  produced this tornado was counted on the tornado ladder — its rung and claimant. */
-export interface TornadoFx { start: number; reduced: boolean; level?: TornadoLevel; side?: number; seat?: number }
+ *  produced this tornado was counted on the tornado ladder — its rung and claimant.
+ *  `presentedAt` is stamped by Tornado3D on the first frame the funnel actually
+ *  presents at/after `start`: the funnel and card clocks run from it, so a blocked
+ *  frame delays the show instead of eating its spin-up (see heroPresented). */
+export interface TornadoFx { start: number; reduced: boolean; level?: TornadoLevel; side?: number; seat?: number; presentedAt?: number }
 
 /** How long each effect stays on screen (ms): the hand-end hold waits these out. wheelsCar is released by the car itself. */
 const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
@@ -160,6 +163,35 @@ class FxBus {
   private lastNukeAt = -1e9;
   /** the running Wheels car releases its hold when it drives off (WheelsCelebration onDone) */
   carRelease: (() => void) | null = null;
+  /**
+   * A hero blast (nuke / mega) whose boom + camera shake are waiting for the blast's
+   * first PRESENTED frame. The emit-time schedule used to land the sound behind
+   * whatever the mount cost — and the blast's clock was wall-time from the emit, so
+   * the show was eaten while the thread blocked (owner report 2026-10-29: card lands,
+   * ~1 s freeze, boom, flash to book collection, the animation itself never seen).
+   * Nuke3D calls heroPresented() from the run's first frame; a fallback timer
+   * presents it anyway if no frame ever lands (context loss, chunk failure), so
+   * the boom is never lost. Mode 'off' (incl. Reduce effects) never defers: there
+   * is no 3D run, so the emit's sound IS the show, exactly as before.
+   */
+  private heroWait: { kind: 'nuke' | 'mega'; timer: number } | null = null;
+  /** The hero blast's first frame is on screen: play its boom + shake NOW, in sync. */
+  heroPresented() {
+    const w = this.heroWait;
+    if (!w) return;
+    this.heroWait = null;
+    clearTimeout(w.timer);
+    this.playHero(w.kind);
+  }
+  private playHero(kind: 'nuke' | 'mega') {
+    sound.play(sfxFor({ kind }), { gain: 1 });
+    if (!this.reduced && !this.osReducedMotion) {
+      // the shake still leads the flash by its designed offset — measured from presentation, not emit
+      const now = performance.now();
+      if (kind === 'nuke') this.shake = { start: now + 260, dur: 2.2, amp: 0.15 };
+      else this.shake = { start: now + 260, dur: 3.0, amp: 0.24 };
+    }
+  }
   emit(kind: FxKind, opts: { level?: number; text?: string; sub?: string; silent?: boolean } = {}) {
     // one blast per nuked trick: the card's landing cue and the Table's watchdog may both ask for it
     if (kind === 'nuke') { const now = performance.now(); if (now - this.lastNukeAt < 4500) return; this.lastNukeAt = now; }
@@ -167,13 +199,22 @@ class FxBus {
     this.fired[kind] = (this.fired[kind] ?? 0) + 1;
     const holdMs = FX_HOLD_MS[kind];
     if (holdMs) { const release = this.hold(holdMs, kind); if (kind === 'wheelsCar') this.carRelease = release; }
-    if (!opts.silent) sound.play(sfxFor(e), { gain: 1 });
+    // hero blasts with a 3D run defer their boom to the first presented frame (heroPresented);
+    // warp captures keep the emit-time schedule (their clock is pinned, not presented)
+    const heroDeferred = (kind === 'nuke' || kind === 'mega') && this.nukeMode !== 'off' && this.warp === null;
+    if (!opts.silent) {
+      if (heroDeferred) {
+        if (this.heroWait) clearTimeout(this.heroWait.timer);
+        const timer = window.setTimeout(() => { const w = this.heroWait; if (w) { this.heroWait = null; this.playHero(w.kind); } }, 1500);
+        this.heroWait = { kind, timer };
+      } else sound.play(sfxFor(e), { gain: 1 });
+    }
     if (!this.reduced && !this.osReducedMotion) {
       if (kind === 'jokerLittle') this.shake = { start: e.at, dur: 0.35, amp: 0.035 };
       else if (kind === 'jokerBig') this.shake = { start: e.at, dur: 0.95, amp: 0.07 };
-      else if (kind === 'nuke' && this.nukeMode !== 'off') this.shake = { start: e.at + 260, dur: 2.2, amp: 0.15 };
+      else if (kind === 'nuke' && this.nukeMode !== 'off') { if (this.warp !== null) this.shake = { start: e.at + 260, dur: 2.2, amp: 0.15 }; }
       // ☢☢ mega: a deeper, longer thump than the nuke's (the second stage re-shakes from Nuke3D at its flash)
-      else if (kind === 'mega' && this.nukeMode !== 'off') this.shake = { start: e.at + 260, dur: 3.0, amp: 0.24 };
+      else if (kind === 'mega' && this.nukeMode !== 'off') { if (this.warp !== null) this.shake = { start: e.at + 260, dur: 3.0, amp: 0.24 }; }
       // a set shakes that scorecard panel, not the camera
       // over-cut: one short, sharp nudge (not the joker's rolling rumble)
       else if (kind === 'overcut') this.shake = (e.level ?? 2) >= 3 ? { start: e.at, dur: 0.45, amp: 0.085 } : { start: e.at, dur: 0.24, amp: 0.045 };

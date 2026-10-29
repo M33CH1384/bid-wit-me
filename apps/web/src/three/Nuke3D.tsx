@@ -1,10 +1,10 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { Bloom, ChromaticAberration, EffectComposer, Vignette } from '@react-three/postprocessing';
-import { BlendFunction, type BloomEffect, type ChromaticAberrationEffect } from 'postprocessing';
-import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { BlendFunction, BloomEffect, ChromaticAberrationEffect, EffectComposer as PostEffectComposer, EffectPass, RenderPass, VignetteEffect } from 'postprocessing';
+import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color, CylinderGeometry, DoubleSide, type Group, MeshBasicMaterial, type Mesh, type PerspectiveCamera,
-  PlaneGeometry, type PointLight, RingGeometry, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3,
+  AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, type PerspectiveCamera,
+  PlaneGeometry, Points, type PointLight, RingGeometry, Scene, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3, WebGLRenderTarget, type Camera, type Material, type WebGLRenderer,
 } from 'three';
 import { fx } from '../fx';
 import {
@@ -240,16 +240,33 @@ export function Nuke3D({ quality }: { quality: 'high' | 'low' }) {
     const mega = e.kind === 'mega';
     setRun({ id: e.id, start: performance.now(), full: mode === 'full', mega, len: mega ? MEGA_LEN : NUKE_LEN });
   }), []);
+  // when the blast's first frame actually presented (0 = not yet). The run's clock,
+  // its end timer, its boom (fx.heroPresented) and the stall watchdog all key off
+  // this — never off the emit — so a slow first frame delays the show instead of
+  // eating it (owner report 2026-10-29: freeze, boom, flash to collection, no show).
+  const firstFrameAt = useRef(0);
+  const presentedEnd = useRef(0);
+  const handleFirstFrame = useCallback(() => {
+    firstFrameAt.current = performance.now();
+    fx.heroPresented();
+    if (fx.warp === null && run) {
+      clearTimeout(presentedEnd.current);
+      presentedEnd.current = window.setTimeout(() => setRun(null), run.len * 1000 + 250);
+    }
+  }, [run]);
   // tap anywhere to skip
   useEffect(() => {
     if (!run) return;
     const skip = () => setRun(null);
     const t = window.setTimeout(() => window.addEventListener('pointerdown', skip, { once: true }), 400);
-    const end = fx.warp === null ? window.setTimeout(() => setRun(null), run.len * 1000 + 100) : 0;
+    firstFrameAt.current = 0;
+    // backstop only: if no frame ever presents (context loss), the run still clears —
+    // the real end timer is armed by handleFirstFrame at len + 250 from presentation
+    const end = fx.warp === null ? window.setTimeout(() => setRun(null), run.len * 1000 + 6000) : 0;
     const w = window as unknown as { __bwmNuke?: unknown; __bwmNukeT?: number | null };
     w.__bwmNuke = { active: true, start: run.start };
     w.__bwmNukeT = null; // a previous blast's clock must not look like this one is advancing
-    return () => { clearTimeout(t); clearTimeout(end); window.removeEventListener('pointerdown', skip); w.__bwmNuke = { active: false }; };
+    return () => { clearTimeout(t); clearTimeout(end); clearTimeout(presentedEnd.current); window.removeEventListener('pointerdown', skip); w.__bwmNuke = { active: false }; };
   }, [run]);
   // Demand-mode safety: if frames stop while the clock is still in the blast, tear the point light down
   // so the table can paint and the hand can finish. A backgrounded tab is not a stall.
@@ -260,6 +277,10 @@ export function Nuke3D({ quality }: { quality: 'high' | 'low' }) {
     const id = window.setInterval(() => {
       if (document.hidden) { prev = null; last = performance.now(); return; }
       const now = performance.now();
+      // a blast whose first frame has not presented yet is LOADING, not stalled:
+      // bailing here killed slow-but-healthy blasts before frame one (the owner's
+      // "animation hardly shows" — the watchdog ate the show the compile delayed)
+      if (!firstFrameAt.current) { prev = null; last = now; return; }
       const rendered = (window as unknown as { __bwmNukeT?: number | null }).__bwmNukeT ?? null;
       const dt = now - last;
       if (nukeClockStalled(prev, rendered, dt, run.len)) {
@@ -286,6 +307,7 @@ export function Nuke3D({ quality }: { quality: 'high' | 'low' }) {
       octaves={profile.octaves}
       screen={profile.screen}
       onBail={() => setRun(null)}
+      onFirstFrame={handleFirstFrame}
     />
   );
 }
@@ -365,7 +387,147 @@ export function NukeGlRecovery() {
   return null;
 }
 
-function NukeRun({ start, full, mega, len, detail, post, octaves, screen, onBail }: { start: number; full: boolean; mega: boolean; len: number; detail: number; post: boolean; octaves: 0 | 1; screen: boolean; onBail: () => void }) {
+
+/**
+ * Every material + geometry a blast run renders with, built by ONE function so the
+ * load-time warm pass (warmNuke) compiles exactly the programs the run will use.
+ * Before this, the run built them all at the emit and the first frame paid the
+ * full shader-compile cost on the main thread (the owner's ~1 s freeze).
+ */
+function buildNukeParts(detail: number, mega: boolean, octaves: 0 | 1) {
+  const low = detail < 1;
+  // particle budget from nukeVisual: base sum 640 for the nuke, the mega exactly x1.4 at
+  // equal detail (iOS mega: 0.45 x 1.4 = 0.63 of a desktop nuke)
+  const budget = particleBudget(detail, mega);
+  const fire = [fireMaterial(0.3, 1.6), fireMaterial(3.1, 1.2)];
+  fire[1]!.uniforms.uDisp!.value = 0.28;
+  const capMat = fireMaterial(5.7, 0.9); capMat.uniforms.uDisp!.value = 0.22;
+  const stemMat = fireMaterial(8.2, 2.2); stemMat.uniforms.uDisp!.value = 0.12;
+  const screenMat = screenFireMaterial(); screenMat.uniforms.uOct!.value = octaves; screenMat.uniforms.uMega!.value = mega ? 1 : 0;
+  const ringShader = () => new ShaderMaterial({
+    transparent: true, depthWrite: false, toneMapped: false, blending: AdditiveBlending, side: DoubleSide,
+    uniforms: { uA: { value: 1 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform float uA; varying vec2 vUv; void main(){ float r = length(vUv - 0.5) * 2.0; float band = smoothstep(0.78, 0.93, r) * smoothstep(1.0, 0.94, r); gl_FragColor = vec4(vec3(1.0, 0.85, 0.55) * 2.2, band * uA); }',
+  });
+  const ringMat = ringShader();
+  const ring2Mat = ringShader();
+  const counts = budget.counts;
+  const smoke = particles(0, counts.smoke, () => {
+    const a = rnd(0, Math.PI * 2), rr = rnd(0, 0.35), up = Math.random() < 0.55;
+    return { p: [Math.cos(a) * rr, up ? rnd(0.5, 1.2) : rnd(0.05, 0.5), Math.sin(a) * rr], v: [Math.cos(a) * rnd(0.05, 0.22), rnd(0.12, 0.4), Math.sin(a) * rnd(0.05, 0.22)], birth: rnd(0.4, 2.4), life: rnd(1.2, 2.2), size: rnd(0.22, 0.42) };
+  });
+  const dust = particles(1, counts.dust, () => {
+    const a = rnd(0, Math.PI * 2), sp = rnd(1.6, 3.2);
+    return { p: [Math.cos(a) * 0.12, 0.03, Math.sin(a) * 0.12], v: [Math.cos(a) * sp, rnd(0, 0.12), Math.sin(a) * sp], birth: rnd(FLASH, FLASH + 0.25), life: rnd(1.1, 1.8), size: rnd(0.12, 0.24) };
+  });
+  const embers = particles(2, counts.embers, () => {
+    const a = rnd(0, Math.PI * 2), rr = rnd(0, 0.9);
+    return { p: [Math.cos(a) * rr, rnd(0.9, 1.6), Math.sin(a) * rr], v: [rnd(-0.15, 0.15), rnd(0.0, 0.25), rnd(-0.15, 0.15)], birth: rnd(1.5, 2.7), life: rnd(0.9, 1.5), size: rnd(0.02, 0.045) };
+  });
+  const ash = particles(3, counts.ash, () => {
+    const a = rnd(0, Math.PI * 2), rr = rnd(0, 1.4);
+    return { p: [Math.cos(a) * rr, rnd(1.2, 2.0), Math.sin(a) * rr], v: [rnd(-0.08, 0.08), rnd(-0.1, 0.0), rnd(-0.08, 0.08)], birth: rnd(1.9, 2.9), life: rnd(1.0, 1.6), size: rnd(0.025, 0.05) };
+  });
+  // debris chunks (kind 4): the mega's stage-2 field rains from DEBRIS_RAIN_Y down past the
+  // viewport; the plain nuke tosses a modest local chunk spray off the fireball instead
+  const debris = particles(4, counts.debris, () => {
+    const a = rnd(0, Math.PI * 2);
+    if (mega) {
+      const rr = rnd(0, 2.6);
+      return { p: [Math.cos(a) * rr, rnd(DEBRIS_RAIN_Y.min, DEBRIS_RAIN_Y.max), Math.sin(a) * rr], v: [Math.cos(a) * rnd(0.1, 0.5), rnd(-0.2, 0), Math.sin(a) * rnd(0.1, 0.5)], birth: rnd(FLASH + MEGA_STAGE2, FLASH + MEGA_STAGE2 + 1.2), life: rnd(0.9, 1.6), size: rnd(0.05, 0.11) };
+    }
+    const rr = rnd(0, 0.4);
+    return { p: [Math.cos(a) * rr, rnd(0.3, 1.0), Math.sin(a) * rr], v: [Math.cos(a) * rnd(0.3, 0.9), rnd(0.4, 1.0), Math.sin(a) * rnd(0.3, 0.9)], birth: rnd(FLASH, FLASH + 0.3), life: rnd(0.7, 1.2), size: rnd(0.04, 0.08) };
+  });
+  // hot core that does not depend on the noise shaders: if those fail to compile (iOS), the blast is still a fireball
+  const core = new MeshBasicMaterial({ color: '#ffb15a', transparent: true, depthWrite: false, toneMapped: false, opacity: 0 });
+  // the engulf's massing pieces — MeshBasicMaterial, no shader-compile risk on iOS:
+  // an opaque underlay disc under the dome (hot early → sooty late) so shader-alpha dips can
+  // never reopen a window onto the felt, and the white-out ball (DoubleSide: a low sitting
+  // camera can sit inside its ellipsoid)
+  const discMat = new MeshBasicMaterial({ color: '#ff9a3c', transparent: true, depthWrite: false, toneMapped: false, opacity: 0 });
+  const flashMat = new MeshBasicMaterial({ color: '#ffffff', transparent: true, depthWrite: false, toneMapped: false, opacity: 0, side: DoubleSide });
+  const silMat = new MeshBasicMaterial({ color: '#140b06', transparent: true, depthWrite: false, toneMapped: false, opacity: 0, side: DoubleSide });
+  return {
+    fire, capMat, stemMat, ringMat, ring2Mat, smoke, dust, embers, ash, debris, core, discMat, flashMat, silMat,
+    sphere: new SphereGeometry(1, low ? 32 : 64, low ? 24 : 48),
+    torus: new TorusGeometry(1, 0.2, low ? 14 : 24, low ? 40 : 72),
+    dome: new SphereGeometry(1, low ? 32 : 48, low ? 16 : 24, 0, Math.PI * 2, 0, Math.PI / 2),
+    wall: new CylinderGeometry(1, 1, 1, low ? 32 : 48, 1, true),
+    disc: new CircleGeometry(1, low ? 32 : 48),
+    silGeo: new PlaneGeometry(0.5625, 0.7875), // a trick-scale card (CW × CH at TRICK_SCALE 2.25)
+    cyl: new CylinderGeometry(0.11, 0.22, 1, low ? 16 : 28, low ? 8 : 16, true),
+    ringGeo: new RingGeometry(0.01, 1, 96, 1),
+    screenMat, quad: new PlaneGeometry(2, 2),
+  };
+}
+/** Kept alive so the blast's programs stay in the table renderer's cache after the warm pass. */
+const warmedNuke: ReturnType<typeof buildNukeParts>[] = [];
+let warmedComposer: PostEffectComposer | null = null;
+
+/**
+ * Link the blast's shaders on the table's renderer at load, into a 4×4 target the
+ * player never sees — the discipline warmTornado gave the funnel, which the nuke
+ * never had: its fbm fire program, five particle systems and ring shader all
+ * compiled inside the first blast frame's task (measured on a throttled rig as a
+ * single ~12 s main-thread task before frame one; on the owner's phone it is the
+ * ~1 s freeze after the trigger card lands). The mega shares every program —
+ * uniforms and particle counts differ, defines don't — so one pass covers both.
+ * The post chain (desktop profiles) links here too, once per session; a failure
+ * there is best-effort only (the run's PostGuard degrades the same way).
+ */
+export async function warmNuke(gl: WebGLRenderer, camera: Camera, quality: 'high' | 'low'): Promise<void> {
+  const profile = nukeProfile(quality, currentNukeDevice());
+  const parts = buildNukeParts(profile.detail, false, profile.octaves);
+  warmedNuke.push(parts);
+  const scene = new Scene();
+  const add = (geo: BufferGeometry, mat: Material) => { const m = new Mesh(geo, mat); scene.add(m); };
+  add(parts.sphere, parts.fire[0]!);
+  add(parts.sphere, parts.fire[1]!);
+  add(parts.sphere, parts.core);
+  add(parts.torus, parts.capMat);
+  add(parts.dome, parts.capMat);
+  add(parts.wall, parts.capMat);
+  add(parts.disc, parts.discMat);
+  add(parts.sphere, parts.flashMat);
+  add(parts.silGeo, parts.silMat);
+  add(parts.cyl, parts.stemMat);
+  add(parts.ringGeo, parts.ringMat);
+  add(parts.ringGeo, parts.ring2Mat);
+  for (const p of [parts.smoke, parts.dust, parts.embers, parts.ash, parts.debris]) {
+    const pts = new Points(p.geo, p.mat);
+    pts.frustumCulled = false;
+    scene.add(pts);
+  }
+  if (profile.screen) add(parts.quad, parts.screenMat);
+  const target = new WebGLRenderTarget(4, 4);
+  const prev = gl.getRenderTarget();
+  try {
+    gl.setRenderTarget(target);
+    await gl.compileAsync(scene, camera);
+    gl.render(scene, camera);
+    gl.getContext().flush();
+  } finally {
+    gl.setRenderTarget(prev);
+    target.dispose();
+  }
+  if (profile.post && !warmedComposer) {
+    try {
+      const composer = new PostEffectComposer(gl);
+      composer.addPass(new RenderPass(scene, camera));
+      composer.addPass(new EffectPass(camera,
+        new BloomEffect({ intensity: 1.1, luminanceThreshold: 0.85, luminanceSmoothing: 0.2, mipmapBlur: true }),
+        new ChromaticAberrationEffect({ offset: new Vector2(0.002, 0.001), radialModulation: false, modulationOffset: 0 }),
+        new VignetteEffect({ eskil: false, offset: 0.25, darkness: 0.75 })));
+      composer.render();
+      gl.getContext().flush();
+      warmedComposer = composer;
+    } catch { /* post warm is best-effort */ }
+  }
+}
+
+function NukeRun({ start, full, mega, len, detail, post, octaves, screen, onBail, onFirstFrame }: { start: number; full: boolean; mega: boolean; len: number; detail: number; post: boolean; octaves: 0 | 1; screen: boolean; onBail: () => void; onFirstFrame: () => void }) {
   const { camera, invalidate, size } = useThree();
   const cam = camera as PerspectiveCamera;
   const baseFov = useRef(cam.fov);
@@ -390,90 +552,22 @@ function NukeRun({ start, full, mega, len, detail, post, octaves, screen, onBail
   const bailed = useRef(false);
   const stage2Shaken = useRef(false);
   const low = detail < 1;
-  // particle budget from nukeVisual: base sum 640 for the nuke, the mega exactly ×1.4 at
-  // equal detail (iOS mega: 0.45 × 1.4 = 0.63 of a desktop nuke)
-  const budget = particleBudget(detail, mega);
   const silCount = cloudCardCount(detail);
 
-  const parts = useMemo(() => {
-    const fire = [fireMaterial(0.3, 1.6), fireMaterial(3.1, 1.2)];
-    fire[1]!.uniforms.uDisp!.value = 0.28;
-    const capMat = fireMaterial(5.7, 0.9); capMat.uniforms.uDisp!.value = 0.22;
-    const stemMat = fireMaterial(8.2, 2.2); stemMat.uniforms.uDisp!.value = 0.12;
-    const screenMat = screenFireMaterial(); screenMat.uniforms.uOct!.value = octaves; screenMat.uniforms.uMega!.value = mega ? 1 : 0;
-    const ringShader = () => new ShaderMaterial({
-      transparent: true, depthWrite: false, toneMapped: false, blending: AdditiveBlending, side: DoubleSide,
-      uniforms: { uA: { value: 1 } },
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: 'uniform float uA; varying vec2 vUv; void main(){ float r = length(vUv - 0.5) * 2.0; float band = smoothstep(0.78, 0.93, r) * smoothstep(1.0, 0.94, r); gl_FragColor = vec4(vec3(1.0, 0.85, 0.55) * 2.2, band * uA); }',
-    });
-    const ringMat = ringShader();
-    const ring2Mat = ringShader();
-    const counts = budget.counts;
-    const smoke = particles(0, counts.smoke, () => {
-      const a = rnd(0, Math.PI * 2), rr = rnd(0, 0.35), up = Math.random() < 0.55;
-      return { p: [Math.cos(a) * rr, up ? rnd(0.5, 1.2) : rnd(0.05, 0.5), Math.sin(a) * rr], v: [Math.cos(a) * rnd(0.05, 0.22), rnd(0.12, 0.4), Math.sin(a) * rnd(0.05, 0.22)], birth: rnd(0.4, 2.4), life: rnd(1.2, 2.2), size: rnd(0.22, 0.42) };
-    });
-    const dust = particles(1, counts.dust, () => {
-      const a = rnd(0, Math.PI * 2), sp = rnd(1.6, 3.2);
-      return { p: [Math.cos(a) * 0.12, 0.03, Math.sin(a) * 0.12], v: [Math.cos(a) * sp, rnd(0, 0.12), Math.sin(a) * sp], birth: rnd(FLASH, FLASH + 0.25), life: rnd(1.1, 1.8), size: rnd(0.12, 0.24) };
-    });
-    const embers = particles(2, counts.embers, () => {
-      const a = rnd(0, Math.PI * 2), rr = rnd(0, 0.9);
-      return { p: [Math.cos(a) * rr, rnd(0.9, 1.6), Math.sin(a) * rr], v: [rnd(-0.15, 0.15), rnd(0.0, 0.25), rnd(-0.15, 0.15)], birth: rnd(1.5, 2.7), life: rnd(0.9, 1.5), size: rnd(0.02, 0.045) };
-    });
-    const ash = particles(3, counts.ash, () => {
-      const a = rnd(0, Math.PI * 2), rr = rnd(0, 1.4);
-      return { p: [Math.cos(a) * rr, rnd(1.2, 2.0), Math.sin(a) * rr], v: [rnd(-0.08, 0.08), rnd(-0.1, 0.0), rnd(-0.08, 0.08)], birth: rnd(1.9, 2.9), life: rnd(1.0, 1.6), size: rnd(0.025, 0.05) };
-    });
-    // debris chunks (kind 4): the mega's stage-2 field rains from DEBRIS_RAIN_Y down past the
-    // viewport; the plain nuke tosses a modest local chunk spray off the fireball instead
-    const debris = particles(4, counts.debris, () => {
-      const a = rnd(0, Math.PI * 2);
-      if (mega) {
-        const rr = rnd(0, 2.6);
-        return { p: [Math.cos(a) * rr, rnd(DEBRIS_RAIN_Y.min, DEBRIS_RAIN_Y.max), Math.sin(a) * rr], v: [Math.cos(a) * rnd(0.1, 0.5), rnd(-0.2, 0), Math.sin(a) * rnd(0.1, 0.5)], birth: rnd(FLASH + MEGA_STAGE2, FLASH + MEGA_STAGE2 + 1.2), life: rnd(0.9, 1.6), size: rnd(0.05, 0.11) };
-      }
-      const rr = rnd(0, 0.4);
-      return { p: [Math.cos(a) * rr, rnd(0.3, 1.0), Math.sin(a) * rr], v: [Math.cos(a) * rnd(0.3, 0.9), rnd(0.4, 1.0), Math.sin(a) * rnd(0.3, 0.9)], birth: rnd(FLASH, FLASH + 0.3), life: rnd(0.7, 1.2), size: rnd(0.04, 0.08) };
-    });
-    // hot core that does not depend on the noise shaders: if those fail to compile (iOS), the blast is still a fireball
-    const core = new MeshBasicMaterial({ color: '#ffb15a', transparent: true, depthWrite: false, toneMapped: false, opacity: 0 });
-    // the engulf's massing pieces — MeshBasicMaterial, no shader-compile risk on iOS:
-    // an opaque underlay disc under the dome (hot early → sooty late) so shader-alpha dips can
-    // never reopen a window onto the felt, and the white-out ball (DoubleSide: a low sitting
-    // camera can sit inside its ellipsoid)
-    const discMat = new MeshBasicMaterial({ color: '#ff9a3c', transparent: true, depthWrite: false, toneMapped: false, opacity: 0 });
-    const flashMat = new MeshBasicMaterial({ color: '#ffffff', transparent: true, depthWrite: false, toneMapped: false, opacity: 0, side: DoubleSide });
-    const silMat = new MeshBasicMaterial({ color: '#140b06', transparent: true, depthWrite: false, toneMapped: false, opacity: 0, side: DoubleSide });
-    return {
-      fire, capMat, stemMat, ringMat, ring2Mat, smoke, dust, embers, ash, debris, core, discMat, flashMat, silMat,
-      sphere: new SphereGeometry(1, low ? 32 : 64, low ? 24 : 48),
-      torus: new TorusGeometry(1, 0.2, low ? 14 : 24, low ? 40 : 72),
-      dome: new SphereGeometry(1, low ? 32 : 48, low ? 16 : 24, 0, Math.PI * 2, 0, Math.PI / 2),
-      wall: new CylinderGeometry(1, 1, 1, low ? 32 : 48, 1, true),
-      disc: new CircleGeometry(1, low ? 32 : 48),
-      silGeo: new PlaneGeometry(0.5625, 0.7875), // a trick-scale card (CW × CH at TRICK_SCALE 2.25)
-      cyl: new CylinderGeometry(0.11, 0.22, 1, low ? 16 : 28, low ? 8 : 16, true),
-      ringGeo: new RingGeometry(0.01, 1, 96, 1),
-      screenMat, quad: new PlaneGeometry(2, 2),
-    };
-  }, [budget, low, octaves, mega]);
+  const parts = useMemo(() => buildNukeParts(detail, mega, octaves), [detail, mega, octaves]);
   useEffect(() => () => {
     const p = parts;
     [...p.fire, p.capMat, p.stemMat, p.ringMat, p.ring2Mat, p.screenMat, p.core, p.discMat, p.flashMat, p.silMat, p.smoke.mat, p.dust.mat, p.embers.mat, p.ash.mat, p.debris.mat].forEach((m) => m.dispose());
     [p.sphere, p.torus, p.dome, p.wall, p.disc, p.silGeo, p.cyl, p.ringGeo, p.quad, p.smoke.geo, p.dust.geo, p.embers.geo, p.ash.geo, p.debris.geo].forEach((g) => g.dispose());
   }, [parts]);
 
-  // blast impulse for the cards + Full Nuke HUD blow-away
+  // unmount cleanup for the blast impulse + camera punch (the impulse itself is
+  // fired from the frame loop at the presented flash — see useFrame — not from a
+  // wall-clock timer that a blocked mount could fire late or early)
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      fx.blast = { start: performance.now(), hand: full, ...(mega ? { mega: true as const } : {}) };
-      if (full) blowHud();
-    }, FLASH * 1000);
     const fov0 = baseFov.current;
-    return () => { clearTimeout(t); cam.fov = fov0; cam.updateProjectionMatrix(); fx.blast = null; document.querySelector('.table-screen')?.classList.remove('nuke-blow'); invalidate(); };
-  }, [full, mega, cam, invalidate]);
+    return () => { cam.fov = fov0; cam.updateProjectionMatrix(); fx.blast = null; document.querySelector('.table-screen')?.classList.remove('nuke-blow'); invalidate(); };
+  }, [cam, invalidate]);
 
   // frameloop is 'demand'. Keep asking for frames from a timer, not only from useFrame: a setState
   // or a thrown post pass can swallow the in-frame invalidate and leave the white flash on screen.
@@ -493,11 +587,29 @@ function NukeRun({ start, full, mega, len, detail, post, octaves, screen, onBail
     // unmount on the next turn — tearing the tree down inside the subscriber loop wedges the demand loop
     window.setTimeout(() => bailRef.current(), 0);
   };
+  // The blast's clock is anchored at its first PRESENTED frame, not at the emit:
+  // a hiccup (shader compile, a busy main thread) delays the show instead of
+  // consuming it. Warp captures still pin the clock exactly as before.
+  const clockStart = useRef<number | null>(null);
+  const presented = useRef(false);
+  const blasted = useRef(false);
   useFrame(() => {
    try {
-    const T = fx.warp ?? (performance.now() - start) / 1000;
+    const now = performance.now();
+    if (clockStart.current === null) {
+      clockStart.current = now;
+      if (!presented.current) { presented.current = true; onFirstFrame(); }
+    }
+    const T = fx.warp ?? (now - clockStart.current) / 1000;
     (window as unknown as { __bwmNukeT?: number }).__bwmNukeT = T;
     invalidate();
+    // blast impulse for the cards + Full Nuke HUD blow-away, fired on the presented
+    // clock at the flash (Card3D reads fx.blast on the same presented timeline)
+    if (!blasted.current && T >= FLASH) {
+      blasted.current = true;
+      fx.blast = { start: performance.now(), hand: full, ...(mega ? { mega: true as const } : {}) };
+      if (full) blowHud();
+    }
     const ease = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
     // the fade window rides the run's length: (len − 1.05) → len (3.6 s nuke: the shipped 2.55/0.95)
     const fade = 1 - Math.min(1, Math.max(0, (T - (len - 1.05)) / 0.95));

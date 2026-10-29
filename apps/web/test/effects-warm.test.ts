@@ -23,6 +23,9 @@ describe('effect warm', () => {
     const tornado = readFileSync(new URL('../src/three/Tornado3D.tsx', import.meta.url), 'utf8');
     expect(tornado).toContain('compileAsync');
     expect(tornado).toContain('warmTornado');
+    const nuke = readFileSync(new URL('../src/three/Nuke3D.tsx', import.meta.url), 'utf8');
+    expect(nuke).toContain('compileAsync');
+    expect(nuke).toContain('warmNuke');
   });
 
   it('starts the shader give-up only once the compile can run', async () => {

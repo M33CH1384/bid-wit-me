@@ -417,7 +417,12 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     }
     // starts winding up ~0.4 s before the pull, flings at 1.25 s, gone by ~1.9 s
     // u = 0 is the spin-up; u = 1.65 is the fling (t = 1.25s). Patterns fire as those marks are crossed.
-    const u = (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) + 0.4;
+    // The clock runs from the first frame PRESENTED at/after the scheduled start
+    // (T.presentedAt, stamped here): a blocked frame delays the spin-up instead of
+    // eating it — the same presentation anchoring as the nuke's clock.
+    const now = performance.now();
+    if (T.presentedAt === undefined && now >= T.start) T.presentedAt = now;
+    const u = (fx.warp !== null ? fx.warp : (now - (T.presentedAt ?? T.start)) / 1000) + 0.4;
     if (!spun.current && u >= 0) { spun.current = true; haptic(HAPTIC.tornadoSpin, 'tornado-spin'); }
     if (!hit.current && u >= 1.65) { hit.current = true; haptic(HAPTIC.tornadoImpact, 'tornado-impact'); }
     // the ladder: this funnel blends from the previous rung to its claimed

@@ -18,6 +18,7 @@ export interface FxWarmTimes {
   audioMs: number;
   sheetMs: number;
   tornadoMs: number;
+  nukeMs: number;
   chromeMs: number;
   totalMs: number;
   timedOut: boolean;
@@ -152,16 +153,26 @@ export function warmTableEffects(): Promise<FxWarmTimes> {
       const [ready, mod] = await Promise.all([rendererReady(), importChunk(() => import('../three/Tornado3D'))]);
       return compileAfterReady(Promise.resolve(), () => mod.warmTornado(ready.gl, ready.camera, ready.quality), undefined);
     })();
-    const [holeR, tapeR, audioR, chromeR, sheetR, tornadoR] = await Promise.all([hole, tape, audio, chrome, sheet, tornado]);
+    // the blast warms beside the funnel: its shaders used to compile inside the
+    // first blast frame (the hero-freeze fix, 2026-10-29) — same loader window.
+    // Its compile waits for the funnel's: both warms drive one renderer, and
+    // interleaved setRenderTarget/render sections could paint a warm frame onto
+    // the visible canvas (the main thread serializes them in practice anyway).
+    const nuke = (async () => {
+      const [ready, mod] = await Promise.all([rendererReady(), importChunk(() => import('../three/Nuke3D'))]);
+      return compileAfterReady(tornado, () => mod.warmNuke(ready.gl, ready.camera, ready.quality), undefined);
+    })();
+    const [holeR, tapeR, audioR, chromeR, sheetR, tornadoR, nukeR] = await Promise.all([hole, tape, audio, chrome, sheet, tornado, nuke]);
     const times: FxWarmTimes = {
       holeMs: holeR.ms,
       tapeMs: tapeR.ms,
       audioMs: audioR.ms,
       sheetMs: sheetR.timedOut ? -1 : sheetR.ms,
       tornadoMs: tornadoR.timedOut ? -1 : tornadoR.ms,
+      nukeMs: nukeR.timedOut ? -1 : nukeR.ms,
       chromeMs: chromeR.ms,
       totalMs: Math.round(performance.now() - started),
-      timedOut: sheetR.timedOut || tornadoR.timedOut,
+      timedOut: sheetR.timedOut || tornadoR.timedOut || nukeR.timedOut,
     };
     const w = window as unknown as { __bwmFxWarm?: FxWarmTimes; __bwmEffectsAt?: number };
     w.__bwmFxWarm = times;
@@ -195,6 +206,10 @@ export async function measureHotFire(): Promise<Record<string, number>> {
     await lap('tornado', async () => {
       const mod = await importChunk(() => import('../three/Tornado3D'));
       await mod.warmTornado(ready.gl, ready.camera, ready.quality);
+    });
+    await lap('nuke', async () => {
+      const mod = await importChunk(() => import('../three/Nuke3D'));
+      await mod.warmNuke(ready.gl, ready.camera, ready.quality);
     });
   }
   await lap('chrome', () => warmChrome());

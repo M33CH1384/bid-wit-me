@@ -305,7 +305,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (!ig) return false;
     // Already flung. A later frame must not put this mesh back on the trick or in the hand.
     if (st.gone) { ig.visible = false; return true; }
-    const u = T ? (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) : -1;
+    // the cards ride the funnel's presented clock (Tornado3D stamps presentedAt on
+    // its first frame at/after the scheduled start; whoever renders first stamps it)
+    if (T && T.presentedAt === undefined && performance.now() >= T.start) T.presentedAt = performance.now();
+    const u = T ? (fx.warp !== null ? fx.warp : (performance.now() - (T.presentedAt ?? T.start)) / 1000) : -1;
     if (!T || u < 0) {
       const next = releaseTornadoCard({ taken: st.on, gone: st.gone, visible: ig.visible });
       st.gone = next.gone;
