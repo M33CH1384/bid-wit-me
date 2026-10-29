@@ -1775,16 +1775,23 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .run-it-btn.attention { animation: runit-in .35s cubic-bezier(.2,1.4,.4,1) both, runit-attn 1s ease-in-out .35s infinite; }
 
 /* --- misdeal: the call button (bidding only, engine-gated) and the face-up thrown hand --- */
+/* NO entrance animation on the call itself (owner, 2026-10-29: "I didn't get a misdeal
+   option"): the button used to ride runit-in, whose first frame is opacity 0 — and the
+   offer appears exactly when the frame clock is least reliable (fresh table load, a
+   rotation rebuilding the canvas), where a stalled animation timeline parks the button
+   at that first frame, invisible in both placements, until the player's own bid closes
+   the window. The gold pill is visible from its first painted frame; the in-panel pulse
+   below animates box-shadow only, so it can never hide or shrink the call either. */
 .misdeal-wrap { position: fixed; left: 50%; bottom: calc(26vh + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 12; }
 .misdeal-btn { font-family: var(--display); font-weight: 900; font-style: italic; font-size: 19px; letter-spacing: .04em; text-transform: uppercase; color: #231303; padding: 9px 20px 10px; border-radius: 999px; border: 2px solid rgba(255,255,255,.85); cursor: pointer;
-  background: linear-gradient(180deg, #ffd75e, #f59e0b); box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(245,158,11,.5); animation: runit-in .35s cubic-bezier(.2,1.4,.4,1) both; }
+  background: linear-gradient(180deg, #ffd75e, #f59e0b); box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(245,158,11,.5); }
 .misdeal-btn:hover { filter: brightness(1.08); }
 .misdeal-btn:active { transform: scale(.97); }
 /* In-panel misdeal call: sits inside the bid panel under the number grid, full width, gently pulsing so it's impossible to miss. */
-.misdeal-in-panel { width: 100%; margin-top: 4px; animation: runit-in .35s cubic-bezier(.2,1.4,.4,1) both, misdeal-pulse 1.6s ease-in-out 1s infinite; }
+.misdeal-in-panel { width: 100%; margin-top: 4px; animation: misdeal-pulse 1.6s ease-in-out 1s infinite; }
 @keyframes misdeal-pulse { 0%, 100% { box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(245,158,11,.5); } 50% { box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 32px rgba(245,158,11,.9); } }
 /* In-panel misdeal call: sits inside the bid panel under the number grid, full width, gently pulsing so it's impossible to miss. */
-.misdeal-in-panel { width: 100%; margin-top: 4px; animation: runit-in .35s cubic-bezier(.2,1.4,.4,1) both, misdeal-pulse 1.6s ease-in-out 1s infinite; }
+.misdeal-in-panel { width: 100%; margin-top: 4px; animation: misdeal-pulse 1.6s ease-in-out 1s infinite; }
 @keyframes misdeal-pulse { 0%, 100% { box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(245,158,11,.5); } 50% { box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 32px rgba(245,158,11,.9); } }
 /* The AVAILABLE in-panel call must carry its own paint. The panel's generic button
    rule (.bid-panel button — class + element) out-specifies .misdeal-btn (class only)
