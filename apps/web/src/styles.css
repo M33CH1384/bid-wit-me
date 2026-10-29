@@ -2494,7 +2494,14 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   }
   .rw-head { grid-area: head; }
   .rw-postgame { grid-area: report; margin: 0; }
-  .rw-rows { grid-area: rows; }
+  /* Middle column vertically centered (owner, 2026-10-29): the rows stack
+     used to start at the top of its full-height area while the actions rail
+     centered its buttons, so a short stack (XP + rating) floated high
+     against the buttons. Both areas span the same two grid rows, so
+     centering the rows stack puts its middle on the rail's middle. When
+     extra rows (achievements, challenges, card-up) make the stack the
+     tallest column there is no slack and centering is a no-op. */
+  .rw-rows { grid-area: rows; justify-content: center; }
   .rw-actions { grid-area: actions; margin-top: 0; gap: 8px; justify-content: center; }
   .rw-row { padding: 8px 10px; }
   .rw-actions .primary.big { min-height: 44px; }

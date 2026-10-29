@@ -44,8 +44,17 @@ describe('rewards screen: LANDSCAPE FIT — the celebration starts in the initia
   it('every card child has its grid area (head, report, rows, actions)', () => {
     expect(rwBlock).toMatch(/\.rw-head \{ grid-area: head; \}/);
     expect(rwBlock).toMatch(/\.rw-postgame \{ grid-area: report; margin: 0; \}/);
-    expect(rwBlock).toMatch(/\.rw-rows \{ grid-area: rows; \}/);
+    expect(rwBlock).toMatch(/\.rw-rows \{ grid-area: rows; justify-content: center; \}/);
     expect(rwBlock).toMatch(/\.rw-actions \{ grid-area: actions; margin-top: 0;/);
+  });
+
+  it('the middle column is vertically centered against the actions rail (owner, 2026-10-29)', () => {
+    // Rows and actions areas span the same two grid rows, so both stacks
+    // centering on their area puts them on the same vertical middle: a
+    // short rows stack (XP + rating) lines up with the centered buttons
+    // instead of floating at the top of the card.
+    expect(rwBlock).toMatch(/\.rw-rows \{[^}]*justify-content: center;/);
+    expect(rwBlock).toMatch(/\.rw-actions \{[^}]*justify-content: center;/);
   });
 
   it('the ticker clearance is budgeted: report table and headline trim down in landscape', () => {
