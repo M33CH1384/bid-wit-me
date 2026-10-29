@@ -203,10 +203,13 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
   // branch — and their NEW bespoke rooms (the Yacht Deck, the Beach
   // Cabana) mount for every High table, all-code, so the ledger skip
   // holds venue-wide at High and Low keeps the ledger.
+  // Batch C3 (rooftop + vegas) extends VENUE_ROOMS: their story
+  // rooms (RooftopDuskRoom, LegendsTableRoom) are different rooms
+  // and stay stop-keyed with priority, while the venues' own NEW
+  // rooms (Rooftop Skyline, Vegas Casino Floor) mount for every
+  // non-story High table — the same ledger skip, Low unchanged.
   const SEAMS: [string, string][] = [
     ['classic', 'rec-center'],
-    ['rooftop', 'rooftop'],
-    ['vegas', 'legends'],
   ];
   // [venue, its story stop, the Scene branch's venue flag]
   const VENUE_WIDE_SEAMS: [string, string, string][] = [
@@ -219,6 +222,13 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
   const VENUE_ROOMS: [string, string, string, string][] = [
     ['speakeasy', 'corner', 'speakeasy', 'SpeakeasyLoungeRoom'],
     ['grandma', 'porch', 'grandma', 'GrandmasKitchenRoom'],
+    // Batch C3: same shape — the story rooms (RooftopDuskRoom,
+    // LegendsTableRoom) are different rooms and stay stop-keyed
+    // with priority, while the venues' own new rooms (the
+    // Rooftop Skyline, the Vegas Casino Floor) mount for every
+    // non-story High table.
+    ['rooftop', 'rooftop', 'rooftop', 'RooftopSkylineRoom'],
+    ['vegas', 'legends', 'vegas', 'VegasCasinoRoom'],
   ];
   // [venue, the Scene branch's venue flag, the new room] — no story stop
   const NO_STORY_VENUE_ROOMS: [string, string, string][] = [
@@ -304,7 +314,9 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
       // the story term SURVIVES here (unlike the un-scoped rooms):
       // the story branch keeps priority inside the same Scene branch
       expect(scene).toContain(`{${flag} && textured && (props.storyStopId === '${stop}' && props.quality === 'high'`);
-      expect(scene).toContain(`<${room} fxOn={!props.reduceFx} />`);
+      // the mount opens with the fxOn prop (the Rooftop Skyline
+      // also takes handNo for its TOD lock — pinned in its own suite)
+      expect(scene).toContain(`<${room} fxOn={!props.reduceFx}`);
     }
     for (const [venue, flag, room] of NO_STORY_VENUE_ROOMS) {
       expect(scene).toContain(`def.id === '${venue}'`);
@@ -563,6 +575,55 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(r.total).toBe(5);
     expect(r.cappedOut).toBe(false);
     const l = await composeGate('beach', 'low', null).done;
+    expect(l.total).toBe(8);
+  });
+
+  // Batch C3: the rooftop ledger is what preloadCubeVenue(ROOFTOP)
+  // notes — the shared chair GLB, the brushed-concrete floor
+  // file, and the sky poster (no lamp: the cube config has no
+  // pendants). The all-code Rooftop Skyline never requests
+  // them; the dusk story room is procedural too, so story
+  // tables already composed at 5 — regular High tables now
+  // match them, and Low mounts the cube room as before.
+  const ROOFTOP_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/tex/brushed_concrete_512.jpg',
+    '/assets/venues/barbershop/room/sky-poster.jpg',
+  ];
+
+  it('venue room at regular High: the venue ledger is excluded (rooftop 8 → 5)', async () => {
+    noteRoomAssets('rooftop', ROOFTOP_FILES);
+    const r = await composeGate('rooftop', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    // The rooftop story table at the same venue composes identically.
+    const s = await composeGate('rooftop', 'high', 'rooftop').done;
+    expect(s.total).toBe(5);
+    const l = await composeGate('rooftop', 'low', null).done;
+    expect(l.total).toBe(8);
+  });
+
+  // Batch C3: the vegas ledger is what preloadCubeVenue(VEGAS)
+  // notes — the shared chair/lamp GLBs and the dirty-carpet
+  // floor file. The all-code Casino Floor never requests
+  // them; the Legends story room is procedural too, so story
+  // tables already composed at 5 — regular High tables now
+  // match them, and Low mounts the cube room as before.
+  const VEGAS_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/classic/lamp.glb',
+    '/assets/venues/tex/dirty_carpet_512.jpg',
+  ];
+
+  it('venue room at regular High: the venue ledger is excluded (vegas 8 → 5)', async () => {
+    noteRoomAssets('vegas', VEGAS_FILES);
+    const r = await composeGate('vegas', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    // The legends story table at the same venue composes identically.
+    const s = await composeGate('vegas', 'high', 'legends').done;
+    expect(s.total).toBe(5);
+    const l = await composeGate('vegas', 'low', null).done;
     expect(l.total).toBe(8);
   });
 

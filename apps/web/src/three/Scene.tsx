@@ -45,8 +45,10 @@ import ChurchRoom, { preloadChurchRoom } from './ChurchRoom';
 import ChurchBasementRoom from './ChurchBasementRoom';
 import RecCenterGymRoom from './RecCenterGymRoom';
 import RooftopDuskRoom from './RooftopDuskRoom';
+import RooftopSkylineRoom from './RooftopSkylineRoom';
 import HighRisePenthouseRoom from './HighRisePenthouseRoom';
 import LegendsTableRoom from './LegendsTableRoom';
+import VegasCasinoRoom from './VegasCasinoRoom';
 import VegasRoom, { preloadVegasRoom } from './VegasRoom';
 import SpeakeasyRoom, { preloadSpeakeasyRoom } from './SpeakeasyRoom';
 import CornerStreetRoom from './CornerStreetRoom';
@@ -1784,7 +1786,9 @@ export default function Scene(props: SceneProps) {
         : <BarbershopRoom quality={props.quality} handNo={props.handNo} />)}
       {rooftop && textured && (props.storyStopId === 'rooftop' && props.quality === 'high'
         ? <RooftopDuskRoom fxOn={!props.reduceFx} />
-        : <RooftopRoom quality={props.quality} handNo={props.handNo} />)}
+        : props.quality === 'high'
+          ? <RooftopSkylineRoom fxOn={!props.reduceFx} handNo={props.handNo} />
+          : <RooftopRoom quality={props.quality} handNo={props.handNo} />)}
       {yacht && textured && (props.quality === 'high'
         ? <YachtDeckRoom fxOn={!props.reduceFx} />
         : <YachtRoom quality={props.quality} handNo={props.handNo} />)}
@@ -1799,7 +1803,9 @@ export default function Scene(props: SceneProps) {
         : <ChurchRoom quality={props.quality} handNo={props.handNo} />)}
       {vegas && textured && (props.storyStopId === 'legends' && props.quality === 'high'
         ? <LegendsTableRoom fxOn={!props.reduceFx} />
-        : <VegasRoom quality={props.quality} handNo={props.handNo} />)}
+        : props.quality === 'high'
+          ? <VegasCasinoRoom fxOn={!props.reduceFx} />
+          : <VegasRoom quality={props.quality} handNo={props.handNo} />)}
       {speakeasy && textured && (props.storyStopId === 'corner' && props.quality === 'high'
         ? <CornerStreetRoom fxOn={!props.reduceFx} />
         : props.quality === 'high'

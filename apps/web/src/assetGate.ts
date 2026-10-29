@@ -144,6 +144,17 @@ export function roomGlbUrls(
  * venue itself (the Yacht Deck, the Beach Cabana) mounts for every
  * High table, all-code like the others, so the ledger skip holds
  * venue-wide at High and Low keeps the ledger for its cube room.
+ *
+ * Batch C3 (rooftop + vegas) returns to the Batch C1 shape: both
+ * venues host story stops whose rooms are DIFFERENT rooms and
+ * stay stop-keyed with Scene priority — RooftopDuskRoom (stop
+ * `rooftop`, pinned dusk) and LegendsTableRoom (stop `legends`)
+ * — their STORY_SEAMS rows remain. A NEW bespoke room built for
+ * each venue itself (the Rooftop Skyline, carrying the cube
+ * room's local-clock time of day; the Vegas Casino Floor)
+ * mounts for every NON-story High table. Both High branches
+ * are all-code and download nothing, so the ledger skip holds
+ * venue-wide at High exactly as in C1; Low keeps the ledger.
  */
 const STORY_SEAMS: Readonly<Record<string, string>> = {
   classic: 'rec-center',
@@ -161,7 +172,9 @@ const VENUE_WIDE_SEAMS: ReadonlySet<string> = new Set([
   'church',
   'grandma',
   'mansion',
+  'rooftop',
   'speakeasy',
+  'vegas',
   'yacht',
 ]);
 
