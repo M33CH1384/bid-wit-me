@@ -177,19 +177,26 @@ describe('room asset enumeration', () => {
 });
 
 describe('story seam gate composition (owner 2026-10-28: Rec assets never arriving)', () => {
-  // The seam table: venue + stop, High only — one row per seam branch in
-  // Scene.tsx. blockAfterDark has NO seam (the Pj's street room is the venue
-  // room for story and open tables alike), and yacht/beach host no stops.
+  // The seam tables: High only — one row per seam branch in Scene.tsx.
+  // SEAMS is stop-keyed (the bespoke room mounts only on a table carrying
+  // its story stop). VENUE_WIDE_SEAMS is venue-keyed: the venues rollout
+  // (Batch A, 2026-10-28) un-scoped those rooms to every High table at the
+  // venue, so the ledger skip follows the room, not the story flag.
+  // blockAfterDark has NO seam (the Pj's street room is the venue room for
+  // story and open tables alike), and yacht/beach host no stops.
   const SEAMS: [string, string][] = [
     ['classic', 'rec-center'],
-    ['barbershop', 'barbershop'],
     ['rooftop', 'rooftop'],
-    ['backyard', 'cookout'],
-    ['church', 'church-basement'],
     ['vegas', 'legends'],
     ['speakeasy', 'corner'],
     ['grandma', 'porch'],
     ['mansion', 'high-rise'],
+  ];
+  // [venue, its story stop, the Scene branch's venue flag]
+  const VENUE_WIDE_SEAMS: [string, string, string][] = [
+    ['barbershop', 'barbershop', 'barbershop'],
+    ['backyard', 'cookout', 'backyard'],
+    ['church', 'church-basement', 'church'],
   ];
 
   it('every shipped story seam mounts at High, and only at High', () => {
@@ -197,6 +204,19 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
       expect(storySeamMounts(venue, 'high', stop)).toBe(true);
       // Low mounts the venue fallback room — its ledger files are used there.
       expect(storySeamMounts(venue, 'low', stop)).toBe(false);
+    }
+  });
+
+  it('venue-wide seams mount at High for every table at the venue, story or not', () => {
+    for (const [venue, stop] of VENUE_WIDE_SEAMS) {
+      expect(storySeamMounts(venue, 'high', stop)).toBe(true);
+      // A regular table (no stop) and even a mismatched stop still mount
+      // the venue's room — the Scene branch no longer reads the stop.
+      expect(storySeamMounts(venue, 'high', null)).toBe(true);
+      expect(storySeamMounts(venue, 'high', 'rec-center')).toBe(true);
+      // Low mounts the venue fallback room — its ledger files are used there.
+      expect(storySeamMounts(venue, 'low', stop)).toBe(false);
+      expect(storySeamMounts(venue, 'low', null)).toBe(false);
     }
   });
 
@@ -217,6 +237,11 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     for (const [venue, stop] of SEAMS) {
       expect(scene).toContain(`def.id === '${venue}'`);
       expect(scene).toContain(`props.storyStopId === '${stop}' && props.quality === 'high'`);
+    }
+    for (const [venue, stop, flag] of VENUE_WIDE_SEAMS) {
+      expect(scene).toContain(`def.id === '${venue}'`);
+      expect(scene).toContain(`{${flag} && textured && (props.quality === 'high'`);
+      expect(scene).not.toContain(`props.storyStopId === '${stop}'`);
     }
   });
 
@@ -271,6 +296,66 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     const r = await composeGate('classic', 'high', null).done;
     expect(r.total).toBe(10);
     expect(r.cappedOut).toBe(false);
+  });
+
+  // The venues rollout (Batch A un-scope): at barbershop / backyard /
+  // church the bespoke all-code room now mounts for EVERY High table, so a
+  // regular High table's gate must equal the story composition — the
+  // fallback room's ledger (its chair/lamp GLBs, floor, posters, video) is
+  // excluded or the Rec defect reappears at regular tables. Low mounts the
+  // fallback, so the ledger folds in there exactly as before.
+  const BARBER_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/classic/lamp.glb',
+    '/assets/venues/barbershop/room/sky-poster.jpg',
+    '/assets/venues/barbershop/room/street-poster.jpg',
+    '/assets/venues/barbershop/room/sky-day.webm',
+    '/assets/venues/barbershop/room/street.webm',
+  ];
+  const BACKYARD_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/tex/leafy_grass_512.jpg',
+    '/assets/venues/barbershop/room/sky-poster.jpg',
+  ];
+  const CHURCH_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/tex/old_linoleum_flooring_01_512.jpg',
+    '/assets/venues/barbershop/room/sky-poster.jpg',
+  ];
+
+  it('venue-wide seam at regular High: the venue ledger is excluded (barbershop 11 → 5)', async () => {
+    noteRoomAssets('barbershop', BARBER_FILES);
+    const r = await composeGate('barbershop', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    // The story table at the same venue composes identically.
+    const s = await composeGate('barbershop', 'high', 'barbershop').done;
+    expect(s.total).toBe(5);
+  });
+
+  it('venue-wide seam at Low: the venue ledger folds in (the fallback room mounts)', async () => {
+    noteRoomAssets('barbershop', BARBER_FILES);
+    const r = await composeGate('barbershop', 'low', null).done;
+    expect(r.total).toBe(11);
+    expect(r.cappedOut).toBe(false);
+  });
+
+  it('venue-wide seam at regular High: the venue ledger is excluded (backyard 8 → 5)', async () => {
+    noteRoomAssets('backyard', BACKYARD_FILES);
+    const r = await composeGate('backyard', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    const l = await composeGate('backyard', 'low', null).done;
+    expect(l.total).toBe(8);
+  });
+
+  it('venue-wide seam at regular High: the venue ledger is excluded (church 8 → 5)', async () => {
+    noteRoomAssets('church', CHURCH_FILES);
+    const r = await composeGate('church', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    const l = await composeGate('church', 'low', null).done;
+    expect(l.total).toBe(8);
   });
 
   it('Table applies the seam check at the fold-in and publishes pendingAtCap on the probe', () => {

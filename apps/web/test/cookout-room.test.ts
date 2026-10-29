@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /**
- * THE COOKOUT — story Stop 4's 3D room (Batch 3b). Pins the
- * story-scoped seam and the room's certified identity so the
- * yard can't silently regress: the room mounts ONLY on a
- * backyard story table carrying stop `cookout` at High
- * quality; every other backyard table (and Low everywhere)
- * keeps the shipped BackyardRoom, byte-for-byte the same
- * mount as before. The room itself is ALL CODE (the owner's
+ * THE COOKOUT — story Stop 4's 3D room (Batch 3b), un-scoped
+ * to the whole venue by the venues rollout (2026-10-28). Pins
+ * the venue-wide seam and the room's certified identity so
+ * the yard can't silently regress: the room mounts on EVERY
+ * backyard table at High quality (story tables render exactly
+ * as before); Low everywhere keeps the shipped BackyardRoom,
+ * byte-for-byte the same mount as before. The room itself is ALL CODE (the owner's
  * code-first rule) — no GLB loading anywhere — and it carries
  * the Batch 3b identity anchors: the two-storey siding house
  * behind the far seat, the H 1.80 plank fence on three sides,
@@ -35,11 +35,13 @@ describe('the Cookout — story canon', () => {
 });
 
 describe('the Cookout — the Scene seam', () => {
-  it('mounts CookoutYardRoom only for the cookout stop at High', () => {
+  it('mounts CookoutYardRoom for every backyard table at High (venues rollout un-scope)', () => {
     expect(scene).toContain("import CookoutYardRoom from './CookoutYardRoom';");
     expect(scene).toContain(
-      "{backyard && textured && (props.storyStopId === 'cookout' && props.quality === 'high'",
+      "{backyard && textured && (props.quality === 'high'",
     );
+    // The stop term is gone: the room follows the venue, not the story flag.
+    expect(scene).not.toContain("props.storyStopId === 'cookout'");
     expect(scene).toContain('<CookoutYardRoom fxOn={!props.reduceFx} />');
   });
 

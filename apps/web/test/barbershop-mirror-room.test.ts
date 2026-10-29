@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /**
- * THE BARBERSHOP (mirror room) — story Stop 2's 3D room (Batch 4).
- * Pins the story-scoped seam and the room's certified identity so
- * the shop can't silently regress: the room mounts ONLY on a
- * barbershop story table carrying stop `barbershop` at High
- * quality; every other barbershop table (and Low everywhere)
- * keeps the shipped BarbershopRoom, byte-for-byte the same mount
- * as before. The room itself is ALL CODE (the owner's code-first
+ * THE BARBERSHOP (mirror room) — story Stop 2's 3D room (Batch 4),
+ * un-scoped to the whole venue by the venues rollout (2026-10-28).
+ * Pins the venue-wide seam and the room's certified identity so
+ * the shop can't silently regress: the room mounts on EVERY
+ * barbershop table at High quality (story tables render exactly
+ * as before); Low everywhere keeps the shipped BarbershopRoom,
+ * byte-for-byte the same mount as before. The room itself is ALL CODE (the owner's code-first
  * rule) — no GLB loading anywhere — and it carries the Batch 4
  * identity anchors: the mirror wall with three stations behind
  * the far seat, the vintage barber chairs as dressing, the
@@ -35,11 +35,13 @@ describe('the Barbershop (mirror room) — story canon', () => {
 });
 
 describe('the Barbershop (mirror room) — the Scene seam', () => {
-  it('mounts BarbershopMirrorRoom only for the barbershop stop at High', () => {
+  it('mounts BarbershopMirrorRoom for every barbershop table at High (venues rollout un-scope)', () => {
     expect(scene).toContain("import BarbershopMirrorRoom from './BarbershopMirrorRoom';");
     expect(scene).toContain(
-      "{barbershop && textured && (props.storyStopId === 'barbershop' && props.quality === 'high'",
+      "{barbershop && textured && (props.quality === 'high'",
     );
+    // The stop term is gone: the room follows the venue, not the story flag.
+    expect(scene).not.toContain("props.storyStopId === 'barbershop'");
     expect(scene).toContain('<BarbershopMirrorRoom fxOn={!props.reduceFx} />');
   });
 

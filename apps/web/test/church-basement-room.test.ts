@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /**
- * THE CHURCH BASEMENT — story Stop 6's 3D room (Batch 4). Pins
- * the story-scoped seam and the room's certified identity so the
- * basement can't silently regress: the room mounts ONLY on a
- * church story table carrying stop `church-basement` at High
- * quality; every other church table (and Low everywhere) keeps
- * the shipped ChurchRoom (the cube-venue wrapper), byte-for-byte
- * the same mount as before. The room itself is ALL CODE (the
+ * THE CHURCH BASEMENT — story Stop 6's 3D room (Batch 4),
+ * un-scoped to the whole venue by the venues rollout (2026-10-28).
+ * Pins the venue-wide seam and the room's certified identity so
+ * the basement can't silently regress: the room mounts on EVERY
+ * church table at High quality (story tables render exactly as
+ * before); Low everywhere keeps the shipped ChurchRoom (the
+ * cube-venue wrapper), byte-for-byte the same mount as before.
+ * The room itself is ALL CODE (the
  * owner's code-first rule) — no GLB loading anywhere — and it
  * carries the Batch 4 identity anchors: cream cinderblock with
  * high frosted windows, brown tile floor, the kitchen pass-
@@ -37,11 +38,13 @@ describe('the Church Basement — story canon', () => {
 });
 
 describe('the Church Basement — the Scene seam', () => {
-  it('mounts ChurchBasementRoom only for the church-basement stop at High', () => {
+  it('mounts ChurchBasementRoom for every church table at High (venues rollout un-scope)', () => {
     expect(scene).toContain("import ChurchBasementRoom from './ChurchBasementRoom';");
     expect(scene).toContain(
-      "{church && textured && (props.storyStopId === 'church-basement' && props.quality === 'high'",
+      "{church && textured && (props.quality === 'high'",
     );
+    // The stop term is gone: the room follows the venue, not the story flag.
+    expect(scene).not.toContain("props.storyStopId === 'church-basement'");
     expect(scene).toContain('<ChurchBasementRoom fxOn={!props.reduceFx} />');
   });
 

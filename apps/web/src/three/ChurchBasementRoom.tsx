@@ -14,10 +14,12 @@ const FLOOR_Y = -0.9;
  * THE CHURCH BASEMENT — story Stop 6's 3D room (Deacon Ford &
  * Sister Mae).
  *
- * Mounted by Scene only for a story table carrying stop
- * `church-basement` at High quality; every other church table —
- * and Low quality everywhere — keeps the shipped cube-config
- * ChurchRoom (churchLayout), untouched. The room is
+ * Mounted by Scene for every High-quality church table (the
+ * venues rollout un-scoped it from story stop `church-basement`,
+ * 2026-10-28 — the room is the venue's own fellowship hall, no
+ * story-specific dressing); Low quality everywhere keeps the
+ * shipped cube-config ChurchRoom (churchLayout), untouched.
+ * The room is
  * sandbox-certified (ChurchCodeRoom in the immersive sandbox):
  * a fellowship hall in miniature — 8.8 × 8.8 m of painted
  * cinderblock, brown tile floor, a LOW ceiling (floor + 2.95,

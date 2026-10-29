@@ -13,8 +13,11 @@ const FLOOR_Y = -0.9;
 /**
  * THE BARBERSHOP — story Stop 2's 3D room (Mr. Coleman & June).
  *
- * The mirror-wall barbershop, distinct from the non-story venue
- * BarbershopRoom (which stays untouched): three mirror stations
+ * The mirror-wall barbershop, mounted by Scene for every
+ * High-quality barbershop table (the venues rollout un-scoped
+ * it from story stop `barbershop`, 2026-10-28 — the room is the
+ * venue's own shop, no story-specific dressing); the shipped
+ * BarbershopRoom stays as the Low fallback: three mirror stations
  * with dark-wood cabinets on the FAR wall (z=-4.6, behind the far
  * seat), three enamel-and-chrome barber chairs as dressing in
  * front of them, a street storefront of three window bays + a

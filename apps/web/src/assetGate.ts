@@ -79,29 +79,46 @@ export function roomGlbUrls(
  * Low quality mounts the venue fallback room — its files ARE used, so the
  * ledger stays gated there, as it does at every non-story table.
  *
- * This table mirrors Scene.tsx's seam conditions one-for-one (venue +
- * storyStopId, High only); a pin in asset-gate.test.ts holds the two in
- * sync. The Scene's `textured` term is not a term here: it times WHEN a
- * room mounts, never WHICH room mounts.
+ * These tables mirror Scene.tsx's seam conditions one-for-one (High only);
+ * a pin in asset-gate.test.ts holds the two in sync. The Scene's `textured`
+ * term is not a term here: it times WHEN a room mounts, never WHICH room
+ * mounts.
+ *
+ * Two seam shapes exist. STORY_SEAMS is stop-keyed: the bespoke room mounts
+ * only on a table carrying its story stop. VENUE_WIDE_SEAMS is venue-keyed:
+ * the venue's own bespoke room (built for its story stop, same place, no
+ * story-specific dressing) now mounts for EVERY High table at the venue —
+ * the Batch A un-scope of the venues rollout (owner, 2026-10-28: "Now all
+ * the other venues need to be updated the same way"). For those venues the
+ * skip follows the room, not the story flag: a regular High table mounts
+ * the all-code room exactly as the story table does, so folding the venue
+ * ledger in there would re-create the Rec defect at regular tables. Low
+ * still mounts the venue fallback at every venue, so the ledger stays
+ * gated there.
  */
 const STORY_SEAMS: Readonly<Record<string, string>> = {
   classic: 'rec-center',
-  barbershop: 'barbershop',
   rooftop: 'rooftop',
-  backyard: 'cookout',
-  church: 'church-basement',
   vegas: 'legends',
   speakeasy: 'corner',
   grandma: 'porch',
   mansion: 'high-rise',
 };
 
+const VENUE_WIDE_SEAMS: ReadonlySet<string> = new Set([
+  'barbershop',
+  'backyard',
+  'church',
+]);
+
 export function storySeamMounts(
   venue: string,
   quality: 'high' | 'low',
   storyStopId: string | null,
 ): boolean {
-  return quality === 'high' && storyStopId !== null && STORY_SEAMS[venue] === storyStopId;
+  if (quality !== 'high') return false;
+  if (VENUE_WIDE_SEAMS.has(venue)) return true;
+  return storyStopId !== null && STORY_SEAMS[venue] === storyStopId;
 }
 
 /** The loader's full dismissal condition: the original dressed + effects-warm

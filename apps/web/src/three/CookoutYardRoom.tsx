@@ -13,10 +13,12 @@ const FLOOR_Y = -0.9;
 /**
  * THE COOKOUT — story Stop 4's 3D room (Keisha & Teisha).
  *
- * Mounted by Scene only for a story table carrying stop
- * `cookout` at High quality; every other backyard table — and
- * Low quality everywhere — keeps the shipped BackyardRoom,
- * untouched (pinned in test/cookout-room.test.ts). The room is
+ * Mounted by Scene for every High-quality backyard table (the
+ * venues rollout un-scoped it from story stop `cookout`,
+ * 2026-10-28 — the room is the venue's own yard, no
+ * story-specific dressing); Low quality everywhere keeps the
+ * shipped BackyardRoom, untouched (pinned in
+ * test/cookout-room.test.ts). The room is
  * sandbox-certified (CODE-ROOMS-REPORT.md Batch 3b, shots in
  * _immersive3d-work/shots/cookout/): blue-hour backyard, the
  * game table on the grass at yard centre, a two-storey cream

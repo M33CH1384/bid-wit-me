@@ -1692,7 +1692,7 @@ export default function Scene(props: SceneProps) {
       {classic && textured && (props.storyStopId === 'rec-center' && props.quality === 'high'
         ? <RecCenterGymRoom fxOn={!props.reduceFx} />
         : <ClassicStudio quality={props.quality} />)}
-      {barbershop && textured && (props.storyStopId === 'barbershop' && props.quality === 'high'
+      {barbershop && textured && (props.quality === 'high'
         ? <BarbershopMirrorRoom fxOn={!props.reduceFx} />
         : <BarbershopRoom quality={props.quality} handNo={props.handNo} />)}
       {rooftop && textured && (props.storyStopId === 'rooftop' && props.quality === 'high'
@@ -1700,10 +1700,10 @@ export default function Scene(props: SceneProps) {
         : <RooftopRoom quality={props.quality} handNo={props.handNo} />)}
       {yacht && textured && <YachtRoom quality={props.quality} handNo={props.handNo} />}
       {beach && textured && <BeachRoom quality={props.quality} handNo={props.handNo} />}
-      {backyard && textured && (props.storyStopId === 'cookout' && props.quality === 'high'
+      {backyard && textured && (props.quality === 'high'
         ? <CookoutYardRoom fxOn={!props.reduceFx} />
         : <BackyardRoom quality={props.quality} handNo={props.handNo} />)}
-      {church && textured && (props.storyStopId === 'church-basement' && props.quality === 'high'
+      {church && textured && (props.quality === 'high'
         ? <ChurchBasementRoom fxOn={!props.reduceFx} />
         : <ChurchRoom quality={props.quality} handNo={props.handNo} />)}
       {vegas && textured && (props.storyStopId === 'legends' && props.quality === 'high'
