@@ -2318,6 +2318,50 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   @keyframes versus-settle-b { 0% { transform: translateY(-7.5%); } 55% { transform: translateY(-3.75%); } 100% { transform: translateY(-5%); } }
   .versus.done .versus-stage:not(.solo) .versus-side.left, .versus.reduced .versus-stage:not(.solo) .versus-side.left { transform: translateY(5%); }
   .versus.done .versus-stage:not(.solo) .versus-side.right, .versus.reduced .versus-stage:not(.solo) .versus-side.right { transform: translateY(-5%); }
+  /* The scouting cards become a real panel (owner, 2026-10-29: "ESPN would
+     Neva"). At a regular table with no league numbers there is no tape, and
+     the scouting lines floated as orphaned fragments: the partner's line
+     centred in one invisible column of the right pane, the opponents'
+     centred in another, the pair of them dropped into the pane's lower
+     half by the empty tape row, the middle of the screen dead space. With
+     the tape up it was the same scatter one floor down — names stacked
+     over their facts in two invisible columns. The cards now share the
+     tape's shell (same gradient, ring and shadow) under a SCOUTING REPORT
+     header in the tape title's voice, so tape + scouting read as one
+     composed broadcast column beside the stack. The grid-row rule is the
+     other half: with no tape above it, the panel spans both right rows
+     and centres against the stack instead of sinking; with nothing on
+     the right at all, the stage takes the full width and centres alone. */
+  .versus-cards { border-radius: 14px; padding: 8px 12px 9px; gap: 5px 12px;
+    background: linear-gradient(165deg, rgba(var(--purple-rgb), .22), rgba(0,0,0,.38));
+    box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .35), 0 14px 30px rgba(0,0,0,.45); }
+  .versus-cards::before { content: 'SCOUTING REPORT'; grid-column: 1 / -1; font: 800 11px/1 var(--display); letter-spacing: .22em; color: var(--gold); text-align: center; }
+  .versus-shake:not(:has(.versus-tape, .versus-pot.only)) .versus-cards { grid-row: 1 / 3; align-self: center; }
+  .versus-shake:not(:has(.versus-tape, .versus-pot.only, .versus-cards)) .versus-stage { grid-column: 1 / -1; }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (min-width: 721px) {
+  .versus-card-side { align-items: stretch; gap: 4px; }
+  .versus-card-side:nth-child(even) { border-left: 1px solid rgba(var(--edge-rgb), .16); padding-left: 12px; }
+  .versus-card-headline { text-align: left; }
+  .versus-card-line { justify-content: flex-start; flex-wrap: nowrap; }
+  .versus-card-name { flex: 0 0 auto; min-width: 82px; text-align: left; }
+  .versus-card-segs { flex: 1 1 auto; min-width: 0; text-align: left; }
+}
+/* The same panel in the SE/mini band (<=720 wide): realistic max content
+   (a pot tape + an earned pair headline + four full lines) wrapped the
+   283px pane's columns into enough extra rows to scroll the shell. The
+   band compresses instead of redesigning: the stage column narrows to
+   what the stack actually uses, the wordmark and the panels tighten, and
+   the lines set a step smaller — the composition is unchanged, only the
+   air comes out. */
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 720px) {
+  .bwm-loading-card:has(.versus) .bwm-loading-mark { width: min(30%, 120px); }
+  .versus-shake { grid-template-columns: minmax(240px, 272px) minmax(0, 1fr); column-gap: 16px; row-gap: 6px; }
+  .versus-tape:not(.story) { padding: 6px 10px 5px; }
+  .versus-cards { padding: 6px 10px 7px; gap: 4px 10px; }
+  .versus-card-name { font-size: 11px; }
+  .versus-card-segs { font-size: 11.5px; line-height: 1.2; }
 }
 
 /* Stand-in table: painted on the first frame, until the 3D table has rendered (then it fades out) */

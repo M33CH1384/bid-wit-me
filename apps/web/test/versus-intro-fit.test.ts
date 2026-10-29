@@ -17,8 +17,12 @@
  * VS faces, tape, scouting, TAP TO SKIP + progress track — must fit the
  * initial viewport at 932×430, 844×390, 390×844, 430×932 in both themes.
  * The browser-measured gate is probe-versus.mjs (worktree harness, run with
- * ASSERT=1 over the team/pot/guest/story/solo fixtures); these pins hold
- * the CSS structure that measurement depends on, including the story tape's
+ * ASSERT=1 over the team/pot/guest/sparse/full/story/solo/corner fixtures —
+ * sparse is the owner's 2026-10-29 "ESPN would Neva" screenshot table: no
+ * tape, no human line, one partner line, two opponent lines; the probe also
+ * asserts the landscape composition: every scouting line inside the panel,
+ * the label rhythm at the owner phone widths, the unit centred); these pins
+ * hold the CSS structure that measurement depends on, including the story tape's
  * portrait compression and its horizontal-row landscape form (the King
  * card is the max-content case: stakes + three rows + threat + terms +
  * history).
@@ -128,6 +132,46 @@ describe('versus fit: landscape stacks the matchup vertically (owner, 2026-10-29
     const beforeLandscape = css.slice(0, landscapeStart);
     expect(beforeLandscape).not.toContain('versus-in-top');
     expect(beforeLandscape).not.toContain('.versus-stage:not(.solo)');
+  });
+});
+
+describe('versus fit: landscape composes the scouting lines into a panel (owner, 2026-10-29)', () => {
+  it('the cards wear the tape shell under a SCOUTING REPORT header', () => {
+    // same gradient + ring + shadow as .versus-tape, so tape and scouting
+    // read as one broadcast column beside the stack
+    expect(landscape).toMatch(/\.versus-cards \{[^}]*border-radius: 14px;[^}]*background: linear-gradient\(165deg, rgba\(var\(--purple-rgb\), \.22\), rgba\(0,0,0,\.38\)\);/);
+    expect(landscape).toMatch(/\.versus-cards \{[^}]*box-shadow: inset 0 0 0 1px rgba\(var\(--edge-rgb\), \.35\), 0 14px 30px rgba\(0,0,0,\.45\);/);
+    expect(landscape).toContain(".versus-cards::before { content: 'SCOUTING REPORT'; grid-column: 1 / -1;");
+  });
+
+  it('with no tape above it the panel centres against the stack; with nothing right, the stage centres alone', () => {
+    expect(landscape).toContain('.versus-shake:not(:has(.versus-tape, .versus-pot.only)) .versus-cards { grid-row: 1 / 3; align-self: center; }');
+    expect(landscape).toContain('.versus-shake:not(:has(.versus-tape, .versus-pot.only, .versus-cards)) .versus-stage { grid-column: 1 / -1; }');
+    // the story shake always carries its tape, so the centring rules can never fire there
+    expect(landscape).toContain('.versus-shake:has(> .versus-tape.story) { grid-template-areas: "stage tape" "stage tape" "skip skip"; }');
+  });
+
+  it('at the owner phone widths the lines run in a left-anchored label rhythm', () => {
+    expect(landscape).toContain('@media (orientation: landscape) and (max-height: 560px) and (min-width: 721px)');
+    expect(landscape).toContain('.versus-card-side { align-items: stretch; gap: 4px; }');
+    expect(landscape).toContain('.versus-card-side:nth-child(even) { border-left: 1px solid rgba(var(--edge-rgb), .16); padding-left: 12px; }');
+    expect(landscape).toContain('.versus-card-line { justify-content: flex-start; flex-wrap: nowrap; }');
+    expect(landscape).toContain('.versus-card-name { flex: 0 0 auto; min-width: 82px; text-align: left; }');
+    expect(landscape).toContain('.versus-card-segs { flex: 1 1 auto; min-width: 0; text-align: left; }');
+  });
+
+  it('the SE/mini band compresses the same composition instead of redesigning it', () => {
+    expect(landscape).toContain('@media (orientation: landscape) and (max-height: 560px) and (max-width: 720px)');
+    expect(landscape).toContain('.versus-shake { grid-template-columns: minmax(240px, 272px) minmax(0, 1fr); column-gap: 16px; row-gap: 6px; }');
+    expect(landscape).toContain('.versus-cards { padding: 6px 10px 7px; gap: 4px 10px; }');
+    // the story tape keeps its own padding in this band
+    expect(landscape).toContain('.versus-tape:not(.story) { padding: 6px 10px 5px; }');
+  });
+
+  it('portrait keeps the plain stacked cards, byte for byte', () => {
+    expect(css).toContain('.versus-cards { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }');
+    const beforeLandscape = css.slice(0, landscapeStart);
+    expect(beforeLandscape).not.toContain('SCOUTING REPORT');
   });
 });
 
