@@ -379,9 +379,11 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
   }, []);
   useLayoutEffect(() => { paintShade(); }, [shade, paintShade]);
   useEffect(() => {
-    const onResize = () => paintShade();
+    // Rotation streams dozens of resize events; repaint once per frame, not per event.
+    let raf = 0;
+    const onResize = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; paintShade(); }); };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    return () => { if (raf) cancelAnimationFrame(raf); window.removeEventListener('resize', onResize); };
   }, [paintShade]);
   const [, setTick] = useState(0);
 
@@ -417,9 +419,11 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
   };
   useEffect(() => () => { timers.current.forEach((t) => clearTimeout(t)); }, []);
   useEffect(() => {
-    const onResize = () => setTick((x) => x + 1);
+    // Same rotation-stream guard as the shade repaint above: one tick per frame.
+    let raf = 0;
+    const onResize = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; setTick((x) => x + 1); }); };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    return () => { if (raf) cancelAnimationFrame(raf); window.removeEventListener('resize', onResize); };
   }, []);
 
   const addShot = (shot: Omit<Shot, 'id'>, ms: number) => {

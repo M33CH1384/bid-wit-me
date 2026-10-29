@@ -1584,11 +1584,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const fitRef = useRef<() => void>(() => {});
   useEffect(() => {
     if (!bidTurn && !help && !humanExchanging) return;
-    const run = () => fitRef.current();
-    const iv = window.setInterval(run, 250);
+    // Rotation streams resize events; fit() forces layout reads, so coalesce
+    // event-driven fits to one per frame (the 250ms interval still re-fits).
+    let raf = 0;
+    const run = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; fitRef.current(); }); };
+    const iv = window.setInterval(() => fitRef.current(), 250);
     window.addEventListener('resize', run);
     window.visualViewport?.addEventListener('resize', run);
-    return () => { clearInterval(iv); window.removeEventListener('resize', run); window.visualViewport?.removeEventListener('resize', run); };
+    return () => { if (raf) cancelAnimationFrame(raf); clearInterval(iv); window.removeEventListener('resize', run); window.visualViewport?.removeEventListener('resize', run); };
   }, [bidTurn, help, humanExchanging]);
   const bcKey = `${st.seed}:${st.handNo}`;
   const bcOpen = false; void tipCount;

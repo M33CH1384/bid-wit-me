@@ -1762,7 +1762,17 @@ export default function Scene(props: SceneProps) {
           filter: (hits) => hitsInPaintOrder(hits),
         };
       }}
-      resize={{ debounce: 50 }}
+      // Rotation perf (2026-10-29): the measure debounce is TRAILING, and
+      // window-resize / orientationchange feed it directly — at 50ms a
+      // rotation's event stream (Safari fires intermediate sizes faster
+      // than the debounce under load, and Playwright/device streams space
+      // them wider) committed nearly every intermediate size, and each
+      // commit reallocates the MSAA drawing buffer + re-renders the whole
+      // scene (the exact long-task cost ResumeRamp's comment documents at
+      // mount). 200ms collapses a flip to a single settled size commit;
+      // the canvas CSS box already tracks the container, so the old buffer
+      // simply stretches for the beat the OS spends rotating anyway.
+      resize={{ debounce: 200 }}
     >
       <AspectWatcher onAspect={setAspect} />
       <EffectWarmup quality={props.quality} />
