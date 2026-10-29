@@ -66,6 +66,7 @@ import { photoFinish, winMargin } from './animfx/detect';
 import { sideColor } from './ScorePad';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
+import { handClearPx, layoutPublishStale } from './bidPanelFit';
 import { feltHandVisible } from './three/cardFace';
 import {
   VISIT_ARRIVE_MS, VISIT_DEPART_MS, VISIT_SETTLED_MS, VISITOR_ID,
@@ -2484,9 +2485,21 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const tick = () => {
       const el = screenRef.current;
       if (!el) return;
-      const L = (window as unknown as { __bwmLayout?: { hand: { y: number }[] } }).__bwmLayout;
+      const L = (window as unknown as { __bwmLayout?: { w: number; h: number; hand: { y: number }[] } }).__bwmLayout;
+      // Rotation with the panel already open (founder, 2026-10-29: "It's only
+      // blocked if I switch from portrait mode when the bid window is
+      // showing"): on a flip the window's innerHeight turns landscape at
+      // once, while the Scene's layout publish still carries the portrait
+      // canvas's dims + rects until its size commit lands. Mixing the two
+      // computed a negative clear that the 60px floor turned into an anchor
+      // ON the fan. A publish whose stamped dims disagree with the live
+      // window is the other orientation's geometry (bidPanelFit.ts): never
+      // anchor on it — drop the inline var so the panel rides this
+      // orientation's CSS fallback until the publish converges, then the
+      // measured clear takes over again.
+      const stale = !!L && layoutPublishStale(L, window.innerWidth, window.innerHeight);
       let top = Infinity;
-      if (L?.hand?.length) top = Math.min(...L.hand.map((q) => q.y));
+      if (L?.hand?.length && !stale) top = Math.min(...L.hand.map((q) => q.y));
       // The flat (felt) hand publishes nothing to __bwmLayout, and on the founder's
       // iPhone the 3D layout publish cannot be relied on either (see the plate note
       // above): when the bid panel's anchor waited on the 3D publish alone, it fell
@@ -2500,13 +2513,21 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
         const r = felt.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) top = Math.min(top, r.top);
       }
-      if (!Number.isFinite(top)) return;
-      el.style.setProperty('--hand-clear', `${Math.max(60, Math.round(window.innerHeight - top + 6))}px`);
+      if (!Number.isFinite(top)) {
+        if (stale) el.style.removeProperty('--hand-clear');
+        return;
+      }
+      const clear = handClearPx(top, window.innerHeight);
+      if (clear == null) {
+        if (stale) el.style.removeProperty('--hand-clear');
+        return;
+      }
+      el.style.setProperty('--hand-clear', `${clear}px`);
     };
     tick();
     const t = window.setInterval(tick, 400);
     return () => clearInterval(t);
-  }, [measureHand, vp.short]);
+  }, [measureHand, vp]);
 
   // Versus intro model (boxing match card): sides from the seats at this table.
   // Partnership = two duo units under their team names; cutthroat = one side each.
