@@ -55,7 +55,7 @@
 import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import {
-  Box3, Euler, Group, Mesh, Object3D, Quaternion, Vector3, type Material,
+  Box3, Euler, Group, Mesh, Object3D, Quaternion, Vector3, type Material, type MeshStandardMaterial,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -135,6 +135,21 @@ const FIGURE_REGISTERS: Record<string, FigureRegister> = {
 const FIGURE_URLS: Record<string, string> = Object.fromEntries(
   PORCH_FIGURE_GLBS.map((f) => [f.id, f.url]),
 );
+
+/* Figure fill (owner verdict 2026-10-29: the seated cast read "very
+ * dark" on device — the left seat measured ~39 luminance against the
+ * felt's ~170 in the pilot's own captures: the porch key rakes in
+ * from the player's right and the side seats sit in silhouette).
+ * Each seated figure gets ONE small warm point light just off its
+ * chest on the table side: it lights the PERSON — short range and
+ * inverse-square falloff keep the room's golden-hour mood and the
+ * felt's exposure as they were. The fills mount inside this module,
+ * so they exist exactly where the figures do (solo Porch story,
+ * High) and nowhere else. */
+const FIGURE_FILL_DIST = 0.55;   // metres off the chair spot, toward the table
+const FIGURE_FILL_Y = 0.40;      // ~chest/head height (the gaze anchors' head line)
+const FIGURE_FILL_RANGE = 2.4;   // hard range cap: the room beyond stays unlit by it
+const FIGURE_FILL_INTENSITY = 1.8;
 
 /* ------------------------------------------------------------------ */
 /* UniRig adapter (sandbox port): roles are DETECTED from the bind     */
@@ -295,10 +310,17 @@ interface PreparedFigure {
   shin: number;
 }
 
-function prepareFigure(scene: Object3D, reg: FigureRegister): PreparedFigure {
+function prepareFigure(scene: Object3D, reg: FigureRegister, maxAniso = 1): PreparedFigure {
   const root = skeletonClone(scene);
   /* Materials: clone per figure (the GLB scene is cache-shared) and
-     take shadows; nothing about the cast art itself changes. */
+     take shadows; nothing about the cast art itself changes. One
+     sampling upgrade (owner 2026-10-29: figures read "REALLY low
+     res"): the GLB textures ship with three.js's default anisotropy
+     of 1, so the side figures — seen at a grazing angle — smear.
+     Raise every map to the device's anisotropy (capped at 8) so the
+     texture the GLBs now carry (re-encoded from the Forge source
+     PNGs at WebP q95; the pilot's first pass had squeezed a 2048²
+     photographic texture into 96–208 KB) actually resolves. */
   root.traverse((o) => {
     const m = o as Mesh;
     if (!(m.isMesh || (m as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh)) return;
@@ -306,6 +328,15 @@ function prepareFigure(scene: Object3D, reg: FigureRegister): PreparedFigure {
     const mats = (Array.isArray(m.material) ? m.material : [m.material]) as Material[];
     const cloned = mats.map((mt) => mt.clone());
     m.material = Array.isArray(m.material) ? cloned : cloned[0]!;
+    if (maxAniso > 1) {
+      for (const mt of cloned) {
+        const std = mt as MeshStandardMaterial;
+        for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap'] as const) {
+          const tex = std[key];
+          if (tex && tex.anisotropy !== maxAniso) { tex.anisotropy = maxAniso; tex.needsUpdate = true; }
+        }
+      }
+    }
   });
   /* Detached, unrotated holder: world == figure-local for everything
      measured below, whatever seat the figure will sit at. */
@@ -417,7 +448,11 @@ interface FigureProps {
 
 function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate, anchors }: FigureProps) {
   const gltf = useLoader(GLTFLoader, url);
-  const prep = useMemo(() => prepareFigure(gltf.scene, reg), [gltf, reg]);
+  const gl = useThree((s) => s.gl);
+  const prep = useMemo(
+    () => prepareFigure(gltf.scene, reg, Math.min(8, gl.capabilities.getMaxAnisotropy())),
+    [gltf, reg, gl],
+  );
   const groupRef = useRef<Group>(null!);
   const headState = useRef({ yaw: 0, pitch: 0, next: 0, idx: 0 });
   const restCur = useRef<{ drop: number; pinch: number } | null>(null);
@@ -806,6 +841,21 @@ export default function PorchFigures({ seats, positions, n, handCounts, activeSe
   }, [seats, positions]);
   return (
     <>
+      {seats.map((id, seat) => {
+        if (!id) return null;
+        const spot = CHAIR_SPOTS[SPOT_INDEX[positions[seat]!]]!;
+        const d = seatDir(positions[seat]!, n);
+        return (
+          <pointLight
+            key={`fill-${seat}`}
+            position={[spot.x - d.x * FIGURE_FILL_DIST, FIGURE_FILL_Y, spot.z - d.z * FIGURE_FILL_DIST]}
+            color="#ffd9ae"
+            intensity={FIGURE_FILL_INTENSITY}
+            distance={FIGURE_FILL_RANGE}
+            decay={2}
+          />
+        );
+      })}
       {seats.map((id, seat) => {
         if (!id) return null;
         const reg = FIGURE_REGISTERS[id];

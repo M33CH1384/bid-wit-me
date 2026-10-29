@@ -110,6 +110,40 @@ describe('the figures module', () => {
   });
 });
 
+describe('the figure quality fix (owner verdict 2026-10-29: "very dark" + "REALLY low res")', () => {
+  const fig = src('src/three/PorchFigures.tsx');
+
+  it('lights the PEOPLE, not the room: one short-range warm fill per seated figure, inside this module only', () => {
+    expect(fig).toContain('FIGURE_FILL_INTENSITY');
+    expect(fig).toContain('FIGURE_FILL_RANGE = 2.4');
+    expect(fig).toContain('<pointLight');
+    expect(fig).toContain('decay={2}');
+    // the room module itself gains no lights from the fix
+    expect(src('src/three/PorchDeckRoom.tsx')).not.toContain('FIGURE_FILL');
+  });
+
+  it('raises texture anisotropy to the device cap (<=8) instead of the three.js default of 1', () => {
+    expect(fig).toContain('Math.min(8, gl.capabilities.getMaxAnisotropy())');
+    expect(fig).toContain('tex.anisotropy = maxAniso');
+  });
+
+  it('the shipped GLBs carry full-quality body textures, not the squeezed first pass', () => {
+    // The pilot's first-pass GLBs squeezed a 2048x2048 photographic body
+    // texture into 96-208 KB of WebP and the cast read "REALLY low res"
+    // on device. The fix re-encoded from the Forge source PNGs at q95
+    // (Dee 482 KB, Pat 240 KB, Ray 336 KB). These floors sit between the
+    // two generations so a re-squeeze fails here first.
+    const floors: Record<string, number> = { dee: 400_000, pat: 200_000, uncleRay: 250_000 };
+    for (const f of PORCH_FIGURE_GLBS) {
+      const buf = readFileSync(join(process.cwd(), 'apps/web', 'public', f.url));
+      const jsonLen = buf.readUInt32LE(12);
+      const gltf = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'));
+      const largest = Math.max(...gltf.images.map((im: { bufferView: number }) => gltf.bufferViews[im.bufferView].byteLength));
+      expect(largest, `${f.id} body texture`).toBeGreaterThan(floors[f.id]!);
+    }
+  });
+});
+
 describe('the people-framing camera (ratification candidate)', () => {
   it('Scene carries the sandbox Phase C offsets and applies them sitting-only at the pilot seam', () => {
     const scene = src('src/three/Scene.tsx');
