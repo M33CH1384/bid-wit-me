@@ -41,6 +41,8 @@ import BeachRoom, { preloadBeachRoom } from './BeachRoom';
 import BackyardRoom, { preloadBackyardRoom } from './BackyardRoom';
 import ChurchRoom, { preloadChurchRoom } from './ChurchRoom';
 import ChurchBasementRoom from './ChurchBasementRoom';
+import RecCenterGymRoom from './RecCenterGymRoom';
+import RooftopDuskRoom from './RooftopDuskRoom';
 import VegasRoom, { preloadVegasRoom } from './VegasRoom';
 import SpeakeasyRoom, { preloadSpeakeasyRoom } from './SpeakeasyRoom';
 import CornerStreetRoom from './CornerStreetRoom';
@@ -1685,11 +1687,15 @@ export default function Scene(props: SceneProps) {
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
       {hi && classic && <HallAttach active={hallGo && textured} />}
       {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} handKey={props.handNo} />}
-      {classic && textured && <ClassicStudio quality={props.quality} />}
+      {classic && textured && (props.storyStopId === 'rec-center' && props.quality === 'high'
+        ? <RecCenterGymRoom fxOn={!props.reduceFx} />
+        : <ClassicStudio quality={props.quality} />)}
       {barbershop && textured && (props.storyStopId === 'barbershop' && props.quality === 'high'
         ? <BarbershopMirrorRoom fxOn={!props.reduceFx} />
         : <BarbershopRoom quality={props.quality} handNo={props.handNo} />)}
-      {rooftop && textured && <RooftopRoom quality={props.quality} handNo={props.handNo} />}
+      {rooftop && textured && (props.storyStopId === 'rooftop' && props.quality === 'high'
+        ? <RooftopDuskRoom fxOn={!props.reduceFx} />
+        : <RooftopRoom quality={props.quality} handNo={props.handNo} />)}
       {yacht && textured && <YachtRoom quality={props.quality} handNo={props.handNo} />}
       {beach && textured && <BeachRoom quality={props.quality} handNo={props.handNo} />}
       {backyard && textured && (props.storyStopId === 'cookout' && props.quality === 'high'
