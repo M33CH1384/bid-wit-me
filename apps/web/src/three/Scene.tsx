@@ -48,7 +48,9 @@ import LegendsTableRoom from './LegendsTableRoom';
 import VegasRoom, { preloadVegasRoom } from './VegasRoom';
 import SpeakeasyRoom, { preloadSpeakeasyRoom } from './SpeakeasyRoom';
 import CornerStreetRoom from './CornerStreetRoom';
+import SpeakeasyLoungeRoom from './SpeakeasyLoungeRoom';
 import PorchDeckRoom from './PorchDeckRoom';
+import GrandmasKitchenRoom from './GrandmasKitchenRoom';
 import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
 import MansionRoom, { preloadMansionRoom } from './MansionRoom';
@@ -162,7 +164,11 @@ export interface SceneProps {
    *  it is the mirror-walled shop, not the venue room — see
    *  BarbershopMirrorRoom; at stop `church-basement` (venueId
    *  church) it is the fellowship basement, not the cube room —
-   *  see ChurchBasementRoom.
+   *  see ChurchBasementRoom. The story branch keeps priority at
+   *  the speakeasy and grandma venues: their NON-story High
+   *  tables mount the venues' own bespoke rooms instead (the
+   *  Speakeasy Lounge, Grandma's Kitchen — Batch C1), while
+   *  Low keeps the cube rooms.
    *  Null/absent = not a story table; every venue renders as itself. */
   storyStopId?: string | null;
   /** Per-seat seated figures (character id or null, by seat): at the
@@ -1714,10 +1720,14 @@ export default function Scene(props: SceneProps) {
         : <VegasRoom quality={props.quality} handNo={props.handNo} />)}
       {speakeasy && textured && (props.storyStopId === 'corner' && props.quality === 'high'
         ? <CornerStreetRoom fxOn={!props.reduceFx} />
-        : <SpeakeasyRoom quality={props.quality} handNo={props.handNo} />)}
+        : props.quality === 'high'
+          ? <SpeakeasyLoungeRoom fxOn={!props.reduceFx} />
+          : <SpeakeasyRoom quality={props.quality} handNo={props.handNo} />)}
       {grandma && textured && (props.storyStopId === 'porch' && props.quality === 'high'
         ? <PorchDeckRoom />
-        : <GrandmaRoom quality={props.quality} handNo={props.handNo} />)}
+        : props.quality === 'high'
+          ? <GrandmasKitchenRoom fxOn={!props.reduceFx} />
+          : <GrandmaRoom quality={props.quality} handNo={props.handNo} />)}
       {mansion && textured && (props.quality === 'high'
         ? <HighRisePenthouseRoom fxOn={!props.reduceFx} />
         : <MansionRoom quality={props.quality} handNo={props.handNo} />)}

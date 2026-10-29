@@ -107,6 +107,17 @@ export function roomGlbUrls(
  * gated there. Mansion joined the venue-wide set in Batch B under the
  * owner's identity call for the adjacent penthouse ("the penthouse is
  * the mansion fantasy done properly").
+ *
+ * Batch C1 (speakeasy + grandma) is the second venue-wide shape: the
+ * story room at those venues is a DIFFERENT place (the Corner street,
+ * the Porch deck) and stays stop-keyed — its STORY_SEAMS row remains
+ * and its Scene branch keeps priority — while a NEW bespoke room
+ * built for the venue itself (the Speakeasy Lounge, Grandma's
+ * Kitchen) mounts for every NON-story High table. Both High branches
+ * are all-code and download nothing, so the ledger skip holds
+ * venue-wide at High exactly as it does for the un-scoped rooms; the
+ * set membership records that Scene mounts a bespoke room for every
+ * High table at the venue, whichever branch serves it.
  */
 const STORY_SEAMS: Readonly<Record<string, string>> = {
   classic: 'rec-center',
@@ -121,7 +132,9 @@ const VENUE_WIDE_SEAMS: ReadonlySet<string> = new Set([
   'barbershop',
   'backyard',
   'church',
+  'grandma',
   'mansion',
+  'speakeasy',
 ]);
 
 export function storySeamMounts(

@@ -182,6 +182,12 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
   // its story stop). VENUE_WIDE_SEAMS is venue-keyed: the venues rollout
   // (Batches A–B, 2026-10-28) un-scoped those rooms to every High table at the
   // venue, so the ledger skip follows the room, not the story flag.
+  // VENUE_ROOMS (Batch C1) is the second venue-keyed shape: the story room
+  // is a different place and stays stop-keyed with Scene priority (the
+  // Corner street, the Porch deck), while a NEW bespoke room built for the
+  // venue itself (the Speakeasy Lounge, Grandma's Kitchen) mounts for
+  // every non-story High table — both High branches are all-code, so the
+  // ledger skip holds venue-wide at High and Low keeps the ledger.
   // blockAfterDark's one seam is the king stop, whose branch lives in
   // Venue3D (the King's Lounge replaces the street room there); the Pj's
   // street room is the venue room for story Stop 9 and open tables alike.
@@ -190,8 +196,6 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     ['classic', 'rec-center'],
     ['rooftop', 'rooftop'],
     ['vegas', 'legends'],
-    ['speakeasy', 'corner'],
-    ['grandma', 'porch'],
   ];
   // [venue, its story stop, the Scene branch's venue flag]
   const VENUE_WIDE_SEAMS: [string, string, string][] = [
@@ -199,6 +203,11 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     ['backyard', 'cookout', 'backyard'],
     ['church', 'church-basement', 'church'],
     ['mansion', 'high-rise', 'mansion'],
+  ];
+  // [venue, its story stop, the Scene branch's venue flag, the new room]
+  const VENUE_ROOMS: [string, string, string, string][] = [
+    ['speakeasy', 'corner', 'speakeasy', 'SpeakeasyLoungeRoom'],
+    ['grandma', 'porch', 'grandma', 'GrandmasKitchenRoom'],
   ];
 
   it('every shipped story seam mounts at High, and only at High', () => {
@@ -222,10 +231,28 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     }
   });
 
+  it('venue rooms (Batch C1) skip the ledger at High for story and regular tables alike', () => {
+    for (const [venue, stop] of VENUE_ROOMS) {
+      // the story table: its stop-keyed room mounts (Corner / Porch)
+      expect(storySeamMounts(venue, 'high', stop)).toBe(true);
+      // the regular table: the venue's own new room mounts
+      expect(storySeamMounts(venue, 'high', null)).toBe(true);
+      // a mismatched stop cannot occur (stops bind to their venue);
+      // if one ever arrived, the venue room — not the fallback —
+      // is what Scene's branch would mount, so the skip is honest
+      expect(storySeamMounts(venue, 'high', 'rec-center')).toBe(true);
+      // Low mounts the cube fallback — its ledger files are used there
+      expect(storySeamMounts(venue, 'low', stop)).toBe(false);
+      expect(storySeamMounts(venue, 'low', null)).toBe(false);
+      expect(gateLedgerVenue(venue, 'high', stop)).toBeNull();
+      expect(gateLedgerVenue(venue, 'high', null)).toBeNull();
+      expect(gateLedgerVenue(venue, 'low', null)).toBe(venue);
+    }
+  });
+
   it('non-story tables and mismatched pairs never count as seams', () => {
     for (const [venue] of SEAMS) expect(storySeamMounts(venue, 'high', null)).toBe(false);
     expect(storySeamMounts('classic', 'high', 'porch')).toBe(false);
-    expect(storySeamMounts('grandma', 'high', 'rec-center')).toBe(false);
     // The street tables: no seam at Stop 9 or open — the sedan keeps riding
     // roomGlbUrls there. (The king stop IS a seam — pinned below.)
     expect(storySeamMounts('blockAfterDark', 'high', 'pjs')).toBe(false);
@@ -244,6 +271,13 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
       expect(scene).toContain(`def.id === '${venue}'`);
       expect(scene).toContain(`{${flag} && textured && (props.quality === 'high'`);
       expect(scene).not.toContain(`props.storyStopId === '${stop}'`);
+    }
+    for (const [venue, stop, flag, room] of VENUE_ROOMS) {
+      expect(scene).toContain(`def.id === '${venue}'`);
+      // the story term SURVIVES here (unlike the un-scoped rooms):
+      // the story branch keeps priority inside the same Scene branch
+      expect(scene).toContain(`{${flag} && textured && (props.storyStopId === '${stop}' && props.quality === 'high'`);
+      expect(scene).toContain(`<${room} fxOn={!props.reduceFx} />`);
     }
   });
 
@@ -409,6 +443,55 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     const s = await composeGate('mansion', 'high', 'high-rise').done;
     expect(s.total).toBe(5);
     const l = await composeGate('mansion', 'low', null).done;
+    expect(l.total).toBe(9);
+  });
+
+  // Batch C1: the speakeasy ledger is what preloadCubeVenue(SPEAKEASY)
+  // notes — the shared chair/lamp GLBs and the herringbone floor file.
+  // The cube room used them at High; the all-code Lounge never requests
+  // them, so a regular High table's gate must equal the story
+  // composition (the Corner's sedan still rides roomGlbUrls, pinned
+  // above — it is not a ledger file). Low mounts the cube room, so the
+  // ledger folds in there exactly as before.
+  const SPEAKEASY_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/classic/lamp.glb',
+    '/assets/venues/tex/herringbone_parquet_512.jpg',
+  ];
+
+  it('venue room at regular High: the venue ledger is excluded (speakeasy 8 → 5)', async () => {
+    noteRoomAssets('speakeasy', SPEAKEASY_FILES);
+    const r = await composeGate('speakeasy', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    // The corner story table at the same venue composes identically.
+    const s = await composeGate('speakeasy', 'high', 'corner').done;
+    expect(s.total).toBe(5);
+    const l = await composeGate('speakeasy', 'low', null).done;
+    expect(l.total).toBe(8);
+  });
+
+  // Batch C1: the grandma ledger is what preloadCubeVenue(GRANDMA)
+  // notes — the shared chair/lamp GLBs, the linoleum floor file, and
+  // the sky poster. The all-code Kitchen never requests them; the
+  // Porch story room is procedural too, so story tables already
+  // composed at 5 — regular High tables now match them.
+  const GRANDMA_FILES = [
+    '/assets/venues/classic/chair.glb',
+    '/assets/venues/classic/lamp.glb',
+    '/assets/venues/tex/linoleum_brown_512.jpg',
+    '/assets/venues/barbershop/room/sky-poster.jpg',
+  ];
+
+  it("venue room at regular High: the venue ledger is excluded (grandma 9 → 5)", async () => {
+    noteRoomAssets('grandma', GRANDMA_FILES);
+    const r = await composeGate('grandma', 'high', null).done;
+    expect(r.total).toBe(5);
+    expect(r.cappedOut).toBe(false);
+    // The porch story table at the same venue composes identically.
+    const s = await composeGate('grandma', 'high', 'porch').done;
+    expect(s.total).toBe(5);
+    const l = await composeGate('grandma', 'low', null).done;
     expect(l.total).toBe(9);
   });
 
