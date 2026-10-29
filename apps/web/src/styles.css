@@ -3662,6 +3662,40 @@ html[data-theme="neon"] .wiz-home::after {
   html[data-theme="neon"] .wiz-home::after { width: 92px; top: 168px; right: calc(50% + 8px); }
 }
 
+/* Emblem smoke (owner, 2026-10-29): the animated layer over the emblem
+   painting above (neon/EmblemSmoke.tsx — slow smoke drifting inside
+   the spade's glass). It takes the SAME box and the SAME feather mask
+   as the emblem pseudo-layer in every regime that layer paints in, so
+   the smoke can only ever appear where the emblem already is; the
+   canvas inside follows the painting's geometry (neon/emblemSmoke.ts
+   mirrors the background math) and clips to the glass in canvas
+   space. Decoration only: absolute (out of the stage grid),
+   pointer-events none, first child of .wiz-home so the shared tree
+   paints over it. Outside Neon it never displays — the emblem doesn't
+   exist there — and under reduced motion / Reduce effects the
+   component renders no canvas, leaving this an empty, invisible box. */
+.emblem-smoke { position: absolute; inset: 0; display: none; pointer-events: none; }
+html[data-theme="neon"] .wiz-home > .emblem-smoke {
+  position: absolute;
+  display: block;
+  -webkit-mask-image: radial-gradient(ellipse 96% 64% at 50% 24%, #000 54%, transparent 88%);
+  mask-image: radial-gradient(ellipse 96% 64% at 50% 24%, #000 54%, transparent 88%);
+}
+.emblem-smoke-canvas { display: block; width: 100%; height: 100%; }
+@media (min-width: 700px) {
+  html[data-theme="neon"] .wiz-home > .emblem-smoke {
+    left: 50%; right: auto; transform: translateX(-50%); width: min(1056px, 100vw);
+    -webkit-mask-image: radial-gradient(ellipse 62% 64% at 50% 24%, #000 50%, transparent 82%);
+    mask-image: radial-gradient(ellipse 62% 64% at 50% 24%, #000 50%, transparent 82%);
+  }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  html[data-theme="neon"] .wiz-home > .emblem-smoke {
+    -webkit-mask-image: radial-gradient(ellipse 30% 58% at 25% 46%, #000 40%, transparent 70%);
+    mask-image: radial-gradient(ellipse 30% 58% at 25% 46%, #000 40%, transparent 70%);
+  }
+}
+
 /* ================= Settings overhaul (2026-10-20) =================
    Owner: the Settings sheet was "way too jumbled", and its Audio quality
    buttons "aren't readable". Presentation only — no setting, control,

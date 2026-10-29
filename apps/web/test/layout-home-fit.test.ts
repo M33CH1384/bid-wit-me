@@ -271,7 +271,10 @@ describe('home structure under both themes', () => {
     const home = c.querySelector('.wiz-home');
     expect(home).toBeTruthy();
     const kids = [...home!.children].map((n) => (n as HTMLElement).className);
-    expect(kids).toEqual(['splash', 'wiz-actions']);
+    // emblem-smoke (2026-10-29) is a decorative first child in BOTH
+    // themes' DOM — an inert wrapper whose canvas exists only in Neon;
+    // the stage's content children keep their order behind it.
+    expect(kids).toEqual(['emblem-smoke', 'splash', 'wiz-actions']);
     // the dock's seat is the header's right cluster, in line with
     // social + gear — the markup never moved; the CSS seats it there
     const slot = c.querySelector('.wiz-bar .wiz-right .dock-slot');

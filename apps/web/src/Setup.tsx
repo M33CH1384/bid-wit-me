@@ -25,6 +25,7 @@ import { OpenTables } from './social/OpenTables';
 import { OFFLINE_PAIR_KEY, TeamNameField, pairTeamNames, useTeamNameFor } from './TeamName';
 import { STORY_OWNER_ONLY, fetchStoryAccess, storyLockedFor } from './story/storyApi';
 import FireCanvas from './fire/FireCanvas';
+import EmblemSmoke from './neon/EmblemSmoke';
 import { HOME_FIRE_TIERS, fetchHomeStreak, homeFireLabel, homeFireTier, type HomeStreak } from './streakFire';
 import { fx, useReduceEffects } from './fx';
 
@@ -354,6 +355,11 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     );
     body = (
       <div className="wiz-home">
+        {/* Emblem smoke (owner, 2026-10-29): animated smoke inside the
+            Neon emblem painting. Decoration in both themes' DOM (an
+            identical, inert wrapper; the canvas exists only in Neon
+            with motion allowed) — never a control, never a destination. */}
+        <EmblemSmoke />
         {fireTier > 0 && (
           <div className="home-streak-fire" data-testid="home-streak-fire" style={{ height: HOME_BAND_HEIGHTS[fireTier] }}>
             <FireCanvas mode="band" params={HOME_FIRE_TIERS[fireTier as 1 | 2 | 3 | 4]} calm={reduceFx || fx.osReducedMotion} />
