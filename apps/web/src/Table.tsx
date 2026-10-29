@@ -15,7 +15,7 @@ import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './t
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueAssetUrls, venueUnlocked } from './venues';
-import { assetSettled, createAssetGate, imageSettled, fetchSettled, loaderStillUp, notedRoomAssets, roomGlbUrls } from './assetGate';
+import { assetSettled, createAssetGate, imageSettled, fetchSettled, loaderStillUp, notedRoomAssets, roomGlbUrls, storySeamMounts } from './assetGate';
 import { type FormEvent, Fragment, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -2514,11 +2514,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     let alive = true;
     const stopId = story?.scene?.stop.id ?? null;
     const gate = createAssetGate(`${settings.quality}:${venue}:${settings.deck}:${stopId ?? 'open'}`);
-    const publish = (extra?: { doneAt: number; cappedOut: boolean }) => {
+    const publish = (extra?: { doneAt: number; cappedOut: boolean; pendingAtCap: string[] }) => {
       const p = gate.progress();
       (window as unknown as { __bwmAssetGate?: unknown }).__bwmAssetGate = {
         key: gate.key, total: p.total, settled: p.settled, failed: gate.failed(),
-        ...(extra ? { cappedOut: extra.cappedOut, doneAt: extra.doneAt } : {}),
+        ...(extra ? { cappedOut: extra.cappedOut, doneAt: extra.doneAt, pendingAtCap: extra.pendingAtCap } : {}),
       };
     };
     const urls = venueAssetUrls(venue, settings.quality);
@@ -2542,18 +2542,27 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     });
     void gate.done.then((r) => {
       if (!alive) return;
-      publish({ doneAt: performance.now(), cappedOut: r.cappedOut });
+      publish({ doneAt: performance.now(), cappedOut: r.cappedOut, pendingAtCap: r.pendingAtCap });
       setAssetsSettled(true);
     });
     // Fold in the room's own files: run the scene's warm pass for this venue
     // (the same pass the splash ran; idempotent) so its preloads note their
     // lists into the ledger, then register whatever it noted and seal. If the
     // scene chunk never lands, the gate's cap still releases the loader.
+    // A story seam is the one exception: at High the Scene mounts the stop's
+    // all-code story room INSTEAD of the venue room, so the venue's ledger
+    // files would never be requested by anything at this table — gating on
+    // them only holds the loader (assetGate.ts: storySeamMounts). The warm
+    // pass still runs (its fetches warm the cache for other tables); only
+    // the fold-in is skipped. Low story tables mount the venue room, so
+    // their ledger folds in as usual.
     void loadScene()
       .then((m) => { try { m.preloadTableAssets(settings.quality, venue); } catch { /* warm is best-effort */ } })
       .catch(() => undefined)
       .then(() => {
-        for (const url of notedRoomAssets(venue)) gate.add(url, assetSettled(url));
+        if (!storySeamMounts(venue, settings.quality, stopId)) {
+          for (const url of notedRoomAssets(venue)) gate.add(url, assetSettled(url));
+        }
         gate.seal();
         publish();
       });

@@ -64,6 +64,46 @@ export function roomGlbUrls(
   return [];
 }
 
+/**
+ * Story seams: at High quality a story table's venue room never mounts — the
+ * Scene swaps in an all-code story room for the stop (Scene.tsx's seam
+ * branches, Venue3D has none: the Pj's street room IS its venue room, for
+ * story and open tables alike). Those story rooms download nothing, so the
+ * venue ledger folded into the gate would be pure dead weight: at the Rec
+ * Center the gate waited on the Classic Studio's chair/lamp/floor set
+ * (~678 KB) that nothing at the table would ever request, could not settle
+ * inside the cap on a cold pipe, and released the loader into a room still
+ * arriving piecemeal (owner device report, 2026-10-28: "Rec center is
+ * having a hard time loading all the assets" / "Some pieces never show up").
+ * Table therefore skips the ledger fold-in exactly when a seam mounts.
+ * Low quality mounts the venue fallback room — its files ARE used, so the
+ * ledger stays gated there, as it does at every non-story table.
+ *
+ * This table mirrors Scene.tsx's seam conditions one-for-one (venue +
+ * storyStopId, High only); a pin in asset-gate.test.ts holds the two in
+ * sync. The Scene's `textured` term is not a term here: it times WHEN a
+ * room mounts, never WHICH room mounts.
+ */
+const STORY_SEAMS: Readonly<Record<string, string>> = {
+  classic: 'rec-center',
+  barbershop: 'barbershop',
+  rooftop: 'rooftop',
+  backyard: 'cookout',
+  church: 'church-basement',
+  vegas: 'legends',
+  speakeasy: 'corner',
+  grandma: 'porch',
+  mansion: 'high-rise',
+};
+
+export function storySeamMounts(
+  venue: string,
+  quality: 'high' | 'low',
+  storyStopId: string | null,
+): boolean {
+  return quality === 'high' && storyStopId !== null && STORY_SEAMS[venue] === storyStopId;
+}
+
 /** The loader's full dismissal condition: the original dressed + effects-warm
  *  gate, AND the asset gate settled. The 40 s give-up still overrides all. */
 export function loaderStillUp(o: { dressed: boolean; effectsWarm: boolean; assetsSettled: boolean; giveUp: boolean }): boolean {
