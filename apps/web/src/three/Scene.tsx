@@ -34,11 +34,13 @@ import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import ClassicStudio, { preloadClassicStudio } from './ClassicStudio';
 import BarbershopRoom, { preloadBarbershopRoom } from './BarbershopRoom';
+import BarbershopMirrorRoom from './BarbershopMirrorRoom';
 import RooftopRoom, { preloadRooftopRoom } from './RooftopRoom';
 import YachtRoom, { preloadYachtRoom } from './YachtRoom';
 import BeachRoom, { preloadBeachRoom } from './BeachRoom';
 import BackyardRoom, { preloadBackyardRoom } from './BackyardRoom';
 import ChurchRoom, { preloadChurchRoom } from './ChurchRoom';
+import ChurchBasementRoom from './ChurchBasementRoom';
 import VegasRoom, { preloadVegasRoom } from './VegasRoom';
 import SpeakeasyRoom, { preloadSpeakeasyRoom } from './SpeakeasyRoom';
 import CornerStreetRoom from './CornerStreetRoom';
@@ -152,7 +154,11 @@ export interface SceneProps {
    *  speakeasy) the High-quality room is the Corner street
    *  environment, not the Speakeasy Lounge — see CornerStreetRoom;
    *  at stop `porch` (venueId grandma) it is the Porch deck, not
-   *  Grandma's Kitchen — see PorchDeckRoom.
+   *  Grandma's Kitchen — see PorchDeckRoom; at stop `barbershop`
+   *  it is the mirror-walled shop, not the venue room — see
+   *  BarbershopMirrorRoom; at stop `church-basement` (venueId
+   *  church) it is the fellowship basement, not the cube room —
+   *  see ChurchBasementRoom.
    *  Null/absent = not a story table; every venue renders as itself. */
   storyStopId?: string | null;
   /** Per-seat seated figures (character id or null, by seat): at the
@@ -1680,14 +1686,18 @@ export default function Scene(props: SceneProps) {
       {hi && classic && <HallAttach active={hallGo && textured} />}
       {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} handKey={props.handNo} />}
       {classic && textured && <ClassicStudio quality={props.quality} />}
-      {barbershop && textured && <BarbershopRoom quality={props.quality} handNo={props.handNo} />}
+      {barbershop && textured && (props.storyStopId === 'barbershop' && props.quality === 'high'
+        ? <BarbershopMirrorRoom fxOn={!props.reduceFx} />
+        : <BarbershopRoom quality={props.quality} handNo={props.handNo} />)}
       {rooftop && textured && <RooftopRoom quality={props.quality} handNo={props.handNo} />}
       {yacht && textured && <YachtRoom quality={props.quality} handNo={props.handNo} />}
       {beach && textured && <BeachRoom quality={props.quality} handNo={props.handNo} />}
       {backyard && textured && (props.storyStopId === 'cookout' && props.quality === 'high'
         ? <CookoutYardRoom fxOn={!props.reduceFx} />
         : <BackyardRoom quality={props.quality} handNo={props.handNo} />)}
-      {church && textured && <ChurchRoom quality={props.quality} handNo={props.handNo} />}
+      {church && textured && (props.storyStopId === 'church-basement' && props.quality === 'high'
+        ? <ChurchBasementRoom fxOn={!props.reduceFx} />
+        : <ChurchRoom quality={props.quality} handNo={props.handNo} />)}
       {vegas && textured && <VegasRoom quality={props.quality} handNo={props.handNo} />}
       {speakeasy && textured && (props.storyStopId === 'corner' && props.quality === 'high'
         ? <CornerStreetRoom fxOn={!props.reduceFx} />
