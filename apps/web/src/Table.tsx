@@ -91,7 +91,12 @@ import { type ChatMsg, LINES, SEAT_COLORS, TALK_LINES, type Toast, TickNumber, U
 import { ReactionChips, ReactionPicker } from './reactions';
 import { type Settings, modeTitle } from './settings';
 import type { SeatPos } from './three/layout';
-import { HUMAN, useGame } from './useGame';
+import { BOT_PLAY_MS, HUMAN, useGame } from './useGame';
+
+/** The server room's mean bot wait (apps/server DEFAULT_TIMING.botMs). Online,
+ *  the client's flight spacing re-asserts the same seeded pacing draw the
+ *  server scheduled with, so the two layers must agree on the base. */
+const ONLINE_BOT_MS = 750;
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
 import { plateTally, rememberHandTally, type HandTally } from './plateStats';
@@ -2892,6 +2897,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           marked={tipMarked}
           collecting={collecting}
           reviewHoldMs={finishedTrickHoldMs({ speed: k, handEnding: st.phase === 'handOver' || st.phase === 'gameOver', run: false, nuke: null })}
+          botPace={{ baseMs: online ? ONLINE_BOT_MS : BOT_PLAY_MS, speedK: online ? 1 : k, botSeats: Array.from({ length: st.rules.playerCount }, (_, i) => i).filter(isBotSeat) }}
         />
       </Suspense>
       {!loadGone && <TableLoading progress={loadProgress} leaving={!loading && (!versusActive || versusStoryDone)} room={storyRoomLabel ?? roomName} seats={loadingSeats} reducedMotion={reduceFx || fx.osReducedMotion} versus={versusModel ? <VersusIntro model={versusModel} reduced={reduceFx || fx.osReducedMotion} ready={!loading} onStoryComplete={() => setVersusStoryDone(true)} /> : undefined} />}

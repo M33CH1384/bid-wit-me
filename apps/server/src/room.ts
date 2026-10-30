@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, canRunIt, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, secureSeed, throwInOpen, viewFor, withCompleteNil,
+  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, botPaceDelayMs, canRunIt, isJoker, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, secureSeed, throwInOpen, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
@@ -2707,7 +2707,18 @@ export class Room {
         // "to play" until some other message arrives. The storage alarm is the same durable
         // clock a human turn already uses.
         if (d.botDueAt == null) {
-          let at = Math.max(now, (d.turnStartedAt ?? now) + leadIn + this.timing.botMs);
+          // Human pacing (owner, 2026-10-30: bots "throw out cards at the exact
+          // same time"): the flat botMs metronome is now the MEAN of a seeded
+          // per-turn draw (rules/pacing.ts) — same average pace, no uniform
+          // tick; the draw is a pure function of the game seed and the turn's
+          // identity, and the client's flight spacing re-asserts the same
+          // draw, so a sweep floor cannot compress two bots together.
+          let at = Math.max(now, (d.turnStartedAt ?? now) + leadIn + botPaceDelayMs({
+            seed: g.seed, handNo: g.handNo, trickNo: g.tricks.length, seat: turn.seat,
+            position: turn.kind === 'play' ? g.trick.plays.length : 0,
+            playerCount: g.rules.playerCount, kind: turn.kind, baseMs: this.timing.botMs,
+            jokerDown: turn.kind === 'play' && g.trick.plays.some((p) => isJoker(p.card)),
+          }));
           // sometimes a bot talks before it plays (never a tell: the line doesn't see its cards), then a short beat
           if (turn.kind === 'play' && slot.kind === 'bot' && d.botTalk !== false) {
             if (d.game) noteTalkHand(this.talkState(), d.game.handNo);

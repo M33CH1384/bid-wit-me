@@ -4,7 +4,7 @@ import { holdIfGuest } from './pendingClaim';
 import { HAPTIC, haptic } from './haptics';
 import { offlineTalk } from './offlineTalk';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Action, type GameHandLog, type GameState, type TableRules, HandLogBuilder, applyAction, canRunIt, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
+import { type Action, type GameHandLog, type GameState, type TableRules, HandLogBuilder, applyAction, botPaceDelayMs, canRunIt, isJoker, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
 import { misdealSequenceMs } from './misdeal';
@@ -12,7 +12,7 @@ import { dealClockArmed } from './three/dealFlight';
 import { finishedTrickHoldMs } from './trickTiming';
 
 export const HUMAN = 0;
-/** Bot think time per played card at normal speed. */
+/** Mean bot think time per played card at normal speed (the seeded pacing draw in @spades/rules varies each turn around it). */
 export const BOT_PLAY_MS = 1200;
 
 // 'turbo' is for automated UI tests only (not shown in the menu)
@@ -181,10 +181,23 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     const turn = pendingTurn(st);
     if (!turn || turn.seat === HUMAN) return;
     // ~0.6s more per bot card than before: a 3-bot trick used to resolve in 1.5s, too fast to follow.
+    // Human pacing (owner, 2026-10-30: bots "throw out cards at the exact same
+    // time"): the wait is no longer the flat constant — botPaceDelayMs draws it
+    // per turn from a seeded band around the same means (1200 play / 650 bid /
+    // 500 exchange), so no two bots share a metronome and no trick ticks at
+    // uniform intervals, while the average pace is unchanged. The draw is a
+    // pure function of the game's seed and the turn's identity, so a replay
+    // paces identically.
     // Consultation (CONSULT_SPEC §5.4/§6.2): a bid may be held a beat longer —
     // the partner finishing their spoken count, an opponent pair conferring.
     // Presentation-only: bot bids only, never the human's clock.
-    const delay = (turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : BOT_PLAY_MS) * k
+    const delay = botPaceDelayMs({
+      seed: st.seed, handNo: st.handNo, trickNo: st.tricks.length, seat: turn.seat,
+      position: turn.kind === 'play' ? st.trick.plays.length : 0,
+      playerCount: st.rules.playerCount, kind: turn.kind,
+      baseMs: turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : BOT_PLAY_MS,
+      jokerDown: turn.kind === 'play' && st.trick.plays.some((p) => isJoker(p.card)),
+    }) * k
       + (turn.kind === 'bid' ? offlineTalk.consultBidDelay(turn.seat, st) : 0);
     let t2 = 0;
     const t = setTimeout(() => {

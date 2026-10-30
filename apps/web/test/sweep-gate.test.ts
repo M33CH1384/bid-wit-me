@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PLAY_FLIGHT_MOTIONS, SEQUENCE_FRAME_SLACK_SEC, lastRestFrameSec, pendingSweepDue, playRestFrameSec, reviewDelaySec, serializedPlayDelaySec, sweepEndFrameSec, sweepMustWait, type PendingSweep } from '../src/three/sweepGate';
+import { PLAY_FLIGHT_MOTIONS, SEQUENCE_FRAME_SLACK_SEC, lastRestFrameSec, pendingSweepDue, playRestFrameSec, reviewDelaySec, serializedPlayDelaySec, spacedPlayDelaySec, sweepEndFrameSec, sweepMustWait, type PendingSweep } from '../src/three/sweepGate';
 import { finishedTrickHoldMs } from '../src/trickTiming';
 
 const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
@@ -407,5 +407,54 @@ describe('the review-anchor contract (Scene + Table)', () => {
     expect(scene).toContain('sweepEndFrameSec(frameNow, freshPileEnd)');
     // Run It and nuke tricks keep their own clocks: anchoring is plain-path only
     expect(scene).toContain('!isNukeTrick(newestPile.plays)');
+  });
+});
+
+describe('bot pacing composition: the sweep floor cannot compress two bots together', () => {
+  it('without a previous start or spacing it is exactly the serialization', () => {
+    const base = { itemDelaySec: 0.2, sweepEndFrameSec: 9.5, nowFrameSec: 9.0 };
+    expect(spacedPlayDelaySec(base)).toBe(serializedPlayDelaySec(base));
+    expect(spacedPlayDelaySec({ ...base, prevStartFrameSec: null, spacingSec: null })).toBe(serializedPlayDelaySec(base));
+    expect(spacedPlayDelaySec({ ...base, prevStartFrameSec: 8.0, spacingSec: null })).toBe(serializedPlayDelaySec(base));
+  });
+
+  it('the spacing term binds only when the floor shifted the previous flight', () => {
+    // previous flight started at 10.0; this bot drew a 1.2 s spacing; at
+    // now = 10.8 with no sweep pending, the flight still waits 0.4 s.
+    expect(spacedPlayDelaySec({ itemDelaySec: 0, sweepEndFrameSec: 0, prevStartFrameSec: 10.0, spacingSec: 1.2, nowFrameSec: 10.8 })).toBeCloseTo(0.4, 9);
+    // when the state clock already waited the full draw, nothing is added:
+    // previous start 10.0, spacing 1.2, now 11.3 -> the term is negative, delay 0.
+    expect(spacedPlayDelaySec({ itemDelaySec: 0, sweepEndFrameSec: 0, prevStartFrameSec: 10.0, spacingSec: 1.2, nowFrameSec: 11.3 })).toBe(0);
+    // the sweep floor still dominates when it is the larger term.
+    expect(spacedPlayDelaySec({ itemDelaySec: 0, sweepEndFrameSec: 12.0, prevStartFrameSec: 10.0, spacingSec: 1.2, nowFrameSec: 10.8 })).toBeCloseTo(1.2, 9);
+    // never negative.
+    expect(spacedPlayDelaySec({ itemDelaySec: 0, sweepEndFrameSec: 0, prevStartFrameSec: 0, spacingSec: 0.3, nowFrameSec: 5 })).toBe(0);
+  });
+
+  it('trace (fast table, k=0.5): a floored first card no longer drags the second bot onto its start frame', () => {
+    // The trick that just completed: last state applied at 0, flight 0.5 ->
+    // rest 0.5; anchored sweep starts at rest + hold(0.575) = 1.075 and ends
+    // 1.075 + 0.55 sweep + 0.05 slack = 1.675 (frame-clock seconds).
+    const sweepEnd = 1.675;
+    // Wall clock: pause releases at 0.575; bot 1's drawn wait (0.6 s at this
+    // speed) lands its state at 1.175 — before the sweep ends, so its flight
+    // is floored to the sweep end.
+    const state1 = 1.175;
+    const start1 = state1 + serializedPlayDelaySec({ itemDelaySec: 0, sweepEndFrameSec: sweepEnd, nowFrameSec: state1 });
+    expect(start1).toBeCloseTo(sweepEnd, 9);
+    // Bot 2 drew a quick 0.372 s: its state lands at 1.547, still before the
+    // sweep ends. With ONLY the sweep floor (the pre-pacing helper) its
+    // flight starts on the very same frame as bot 1's — the reported defect.
+    const state2 = state1 + 0.372;
+    const start2Old = state2 + serializedPlayDelaySec({ itemDelaySec: 0, sweepEndFrameSec: sweepEnd, nowFrameSec: state2 });
+    expect(start2Old).toBeCloseTo(start1, 9);
+    // With the spacing term, bot 2 keeps its full drawn gap from bot 1's
+    // ACTUAL (floored) start: the rhythm resets after the hold.
+    const start2 = state2 + spacedPlayDelaySec({ itemDelaySec: 0, sweepEndFrameSec: sweepEnd, prevStartFrameSec: start1, spacingSec: 0.372, nowFrameSec: state2 });
+    expect(start2 - start1).toBeCloseTo(0.372, 9);
+    // And the serialization invariant itself is untouched: no flight of the
+    // new trick starts before the sweep ends.
+    expect(start1).toBeGreaterThanOrEqual(sweepEnd);
+    expect(start2).toBeGreaterThanOrEqual(sweepEnd);
   });
 });

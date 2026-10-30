@@ -172,3 +172,27 @@ export const SEQUENCE_FRAME_SLACK_SEC = 0.05;
 export function serializedPlayDelaySec(o: { itemDelaySec?: number; sweepEndFrameSec: number; nowFrameSec: number }): number {
   return Math.max(o.itemDelaySec ?? 0, o.sweepEndFrameSec - o.nowFrameSec, 0);
 }
+
+/**
+ * Bot pacing composition (owner, 2026-10-30: "the bots all seem to throw
+ * out cards at the exact same time"). The serialization floor above moves
+ * a flight without moving the state clock that schedules the NEXT bot, so
+ * a floored first card of a trick could be followed almost immediately by
+ * the second bot's card — both in the air together, every trick. The
+ * schedulers (useGame solo/story, the server room online) now vary each
+ * bot's wait with a seeded draw (rules/pacing.ts); this is the same draw
+ * re-asserted on the frame clock as a minimum spacing between the
+ * previous play's flight START and this bot play's: when nothing held the
+ * previous flight back, the state clock already waited the full draw and
+ * the term never binds; when the sweep floor shifted it, the spacing is
+ * measured from the shifted start, so the rhythm resets after the hold
+ * instead of compressing. Human-seat plays never take this term — their
+ * timing is the player's own.
+ */
+export function spacedPlayDelaySec(o: { itemDelaySec?: number; sweepEndFrameSec: number; prevStartFrameSec?: number | null; spacingSec?: number | null; nowFrameSec: number }): number {
+  let d = serializedPlayDelaySec(o);
+  if (o.prevStartFrameSec != null && o.spacingSec != null) {
+    d = Math.max(d, o.prevStartFrameSec + o.spacingSec - o.nowFrameSec, 0);
+  }
+  return d;
+}

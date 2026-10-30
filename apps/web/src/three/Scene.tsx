@@ -3,7 +3,7 @@ import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
-import { type Card, type Play, type Trick, isNukeTrick } from '@spades/rules';
+import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import KingGun from './KingGun';
 import KingRail from './KingRail';
@@ -26,7 +26,7 @@ import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
 import { cardShowsFace, flatFanHidden, handLatched, latchHand, resumeDrawList, showResumeHand3D, visibleFaceIds } from './cardFace';
 import { openingTrickKeys, trickCardLaunches, trickPlayFrom } from './trickFacing';
-import { lastRestFrameSec, playRestFrameSec, reviewDelaySec, serializedPlayDelaySec, sweepEndFrameSec, SEQUENCE_FRAME_SLACK_SEC } from './sweepGate';
+import { lastRestFrameSec, playRestFrameSec, reviewDelaySec, serializedPlayDelaySec, spacedPlayDelaySec, sweepEndFrameSec, SEQUENCE_FRAME_SLACK_SEC } from './sweepGate';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, peekFaceTexture, refreshFacesGradually } from './cardTextures';
@@ -155,6 +155,16 @@ export interface SceneProps {
    *  and the next trick's first flight waits for the sweep that follows.
    *  Absent (watch/broadcast surfaces) = no anchoring, today's behaviour. */
   reviewHoldMs?: number;
+  /** Bot flight pacing (owner, 2026-10-30): the scheduling layer's pacing
+   * identity for bot seats — its base wait (solo BOT_PLAY_MS, online the
+   * server's botMs), the speed multiplier that base runs at on this table
+   * (the table's k offline, 1 online), and which seats are bots. Scene
+   * re-asserts each bot play's seeded draw (rules/pacing.ts — the same
+   * draw the scheduler waited) as a minimum spacing after the previous
+   * play's flight start, so a sweep floor that shifts one flight can no
+   * longer compress the next bot's card against it. Absent (watch /
+   * broadcast surfaces) = no spacing term, today's behaviour. */
+  botPace?: { baseMs: number; speedK: number; botSeats: readonly number[] };
   /** Misdeal redeal, beat 1: every hand on the table glides to the deck spot (the collection
    *  glide) while the call is announced, before the redeal deals out. The deck spot sits in
    *  front of the CURRENT dealer — and a misdeal passes the deal, so on the redealt state this
@@ -820,6 +830,10 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // next trick's flights can be serialized behind that sweep.
   const seqClock = useRef(0);
   const playRests = useRef<{ hand: number; rests: Map<string, number> }>({ hand: -1, rests: new Map() });
+  // Bot pacing: each launched play's flight START on the same frame clock
+  // (item key -> frame second), so the next bot play can be spaced from the
+  // previous flight's actual start even when a sweep floor shifted it.
+  const playStarts = useRef<{ hand: number; starts: Map<string, number> }>({ hand: -1, starts: new Map() });
   const pileSeq = useRef<{ hand: number; seenPileId: string; sweepUntil: number; anchorPileId: string; anchorStart: number }>({ hand: -1, seenPileId: '', sweepUntil: 0, anchorPileId: '', anchorStart: 0 });
   const onDealDone = props.onDealDone;
   const dealArmed = intro && !held0;
@@ -999,6 +1013,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // starts before trick N's collection has finished.
   const frameNow = seqClock.current;
   if (playRests.current.hand !== handNo) playRests.current = { hand: handNo, rests: new Map() };
+  if (playStarts.current.hand !== handNo) playStarts.current = { hand: handNo, starts: new Map() };
   const newestPile = piles[piles.length - 1];
   const newestPileId = newestPile ? newestPile.plays.map((pl) => `${handNo}-${pl.card}`).join(',') : '';
   let freshPile: Trick | null = null;
@@ -1116,13 +1131,39 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // that sweep's end frame, the same way the auto-play stagger floors it
     // in time. Whose turn it is, prompts and timers are untouched; only
     // the flight's start waits.
-    const playDelay = serializedPlayDelaySec({ itemDelaySec: autoDelaySec, sweepEndFrameSec: pileSeq.current.sweepUntil, nowFrameSec: frameNow });
+    // Bot pacing (sweepGate.ts spacedPlayDelaySec): a bot play ALSO keeps
+    // its seeded pacing draw as a minimum spacing after the previous
+    // play's flight start, so the sweep floor shifting one flight cannot
+    // bunch the next bot's card against it — the rhythm the scheduler
+    // (useGame / the server room) drew is the rhythm the table shows.
+    // Human-seat plays (and legacy auto / Run It plays) take the plain
+    // serialization, exactly as before.
+    const pace = props.botPace;
+    const isBotPlay = !!pace && !pl.auto && !pl.run && pace.botSeats.includes(pl.seat);
+    const prevPl = order > 0 ? shownTrick[order - 1] : undefined;
+    const playDelay = isBotPlay
+      ? spacedPlayDelaySec({
+        itemDelaySec: autoDelaySec,
+        sweepEndFrameSec: pileSeq.current.sweepUntil,
+        prevStartFrameSec: prevPl ? playStarts.current.starts.get(`${handNo}-${prevPl.card}`) ?? null : null,
+        spacingSec: (botPaceDelayMs({
+          seed: props.gameSeed ?? '', handNo, trickNo, seat: pl.seat, position: order,
+          playerCount: n, kind: 'play', baseMs: pace.baseMs,
+          jokerDown: shownTrick.slice(0, order).some((p) => isJoker(p.card)),
+        }) * pace.speedK) / 1000,
+        nowFrameSec: frameNow,
+      })
+      : serializedPlayDelaySec({ itemDelaySec: autoDelaySec, sweepEndFrameSec: pileSeq.current.sweepUntil, nowFrameSec: frameNow });
     // Stamp the predicted rest (this build frame + delay + duration, on the
     // same capped-dt frame time Card3D flies on) so this trick's gather can
     // be anchored to its last card's rest when it completes. First show
     // only: a later render must not push the rest past the flight already
-    // in the air.
-    if (launches) playRests.current.rests.set(playKey, playRestFrameSec(frameNow, playDelay, flight.duration));
+    // in the air. The flight's start is stamped alongside (same first-show
+    // rule) for the next bot play's spacing.
+    if (launches) {
+      playRests.current.rests.set(playKey, playRestFrameSec(frameNow, playDelay, flight.duration));
+      playStarts.current.starts.set(playKey, frameNow + playDelay);
+    }
     items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, variant, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !overcut ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : flickV ? { motion: 'flick' as const } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), armed: false, ...(playDelay > 0 ? { delay: playDelay } : {}) });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)

@@ -4,4 +4,5 @@ export * from './config';
 export * from './scoring';
 export * from './game';
 export * from './handlog';
+export * from './pacing';
 export * from './series';

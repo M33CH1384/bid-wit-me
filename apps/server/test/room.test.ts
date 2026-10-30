@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Card, type Seat, bidOrder, checkGameEnd, handSize, legalPlays, makeRules, scoreHand, viewFor } from '@spades/rules';
+import { type Card, type Seat, bidOrder, botPaceDelayMs, checkGameEnd, handSize, isJoker, legalPlays, makeRules, pendingTurn, scoreHand, viewFor } from '@spades/rules';
 import { chooseBotAction } from '@spades/bots';
 import type { GameAction } from '@spades/protocol';
 import { HAND_END_HOLD_MS } from '@spades/protocol';
@@ -362,7 +362,17 @@ describe('game', () => {
     const seat = env.room.data.game!.turn!;
     expect(seat).not.toBe(0);
     expect(env.alarm).toBe(due);
-    expect(due - env.t).toBeLessThanOrEqual(800);
+    // the due time is the seeded pacing draw for this exact turn (bot pacing,
+    // 2026-10-30: botMs is the draw's mean, no longer a flat constant) —
+    // recomputed from the frozen game state the room scheduled against.
+    const gNow = env.room.data.game!;
+    const turnNow = pendingTurn(gNow)!;
+    expect(due - env.t).toBe(botPaceDelayMs({
+      seed: gNow.seed, handNo: gNow.handNo, trickNo: gNow.tricks.length, seat: turnNow.seat,
+      position: turnNow.kind === 'play' ? gNow.trick.plays.length : 0,
+      playerCount: gNow.rules.playerCount, kind: turnNow.kind, baseMs: 800,
+      jokerDown: turnNow.kind === 'play' && gNow.trick.plays.some((p) => isJoker(p.card)),
+    }));
     const before = [...env.room.data.game!.hands[seat]!];
     const legal = legalPlays(env.room.data.game!, seat as Seat);
     const seq = env.room.data.seq;
