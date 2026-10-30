@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import {
-  BoxGeometry, CanvasTexture, ColorManagement, CylinderGeometry,
+  AdditiveBlending, BoxGeometry, CanvasTexture, ColorManagement, CylinderGeometry,
   MeshStandardMaterial, Quaternion, RepeatWrapping, SphereGeometry, SRGBColorSpace,
   Vector3,
 } from 'three';
@@ -62,6 +62,24 @@ const FLOOR_Y = -0.9;
  * x=+2.39 → east wall 4.4 = 2.01 m (the stage platform spans
  * z -4.4..-2.6, north of the east seat's centreline, never
  * behind it). All ≥ 0.6 m.
+ *
+ * SCENARIO PASS (owner, 2026-10-30: "If we can improve the
+ * venue let's do it" — the Pj's-bar pass): the base build read
+ * as a dark void from the seat, so the room's story is now
+ * carried the Pj's way — emissive + spill + halo sprites, not
+ * new fixtures over the felt. The back-bar bottles are backlit
+ * glass (a low self-emissive in each hue, a bloom wash on the
+ * mirror, a glow strip under EACH shelf, two brass pendants
+ * over the counter). The stage earns the band the audio puts
+ * through its wall: an upright piano in black lacquer, foot-
+ * lights along the platform front, a valanced curtain. Booths
+ * get a candle and a light pool on each table; warm haze hangs
+ * high over the bar, the stage and the booths; the speakeasy
+ * door leaks a seam of light at its base with a spill streak
+ * on the parquet; dark beams cross under the tin. The table's
+ * own amber point is UNTOUCHED — nothing new competes with
+ * the cards. All of it is still boxes, canvas and sprites:
+ * no downloads, no lettering, no people dressing.
  */
 
 /* ------------------------------------------------------------------ */
@@ -259,6 +277,43 @@ function makeCurtainTexture() {
   });
 }
 
+/** Soft radial glow (halo sprites, light pools, haze) — the
+ *  Pj's rooms' shared idiom: one radial falloff, tinted per use. */
+function makeGlowTexture() {
+  return canvasTex(128, 128, (ctx, w, h) => {
+    const g = ctx.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+    g.addColorStop(0, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.35, 'rgba(255,255,255,0.32)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  });
+}
+
+/** The upright piano's key strip: ivory keys with the black-key
+ *  pattern drawn as plain rectangles — geometry, not lettering. */
+function makePianoKeyTexture() {
+  return canvasTex(512, 64, (ctx, w, h) => {
+    ctx.fillStyle = '#e8e0cc'; ctx.fillRect(0, 0, w, h);
+    const whites = 29, kw = w / whites;
+    ctx.fillStyle = 'rgba(120,100,70,0.5)';
+    for (let i = 1; i < whites; i++) ctx.fillRect(i * kw - 0.5, 0, 1, h);
+    // black keys in the 2-3 grouping of a real keyboard
+    ctx.fillStyle = '#14100c';
+    const groups = [2, 3, 2, 3, 2, 3, 2, 3];
+    let wi = 0;
+    for (const gsz of groups) {
+      for (let k = 1; k <= gsz; k++) ctx.fillRect((wi + k) * kw - kw * 0.30, 0, kw * 0.6, h * 0.62);
+      wi += gsz + 2;
+      if (wi >= whites - 1) break;
+    }
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(60,40,16,0.20)');
+    grad.addColorStop(1, 'rgba(60,40,16,0)');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /* cached assets                                                        */
 /* ------------------------------------------------------------------ */
@@ -270,6 +325,8 @@ type LoungeAssets = {
   frameBronze: MeshStandardMaterial; glassGreen: MeshStandardMaterial; glassAmber: MeshStandardMaterial;
   glassBrown: MeshStandardMaterial; mirror: MeshStandardMaterial; shadeGlow: MeshStandardMaterial;
   shelfGlow: MeshStandardMaterial; blackSteel: MeshStandardMaterial; stageWood: MeshStandardMaterial;
+  pianoBlack: MeshStandardMaterial; pianoKey: MeshStandardMaterial;
+  glowTex: CanvasTexture;
 };
 
 let ASSETS: LoungeAssets | null = null;
@@ -287,14 +344,20 @@ function assets(): LoungeAssets {
     brass: std({ color: '#c9a24d', roughness: 0.3, metalness: 0.9 }),
     burgundy: std({ color: '#5c1420', roughness: 0.82, metalness: 0.02 }),
     frameBronze: std({ color: '#4a3520', roughness: 0.45, metalness: 0.7 }),
-    glassGreen: std({ color: '#24381e', roughness: 0.16, metalness: 0.1 }),
-    glassAmber: std({ color: '#7a4d16', roughness: 0.16, metalness: 0.1 }),
-    glassBrown: std({ color: '#38242e', roughness: 0.16, metalness: 0.1 }),
+    // the bottle glass carries a low self-emissive in its own
+    // hue — backlit by the shelf glow, it reads as lit glass
+    // in the dark instead of opaque silhouette
+    glassGreen: std({ color: '#24381e', roughness: 0.16, metalness: 0.1, emissive: '#16280d', emissiveIntensity: 0.85 }),
+    glassAmber: std({ color: '#7a4d16', roughness: 0.16, metalness: 0.1, emissive: '#3d2708', emissiveIntensity: 0.9 }),
+    glassBrown: std({ color: '#38242e', roughness: 0.16, metalness: 0.1, emissive: '#221016', emissiveIntensity: 0.85 }),
     mirror: std({ color: '#5d6f66', roughness: 0.1, metalness: 0.92 }),
     shadeGlow: std({ color: '#ffca7a', emissive: '#ffab3d', emissiveIntensity: 1.35, roughness: 0.5, metalness: 0 }),
     shelfGlow: std({ color: '#ffd9a0', emissive: '#ff9e45', emissiveIntensity: 0.95, roughness: 0.8, metalness: 0 }),
     blackSteel: std({ color: '#1d1d20', roughness: 0.42, metalness: 0.8 }),
     stageWood: std({ color: '#33200f', roughness: 0.8, metalness: 0 }),
+    pianoBlack: std({ color: '#0d0d10', roughness: 0.3, metalness: 0.25 }),
+    pianoKey: std({ map: makePianoKeyTexture(), roughness: 0.42, metalness: 0.02 }),
+    glowTex: makeGlowTexture(),
   };
   return ASSETS;
 }
@@ -325,12 +388,12 @@ function GlowBreath({ a, fxOn }: { a: LoungeAssets; fxOn: boolean }) {
 function LoungeLights({ fxOn }: { fxOn: boolean }) {
   return (
     <>
-      <hemisphereLight args={['#ffd9a8', '#2a1408', 0.44]} />
+      <hemisphereLight args={['#ffd9a8', '#2a1408', 0.5]} />
       <directionalLight
         position={[3.5, 6, 2.5]}
         target-position={[0, -0.6, -0.5]}
         color="#ffd2a0"
-        intensity={0.38}
+        intensity={0.44}
         castShadow={fxOn}
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-6} shadow-camera-right={6}
@@ -340,7 +403,7 @@ function LoungeLights({ fxOn }: { fxOn: boolean }) {
       {/* the amber pool over the table — light only, no fixture */}
       <pointLight position={[0, Y(2.3), 0]} intensity={7.5} distance={8.5} decay={2} color="#ffb45c" />
       {/* the bar's warm spill */}
-      <pointLight position={[0, Y(2.1), -3.3]} intensity={4.5} distance={6} decay={2} color="#ff9e45" />
+      <pointLight position={[0, Y(2.1), -3.3]} intensity={5.2} distance={6} decay={2} color="#ff9e45" />
       {/* a low fill so the west booths read */}
       <pointLight position={[-3.4, Y(1.7), 0.2]} intensity={2.0} distance={5.5} decay={2} color="#ffc98a" />
     </>
@@ -406,6 +469,11 @@ function Shell({ a }: { a: LoungeAssets }) {
     box(8.8, 0.045, 0.055, 0, 1.07, 4.375),
     box(0.055, 0.045, 8.8, -4.375, 1.07, 0),
     box(0.055, 0.045, 8.8, 4.375, 1.07, 0),
+    // three dark beams crossing under the tin — depth in the
+    // standing view, clear of every fixture's hang line
+    box(8.8, 0.16, 0.22, 0, WALL_H - 0.08, -2.6),
+    box(8.8, 0.16, 0.22, 0, WALL_H - 0.08, 0),
+    box(8.8, 0.16, 0.22, 0, WALL_H - 0.08, 2.6),
   ]), []);
   return (
     <group>
@@ -482,6 +550,20 @@ function Bar({ a }: { a: LoungeAssets }) {
     tube([0, 0.02, -3.52], [0, 0.24, -3.42], 0.014),
     tube([2.2, 0.02, -3.52], [2.2, 0.24, -3.42], 0.014),
   ]), []);
+  // two pendants over the counter (the booths' idiom): cords,
+  // brass shades, lit bulbs — merged per material
+  const pendantCord = useMemo(() => merged([
+    cyl(0.012, 0.012, 1.12, -1.6, 2.74, -3.72, 6),
+    cyl(0.012, 0.012, 1.12, 1.6, 2.74, -3.72, 6),
+  ]), []);
+  const pendantShade = useMemo(() => merged([
+    cyl(0.035, 0.17, 0.15, -1.6, 2.10, -3.72, 14),
+    cyl(0.035, 0.17, 0.15, 1.6, 2.10, -3.72, 14),
+  ]), []);
+  const pendantBulb = useMemo(() => merged([
+    (() => { const s = new SphereGeometry(0.055, 10, 8); s.translate(-1.6, 2.05, -3.72); return s; })(),
+    (() => { const s = new SphereGeometry(0.055, 10, 8); s.translate(1.6, 2.05, -3.72); return s; })(),
+  ]), []);
   return (
     <group>
       {/* the bar counter: front face at z=-3.55, top at h 1.10 */}
@@ -495,7 +577,7 @@ function Bar({ a }: { a: LoungeAssets }) {
         <cylinderGeometry args={[0.035, 0.04, 0.14, 10]} />
       </mesh>
       {([-0.55, -0.42] as const).map((x) => (
-        <mesh key={x} material={a.mirror} position={[x, Y(1.165), -3.75]} castShadow>
+        <mesh key={x} material={a.glassAmber} position={[x, Y(1.165), -3.75]} castShadow>
           <cylinderGeometry args={[0.032, 0.026, 0.09, 10]} />
         </mesh>
       ))}
@@ -503,12 +585,36 @@ function Bar({ a }: { a: LoungeAssets }) {
       <mesh material={a.mirror} position={[0, Y(1.86), -4.385]}>
         <planeGeometry args={[5.24, 1.44]} />
       </mesh>
+      {/* a warm bloom wash on the mirror, behind the bottles —
+          their silhouettes sit in the bar's own light */}
+      <mesh position={[0, Y(1.86), -4.335]}>
+        <planeGeometry args={[4.9, 1.34]} />
+        <meshBasicMaterial map={a.glowTex} color="#ff9e45" transparent opacity={0.15} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
+      {/* the bar's light pooling on the parquet in front of it —
+          the floor is what the seat cameras actually see */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, FLOOR_Y + 0.004, -2.72]}>
+        <planeGeometry args={[5.4, 1.7]} />
+        <meshBasicMaterial map={a.glowTex} color="#ff9e45" transparent opacity={0.11} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
       {/* shelf boards + their posts */}
       <mesh geometry={shelves} material={a.darkWood} position={[0, FLOOR_Y, 0]} castShadow receiveShadow />
-      {/* the warm glow strip under the top shelf — the flicker target */}
+      {/* the warm glow strip under EACH shelf — the flicker target */}
       <mesh material={a.shelfGlow} position={[0, Y(2.08), -4.06]}>
         <boxGeometry args={[5.1, 0.025, 0.02]} />
       </mesh>
+      <mesh material={a.shelfGlow} position={[0, Y(1.485), -4.06]}>
+        <boxGeometry args={[5.1, 0.025, 0.02]} />
+      </mesh>
+      {/* the counter pendants + their halos */}
+      <mesh geometry={pendantCord} material={a.blackSteel} position={[0, FLOOR_Y, 0]} />
+      <mesh geometry={pendantShade} material={a.brass} position={[0, FLOOR_Y, 0]} castShadow />
+      <mesh geometry={pendantBulb} material={a.shadeGlow} position={[0, FLOOR_Y, 0]} />
+      {([-1.6, 1.6] as const).map((x) => (
+        <sprite key={x} position={[x, Y(2.05), -3.72]} scale={[1.15, 1.15, 1]}>
+          <spriteMaterial map={a.glowTex} color="#ff9e45" transparent opacity={0.30} blending={AdditiveBlending} depthWrite={false} />
+        </sprite>
+      ))}
       {lower.map(({ mat, geo }, i) => (
         <mesh key={`l${i}`} geometry={geo} material={mat} position={[0, FLOOR_Y, 0]} castShadow />
       ))}
@@ -560,6 +666,26 @@ function Booth({ z, a }: { z: number; a: LoungeAssets }) {
       <mesh material={a.shadeGlow} position={[-3.83, 1.875, 0]}>
         <sphereGeometry args={[0.055, 10, 8]} />
       </mesh>
+      {/* its halo + the pool it throws on the booth table */}
+      <sprite position={[-3.83, 1.875, 0]} scale={[1.05, 1.05, 1]}>
+        <spriteMaterial map={a.glowTex} color="#ffab3d" transparent opacity={0.34} blending={AdditiveBlending} depthWrite={false} />
+      </sprite>
+      {/* and the spill pooling on the parquet under the booth */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-3.3, 0.004, 0]}>
+        <planeGeometry args={[1.9, 1.5]} />
+        <meshBasicMaterial map={a.glowTex} color="#ffab3d" transparent opacity={0.08} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-3.83, 0.756, 0]}>
+        <planeGeometry args={[0.58, 0.9]} />
+        <meshBasicMaterial map={a.glowTex} color="#ffab3d" transparent opacity={0.15} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
+      {/* a candle on the booth table: dark-red glass + a glow dot */}
+      <mesh material={a.burgundy} position={[-3.98, 0.778, 0.22]} castShadow>
+        <cylinderGeometry args={[0.017, 0.019, 0.055, 10]} />
+      </mesh>
+      <sprite position={[-3.98, 0.832, 0.22]} scale={[0.2, 0.2, 1]}>
+        <spriteMaterial map={a.glowTex} color="#ffc46b" transparent opacity={0.55} blending={AdditiveBlending} depthWrite={false} />
+      </sprite>
     </group>
   );
 }
@@ -584,6 +710,25 @@ function Stage({ a }: { a: LoungeAssets }) {
     tube([3.72, 0.02, -3.72], [3.8, 0.6, -3.8], 0.013),
     tube([3.98, 0.02, -3.72], [3.9, 0.6, -3.8], 0.013),
   ]), []);
+  // the upright piano, stage left against the curtain — plain
+  // boxes in black lacquer: cabinet, lid, keybed, fallboard,
+  // plinth. The key strip is its own textured plane on top.
+  const piano = useMemo(() => merged([
+    box(1.15, 1.22, 0.55, 2.98, 0.79, -4.06),
+    box(1.19, 0.04, 0.58, 2.98, 1.42, -4.06),
+    box(1.05, 0.06, 0.48, 2.98, 0.21, -4.06),
+    box(1.05, 0.05, 0.20, 2.98, 0.80, -3.72),
+    box(1.05, 0.16, 0.03, 2.98, 0.93, -3.775, -0.15),
+  ]), []);
+  // footlights along the platform's front edge: brass bases
+  const footBases = useMemo(() => merged(
+    [2.70, 3.03, 3.37, 3.70, 4.03].map((x) => cyl(0.038, 0.044, 0.028, x, 0.194, -2.57, 10)),
+  ), []);
+  const footBulbs = useMemo(() => merged(
+    [2.70, 3.03, 3.37, 3.70, 4.03].map((x) => {
+      const s = new SphereGeometry(0.021, 8, 6); s.translate(x, 0.222, -2.57); return s;
+    }),
+  ), []);
   return (
     <group>
       {/* the platform: x 2.55..4.35, z -4.35..-2.6, top h 0.18 */}
@@ -594,17 +739,57 @@ function Stage({ a }: { a: LoungeAssets }) {
       <mesh material={a.curtain} position={[3.42, Y(1.78), -4.385]} receiveShadow>
         <planeGeometry args={[1.95, 2.75]} />
       </mesh>
+      {/* the stage wash on the curtain — the piano and the mic
+          read as dark shapes against their own light */}
+      <mesh position={[3.42, Y(1.55), -4.372]}>
+        <planeGeometry args={[1.9, 2.2]} />
+        <meshBasicMaterial map={a.glowTex} color="#ff9e45" transparent opacity={0.13} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
       <mesh material={a.darkWood} position={[3.42, Y(3.2), -4.36]} castShadow>
         <boxGeometry args={[2.05, 0.16, 0.06]} />
       </mesh>
+      {/* the valance + its brass fringe, and the curtain legs
+          framing the stage picture */}
+      <mesh material={a.curtain} position={[3.42, Y(2.98), -4.345]} castShadow>
+        <boxGeometry args={[2.05, 0.36, 0.06]} />
+      </mesh>
+      <mesh material={a.brass} position={[3.42, Y(2.79), -4.345]}>
+        <boxGeometry args={[2.05, 0.035, 0.065]} />
+      </mesh>
+      <mesh material={a.curtain} position={[2.47, Y(1.60), -4.345]} rotation={[0, 0.10, 0]} receiveShadow>
+        <boxGeometry args={[0.24, 2.75, 0.05]} />
+      </mesh>
+      <mesh material={a.curtain} position={[4.37, Y(1.60), -4.345]} rotation={[0, -0.10, 0]} receiveShadow>
+        <boxGeometry args={[0.24, 2.75, 0.05]} />
+      </mesh>
+      {/* the upright piano + its key strip */}
+      <mesh geometry={piano} material={a.pianoBlack} position={[0, FLOOR_Y, 0]} castShadow receiveShadow />
+      <mesh material={a.pianoKey} rotation={[-Math.PI / 2, 0, 0]} position={[2.98, Y(0.829), -3.715]}>
+        <planeGeometry args={[1.0, 0.13]} />
+      </mesh>
       <mesh geometry={mic} material={a.blackSteel} position={[0, FLOOR_Y, 0]} castShadow />
-      {/* the mic head */}
+      {/* the mic head + its small halo in the stage wash */}
       <mesh material={a.blackSteel} position={[3.10, Y(1.60), -3.20]} rotation={[0, 0, 0.9]} castShadow>
         <cylinderGeometry args={[0.028, 0.032, 0.11, 10]} />
       </mesh>
+      <sprite position={[3.10, Y(1.60), -3.20]} scale={[0.5, 0.5, 1]}>
+        <spriteMaterial map={a.glowTex} color="#ffb45c" transparent opacity={0.20} blending={AdditiveBlending} depthWrite={false} />
+      </sprite>
       <mesh geometry={stool} material={a.darkWood} position={[0, FLOOR_Y, 0]} castShadow />
+      {/* footlights: bases + bulbs, their wash on the platform
+          front, and the spill pooling on the parquet below */}
+      <mesh geometry={footBases} material={a.brass} position={[0, FLOOR_Y, 0]} />
+      <mesh geometry={footBulbs} material={a.shadeGlow} position={[0, FLOOR_Y, 0]} />
+      <mesh position={[3.45, Y(0.09), -2.585]}>
+        <planeGeometry args={[1.8, 0.16]} />
+        <meshBasicMaterial map={a.glowTex} color="#ffb45c" transparent opacity={0.16} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[3.45, Y(0.004), -2.02]}>
+        <planeGeometry args={[1.9, 1.05]} />
+        <meshBasicMaterial map={a.glowTex} color="#ffb45c" transparent opacity={0.10} blending={AdditiveBlending} depthWrite={false} />
+      </mesh>
       {/* a warm stage spot from the curtain side (light only) */}
-      <pointLight position={[3.4, Y(2.6), -3.2]} intensity={2.4} distance={4.5} decay={2} color="#ffb45c" />
+      <pointLight position={[3.4, Y(2.6), -3.2]} intensity={2.8} distance={4.5} decay={2} color="#ffb45c" />
     </group>
   );
 }
@@ -636,6 +821,15 @@ function Door({ a }: { a: LoungeAssets }) {
       {/* the push bar */}
       <mesh material={a.brass} position={[0, 1.02, 0.065]} castShadow>
         <boxGeometry args={[0.7, 0.045, 0.045]} />
+      </mesh>
+      {/* the hidden door leaks light: a warm seam at its base
+          and the spill streaking across the parquet */}
+      <mesh material={a.shelfGlow} position={[0, 0.014, 0.045]}>
+        <boxGeometry args={[0.94, 0.016, 0.018]} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, 0.85]}>
+        <planeGeometry args={[0.95, 1.6]} />
+        <meshBasicMaterial map={a.glowTex} color="#ffb45c" transparent opacity={0.10} blending={AdditiveBlending} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -669,6 +863,31 @@ function Sconces({ a }: { a: LoungeAssets }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* the haze — big soft warm veils hanging high over the bar,     */
+/* the stage and the booths (the Pj's night-haze idiom): they    */
+/* catch the amber light in the air and keep well clear of the   */
+/* felt, so the cards never sit in the murk                      */
+/* ------------------------------------------------------------------ */
+
+function Haze({ a }: { a: LoungeAssets }) {
+  const veils: { pos: [number, number, number]; scale: [number, number, number]; opacity: number }[] = [
+    { pos: [0, Y(2.55), -3.35], scale: [6.4, 2.1, 1], opacity: 0.05 },
+    { pos: [3.4, Y(2.35), -3.15], scale: [3.4, 1.8, 1], opacity: 0.06 },
+    { pos: [-3.55, Y(2.45), 0.2], scale: [3.1, 1.7, 1], opacity: 0.045 },
+    { pos: [0.7, Y(2.65), 1.6], scale: [5.4, 1.9, 1], opacity: 0.032 },
+  ];
+  return (
+    <group>
+      {veils.map(({ pos, scale, opacity }, i) => (
+        <sprite key={i} position={pos} scale={scale}>
+          <spriteMaterial map={a.glowTex} color="#ffca7a" transparent opacity={opacity} blending={AdditiveBlending} depthWrite={false} />
+        </sprite>
+      ))}
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 
 export default function SpeakeasyLoungeRoom({ fxOn }: { fxOn: boolean }) {
   const a = assets();
@@ -688,6 +907,7 @@ export default function SpeakeasyLoungeRoom({ fxOn }: { fxOn: boolean }) {
       <Stage a={a} />
       <Door a={a} />
       <Sconces a={a} />
+      <Haze a={a} />
       {/* NO table here — the shared game table is the anchor. */}
     </group>
   );
