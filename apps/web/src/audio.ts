@@ -203,6 +203,15 @@ export const TRACKS: Track[] = [
   { file: 'overreach', title: 'Overreach', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/overreach/', credit: '"Overreach" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'no-quit', title: 'No Quit', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/no-quit/', credit: '"No Quit" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'busted-jazz', title: 'Busted Jazz', artist: 'HoliznaCC0', license: 'CC0', source: 'https://freemusicarchive.org/music/holiznacc0/lo-fi-and-chill/busted-jazz/' },
+  // Speakeasy Lounge rotation (owner picks, 2026-10-30): four Kevin MacLeod
+  // noir/jazz tracks that play ONLY at the Speakeasy (the venue pin is a closed
+  // list — see ROOM_STYLES in spatial.ts), exactly like The Pj's rotation above.
+  // Spy Glass and Night on the Docks were banked from The Pj's audition; Dances
+  // and Dames and Covert Affair were auditioned fresh for this venue.
+  { file: 'spy-glass', title: 'Spy Glass', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500058', credit: '"Spy Glass" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'night-on-the-docks-sax', title: 'Night on the Docks - Sax', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Night%20on%20the%20Docks%20-%20Sax.mp3', credit: '"Night on the Docks - Sax" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'dances-and-dames', title: 'Dances and Dames', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Dances%20and%20Dames.mp3', credit: '"Dances and Dames" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'covert-affair', title: 'Covert Affair', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Covert%20Affair.mp3', credit: '"Covert Affair" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -411,6 +420,31 @@ const PJS_EVENT_GAIN = 2.35;
  *  0.043, below the material's own frame-step noise). */
 const PJS_BED_LEAD_S = 1105 / 44100;
 const PJS_BED_SECONDS = 64;
+/** The Speakeasy's recorded bed (owner sample pick, 2026-10-30): a 64.000 s
+ *  seamless loop of lounge recordings (SSE Library — CREDITS.md): café walla,
+ *  men's murmur kept unintelligible under an 850 Hz low-pass, dishes and saloon
+ *  chatter, with Kevin MacLeod's "George Street Shuffle" low-passed at 420 Hz
+ *  baked in as the band through the wall. Glass clinks, a laugh swell and the
+ *  wooden front door ride over it as scheduled one-shot events. */
+const SPK_BED_URL = '/audio/ambience/speakeasy-bed.mp3';
+const SPK_EVENT_URLS = {
+  glass: ['/audio/ambience/speakeasy-event-glass.mp3'],
+  laugh: ['/audio/ambience/speakeasy-event-laugh.mp3'],
+  door: ['/audio/ambience/speakeasy-event-door.mp3'],
+} as const;
+/** Event staging gain, same construction as PJS_EVENT_GAIN: the bed file is the
+ *  −16 LUFS master; the event clips keep their premaster staging, so they play
+ *  through this gain to hold the approved demo balance (the loudnorm raised the
+ *  bed +7.84 dB over its premaster — measured RMS on the shipped files). */
+const SPK_EVENT_GAIN = 2.46;
+/** The bed's MP3 loop trim, from the shipped file's own measured offsets: 1105
+ *  samples of encoder delay at 44.1 kHz ahead of exactly 64.000 s of content
+ *  (1199 samples of end padding behind it) — same encoder settings as The Pj's
+ *  bed. Cross-checked: a gapless-aware decode lands exactly 64.000 s at lag 0
+ *  against the premaster, and the sample's measured seam step (0.0046) sits far
+ *  below the material's own frame-step noise (p99 0.0538). */
+const SPK_BED_LEAD_S = 1105 / 44100;
+const SPK_BED_SECONDS = 64;
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
  *  when it is already the content length (a gapless-aware decoder) or too short. */
@@ -3023,6 +3057,81 @@ class Engine {
     arm('car', 25, 60, true);
   }
 
+  /** Start the recorded lounge bed for THIS bed build — same construction as
+   *  the street bed (decode cached, trim the MP3's encoder delay so the 64 s
+   *  loop is sample-exact, loop through the venue bus), with one difference
+   *  the watchdog forces: its bed check keys on venueNodes being non-empty,
+   *  and The Pj's street survives the async decode only because its kept grill
+   *  sizzle registers a node synchronously. The Speakeasy has no synth layer
+   *  left to do that, so a silent pass-through gain registers in the sink the
+   *  moment the build starts and the decoded loop routes through it — the
+   *  sink is never empty from t=0, and the gain is unity, so the recorded mix
+   *  is untouched. The event one-shots lazy-load alongside (they never gate
+   *  the table) and the scheduler starts now — it simply skips any event whose
+   *  buffer has not landed yet. */
+  private startSpeakeasyBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('spk-bed', SPK_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, SPK_BED_LEAD_S, SPK_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...SPK_EVENT_URLS.glass, ...SPK_EVENT_URLS.laugh, ...SPK_EVENT_URLS.door]) void this.loadAmbience(url, url);
+    this.scheduleSpeakeasyEvents();
+  }
+
+  /** Lounge life over the recorded bed: three independent randomized timers —
+   *  glass clinks every 25–50 s, a laugh swell every 45–90 s, the wooden door
+   *  every 90–180 s (owner densities, 2026-10-30) — sharing one busy gate, so
+   *  an event never talks over another (the street pattern). Each kind has a
+   *  single recording, so there is no variant to rotate; the spacing itself is
+   *  the variety. The timers live in venueTimers, so leaving the venue
+   *  silences the lounge, and the first fire comes a half-interval in, once
+   *  the table has settled. */
+  private scheduleSpeakeasyEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the lounge
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = SPK_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: 'glass' | 'laugh' | 'door', min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(SPK_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('glass', 25, 50, true);
+    arm('laugh', 45, 90, true);
+    arm('door', 90, 180, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -3077,13 +3186,15 @@ class Engine {
         this.vEvery(38, 85, (t) => { this.tone(t, 622, 1.1, 'sine', 0.004, { glideTo: 830, dest: B }); this.tone(t + 1.2, 622, 1.1, 'sine', 0.0035, { glideTo: 830, dest: B }); }); // far siren
         break;
       case 'jazz': {
-        room(0.7); crackle(0.4, 1.3, 0.5);
-        const chords = [[146.83, 174.61, 220, 261.63], [98, 174.61, 246.94, 329.63], [130.81, 164.81, 246.94, 293.66], [110, 196, 233.08, 277.18]];
-        let i = 0;
-        this.vEvery(4, 4, (t) => { const ch = chords[i++ % 4]!; ch.forEach((f) => this.tone(t, f, 4.2, 'sine', 0.014, { attack: 0.8, dest: B })); this.tone(t, ch[0]! / 2, 1.4, 'sine', 0.03, { dest: B }); this.tone(t + 2, ch[0]! / 2 * 1.5, 1.2, 'sine', 0.022, { dest: B }); });
-        // Story Audio Pass: the Corner stop plays here — glasses and low talk under the chords.
-        this.vEvery(9, 22, (t) => { for (let i = 0; i < 2; i++) this.vBurst(t + Math.random() * 0.25, 0.016, 'bandpass', 3300 + Math.random() * 900, 0.02); }); // ice / glass
-        murmur(0.35);
+        // The Speakeasy's bed is a RECORDING now (owner sample pick, 2026-10-30),
+        // replacing the old synthesized stand-in (a sine-chord loop faking a band,
+        // room tone, crackle, glass bursts and a murmur wash): a seamless 64 s
+        // lounge loop — café walla, low-passed murmur, dishes, saloon chatter —
+        // with "George Street Shuffle" low-passed into it as the band through
+        // the wall. Story Audio Pass: the Corner stop plays here — its glasses
+        // and low talk are in the recording, and the glass/laugh/door one-shot
+        // events ride over it on their own timers (startSpeakeasyBed).
+        this.startSpeakeasyBed();
         break;
       }
       case 'casino':

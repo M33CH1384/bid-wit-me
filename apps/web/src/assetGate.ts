@@ -175,6 +175,17 @@ export function roomGlbUrls(
  * they are optional life, loaded lazily by the engine after the bed starts.
  */
 export const PJS_BED_URL = '/audio/ambience/pjs-night-street.mp3';
+/**
+ * The Speakeasy's recorded lounge bed (owner, 2026-10-30): gated exactly like
+ * The Pj's bed — the engine fetches it at every Speakeasy table (the Corner
+ * story stop plays the same 'jazz' bed), so at High the loader's promise
+ * covers it; at Low it streams in behind the loader as music always has.
+ * Unlike the street there is no seam exception: the Corner stop mounts the
+ * Speakeasy's own room and hears the same bed, so the unit applies at every
+ * story stop. The bed's event one-shots (glass, laugh, door) deliberately do
+ * NOT gate: optional life, loaded lazily by the engine after the bed starts.
+ */
+export const SPK_BED_URL = '/audio/ambience/speakeasy-bed.mp3';
 export function roomAudioUrls(
   venue: string,
   quality: 'high' | 'low',
@@ -182,6 +193,7 @@ export function roomAudioUrls(
 ): { label: string; url: string }[] {
   if (quality !== 'high') return [];
   if (venue === 'blockAfterDark' && storyStopId !== 'king') return [{ label: 'ambience bed (Pj\'s night street)', url: PJS_BED_URL }];
+  if (venue === 'speakeasy') return [{ label: 'ambience bed (Speakeasy lounge)', url: SPK_BED_URL }];
   return [];
 }
 

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, PJS_BED_URL, SEDAN_GLB_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, PJS_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomAudioUrls, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -162,13 +162,28 @@ describe('room asset enumeration', () => {
     expect(roomAudioUrls('blockAfterDark', 'high', 'king')).toEqual([]);
     expect(roomAudioUrls('blockAfterDark', 'low', null)).toEqual([]);
     expect(roomAudioUrls('blockAfterDark', 'low', 'the-pjs')).toEqual([]);
-    expect(roomAudioUrls('speakeasy', 'high', null)).toEqual([]);
-    expect(roomAudioUrls('speakeasy', 'high', 'corner')).toEqual([]);
+    expect(roomAudioUrls('speakeasy', 'high', null)).toEqual([{ label: expect.any(String), url: SPK_BED_URL }]);
+    expect(roomAudioUrls('speakeasy', 'high', 'corner')).toEqual([{ label: expect.any(String), url: SPK_BED_URL }]);
     expect(existsSync(new URL('../public/audio/ambience/pjs-night-street.mp3', import.meta.url))).toBe(true);
     // The engine fetches the same file the gate waits on (audio.ts carries its own
     // copy of the URL — the two literals must never drift apart).
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain(`const PJS_BED_URL = '${PJS_BED_URL}'`);
+  });
+
+  it("the Speakeasy's recorded bed rides the gate at High lounge tables — every story stop, never Low", () => {
+    // Owner, 2026-10-30: the recorded lounge bed joins the Speakeasy loader gate
+    // exactly like The Pj's bed (the gate gains one unit at the regular venue,
+    // 5 → 6, and at the Corner story stop, 9 → 10; the bed's event one-shots
+    // deliberately do not gate and are not listed here). Unlike the street
+    // there is no seam exception: the Corner stop hears the same 'jazz' bed.
+    expect(roomAudioUrls('speakeasy', 'high', null)).toEqual([{ label: expect.any(String), url: SPK_BED_URL }]);
+    expect(roomAudioUrls('speakeasy', 'high', 'corner')).toEqual([{ label: expect.any(String), url: SPK_BED_URL }]);
+    expect(roomAudioUrls('speakeasy', 'low', null)).toEqual([]);
+    expect(roomAudioUrls('speakeasy', 'low', 'corner')).toEqual([]);
+    expect(existsSync(new URL('../public/audio/ambience/speakeasy-bed.mp3', import.meta.url))).toBe(true);
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain(`const SPK_BED_URL = '${SPK_BED_URL}'`);
   });
 
   it('the gate sedan URL is the very file PjsStreetRoom loads', () => {

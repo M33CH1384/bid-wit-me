@@ -114,7 +114,7 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'barbershop', name: 'Barbershop', bed: 'barbershop', surface: 'wood', reverb: 'lively', crowd: 'low', music: { lean: ['city', 'new-hip-hop-beat', 'slow-grind'] }, events: [] },
   { venue: 'church', name: 'Basement Spades Night', bed: 'basement', surface: 'laminate', reverb: 'tight', crowd: 'low', music: { lean: ['glad-to-be-stuck-inside', 'slowly', 'snow-drift'] }, events: [] },
   { venue: 'rooftop', name: 'Rooftop', bed: 'rooftop', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['nighttime-stroll', 'late-at-night', 'city'] }, events: [] },
-  { venue: 'speakeasy', name: 'Speakeasy Lounge', bed: 'jazz', surface: 'felt', reverb: 'lively', crowd: 'low', music: { lean: ['slow-grind', 'pyro-flow', 'late-at-night'] }, events: [] },
+  { venue: 'speakeasy', name: 'Speakeasy Lounge', bed: 'jazz', surface: 'felt', reverb: 'lively', crowd: 'low', music: { pin: ['spy-glass', 'night-on-the-docks-sax', 'dances-and-dames', 'covert-affair'], lean: [] }, events: [] },
   { venue: 'vegas', name: 'Vegas High Roller', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena', music: { lean: ['coins', 'final-level', 'pyro-flow'] }, events: [] },
   { venue: 'beach', name: 'Beach Cabana', bed: 'beach', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['sunset-drive', '2-hour-delay', 'pretty-little-lies'] }, events: [] },
   { venue: 'grandma', name: "Grandma's Kitchen", bed: 'kitchen', surface: 'laminate', reverb: 'tight', crowd: 'none', music: { lean: ['memories-of-spring', 'glad-to-be-stuck-inside', 'snow-drift'] }, events: [] },
