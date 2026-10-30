@@ -154,6 +154,27 @@ export function sweepEndFrameSec(startFrameSec: number, sweepDurationSec: number
 }
 
 /**
+ * Has the table's presentation caught up with the state? (owner, 2026-10-30:
+ * the playable highlight lit ~a second before the play that made it his
+ * turn had landed.) True only when every play on the table has rested —
+ * `rests` are the plays' stamped rest frames on this same clock; a play
+ * with no stamp was already resting when first seen (a resumed table),
+ * the same call lastRestFrameSec makes — and no collection is still
+ * running (`sweepUntilFrameSec` is the pending sweep's end frame, 0 when
+ * none). Scene certifies the current turnStateKey with this predicate
+ * (turnPresentation.ts) before Table shows the highlight set.
+ */
+export function presentationCaughtUp(o: {
+  rests: readonly (number | undefined)[];
+  sweepUntilFrameSec: number;
+  nowFrameSec: number;
+}): boolean {
+  const last = lastRestFrameSec(o.rests);
+  if (last !== null && o.nowFrameSec < last) return false;
+  return o.nowFrameSec >= o.sweepUntilFrameSec;
+}
+
+/**
  * One capped frame of schedule slack for the serialization floor. A
  * Card3D wait counts down in whole frames, so a sweep's motion can begin
  * up to one frame after its planned start; flooring the next play at

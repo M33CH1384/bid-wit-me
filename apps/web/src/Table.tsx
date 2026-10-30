@@ -14,6 +14,7 @@ import { AvatarCircle, useAvatar } from './avatar';
 import { useAccount } from './account/api';
 import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
 import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
+import { highlightLegal, turnStateKey } from './turnPresentation';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueAssetUrls, venueUnlocked } from './venues';
@@ -1199,7 +1200,29 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     && (hand ?? []).length === 1
     && view.handCounts.every((c) => c <= 1)
     && view.trick.plays.every((p) => p.seat !== HUMAN);
-  const legal = (myTurn || throwInOpenView) && st.phase === 'playing' ? view.legal.filter((c) => (hand ?? []).includes(c)) : [];
+  // Presentation gate (owner, 2026-10-30: the playable highlight lit ~a second
+  // before the play that made it his turn had landed): the state advances the
+  // instant a play is applied, but its presentation — flight, pacing spacing,
+  // the review hold + sweep — finishes later on the Scene's frame clock. The
+  // Scene certifies each turnStateKey once the table has caught up with it
+  // (onTurnPresented below); until then the highlight set stays empty, so the
+  // lift/dim and the tap/drag affordance arrive WITH his turn, not ahead of
+  // it. Backstop: a scene that has NEVER certified (a dead canvas — the felt
+  // hand is the game there, and it presents nothing) disengages the gate for
+  // the session after a generous wait, the deal clock's forced fallback in
+  // spirit: the hand can never be locked by a scene that isn't presenting.
+  const turnKey = turnStateKey(st, pause);
+  const [presentedKey, setPresentedKey] = useState<string | null>(null);
+  const certifiedEver = useRef(false);
+  const [sceneSilent, setSceneSilent] = useState(false);
+  const onTurnPresented = useCallback((key: string) => { certifiedEver.current = true; setPresentedKey(key); }, []);
+  const presented = sceneSilent || presentedKey === turnKey;
+  useEffect(() => {
+    if (sceneSilent || presented || !myTurn || st.phase !== 'playing') return;
+    const t = window.setTimeout(() => { if (!certifiedEver.current) setSceneSilent(true); }, 5000);
+    return () => window.clearTimeout(t);
+  }, [sceneSilent, presented, myTurn, st.phase, turnKey]);
+  const legal = highlightLegal({ myTurn, throwInOpen: throwInOpenView, phase: st.phase, presented, viewLegal: view.legal, hand });
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
   const mySide = sideOf(HUMAN, r);
@@ -2423,7 +2446,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // for the rest of the game; a first notice leaves the plate exactly as it has always been.
   const stickyNotice = stickyNoticeSides(sb);
   // `legal` is empty while the play is in flight. The badge still needs the cards that were legal.
-  const playableCount = st.phase === 'playing' ? view.legal.filter((c) => (hand ?? []).includes(c)).length : legal.length;
+  // While the presentation gate holds (his turn in state, the table not there yet), the count
+  // stays 0: the YOUR TURN badge and the lit cards arrive together, never one before the other.
+  const playableCount = st.phase === 'playing' ? (presented ? view.legal.filter((c) => (hand ?? []).includes(c)).length : 0) : legal.length;
   const live = turnView({
     turn: localTurn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx,
     viewerSeat: HUMAN, spectating, legalCount: playableCount, selected: !!selected,
@@ -2868,6 +2893,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           turnUp={turnUp}
           piles={display.piles}
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
+          turnKey={turnKey}
+          onTurnPresented={onTurnPresented}
           selected={runFx ? null : selected}
           turnSeat={actor === HUMAN && !spectating ? actor : null}
           activeSeat={actor}

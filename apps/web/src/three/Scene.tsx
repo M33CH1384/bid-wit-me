@@ -29,7 +29,7 @@ import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
 import { cardShowsFace, flatFanHidden, handLatched, latchHand, resumeDrawList, showResumeHand3D, visibleFaceIds } from './cardFace';
 import { openingTrickKeys, trickCardLaunches, trickPlayFrom } from './trickFacing';
-import { lastRestFrameSec, playRestFrameSec, reviewDelaySec, serializedPlayDelaySec, spacedPlayDelaySec, sweepEndFrameSec, SEQUENCE_FRAME_SLACK_SEC } from './sweepGate';
+import { lastRestFrameSec, playRestFrameSec, presentationCaughtUp, reviewDelaySec, serializedPlayDelaySec, spacedPlayDelaySec, sweepEndFrameSec, SEQUENCE_FRAME_SLACK_SEC } from './sweepGate';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, peekFaceTexture, refreshFacesGradually } from './cardTextures';
@@ -103,6 +103,13 @@ export interface SceneProps {
   /** Completed tricks of this hand that are already swept to piles. */
   piles: Trick[];
   legal: Card[];
+  /** Identity of the turn-relevant state Table derived `legal` from
+   *  (turnPresentation.ts). The highlight waits for the presentation: Scene
+   *  calls onTurnPresented with this key once every play on the table has
+   *  rested and any pending collection has finished, on the frame clock. */
+  turnKey?: string;
+  /** Presentation certification for turnKey (see above). Fired once per key. */
+  onTurnPresented?: (key: string) => void;
   selected: Card | null;
   turnSeat: number | null;
   /** The seat to act right now (bidding, playing or exchange), in table seat
@@ -841,10 +848,24 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // previous flight's actual start even when a sweep floor shifted it.
   const playStarts = useRef<{ hand: number; starts: Map<string, number> }>({ hand: -1, starts: new Map() });
   const pileSeq = useRef<{ hand: number; seenPileId: string; sweepUntil: number; anchorPileId: string; anchorStart: number }>({ hand: -1, seenPileId: '', sweepUntil: 0, anchorPileId: '', anchorStart: 0 });
+  // Turn presentation certification (turnPresentation.ts): the last turnKey
+  // this scene has certified as fully presented — every play rested, no
+  // collection running — on the frame clock. Table holds the playable
+  // highlight back until the key it derived `legal` from is certified, so
+  // the highlight arrives with the table instead of with the state.
+  const certifiedTurn = useRef<string | null>(null);
   const onDealDone = props.onDealDone;
   const dealArmed = intro && !held0;
   useFrame((_, rawDt) => {
     seqClock.current += Math.min(Math.max(rawDt, 0), 0.05);
+    const tk = props.turnKey;
+    if (tk && props.onTurnPresented && certifiedTurn.current !== tk) {
+      const rests = shownTrick.map((pl) => playRests.current.rests.get(`${handNo}-${pl.card}`));
+      if (presentationCaughtUp({ rests, sweepUntilFrameSec: pileSeq.current.sweepUntil, nowFrameSec: seqClock.current })) {
+        certifiedTurn.current = tk;
+        props.onTurnPresented(tk);
+      } else invalidate();
+    }
     const c = dealClock.current;
     if (!dealArmed) return;
     if (c.hand !== handNo) { c.hand = handNo; c.t = 0; c.done = false; }
