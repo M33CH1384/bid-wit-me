@@ -10,7 +10,7 @@ import { PERSONAS, buildStoryTape, storyStopById } from '@spades/bots';
 import {
   PAIR_HEADLINE_MIN_GAMES, VERSUS_CARD_STAGGER_MS, VERSUS_CUES, VERSUS_HOLD_MS, VERSUS_IMPACT_MS, VERSUS_RESOLVE_CUE, VERSUS_ROW_STAGGER_MS,
   VERSUS_STORY_MS, VERSUS_TAPE_MS,
-  VersusCards, VersusIntro, VersusStoryTape, VersusTape, bestIndex, botMemberSegments, humanMemberSegments, markVersusShown, pairHeadline, rowWinner, scoutFromConfig, scoutSegments, statLineFromCredProfile,
+  VersusCards, VersusIntro, VersusStoryTape, VersusTape, bestIndex, botMemberColumns, botMemberSegments, humanMemberColumns, humanMemberSegments, markVersusShown, pairHeadline, rowWinner, scoutFromConfig, scoutSegments, statLineFromCredProfile,
   summarizeSide, versusAlreadyShown, versusCardsStartDelay, versusCueSchedule, versusDismissReady, versusEligible,
   winPctOf, type VersusModel, type VersusSideView,
 } from '../src/VersusIntro';
@@ -547,8 +547,52 @@ describe('versus cards: human lines + the established-team headline', () => {
     expect(versusCardsStartDelay(0)).toBe(VERSUS_TAPE_MS + 120); // no tape: cards ride right behind the smash
   });
   it('VersusCards renders nothing when no block has honest content', () => {
-    const html = renderToStaticMarkup(createElement(VersusCards, { blocks: [{ headline: null, members: [{ name: 'X', segments: [] }] }], startDelay: 0 }));
+    const html = renderToStaticMarkup(createElement(VersusCards, { blocks: [{ headline: null, members: [{ name: 'X', rel: [], traits: [] }] }], startDelay: 0 }));
     expect(html).toBe('');
+  });
+});
+
+/* --------------------------------- the columns (owner, 2026-10-30)
+ * The glanceable grid: every row is NAME · RELATION+RECORD · TRAITS, and
+ * the split is structural — the relation column carries exactly the record
+ * (or the first-meeting label), traits carry the rest in the same order the
+ * flat line always had, so nothing was reworded, only aligned. */
+describe('versus cards: the column split (rel vs traits)', () => {
+  const ledgerWith = (personas: PersonaLedger['personas']): PersonaLedger => ({ v: 1, personas });
+  it('a bot with a record: the record alone lands in rel; streak + scouting land in traits, in order', () => {
+    const led = ledgerWith({ gambler: { vs: { games: 6, wins: 4, losses: 2, streak: 2 } } });
+    const cols = botMemberColumns({ persona: 'gambler', skill: 'pro', relation: 'vs', ledger: led, online: false });
+    expect(cols.rel).toEqual(['vs you 4–2']);
+    expect(cols.traits).toEqual(['W2', ...scoutSegments('gambler', 'pro')]);
+    // columns concatenate back to the flat line, exactly (one content source)
+    expect([...cols.rel, ...cols.traits]).toEqual(botMemberSegments({ persona: 'gambler', skill: 'pro', relation: 'vs', ledger: led, online: false }));
+  });
+  it('a first meeting fills the rel column with the label; traits carry scouting only', () => {
+    const cols = botMemberColumns({ persona: 'professor', skill: 'shark', relation: 'together', ledger: ledgerWith({}), online: false });
+    expect(cols.rel).toEqual(['First time riding together']);
+    expect(cols.traits).toEqual(scoutSegments('professor', 'shark'));
+  });
+  it('online with no record: rel stays empty (no claim), traits still scout', () => {
+    const cols = botMemberColumns({ persona: 'professor', skill: null, relation: 'vs', ledger: ledgerWith({}), online: true });
+    expect(cols.rel).toEqual([]);
+    expect(cols.traits).toEqual(scoutSegments('professor', null));
+  });
+  it('a human: record + win% land in rel; rating and streak land in traits', () => {
+    expect(humanMemberColumns({ rating: 1240, wins: 32, losses: 18, streak: 3 })).toEqual({ rel: ['32–18', '64%'], traits: ['Rating 1,240', 'W3'] });
+    expect(humanMemberColumns({ rating: null, wins: 2, losses: 2, streak: 0 })).toEqual({ rel: ['2–2', '50%'], traits: [] });
+    expect(humanMemberColumns(null)).toEqual({ rel: [], traits: [] });
+  });
+  it('the row renders name, rel cell and one chip per trait segment', () => {
+    const html = renderToStaticMarkup(createElement(VersusCards, {
+      blocks: [{ headline: null, members: [{ name: 'Ace', rel: ['vs you 4–2'], traits: ['W2', 'Shark', 'won’t Nil'] }] }],
+      startDelay: 0,
+    }));
+    expect(html).toContain('versus-card-name');
+    expect(html).toContain('>Ace<');
+    expect(html).toContain('versus-card-rel">vs you 4–2<');
+    expect(html).toContain('versus-card-seg">W2<');
+    expect(html).toContain('versus-card-seg">· Shark<');
+    expect(html).toContain('versus-card-seg">· won’t Nil<'); // the phrase the old wrap split — one chip now
   });
 });
 

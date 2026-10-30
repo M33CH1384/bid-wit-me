@@ -2137,18 +2137,37 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus-skip { font-size: 11.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); opacity: .75; animation: versus-row-in .4s ease-out both; }
 /* Per-player cards under the tape (content shipped 2026-10-23; the styles
    never landed — owner, 2026-10-28: the scouting lines read "You13–28 · 32%",
-   the name glued to its facts). The line is a flex row: the name is its own
-   gold label, the facts follow across a real gap so the two can never touch,
-   and the facts wrap inside their own span on a narrow column instead of
-   pushing off-canvas. Lines reveal on the tape rows' beat (versus-row-in;
-   the stagger delays are inline, from VersusIntro's beat sheet). */
-.versus-cards { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
-.versus-card-side { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
-.versus-card-headline { font: 800 12px/1.25 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); text-align: center; animation: versus-row-in .35s ease-out both; }
+   the name glued to its facts). The 2026-10-28 fix made the line a flex row
+   with the name as its own gold label; the 2026-10-29 pass composed the
+   lines into a panel in landscape only. Owner, 2026-10-30 (portrait): "this
+   screen still isn't right — things should be lined up in a way to make it
+   easy to read in a glance": in portrait the two team blocks sat side by
+   side at ~165px each, centred, so a line that fit put its name inline, a
+   line that didn't stacked its name over its facts, and the facts wrapped
+   mid-phrase ("won't / Nil" split in two). The system is now ONE strict
+   grid in every orientation: the blocks stack full-width (a hairline
+   between sides, the tape's own divider voice), and every player is ONE
+   row of three fixed columns — NAME (gold, 80px) · RELATION+RECORD
+   (152px: "with you 0–1", "vs you 5–2", "First time riding together") ·
+   TRAITS (the rest: skill, leans, streak, rating). Column edges are the
+   same in every row of both blocks, so the eye scans straight down them.
+   Each trait is its own nowrap chip, so when a traits cell genuinely
+   can't fit it wraps ONLY at a "·" separator — never inside a phrase.
+   Column widths are sized from measured text at the shipped sizes (the
+   widest relation, "First time riding together", is 161px at 13px —
+   148px at the 12px the facts now set in). Lines reveal on the tape rows'
+   beat (versus-row-in; the stagger delays are inline, from VersusIntro's
+   beat sheet). */
+.versus-cards { width: 100%; display: grid; grid-template-columns: 1fr; gap: 10px; }
+.versus-card-side { display: flex; flex-direction: column; align-items: stretch; gap: 5px; min-width: 0; }
+.versus-card-side + .versus-card-side { border-top: 1px solid rgba(var(--edge-rgb), .16); padding-top: 9px; }
+.versus-card-headline { font: 800 12px/1.25 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); text-align: left; animation: versus-row-in .35s ease-out both; }
 .versus-card-headline.story { font-size: 13px; font-style: italic; letter-spacing: .02em; text-transform: none; }
-.versus-card-line { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 2px 8px; max-width: 100%; animation: versus-row-in .35s ease-out both; }
-.versus-card-name { font: 800 12.5px/1.2 var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); white-space: nowrap; }
-.versus-card-segs { font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--ink); opacity: .94; text-align: center; }
+.versus-card-line { display: grid; grid-template-columns: 80px 152px minmax(0, 1fr); column-gap: 8px; align-items: baseline; animation: versus-row-in .35s ease-out both; }
+.versus-card-name { font: 800 12.5px/1.2 var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.versus-card-rel { font-size: 12px; font-weight: 600; line-height: 1.3; color: var(--ink); opacity: .94; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.versus-card-segs { display: flex; flex-wrap: wrap; column-gap: 5px; min-width: 0; font-size: 12px; font-weight: 600; line-height: 1.3; color: var(--ink); opacity: .94; }
+.versus-card-seg { white-space: nowrap; }
 
 /* Story tape: the narrative card (stakes, the pair + Dee, threat, history) in
    the same shell as the league tape — one card family, story content. */
@@ -2254,9 +2273,11 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .versus-story-row { padding: 3px 2px; }
   .versus-cards { gap: 6px 12px; }
   .versus-card-side { gap: 3px; }
+  .versus-card-side + .versus-card-side { padding-top: 5px; }
   .versus-card-headline { font-size: 11px; }
   .versus-card-headline.story { font-size: 12px; }
   .versus-card-name { font-size: 11.5px; }
+  .versus-card-rel { font-size: 12px; line-height: 1.25; }
   .versus-card-segs { font-size: 12px; line-height: 1.25; }
 }
 /* Pre-deal setup window (online): the table is live, the first deal is held by the room */
@@ -2285,7 +2306,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    cells across the wide pane) instead of stacking label over cells.
    Portrait and taller screens keep the stacked card, untouched. */
 @media (orientation: landscape) and (max-height: 560px) {
-  .bwm-loading-card:has(.versus) { width: min(100%, 920px); }
+  .bwm-loading-card:has(.versus) { width: min(100%, 920px); gap: 5px; }
   .bwm-loading-card:has(.versus) .bwm-loading-mark { width: min(36%, 148px); }
   .versus-shake { display: grid; grid-template-columns: minmax(272px, 330px) minmax(0, 1fr); grid-template-areas: "stage tape" "stage cards" "skip skip"; column-gap: 22px; row-gap: 8px; align-items: start; }
   .versus-stage { grid-area: stage; width: 100%; }
@@ -2342,21 +2363,36 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
      other half: with no tape above it, the panel spans both right rows
      and centres against the stack instead of sinking; with nothing on
      the right at all, the stage takes the full width and centres alone. */
-  .versus-cards { border-radius: 14px; padding: 8px 12px 9px; gap: 5px 12px;
+  .versus-cards { border-radius: 14px; padding: 8px 12px 9px; gap: 3px 12px;
     background: linear-gradient(165deg, rgba(var(--purple-rgb), .22), rgba(0,0,0,.38));
     box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .35), 0 14px 30px rgba(0,0,0,.45); }
   .versus-cards::before { content: 'SCOUTING REPORT'; grid-column: 1 / -1; font: 800 11px/1 var(--display); letter-spacing: .22em; color: var(--gold); text-align: center; }
   .versus-shake:not(:has(.versus-tape, .versus-pot.only)) .versus-cards { grid-row: 1 / 3; align-self: center; }
   .versus-shake:not(:has(.versus-tape, .versus-pot.only, .versus-cards)) .versus-stage { grid-column: 1 / -1; }
+  /* the stacked scouting panel (2026-10-30) is taller than the side-by-side
+     blocks it replaced; the tape gives back the difference in this band
+     only — rows and headers breathe 2-3px tighter so tape + panel + the
+     pot row still fit the short pane with nothing below the fold */
+  .versus-row { padding: 3px 2px; }
+  .versus-tape-title { margin-bottom: 5px; }
+  .versus-pot { margin-bottom: 5px; }
 }
 
+/* The scouting lines keep the base three-column grid in landscape too
+   (owner, 2026-10-30: ONE alignment system, unified): the 2026-10-29
+   label-rhythm band (fixed 82px name, side-by-side blocks split by a
+   left border) is retired — the blocks stack inside the panel exactly
+   as they stack in portrait, separated by the same hairline, and the
+   traits column simply widens with the pane. Stacking costs vertical
+   room the side-by-side blocks didn't, so this band only tightens the
+   stack's vertical rhythm (sizes, gaps, the divider's padding) until
+   tape + panel fit the short pane again — the line itself, its tracks
+   and its columns, is never redefined here. */
 @media (orientation: landscape) and (max-height: 560px) and (min-width: 721px) {
-  .versus-card-side { align-items: stretch; gap: 4px; }
-  .versus-card-side:nth-child(even) { border-left: 1px solid rgba(var(--edge-rgb), .16); padding-left: 12px; }
-  .versus-card-headline { text-align: left; }
-  .versus-card-line { justify-content: flex-start; flex-wrap: nowrap; }
-  .versus-card-name { flex: 0 0 auto; min-width: 82px; text-align: left; }
-  .versus-card-segs { flex: 1 1 auto; min-width: 0; text-align: left; }
+  .versus-card-side + .versus-card-side { padding-top: 3px; }
+  .versus-card-headline { line-height: 1.15; }
+  .versus-card-rel { font-size: 11.5px; line-height: 1.2; }
+  .versus-card-segs { font-size: 11.5px; line-height: 1.2; }
 }
 /* The same panel in the SE/mini band (<=720 wide): realistic max content
    (a pot tape + an earned pair headline + four full lines) wrapped the
@@ -2367,11 +2403,18 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    air comes out. */
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 720px) {
   .bwm-loading-card:has(.versus) .bwm-loading-mark { width: min(30%, 120px); }
-  .versus-shake { grid-template-columns: minmax(240px, 272px) minmax(0, 1fr); column-gap: 16px; row-gap: 6px; }
-  .versus-tape:not(.story) { padding: 6px 10px 5px; }
-  .versus-cards { padding: 6px 10px 7px; gap: 4px 10px; }
+  .versus-shake { grid-template-columns: minmax(240px, 272px) minmax(0, 1fr); column-gap: 16px; row-gap: 3px; }
+  .versus-tape:not(.story) { padding: 4px 10px 3px; }
+  .bwm-loading-card:has(.versus) { gap: 4px; }
+  .versus-cards { padding: 4px 10px 5px; gap: 3px 10px; }
+  .versus-card-side { gap: 1px; }
+  .versus-card-side + .versus-card-side { padding-top: 3px; }
+  .versus-cards.solo .versus-card-side + .versus-card-side { padding-top: 2px; }
+  .versus-card-headline { line-height: 1.15; }
+  .versus-card-line { grid-template-columns: 72px 144px minmax(0, 1fr); }
   .versus-card-name { font-size: 11px; }
-  .versus-card-segs { font-size: 11.5px; line-height: 1.2; }
+  .versus-card-rel { font-size: 11px; line-height: 1.1; }
+  .versus-card-segs { font-size: 11px; line-height: 1.1; }
 }
 
 /* Stand-in table: painted on the first frame, until the 3D table has rendered (then it fades out) */

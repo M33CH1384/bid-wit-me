@@ -34,6 +34,24 @@
  * centres on the stack, the entrances/settle/rest poses converge
  * vertically, and faces shrink just enough (52 → 48px) for the stack to
  * fit the short pane with nothing below the fold. Portrait is untouched.
+ *
+ * 2026-10-30 (owner, portrait screenshot — Backyard Cookout, you + Unc vs
+ * Sven & Elena): "this screen still isn't right — things should be lined
+ * up in a way to make it easy to read in a glance." The portrait cards
+ * were never reworked: two ~165px centred columns, so UNC's and SVEN's
+ * names stacked over their facts while ELENA's sat inline, and the facts
+ * wrapped mid-phrase ("won't / Nil" split across lines). The fix is ONE
+ * alignment system in both orientations: the blocks stack full-width
+ * under a hairline divider, and every player is one row of three fixed
+ * columns — NAME (gold, 80px) · RELATION+RECORD (152px) · TRAITS (1fr,
+ * one nowrap chip per segment, wrapping ONLY at a "·" separator). The
+ * member model split into columns with it (botMemberColumns /
+ * humanMemberColumns in VersusIntro.tsx). The 2026-10-29 landscape
+ * label-rhythm band (82px name flex, side-by-side blocks, left border)
+ * is retired: landscape keeps its panel + vertical matchup stack, and
+ * the lines inside the panel are the same grid rows as portrait. The
+ * probe asserts the geometry: identical name/rel/traits left edges in
+ * every row, name and rel cells single-line, no chip ever split.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -49,16 +67,23 @@ describe('versus fit: the scouting name can never touch its facts', () => {
     expect(css).toContain('.versus-card-side {');
     expect(css).toContain('.versus-card-headline {');
     expect(css).toContain('.versus-card-name {');
+    expect(css).toContain('.versus-card-rel {');
     expect(css).toContain('.versus-card-segs {');
+    expect(css).toContain('.versus-card-seg {');
   });
 
-  it('the line is a flex row with a real gap, the name its own gold label', () => {
-    expect(css).toContain('.versus-card-line { display: flex');
-    expect(css).toMatch(/\.versus-card-line \{[^}]*gap: 2px 8px/);
+  it('the line is a three-column grid, the name its own gold label', () => {
+    // fixed NAME and RELATION tracks + a fluid TRAITS track: the column
+    // edges are identical in every row by construction, so a name can
+    // never touch its facts and facts never centre or scatter
+    expect(css).toContain('.versus-card-line { display: grid; grid-template-columns: 80px 152px minmax(0, 1fr); column-gap: 8px;');
     expect(css).toMatch(/\.versus-card-name \{[^}]*color: var\(--gold\)/);
     expect(css).toMatch(/\.versus-card-name \{[^}]*white-space: nowrap/);
-    // the facts wrap inside their own span instead of pushing off-canvas
-    expect(css).toMatch(/\.versus-card-line \{[^}]*flex-wrap: wrap/);
+    expect(css).toMatch(/\.versus-card-rel \{[^}]*white-space: nowrap/);
+    // a trait is one nowrap chip; the traits cell wraps ONLY between chips
+    // (at a "·" separator), never inside a phrase like "won't Nil"
+    expect(css).toMatch(/\.versus-card-segs \{[^}]*flex-wrap: wrap/);
+    expect(css).toMatch(/\.versus-card-seg \{[^}]*white-space: nowrap/);
   });
 
   it('card beats ride the same arms as every other beat (paint gate, done/reduced, OS reduced motion)', () => {
@@ -78,10 +103,37 @@ describe('versus fit: the scouting name can never touch its facts', () => {
   });
 });
 
+describe('versus fit: one glanceable grid in every orientation (owner, 2026-10-30)', () => {
+  const beforeLandscape = css.slice(0, landscapeStart);
+
+  it('the team blocks stack full-width and mirror each other exactly', () => {
+    // one column of blocks — the second block is the first block's system
+    // repeated under the tape's own hairline, never a second centred column
+    expect(beforeLandscape).toContain('.versus-cards { width: 100%; display: grid; grid-template-columns: 1fr; gap: 10px; }');
+    expect(beforeLandscape).toContain('.versus-card-side { display: flex; flex-direction: column; align-items: stretch; gap: 5px; min-width: 0; }');
+    expect(beforeLandscape).toContain('.versus-card-side + .versus-card-side { border-top: 1px solid rgba(var(--edge-rgb), .16); padding-top: 9px; }');
+    expect(beforeLandscape).not.toContain('.versus-card-line { display: flex');
+  });
+
+  it('headlines and rows all start on the name column edge', () => {
+    expect(beforeLandscape).toMatch(/\.versus-card-headline \{[^}]*text-align: left/);
+    expect(beforeLandscape).not.toMatch(/\.versus-card-segs \{[^}]*text-align: center/);
+    expect(beforeLandscape).not.toMatch(/\.versus-card-line \{[^}]*justify-content: center/);
+  });
+
+  it('the facts set one step under the name so the columns hold at 390px', () => {
+    // measured: "First time riding together" is 161px at 13px, 148px at
+    // 12px — the 152px relation track only holds at the 12px facts size
+    expect(beforeLandscape).toMatch(/\.versus-card-rel \{[^}]*font-size: 12px/);
+    expect(beforeLandscape).toMatch(/\.versus-card-segs \{[^}]*font-size: 12px/);
+    expect(beforeLandscape).toMatch(/\.versus-card-name \{[^}]*12\.5px\/1\.2/);
+  });
+});
+
 describe('versus fit: landscape goes wide and nothing scrolls', () => {
   it('the short-landscape band exists and widens the versus loading card', () => {
     expect(landscapeStart).toBeGreaterThan(0);
-    expect(landscape).toContain('.bwm-loading-card:has(.versus) { width: min(100%, 920px); }');
+    expect(landscape).toContain('.bwm-loading-card:has(.versus) { width: min(100%, 920px); gap: 5px; }');
     expect(landscape).toContain('.bwm-loading-card:has(.versus) .bwm-loading-mark { width: min(36%, 148px); }');
   });
 
@@ -151,25 +203,29 @@ describe('versus fit: landscape composes the scouting lines into a panel (owner,
     expect(landscape).toContain('.versus-shake:has(> .versus-tape.story) { grid-template-areas: "stage tape" "stage tape" "skip skip"; }');
   });
 
-  it('at the owner phone widths the lines run in a left-anchored label rhythm', () => {
-    expect(landscape).toContain('@media (orientation: landscape) and (max-height: 560px) and (min-width: 721px)');
-    expect(landscape).toContain('.versus-card-side { align-items: stretch; gap: 4px; }');
-    expect(landscape).toContain('.versus-card-side:nth-child(even) { border-left: 1px solid rgba(var(--edge-rgb), .16); padding-left: 12px; }');
-    expect(landscape).toContain('.versus-card-line { justify-content: flex-start; flex-wrap: nowrap; }');
-    expect(landscape).toContain('.versus-card-name { flex: 0 0 auto; min-width: 82px; text-align: left; }');
-    expect(landscape).toContain('.versus-card-segs { flex: 1 1 auto; min-width: 0; text-align: left; }');
+  it('the lines keep the unified grid inside the panel (the 82px label-rhythm band is retired)', () => {
+    // no landscape band redefines the row: the columns come from the base
+    // grid, so portrait and landscape rows share their edges exactly
+    expect(landscape).not.toContain('min-width: 82px');
+    expect(landscape).not.toContain('.versus-card-side:nth-child(even)');
+    expect(landscape).not.toContain('.versus-card-line { justify-content');
+    expect(landscape).not.toContain('.versus-card-name { flex:');
+    const beforeLandscape = css.slice(0, landscapeStart);
+    expect(beforeLandscape).toContain('.versus-card-line { display: grid; grid-template-columns: 80px 152px minmax(0, 1fr); column-gap: 8px;');
   });
 
   it('the SE/mini band compresses the same composition instead of redesigning it', () => {
     expect(landscape).toContain('@media (orientation: landscape) and (max-height: 560px) and (max-width: 720px)');
-    expect(landscape).toContain('.versus-shake { grid-template-columns: minmax(240px, 272px) minmax(0, 1fr); column-gap: 16px; row-gap: 6px; }');
-    expect(landscape).toContain('.versus-cards { padding: 6px 10px 7px; gap: 4px 10px; }');
+    expect(landscape).toContain('.versus-shake { grid-template-columns: minmax(240px, 272px) minmax(0, 1fr); column-gap: 16px; row-gap: 3px; }');
+    expect(landscape).toContain('.versus-cards { padding: 4px 10px 5px; gap: 3px 10px; }');
+    // the grid squeezes with the pane (72/144 tracks), it does not change shape
+    expect(landscape).toContain('.versus-card-line { grid-template-columns: 72px 144px minmax(0, 1fr); }');
     // the story tape keeps its own padding in this band
-    expect(landscape).toContain('.versus-tape:not(.story) { padding: 6px 10px 5px; }');
+    expect(landscape).toContain('.versus-tape:not(.story) { padding: 4px 10px 3px; }');
   });
 
-  it('portrait keeps the plain stacked cards, byte for byte', () => {
-    expect(css).toContain('.versus-cards { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }');
+  it('portrait stacks the blocks full-width on the same grid (no SCOUTING REPORT header there)', () => {
+    expect(css).toContain('.versus-cards { width: 100%; display: grid; grid-template-columns: 1fr; gap: 10px; }');
     const beforeLandscape = css.slice(0, landscapeStart);
     expect(beforeLandscape).not.toContain('SCOUTING REPORT');
   });

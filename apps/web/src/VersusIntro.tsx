@@ -212,22 +212,59 @@ export function recordSegments(label: 'vs you' | 'with you', split: PersonaLedge
 
 export type BotRelation = 'vs' | 'together';
 /**
- * A bot's member-line segments: its recorded history with the viewer (in the
- * given relationship), then its scouting read. No record at an offline table
- * is the honest "first meeting"; online, silence. Scouting always derives
- * from config, so a first-meeting bot still gets a read — never a record.
+ * A bot's member line as COLUMNS (owner, 2026-10-30: the scouting block must
+ * line up to read at a glance): `rel` carries the relationship with the
+ * viewer — the recorded series' first segment ("vs you 4–2" / "with you
+ * 2–1") or the honest first-meeting label — and `traits` carries everything
+ * else in the line's original order (a streak run, then the scouting read).
+ * No record at an offline table is the honest "first meeting"; online,
+ * silence. Scouting always derives from config, so a first-meeting bot
+ * still gets a read — never a record.
  */
+export function botMemberColumns(o: {
+  persona: PersonaId; skill: BotSkill | null; relation: BotRelation;
+  ledger: PersonaLedger; online: boolean;
+}): { rel: string[]; traits: string[] } {
+  const entry = personaRecord(o.ledger, o.persona);
+  const split = o.relation === 'vs' ? entry?.vs : entry?.together;
+  const rel: string[] = [];
+  const traits: string[] = [];
+  if (split) {
+    const segs = recordSegments(o.relation === 'vs' ? 'vs you' : 'with you', split);
+    rel.push(segs[0]!);
+    traits.push(...segs.slice(1));
+  } else if (!o.online) rel.push(o.relation === 'vs' ? 'First meeting' : 'First time riding together');
+  traits.push(...scoutSegments(o.persona, o.skill));
+  return { rel, traits };
+}
+
+/** A bot's member-line segments, flat: the columns in reading order. */
 export function botMemberSegments(o: {
   persona: PersonaId; skill: BotSkill | null; relation: BotRelation;
   ledger: PersonaLedger; online: boolean;
 }): string[] {
-  const entry = personaRecord(o.ledger, o.persona);
-  const split = o.relation === 'vs' ? entry?.vs : entry?.together;
-  const segs: string[] = [];
-  if (split) segs.push(...recordSegments(o.relation === 'vs' ? 'vs you' : 'with you', split));
-  else if (!o.online) segs.push(o.relation === 'vs' ? 'First meeting' : 'First time riding together');
-  segs.push(...scoutSegments(o.persona, o.skill));
-  return segs;
+  const { rel, traits } = botMemberColumns(o);
+  return [...rel, ...traits];
+}
+
+/**
+ * A human's member line as columns: the record (W–L + win%) is the
+ * relationship column; rating and a streak run are traits. Built from their
+ * real profile stat line only; absent data = no line.
+ */
+export function humanMemberColumns(line: VersusStatLine | null): { rel: string[]; traits: string[] } {
+  if (!line) return { rel: [], traits: [] };
+  const rel: string[] = [];
+  const traits: string[] = [];
+  if (line.rating !== null) traits.push(`Rating ${line.rating.toLocaleString('en-US')}`);
+  const games = line.wins + line.losses;
+  if (games > 0) {
+    rel.push(`${line.wins}–${line.losses}`);
+    rel.push(`${Math.round((line.wins / games) * 100)}%`);
+  }
+  const st = streakSegment(line.streak);
+  if (st) traits.push(st);
+  return { rel, traits };
 }
 
 /** A human's member line from their real profile stat line; absent data = no line. */
@@ -262,7 +299,7 @@ export function versusCardsStartDelay(tapeRows: number): number {
   return VERSUS_TAPE_MS + 120 + tapeRows * VERSUS_ROW_STAGGER_MS;
 }
 
-export interface VersusCardMember { name: string; segments: string[] }
+export interface VersusCardMember { name: string; rel: string[]; traits: string[] }
 export interface VersusCardBlock { headline: string | null; headlineStory?: boolean; members: VersusCardMember[] }
 
 /* ------------------------------------------------------------ model */
@@ -360,20 +397,26 @@ const pctText = (s: VersusSideStats | null): string => { const p = winPctOf(s); 
  * staggered after the tape rows; a line with no honest content doesn't render.
  */
 export function VersusCards({ blocks, startDelay }: { blocks: VersusCardBlock[]; startDelay: number }) {
-  if (!blocks.some((b) => b.headline || b.members.some((m) => m.segments.length))) return null;
+  // Only blocks carrying honest content render at all — an empty side must
+  // not leave a stray divider or gap in the stack.
+  const shown = blocks.filter((b) => b.headline || b.members.some((m) => m.rel.length || m.traits.length));
+  if (!shown.length) return null;
   let step = 0;
   const delay = () => startDelay + step++ * VERSUS_CARD_STAGGER_MS;
   return (
     <div className={`versus-cards${blocks.length === 2 ? ' team' : ' solo'}`} data-testid="versus-cards">
-      {blocks.map((b, bi) => (
+      {shown.map((b, bi) => (
         <div key={bi} className="versus-card-side">
           {b.headline && (
             <div className={`versus-card-headline${b.headlineStory ? ' story' : ''}`} style={{ animationDelay: `${delay()}ms` }}>{b.headline}</div>
           )}
-          {b.members.map((m, mi) => (m.segments.length ? (
+          {b.members.map((m, mi) => (m.rel.length || m.traits.length ? (
             <div key={mi} className="versus-card-line" style={{ animationDelay: `${delay()}ms` }}>
               <span className="versus-card-name">{m.name}</span>
-              <span className="versus-card-segs">{m.segments.join(' · ')}</span>
+              <span className="versus-card-rel">{m.rel.join(' · ')}</span>
+              <span className="versus-card-segs">{m.traits.map((t, ti) => (
+                <span key={ti} className="versus-card-seg">{ti > 0 ? `· ${t}` : t}</span>
+              ))}</span>
             </div>
           ) : null))}
         </div>
@@ -573,12 +616,12 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
       }
       const members = s.members.map((m): VersusCardMember => {
         if (m.isBot) {
-          if (!m.persona) return { name: m.name, segments: [] };
-          if (viewerSide < 0) return { name: m.name, segments: scoutSegments(m.persona, m.skill ?? null) };
+          if (!m.persona) return { name: m.name, rel: [], traits: [] };
+          if (viewerSide < 0) return { name: m.name, rel: [], traits: scoutSegments(m.persona, m.skill ?? null) };
           const relation: BotRelation = model.mode === 'team' && isViewerSide ? 'together' : 'vs';
-          return { name: m.name, segments: botMemberSegments({ persona: m.persona, skill: m.skill ?? null, relation, ledger, online: !!model.online }) };
+          return { name: m.name, ...botMemberColumns({ persona: m.persona, skill: m.skill ?? null, relation, ledger, online: !!model.online }) };
         }
-        return { name: m.name, segments: humanMemberSegments(m.uid ? statLineFromCredProfile(profiles.get(m.uid), model.kind) : null) };
+        return { name: m.name, ...humanMemberColumns(m.uid ? statLineFromCredProfile(profiles.get(m.uid), model.kind) : null) };
       });
       return { headline, headlineStory, members };
     });
