@@ -72,6 +72,7 @@ import {
   flatRest,
   xf,
 } from './layout';
+import { plateCy0, solvePlates, type PlateRect, type PlateSolveInput, type SidePlateGeom, type TopPlateGeom } from './plateLayout';
 
 export interface SceneProps {
   quality: 'high' | 'low';
@@ -1414,6 +1415,100 @@ function trickRects(camera: Camera, size: { width: number; height: number }, pos
 
 function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number } }) {
   const invalidate = useThree((st) => st.invalidate);
+
+  // Joint plate layout (three/plateLayout.ts): all three upper plates are
+  // solved ONCE per call from position-independent inputs — projected
+  // anchors, measured plate SIZES and relative offsets (bubble/tag
+  // overhangs shift with the plate's own rect, so where the plate was last
+  // applied cancels out), the static bar / trick slots / HUD rects. The old
+  // per-plate callbacks read each other's live rects and a dataset.moved
+  // flag, and the partner plate's clamped rest position sits exactly on
+  // the side plates' hit threshold — so at certain tilts the partner plate
+  // snapped up and down forever (owner 2026-10-30). Nothing here reads an
+  // applied plate position as another plate's obstacle, so the solve is a
+  // fixed point: applying its output cannot change its next output.
+  const solveAll = (camera: Camera, size: { width: number; height: number }) => {
+    const pad = 6 + safeFrac * size.width;
+    const stripR = document.querySelector('.trump-strip')?.getBoundingClientRect();
+    const bugR = document.querySelector('.scorebug .bug')?.getBoundingClientRect();
+    const barFloor = stripR && stripR.height > 0 ? stripR.bottom : bugR ? bugR.bottom : size.width >= 900 ? 106 : 122;
+    const slots = trickRects(camera, size, positions, n);
+    const hud: PlateRect[] = [...document.querySelectorAll<HTMLElement>(`.ctl-cluster, .last-trick, .chat-toggle, .me-plate, .me-plate .plate-turn, .me-plate .vbubble, .center-note`)]
+      .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0)
+      .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
+    const proj = (p: (typeof positions)[number]) => {
+      const v = new Vector3(...badgeSpot(p, n)).project(camera);
+      return { x: (v.x + 1) * size.width / 2, y: (1 - v.y) * size.height / 2 };
+    };
+    // a measured rect shifted by a delta — used to re-derive a child's
+    // (bubble's) rect at a seat's natural position from its offset to the
+    // plate's own measured centre, so the applied position cancels
+    const shifted = (r: DOMRect, dx: number, dy: number): PlateRect =>
+      ({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy });
+    let top: TopPlateGeom | null = null;
+    let topFallback: { cx: number; cy: number } | null = null;
+    const sides: SidePlateGeom[] = [];
+    const sideFallbacks = new Map<number, [number, number]>();
+    positions.forEach((p, seat) => {
+      if (seat === human) return;
+      const a = proj(p);
+      if (p === 'top') {
+        // measured (plate + video bubble) so it stays clear of the right edge and below the trump strip
+        const plate = portal.current?.querySelector<HTMLElement>('.seat-anchor.side-top > .plate');
+        const pr = plate?.getBoundingClientRect();
+        const br = plate?.querySelector('.vbubble')?.getBoundingClientRect();
+        const pw = pr && pr.width ? Math.max(pr.right, br?.right ?? 0) - Math.min(pr.left, br?.left ?? Infinity) : 190;
+        const ph = pr && pr.width ? Math.max(pr.height, br?.height ?? 0) : 56;
+        const left = br && pr ? Math.max(0, pr.left - br.left) : 0;
+        // the "TO PLAY" tag / bubble can reach above the plate: keep all of it under the bar
+        const tr = plate?.querySelector('.plate-turn')?.getBoundingClientRect();
+        const up = pr && pr.width ? Math.max(ph / 2, (pr.top + pr.bottom) / 2 - Math.min(pr.top, br && br.height ? br.top : Infinity, tr && tr.height ? tr.top : Infinity)) : ph / 2;
+        const minY = barFloor + 8 + up;
+        // the plate is horizontally centered on the anchor (CSS translate(-50%)), so clamp the center point
+        const cx = Math.max(pad + pw / 2 + left / 2, Math.min(a.x, size.width - pad - pw / 2 + left / 2));
+        const cy = Math.max(a.y, minY);
+        topFallback = { cx, cy };
+        if (pr && pr.width) {
+          const body: PlateRect = { left: cx - pr.width / 2, right: cx + pr.width / 2, top: cy - pr.height / 2, bottom: cy + pr.height / 2 };
+          const bubble = br && br.height ? shifted(br, cx - (pr.left + pr.right) / 2, cy - (pr.top + pr.bottom) / 2) : null;
+          const union: PlateRect = bubble
+            ? { left: Math.min(body.left, bubble.left), right: Math.max(body.right, bubble.right), top: body.top, bottom: Math.max(body.bottom, bubble.bottom) }
+            : body;
+          top = { cx, cy, minY, ph, body, union, bubble };
+        }
+      } else if (p === 'left' || p === 'right') {
+        const side = p;
+        const ax = side === 'left' ? Math.max(pad, a.x - 72) : Math.min(size.width - pad, a.x + 72);
+        const plate = portal.current?.querySelector<HTMLElement>(`.seat-anchor.side-${side} > .plate`);
+        const pr = plate?.getBoundingClientRect();
+        if (!plate || !pr || !pr.width) { sideFallbacks.set(seat, [ax, Math.max(a.y, barFloor + 8 + 28)]); return; } // 28 = half the 56px fallback plate height, as in the top branch
+        // how far above the plate's centre anything reaches (the TO PLAY tag pokes over the top)
+        const tagR = plate.querySelector('.plate-turn')?.getBoundingClientRect();
+        const up = Math.max(pr.height / 2, tagR && tagR.height ? (pr.top + pr.bottom) / 2 - tagR.top : 0);
+        const narrow = plate.classList.contains('narrow');
+        if (!narrow) plate.dataset.wideW = String(pr.width);
+        const wideW = Number(plate.dataset.wideW) || pr.width;
+        if (narrow) plate.dataset.narrowW = String(pr.width);
+        const narrowW = Number(plate.dataset.narrowW) || null;
+        const cy0 = plateCy0(a.y, barFloor, up);
+        const ccx = side === 'left' ? ax + pr.width / 2 : ax - pr.width / 2;
+        const body: PlateRect = { left: ccx - pr.width / 2, right: ccx + pr.width / 2, top: cy0 - pr.height / 2, bottom: cy0 + pr.height / 2 };
+        const br = plate.querySelector('.vbubble')?.getBoundingClientRect();
+        const bubble = br && br.height ? shifted(br, ccx - (pr.left + pr.right) / 2, cy0 - (pr.top + pr.bottom) / 2) : null;
+        sides.push({ side, ax, y: a.y, pw: pr.width, ph: pr.height, up, wideW, narrowW, body, bubble });
+      }
+    });
+    const input: PlateSolveInput = { width: size.width, height: size.height, barFloor, slots, hud, top, sides };
+    const solve = solvePlates(input);
+    const w = window as unknown as { __bwmPlateDbg?: Record<string, unknown>; __bwmLayout?: unknown };
+    const dbg = w.__bwmLayout ? (w.__bwmPlateDbg ??= {}) : undefined;
+    if (dbg) for (const s of sides) {
+      const out = solve.sides[s.side];
+      if (out) dbg[s.side] = { y: s.y, cy: out.cy0, pw: s.pw, ph: s.ph, tp: input.top && [input.top.union.top, input.top.union.bottom], cands: out.cands.map((c) => [...c.map(Math.round)]), slots: slots.map((t) => [t.left, t.top, t.right, t.bottom].map(Math.round)) };
+    }
+    return { solve, topFallback, sideFallbacks };
+  };
+
   return (
     <>
       {positions.map((p, seat) => {
@@ -1436,137 +1531,27 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
             </Html>
           );
         }
-        // side plates are anchored by their outer edge and clamped inside the viewport (+ iOS safe area)
+        // side plates are anchored by their outer edge and clamped inside the viewport (+ iOS safe area);
+        // every plate's position is its slice of the one joint solve (see solveAll above)
         const calc = side
           ? (el: Object3D, camera: Camera, size: { width: number; height: number }) => {
-            const v = new Vector3().setFromMatrixPosition(el.matrixWorld).project(camera);
-            const x = (v.x + 1) * size.width / 2, y = (1 - v.y) * size.height / 2;
-            const pad = 6 + safeFrac * size.width;
+            const { solve, topFallback, sideFallbacks } = solveAll(camera, size);
             if (side === 'top') {
-              // left-anchored; measured (plate + video bubble) so it stays clear of the right edge and below the trump strip
-              const plate = portal.current?.querySelector<HTMLElement>('.seat-anchor.side-top > .plate');
-              const pr = plate?.getBoundingClientRect();
-              const br = plate?.querySelector('.vbubble')?.getBoundingClientRect();
-              const pw = pr ? Math.max(pr.right, br?.right ?? 0) - Math.min(pr.left, br?.left ?? Infinity) : 190;
-              const ph = pr ? Math.max(pr.height, br?.height ?? 0) : 56;
-              const sr = document.querySelector('.trump-strip')?.getBoundingClientRect();
-              const bug = document.querySelector('.scorebug .bug')?.getBoundingClientRect();
-              const bar = sr && sr.height > 0 ? sr.bottom : bug ? bug.bottom : size.width >= 900 ? 106 : 122; // the strip folds into the bug on cramped phones
-              const left = br && pr ? Math.max(0, pr.left - br.left) : 0;
-              // the "TO PLAY" tag / bubble can reach above the plate: keep all of it under the bar
-              const tr = plate?.querySelector('.plate-turn')?.getBoundingClientRect();
-              const up = pr ? Math.max(ph / 2, (pr.top + pr.bottom) / 2 - Math.min(pr.top, br && br.height ? br.top : Infinity, tr && tr.height ? tr.top : Infinity)) : ph / 2;
-              const minY = bar + 8 + up;
-              let cy = Math.max(y, minY);
-              // and keep clear of the side plates below it (big video bubbles on small phones)
-              const sideEls = [...(portal.current?.querySelectorAll<HTMLElement>('.seat-anchor.side-left > .plate, .seat-anchor.side-right > .plate') ?? [])];
-              const sides = sideEls.map((e) => e.getBoundingClientRect().top).filter((t) => t > 0);
-              if (sides.length) cy = Math.max(minY, Math.min(cy, Math.min(...sides) - 6 - ph / 2));
-              // a side plate had to move out of the trick zone (small phones): the top plate stays as high as it can, so the two
-              // don't chase each other (the side plate may be tucked right under this one)
-              if (sideEls.some((e) => e.dataset.moved === '1')) cy = minY;
-              // the plate is horizontally centered on the anchor (CSS translate(-50%)), so clamp the center point
-              return [Math.max(pad + pw / 2 + left / 2, Math.min(x, size.width - pad - pw / 2 + left / 2)), cy];
+              const t = solve.top ?? topFallback;
+              return t ? [t.cx, t.cy] : [size.width / 2, size.height / 2];
             }
-            const ax = side === 'left' ? Math.max(pad, x - 72) : Math.min(size.width - pad, x + 72);
-            // The top bar paints ABOVE the badge layer (scorebug z 8 / trump strip z 6 over the badge
-            // layer's z 2), and on wide screens the sitting camera projects the side anchors up into
-            // it — at 1440x900 sitting the left/right anchors land at y~66, dead centre of the bug, so
-            // both opponent plates rendered hidden behind it (owner 2026-10-21, Mac). The partner
-            // plate's branch has always floored itself under the bar; the side plates get the same
-            // floor: their working centre never starts above bar + 8.
-            const stripR = document.querySelector('.trump-strip')?.getBoundingClientRect();
-            const bugR = document.querySelector('.scorebug .bug')?.getBoundingClientRect();
-            const barFloor = stripR && stripR.height > 0 ? stripR.bottom : bugR ? bugR.bottom : size.width >= 900 ? 106 : 122;
-            // never cover a trick slot (phones in portrait: the side plates sit right beside the trick cards).
-            // 1) if the plate would reach into a slot beside it, it goes narrow (chips wrap under the name);
-            // 2) if it still touches one, it moves up, clear of the trick zone (never above the top bar).
+            const fb = sideFallbacks.get(seat);
+            if (fb) return fb;
+            const s = solve.sides[side];
+            if (!s) return [0, 0];
             const plate = portal.current?.querySelector<HTMLElement>(`.seat-anchor.side-${side} > .plate`);
-            const pr = plate?.getBoundingClientRect();
-            if (!plate || !pr || !pr.width) return [ax, Math.max(y, barFloor + 8 + 28)]; // 28 = half the 56px fallback plate height, as in the top branch
-            // how far above the plate's centre anything reaches (the TO PLAY tag pokes over the top)
-            const tagR = plate.querySelector('.plate-turn')?.getBoundingClientRect();
-            const up = Math.max(pr.height / 2, tagR && tagR.height ? (pr.top + pr.bottom) / 2 - tagR.top : 0);
-            const cy0 = Math.max(y, barFloor + 8 + up);
-            const slots = trickRects(camera, size, positions, n);
-            const narrow = plate.classList.contains('narrow');
-            if (!narrow) plate.dataset.wideW = String(pr.width);
-            const wideW = Number(plate.dataset.wideW) || pr.width;
-            const hits = (w: number, h: number, cy: number) => {
-              const l = side === 'left' ? ax : ax - w, r = l + w;
-              return slots.filter((t) => r + 6 > t.left && l - 6 < t.right && cy + h / 2 + 6 > t.top && cy - h / 2 - 6 < t.bottom);
-            };
-            const wantNarrow = hits(wideW, pr.height, cy0).length > 0;
-            if (wantNarrow !== narrow) { plate.classList.toggle('narrow', wantNarrow); invalidate(); } // re-measured next frame
-            const pw = pr.width, ph = pr.height;
-            // The partner's plate is a hard obstacle too, not just the trick slots: in portrait
-            // (Sitting especially) the side anchors project INTO the band the partner plate is
-            // pinned to under the scorebug, and three plates 140px+ wide cannot share that band —
-            // they landed on top of each other while the slot-only check never fired (owner 2026-10-20).
-            const tpEl = portal.current?.querySelector<HTMLElement>('.seat-anchor.side-top > .plate');
-            const tpr = tpEl?.getBoundingClientRect();
-            // the partner's plate and its video bubble (the big circle hangs below the plate)
-            const tbr = tpEl?.querySelector('.vbubble')?.getBoundingClientRect();
-            const tp = tpr && tpr.width > 0 ? {
-              left: Math.min(tpr.left, tbr?.left ?? Infinity), right: Math.max(tpr.right, tbr?.right ?? 0),
-              top: tpr.top, bottom: Math.max(tpr.bottom, tbr?.bottom ?? 0),
-            } : undefined;
-            let topHit = false;
-            if (tp) {
-              const l = side === 'left' ? ax : ax - pw, r = l + pw;
-              topHit = r + 6 > tp.left && l - 6 < tp.right && cy0 + ph / 2 + 6 > tp.top && cy0 - ph / 2 - 6 < tp.bottom;
+            if (plate) {
+              // outputs only: the narrow composition and the moved mirror are
+              // written from the solve, never read back into it
+              if (s.wantNarrow !== plate.classList.contains('narrow')) { plate.classList.toggle('narrow', s.wantNarrow); invalidate(); } // re-measured next frame
+              if (s.moved) plate.dataset.moved = '1'; else delete plate.dataset.moved;
             }
-            if (!hits(pw, ph, cy0).length && !topHit) { delete plate.dataset.moved; return [ax, cy0]; }
-            plate.dataset.moved = '1';
-            const bar = barFloor;
-            // everything else the plate must not cover. The other plates weigh like trick slots
-            // (a plate may never sit on another plate); the rest of the HUD keeps its old weight.
-            const plateRects = [...document.querySelectorAll<HTMLElement>(`.seat-anchor:not(.side-${side}) > .plate, .seat-anchor:not(.side-${side}) > .plate .vbubble`)]
-              .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
-            const hud = [...document.querySelectorAll<HTMLElement>(`.ctl-cluster, .last-trick, .chat-toggle, .me-plate, .me-plate .plate-turn, .me-plate .vbubble, .center-note`)]
-              .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
-            const area = (a: { left: number; right: number; top: number; bottom: number }, b: { left: number; right: number; top: number; bottom: number }) =>
-              Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-            const cost = (px: number, cy: number) => {
-              const l = side === 'left' ? px : px - pw;
-              const box = { left: l - 6, right: l + pw + 6, top: cy - ph / 2 - 6, bottom: cy + ph / 2 + 6 };
-              const real = { left: l, right: l + pw, top: cy - ph / 2, bottom: cy + ph / 2 };
-              const off = cy - ph / 2 < bar + 4 || cy + ph / 2 > size.height - 4 ? 1e9 : 0;
-              // a real overlap costs far more than only crowding the 6 px breathing room
-              return off + slots.reduce((a, t) => a + area(real, t) * 400 + area(box, t) * 10, 0)
-                + plateRects.reduce((a, r) => a + area(real, r) * 400 + area(box, r) * 10, 0)
-                + hud.reduce((a, r) => a + area(real, r) * 40 + area(box, r), 0);
-            };
-            const inward = (cy: number) => {
-              let px = ax;
-              for (const r of [...plateRects, ...hud]) if (r.top < cy + ph / 2 + 6 && r.bottom > cy - ph / 2 - 6) px = side === 'left' ? Math.max(px, r.right < size.width / 2 ? r.right + 6 : px) : Math.min(px, r.left > size.width / 2 ? r.left - 6 : px);
-              // never past the middle: a seat's plate stays on that seat's side of the table
-              return side === 'left' ? Math.min(px, size.width / 2 - pw) : Math.max(px, size.width / 2 + pw);
-            };
-            // candidates: the natural spot, then — when a trick slot is in the way — just above the
-            // trick zone, just below it, and below it but slid in from the edge (clear of the controls)
-            const hit = hits(pw, ph, cy0);
-            const cands: [number, number][] = [[ax, cy0]];
-            if (hit.length) {
-              const up = Math.min(...hit.map((t) => t.top)) - 6 - ph / 2;
-              let down = Math.max(...hit.map((t) => t.bottom)) + 6 + ph / 2;
-              for (let k = 0; k < 4; k++) { const more = hits(pw, ph, down); if (!more.length) break; down = Math.max(...more.map((t) => t.bottom)) + 6 + ph / 2; }
-              cands.push([ax, up], [ax, down], [inward(down), down], [inward(up), up]);
-            }
-            // right under the partner's plate (top band): the stagger step when the side plate's
-            // natural spot collides with the partner plate above the trick zone
-            if (tp) {
-              cands.push([ax, tp.bottom + 6 + ph / 2]);
-              // tucked under the plate body when this plate is clear of the (round) bubble sideways
-              const l = side === 'left' ? ax : ax - pw, r = l + pw;
-              if (tpr && tbr && (r + 6 <= tbr.left || l - 6 >= tbr.right)) cands.push([ax, tpr.bottom + 6 + ph / 2]);
-            }
-            let best = cands[0]!, bc = Infinity;
-            for (const c of cands) { const k = cost(c[0], c[1]); if (k < bc) { bc = k; best = c; } }
-            const w = window as unknown as { __bwmPlateDbg?: Record<string, unknown>; __bwmLayout?: unknown };
-            const dbg = w.__bwmLayout ? (w.__bwmPlateDbg ??= {}) : undefined;
-            if (dbg) dbg[side] = { y, cy: cy0, pw, ph, tp: tp && [tp.top, tp.bottom], cands: cands.map((c) => [...c.map(Math.round), Math.round(cost(c[0], c[1]))]), slots: slots.map((t) => [t.left, t.top, t.right, t.bottom].map(Math.round)) };
-            return best;
+            return [s.x, s.cy];
           }
           : undefined;
         return (

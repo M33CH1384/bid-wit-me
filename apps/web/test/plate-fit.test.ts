@@ -184,15 +184,19 @@ describe('wide screens: side plates clear the top bar (Mac sitting bug)', () => 
 
 describe('the engine and CSS carry the fix', () => {
   const scene = src('three/Scene.tsx');
+  // The placement solve moved out of Scene.tsx's Badges into the pure joint
+  // solver (three/plateLayout.ts) in the 2026-10-30 plate-jitter fix — the
+  // pins below follow the logic to its new home, assertions unchanged.
+  const layout = src('three/plateLayout.ts');
   const css = src('styles.css');
 
   it('Badges treats the partner plate as an obstacle for the side plates, not just trick slots', () => {
-    expect(scene).toContain('topHit');
+    expect(layout).toContain('topHit');
     // other plates weigh like trick slots in the placement cost (400), the plain HUD stays at 40
-    expect(scene).toMatch(/plateRects\.reduce\(\(a, r\) => a \+ area\(real, r\) \* 400/);
-    expect(scene).toMatch(/hud\.reduce\(\(a, r\) => a \+ area\(real, r\) \* 40/);
+    expect(layout).toMatch(/plateRects\.reduce\(\(a, r\) => a \+ area\(real, r\) \* 400/);
+    expect(layout).toMatch(/hud\.reduce\(\(a, r\) => a \+ area\(real, r\) \* 40/);
     // the stagger candidate (right under the partner plate) is offered whenever the plate exists
-    expect(scene).toContain('cands.push([ax, tp.bottom + 6 + ph / 2])');
+    expect(layout).toContain('cands.push([ax, tp.bottom + 6 + ph / 2])');
   });
 
   it('badge plates get the compact portrait composition; your own plate is untouched', () => {
@@ -212,11 +216,11 @@ describe('the engine and CSS carry the fix', () => {
     expect(scene).toContain('barFloor');
     expect(scene).toMatch(/stripR && stripR\.height > 0 \? stripR\.bottom : bugR \? bugR\.bottom : size\.width >= 900 \? 106 : 122/);
     // the working centre for every side-plate decision starts at or below bar + 8
-    expect(scene).toMatch(/const cy0 = Math\.max\(y, barFloor \+ 8 \+ up\)/);
+    expect(layout).toMatch(/const cy0 = Math\.max\(y, barFloor \+ 8 \+ up\)/);
     // the unmeasured first frame is floored too (half the 56px fallback plate height)
     expect(scene).toContain('barFloor + 8 + 28');
     // the natural (unstaggered) placement returns the floored centre
-    expect(scene).toMatch(/return \[ax, cy0\]/);
+    expect(layout).toMatch(/return \{ x: ax, cy: cy0, moved: false/);
   });
 
   it('the last-trick chip clears the controls rail (its box ends left of the rail footprint)', () => {
