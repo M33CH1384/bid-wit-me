@@ -19,6 +19,9 @@
  * top lands at FLOOR_Y + 0.49 = −0.41 (PORCH_SEAT_TOP in
  * PorchFigures.tsx); the kit rooms centre the box at FLOOR_Y + 0.49
  * with height 0.028, so their top lands at FLOOR_Y + 0.504 = −0.396.
+ * Batch 2's rooms add two more tops: the Corner / Rooftop folding
+ * chair (box centred at local 0.478 → −0.408) and the High-Rise
+ * penthouse armchair (cushion top documented at 0.45 → −0.45).
  *
  * Values here are pinned against the room sources by
  * test/story-figures.test.ts — if a room's chairs move, this table
@@ -55,10 +58,28 @@ const KIT_SPOTS: Record<SeatPos, FigureSeatSpot> = {
 /** Kit-chair seat top: FLOOR_Y (−0.9) + 0.49 centre + 0.014 half-height. */
 export const KIT_SEAT_TOP = -0.396;
 
+/** The Corner / Rooftop folding chairs (CornerStreetRoom and
+ *  RooftopDuskRoom chairPanelGeo): seat box 0.43 × 0.028 × 0.40
+ *  centred at local (0, 0.478, 0) in a group at FLOOR_Y — top at
+ *  FLOOR_Y + 0.492. */
+export const FOLDING_SEAT_TOP = -0.408;
+
+/** The High-Rise penthouse's designer armchairs (HighRisePenthouse
+ *  Room): seat cushion box(0.56, 0.10, 0.52, 0, 0.40, 0.0), whose top
+ *  the room documents at 0.45 local — FLOOR_Y + 0.45. */
+export const PENTHOUSE_SEAT_TOP = -0.45;
+
 export const FIGURE_SEAT_CONFIGS: Readonly<Record<string, FigureSeatConfig>> = {
   // The pilot's own row: classic anchors, the Porch seat top.
   porch: { seatTop: -0.41, spots: CLASSIC_SPOTS },
   barbershop: { seatTop: KIT_SEAT_TOP, spots: KIT_SPOTS },
   'rec-center': { seatTop: KIT_SEAT_TOP, spots: CLASSIC_SPOTS },
   cookout: { seatTop: KIT_SEAT_TOP, spots: KIT_SPOTS },
+  // Batch 2: Corner + Rooftop place the classic anchors with their
+  // own folding chair; the Church Basement re-declares the kit
+  // anchors with the kit chair; the High-Rise's armchairs sit lower.
+  corner: { seatTop: FOLDING_SEAT_TOP, spots: CLASSIC_SPOTS },
+  'church-basement': { seatTop: KIT_SEAT_TOP, spots: KIT_SPOTS },
+  rooftop: { seatTop: FOLDING_SEAT_TOP, spots: CLASSIC_SPOTS },
+  'high-rise': { seatTop: PENTHOUSE_SEAT_TOP, spots: CLASSIC_SPOTS },
 };

@@ -15,8 +15,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { STORY_FIGURE_SEAMS, roomGlbUrls, storyFigureGlbs } from '../src/assetGate';
-import { FIGURE_SEAT_CONFIGS, KIT_SEAT_TOP } from '../src/three/figureSeats';
+import { STORY_FIGURE_SEAMS, SEDAN_GLB_URL, roomGlbUrls, storyFigureGlbs } from '../src/assetGate';
+import { FIGURE_SEAT_CONFIGS, FOLDING_SEAT_TOP, KIT_SEAT_TOP, PENTHOUSE_SEAT_TOP } from '../src/three/figureSeats';
 
 const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
 const pub = (url: string) => join(process.cwd(), 'apps/web', 'public', url);
@@ -151,6 +151,106 @@ describe('the per-stop seat configs', () => {
     const scene = src('src/three/Scene.tsx');
     expect(scene).toContain('const figureSeatConfig = props.storyStopId ? FIGURE_SEAT_CONFIGS[props.storyStopId] : undefined');
     expect(scene).toContain('seatConfig={figureSeatConfig}');
+  });
+});
+
+const BATCH2: Record<string, { venue: string; ids: string[] }> = {
+  corner: { venue: 'speakeasy', ids: ['dee', 'smoke', 'redd'] },
+  'church-basement': { venue: 'church', ids: ['dee', 'deaconFord', 'sisterMae'] },
+  rooftop: { venue: 'rooftop', ids: ['dee', 'poet', 'seven'] },
+  'high-rise': { venue: 'mansion', ids: ['dee', 'velvet', 'accountant'] },
+};
+
+describe('the gate figure rows (Batch 2 stops)', () => {
+  it('each Batch 2 stop gates exactly Dee + its pair, at its own venue, High only', () => {
+    for (const [stop, { venue, ids }] of Object.entries(BATCH2)) {
+      expect(storyFigureGlbs(venue, stop).map((f) => f.id)).toEqual(ids);
+      expect(roomGlbUrls(venue, 'low', stop)).toEqual([]);
+      expect(storyFigureGlbs('grandma', stop)).toEqual([]);
+    }
+    // sedan-free stops: the figure GLBs are the whole room list
+    for (const stop of ['church-basement', 'rooftop', 'high-rise']) {
+      const { venue, ids } = BATCH2[stop]!;
+      expect(roomGlbUrls(venue, 'high', stop).map((g) => g.url))
+        .toEqual(ids.map((id) => `/assets/figures/${id}.glb`));
+    }
+    // the Corner keeps its Forge sedan ahead of the figure seam
+    expect(roomGlbUrls('speakeasy', 'high', 'corner').map((g) => g.url)).toEqual([
+      SEDAN_GLB_URL,
+      ...BATCH2['corner']!.ids.map((id) => `/assets/figures/${id}.glb`),
+    ]);
+  });
+
+  it('the Batch 2 GLBs exist full-size with q95 body textures', () => {
+    const floors: Record<string, number> = {
+      smoke: 150_000, redd: 150_000, deaconFord: 200_000, sisterMae: 200_000,
+      poet: 250_000, seven: 130_000, velvet: 200_000, accountant: 200_000,
+    };
+    for (const { ids } of Object.values(BATCH2)) {
+      for (const id of ids) {
+        expect(statSync(pub(`/assets/figures/${id}.glb`)).size, id).toBeGreaterThan(1_000_000);
+      }
+    }
+    for (const [id, floor] of Object.entries(floors)) {
+      const buf = readFileSync(pub(`/assets/figures/${id}.glb`));
+      const jsonLen = buf.readUInt32LE(12);
+      const gltf = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'));
+      const largest = Math.max(...gltf.images.map((im: { bufferView: number }) => gltf.bufferViews[im.bufferView].byteLength));
+      expect(largest, `${id} body texture`).toBeGreaterThan(floor);
+    }
+  });
+
+  it('carries a register for every Batch 2 character, statures in the pilot band', () => {
+    const fig = src('src/three/PorchFigures.tsx');
+    const statures: Record<string, number> = {
+      smoke: 1.85, redd: 1.88, deaconFord: 1.82, sisterMae: 1.69,
+      poet: 1.79, seven: 1.84, velvet: 1.78, accountant: 1.76,
+    };
+    for (const [id, s] of Object.entries(statures)) {
+      expect(fig).toContain(`${id}: {\n    stature: ${s.toFixed(2)}`);
+    }
+  });
+});
+
+describe('the per-stop seat configs (Batch 2)', () => {
+  it('Corner + Rooftop: classic anchors, the folding-chair top from the rooms’ own box', () => {
+    expect(FOLDING_SEAT_TOP).toBeCloseTo(-0.9 + 0.478 + 0.014, 10);
+    for (const stop of ['corner', 'rooftop']) {
+      const cfg = FIGURE_SEAT_CONFIGS[stop]!;
+      expect(cfg.seatTop).toBe(FOLDING_SEAT_TOP);
+      expect(cfg.spots.top).toEqual({ x: 0, z: -2.45, ry: 0 });
+      expect(cfg.spots.left).toEqual({ x: -2.3, z: 0, ry: Math.PI / 2 });
+    }
+    for (const room of ['CornerStreetRoom.tsx', 'RooftopDuskRoom.tsx']) {
+      const text = src(`src/three/${room}`);
+      expect(text).toContain('box(0.43, 0.028, 0.40, 0, 0.478, 0)');
+      expect(text).toContain("import { CHAIR_SPOTS } from './classicStudioLayout'");
+    }
+  });
+
+  it('Church Basement: kit anchors + kit top, matching the room’s LOCAL spots', () => {
+    const cfg = FIGURE_SEAT_CONFIGS['church-basement']!;
+    expect(cfg.seatTop).toBe(KIT_SEAT_TOP);
+    expect(cfg.spots.top).toEqual({ x: 0, z: -1.98, ry: 0 });
+    expect(cfg.spots.bottom).toEqual({ x: 0, z: 1.98, ry: Math.PI });
+    expect(cfg.spots.left).toEqual({ x: -2.14, z: 0, ry: Math.PI / 2 });
+    expect(cfg.spots.right).toEqual({ x: 2.14, z: 0, ry: -Math.PI / 2 });
+    const text = src('src/three/ChurchBasementRoom.tsx');
+    expect(text).toContain('{ pos: [0, FLOOR_Y, -1.98], ry: 0 }');
+    expect(text).toContain('{ pos: [0, FLOOR_Y, 1.98], ry: Math.PI }');
+    expect(text).toContain('{ pos: [-2.14, FLOOR_Y, 0], ry: Math.PI / 2 }');
+    expect(text).toContain('{ pos: [2.14, FLOOR_Y, 0], ry: -Math.PI / 2 }');
+    expect(text).toContain('box(0.42, 0.028, 0.40, 0, 0.49, 0.02)');
+  });
+
+  it('High-Rise: classic anchors, the armchair cushion top the room documents', () => {
+    expect(PENTHOUSE_SEAT_TOP).toBeCloseTo(-0.9 + 0.45, 10);
+    const cfg = FIGURE_SEAT_CONFIGS['high-rise']!;
+    expect(cfg.seatTop).toBe(PENTHOUSE_SEAT_TOP);
+    expect(cfg.spots.top).toEqual({ x: 0, z: -2.45, ry: 0 });
+    const text = src('src/three/HighRisePenthouseRoom.tsx');
+    expect(text).toContain('box(0.56, 0.10, 0.52, 0, 0.40, 0.0)');
+    expect(text).toContain("import { CHAIR_SPOTS } from './classicStudioLayout'");
   });
 });
 

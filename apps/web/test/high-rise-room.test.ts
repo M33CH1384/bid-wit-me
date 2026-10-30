@@ -72,9 +72,16 @@ describe('the High-Rise — code-first, no downloads', () => {
     expect(room).toContain('function makeNightSkyTexture()');
   });
 
-  it('adds nothing to the loader asset gate (all-code room)', () => {
-    expect(roomGlbUrls('mansion', 'high', 'high-rise')).toEqual([]);
+  it('adds only its story figures to the loader asset gate (all-code room)', () => {
+    // The room itself stays all-code (no room GLB); the gate carries the
+    // stop's seated story figures (rollout Batch 2, 2026-10-30), High only.
+    expect(roomGlbUrls('mansion', 'high', 'high-rise')).toEqual([
+      { label: expect.any(String), url: '/assets/figures/dee.glb' },
+      { label: expect.any(String), url: '/assets/figures/velvet.glb' },
+      { label: expect.any(String), url: '/assets/figures/accountant.glb' },
+    ]);
     expect(roomGlbUrls('mansion', 'low', 'high-rise')).toEqual([]);
+    expect(roomGlbUrls('mansion', 'high', null)).toEqual([]);
   });
 });
 

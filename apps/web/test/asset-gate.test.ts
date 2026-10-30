@@ -134,7 +134,12 @@ describe('room asset enumeration', () => {
   it('the sedan rides only the high-quality street rooms', () => {
     expect(roomGlbUrls('blockAfterDark', 'high', null)).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
     expect(roomGlbUrls('blockAfterDark', 'high', 'pjs')).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
-    expect(roomGlbUrls('speakeasy', 'high', 'corner')).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
+    expect(roomGlbUrls('speakeasy', 'high', 'corner')).toEqual([
+      { label: expect.any(String), url: SEDAN_GLB_URL },
+      { label: expect.any(String), url: '/assets/figures/dee.glb' },
+      { label: expect.any(String), url: '/assets/figures/smoke.glb' },
+      { label: expect.any(String), url: '/assets/figures/redd.glb' },
+    ]);
     expect(roomGlbUrls('speakeasy', 'high', null)).toEqual([]);
     expect(roomGlbUrls('blockAfterDark', 'low', null)).toEqual([]);
     // the Porch deck ROOM is all-code, but the pilot's seated figures are
@@ -354,7 +359,12 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     expect(roomGlbUrls('blockAfterDark', 'low', 'king')).toEqual([]);
     expect(roomGlbUrls('blockAfterDark', 'high', 'the-pjs')).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
     expect(roomGlbUrls('blockAfterDark', 'high', null)).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
-    expect(roomGlbUrls('speakeasy', 'high', 'corner')).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
+    expect(roomGlbUrls('speakeasy', 'high', 'corner')).toEqual([
+      { label: expect.any(String), url: SEDAN_GLB_URL },
+      { label: expect.any(String), url: '/assets/figures/dee.glb' },
+      { label: expect.any(String), url: '/assets/figures/smoke.glb' },
+      { label: expect.any(String), url: '/assets/figures/redd.glb' },
+    ]);
   });
 
   it("the king seam mounts at High only, in sync with Venue3D's lounge branch", () => {
@@ -536,7 +546,9 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     const r = await composeGate('speakeasy', 'high', null).done;
     expect(r.total).toBe(5);
     expect(r.cappedOut).toBe(false);
-    // The corner story table at the same venue composes identically.
+    // The corner story table at the same venue composes identically
+    // (its seated figures — Batch 2: Dee + Smoke + Redd — ride
+    // roomGlbUrls like the sedan, pinned above; not ledger files).
     const s = await composeGate('speakeasy', 'high', 'corner').done;
     expect(s.total).toBe(5);
     const l = await composeGate('speakeasy', 'low', null).done;

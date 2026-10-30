@@ -171,6 +171,48 @@ const FIGURE_REGISTERS: Record<string, FigureRegister> = {
     breathPeriod: 4.1, breathAmp: 1.0, swayAmp: 1.1, gazeDwell: 3.1,
     gaze: ['fan', 'keisha', 'trick', 'dee', 'fan'],
   },
+  /* Rollout batch 2 (2026-10-30): Corner, Church Basement, Rooftop,
+   * High-Rise. Same band and life ranges as batch 1. */
+  smoke: {
+    stature: 1.85, spine: [0.08, 0.06, 0.05],
+    breathPeriod: 4.8, breathAmp: 0.8, swayAmp: 0.7, gazeDwell: 3.8,
+    gaze: ['fan', 'trick', 'redd', 'dee', 'fan'],
+  },
+  redd: {
+    stature: 1.88, spine: [0.07, 0.05, 0.04],
+    breathPeriod: 5.4, breathAmp: 0.7, swayAmp: 0.6, gazeDwell: 4.4,
+    gaze: ['trick', 'dee', 'fan', 'smoke', 'trick'],
+  },
+  deaconFord: {
+    stature: 1.82, spine: [0.07, 0.05, 0.04],
+    breathPeriod: 5.0, breathAmp: 0.7, swayAmp: 0.6, gazeDwell: 4.0,
+    gaze: ['trick', 'dee', 'fan', 'sisterMae', 'trick'],
+  },
+  sisterMae: {
+    stature: 1.69, spine: [0.09, 0.07, 0.05],
+    breathPeriod: 4.6, breathAmp: 0.8, swayAmp: 0.7, gazeDwell: 3.6,
+    gaze: ['fan', 'deaconFord', 'trick', 'dee', 'fan'],
+  },
+  poet: {
+    stature: 1.79, spine: [0.12, 0.09, 0.07],
+    breathPeriod: 4.2, breathAmp: 1.0, swayAmp: 1.0, gazeDwell: 3.0,
+    gaze: ['fan', 'seven', 'trick', 'dee', 'fan'],
+  },
+  seven: {
+    stature: 1.84, spine: [0.08, 0.06, 0.05],
+    breathPeriod: 4.9, breathAmp: 0.8, swayAmp: 0.7, gazeDwell: 3.9,
+    gaze: ['trick', 'dee', 'fan', 'poet', 'trick'],
+  },
+  velvet: {
+    stature: 1.78, spine: [0.09, 0.07, 0.05],
+    breathPeriod: 4.5, breathAmp: 0.9, swayAmp: 0.8, gazeDwell: 3.5,
+    gaze: ['fan', 'accountant', 'trick', 'dee', 'fan'],
+  },
+  accountant: {
+    stature: 1.76, spine: [0.06, 0.05, 0.04],
+    breathPeriod: 5.2, breathAmp: 0.7, swayAmp: 0.6, gazeDwell: 4.2,
+    gaze: ['trick', 'dee', 'velvet', 'fan', 'trick'],
+  },
 };
 
 /* id -> GLB url: the union of every story seam's figure list (the

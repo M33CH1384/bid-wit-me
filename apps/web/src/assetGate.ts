@@ -93,6 +93,22 @@ export const STORY_FIGURE_SEAMS: readonly StoryFigureSeam[] = [
     venue: 'backyard', stop: 'cookout',
     figures: [figureGlb('dee', 'Cookout Dee'), figureGlb('keisha', 'Keisha'), figureGlb('teisha', 'Teisha')],
   },
+  {
+    venue: 'speakeasy', stop: 'corner',
+    figures: [figureGlb('dee', 'Corner Dee'), figureGlb('smoke', 'Smoke'), figureGlb('redd', 'Redd')],
+  },
+  {
+    venue: 'church', stop: 'church-basement',
+    figures: [figureGlb('dee', 'Church Basement Dee'), figureGlb('deaconFord', 'Deacon Ford'), figureGlb('sisterMae', 'Sister Mae')],
+  },
+  {
+    venue: 'rooftop', stop: 'rooftop',
+    figures: [figureGlb('dee', 'Rooftop Dee'), figureGlb('poet', 'Poet'), figureGlb('seven', 'Seven')],
+  },
+  {
+    venue: 'mansion', stop: 'high-rise',
+    figures: [figureGlb('dee', 'High-Rise Dee'), figureGlb('velvet', 'Velvet'), figureGlb('accountant', 'The Accountant')],
+  },
 ];
 
 /** The figure GLBs a story table presents (empty at non-story tables). */
