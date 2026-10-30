@@ -193,6 +193,126 @@ const FIGURE_REGISTERS: Record<string, FigureRegister> = {
     breathPeriod: 4.8, breathAmp: 0.8, swayAmp: 0.7, gazeDwell: 3.8,
     gaze: ['fan', 'trick', 'fan', 'human'],
   },
+  'professor-m': {
+    stature: 1.80, spine: [0.07, 0.05, 0.04],
+    breathPeriod: 5.0, breathAmp: 0.7, swayAmp: 0.5, gazeDwell: 4.4,
+    gaze: ['trick', 'fan', 'trick', 'human'],
+  },
+  'silent-m': {
+    stature: 1.85, spine: [0.06, 0.05, 0.04],
+    breathPeriod: 5.6, breathAmp: 0.6, swayAmp: 0.5, gazeDwell: 4.8,
+    gaze: ['trick', 'trick', 'fan', 'human'],
+  },
+  'barber-m': {
+    stature: 1.79, spine: [0.08, 0.06, 0.05],
+    breathPeriod: 4.6, breathAmp: 0.9, swayAmp: 0.8, gazeDwell: 3.6,
+    gaze: ['fan', 'human', 'trick', 'fan'],
+  },
+  'barber-f': {
+    stature: 1.66, spine: [0.09, 0.07, 0.05],
+    breathPeriod: 4.2, breathAmp: 1.0, swayAmp: 0.9, gazeDwell: 3.2,
+    gaze: ['fan', 'trick', 'human', 'fan'],
+  },
+  'deacon-m': {
+    stature: 1.77, spine: [0.06, 0.05, 0.04],
+    breathPeriod: 5.4, breathAmp: 0.7, swayAmp: 0.5, gazeDwell: 4.6,
+    gaze: ['trick', 'fan', 'human', 'trick'],
+  },
+  'deacon-f': {
+    stature: 1.63, spine: [0.07, 0.05, 0.04],
+    breathPeriod: 5.0, breathAmp: 0.8, swayAmp: 0.6, gazeDwell: 4.2,
+    gaze: ['fan', 'trick', 'fan', 'human'],
+  },
+  'conspiracy-m': {
+    stature: 1.78, spine: [0.10, 0.08, 0.06],
+    breathPeriod: 3.9, breathAmp: 1.1, swayAmp: 1.2, gazeDwell: 2.4,
+    gaze: ['human', 'trick', 'human', 'fan'],
+  },
+  'conspiracy-f': {
+    stature: 1.69, spine: [0.10, 0.08, 0.06],
+    breathPeriod: 4.0, breathAmp: 1.1, swayAmp: 1.1, gazeDwell: 2.6,
+    gaze: ['human', 'fan', 'human', 'trick'],
+  },
+  'petty-m': {
+    stature: 1.76, spine: [0.08, 0.06, 0.05],
+    breathPeriod: 4.4, breathAmp: 0.9, swayAmp: 0.8, gazeDwell: 3.0,
+    gaze: ['human', 'fan', 'trick', 'human'],
+  },
+  'petty-f': {
+    stature: 1.67, spine: [0.09, 0.07, 0.06],
+    breathPeriod: 4.1, breathAmp: 1.0, swayAmp: 1.0, gazeDwell: 2.8,
+    gaze: ['human', 'trick', 'fan', 'human'],
+  },
+  'lilcuz-m': {
+    stature: 1.74, spine: [0.11, 0.09, 0.07],
+    breathPeriod: 3.6, breathAmp: 1.2, swayAmp: 1.3, gazeDwell: 2.4,
+    gaze: ['fan', 'human', 'fan', 'trick'],
+  },
+  'lilcuz-f': {
+    stature: 1.64, spine: [0.11, 0.09, 0.07],
+    breathPeriod: 3.7, breathAmp: 1.2, swayAmp: 1.4, gazeDwell: 2.3,
+    gaze: ['fan', 'trick', 'human', 'fan'],
+  },
+  'hustler-m': {
+    stature: 1.81, spine: [0.09, 0.07, 0.05],
+    breathPeriod: 4.3, breathAmp: 0.9, swayAmp: 0.9, gazeDwell: 3.0,
+    gaze: ['trick', 'human', 'fan', 'trick'],
+  },
+  'gambler-m': {
+    stature: 1.82, spine: [0.08, 0.06, 0.05],
+    breathPeriod: 4.5, breathAmp: 0.9, swayAmp: 0.8, gazeDwell: 3.3,
+    gaze: ['trick', 'fan', 'trick', 'human'],
+  },
+  'hothead-m': {
+    stature: 1.86, spine: [0.11, 0.09, 0.07],
+    breathPeriod: 3.4, breathAmp: 1.3, swayAmp: 1.4, gazeDwell: 2.2,
+    gaze: ['human', 'trick', 'human', 'fan'],
+  },
+  'hothead-f': {
+    stature: 1.70, spine: [0.10, 0.08, 0.06],
+    breathPeriod: 3.5, breathAmp: 1.2, swayAmp: 1.3, gazeDwell: 2.4,
+    gaze: ['human', 'fan', 'human', 'trick'],
+  },
+  'comedian-f': {
+    stature: 1.68, spine: [0.10, 0.08, 0.07],
+    breathPeriod: 3.8, breathAmp: 1.2, swayAmp: 1.3, gazeDwell: 2.5,
+    gaze: ['human', 'fan', 'human', 'trick'],
+  },
+  'storyteller-m': {
+    stature: 1.75, spine: [0.07, 0.06, 0.04],
+    breathPeriod: 5.2, breathAmp: 0.8, swayAmp: 0.6, gazeDwell: 4.0,
+    gaze: ['human', 'trick', 'human', 'fan'],
+  },
+  'storyteller-f': {
+    stature: 1.65, spine: [0.08, 0.06, 0.05],
+    breathPeriod: 4.9, breathAmp: 0.9, swayAmp: 0.7, gazeDwell: 3.8,
+    gaze: ['human', 'fan', 'trick', 'human'],
+  },
+  'og-f': {
+    stature: 1.62, spine: [0.06, 0.05, 0.04],
+    breathPeriod: 5.6, breathAmp: 0.6, swayAmp: 0.5, gazeDwell: 4.7,
+    gaze: ['trick', 'fan', 'trick', 'human'],
+  },
+  'coach-m': {
+    stature: 1.84, spine: [0.08, 0.06, 0.05],
+    breathPeriod: 4.6, breathAmp: 0.9, swayAmp: 0.7, gazeDwell: 3.6,
+    gaze: ['trick', 'human', 'fan', 'trick'],
+  },
+  'mama-f': {
+    stature: 1.67, spine: [0.07, 0.06, 0.04],
+    breathPeriod: 5.0, breathAmp: 0.9, swayAmp: 0.7, gazeDwell: 4.0,
+    gaze: ['fan', 'human', 'trick', 'fan'],
+  },
+  'smooth-f': {
+    stature: 1.71, spine: [0.07, 0.05, 0.04],
+    breathPeriod: 4.9, breathAmp: 0.7, swayAmp: 0.6, gazeDwell: 4.0,
+    gaze: ['fan', 'trick', 'human', 'fan'],
+  },
+  'influencer-m': {
+    stature: 1.79, spine: [0.11, 0.09, 0.07],
+    breathPeriod: 3.5, breathAmp: 1.2, swayAmp: 1.4, gazeDwell: 2.3,
+    gaze: ['fan', 'human', 'trick', 'fan'],
+  },
 };
 
 const FIGURE_URLS: Record<string, string> = Object.fromEntries(

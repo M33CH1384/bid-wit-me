@@ -10,17 +10,46 @@
  * /assets/figures/personas/<key>.glb (three/PersonaFigures.tsx).
  *
  * Batch A (2026-10-30): coach-f (Ingrid), mama-m, influencer-f, og-m,
- * hype-f, smooth-m. Batches B/C extend this list as figures ship.
+ * hype-f, smooth-m. Batch B (2026-10-30): barber-f, barber-m, coach-m,
+ * comedian-f, conspiracy-f, conspiracy-m, deacon-f, deacon-m, gambler-m,
+ * hothead-f, hothead-m, hustler-m, influencer-m, lilcuz-f, lilcuz-m,
+ * mama-f, og-f, petty-f, petty-m, professor-m, silent-m, smooth-f,
+ * storyteller-f, storyteller-m. Batch C extends this list as the
+ * remaining figures ship.
  */
 import { personaForName, voiceGender } from '@spades/bots';
 
 export const PERSONA_FIGURE_KEYS: readonly string[] = [
+  'barber-f',
+  'barber-m',
   'coach-f',
+  'coach-m',
+  'comedian-f',
+  'conspiracy-f',
+  'conspiracy-m',
+  'deacon-f',
+  'deacon-m',
+  'gambler-m',
+  'hothead-f',
+  'hothead-m',
+  'hustler-m',
   'hype-f',
   'influencer-f',
+  'influencer-m',
+  'lilcuz-f',
+  'lilcuz-m',
+  'mama-f',
   'mama-m',
+  'og-f',
   'og-m',
+  'petty-f',
+  'petty-m',
+  'professor-m',
+  'silent-m',
+  'smooth-f',
   'smooth-m',
+  'storyteller-f',
+  'storyteller-m',
 ];
 
 const SHIPPED = new Set(PERSONA_FIGURE_KEYS);

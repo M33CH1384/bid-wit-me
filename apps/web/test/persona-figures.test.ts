@@ -24,9 +24,14 @@ import { PERSONA_FIGURE_KEYS, personaFigureKeyForName } from '../src/personaFigu
 const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
 
 describe('figure-key resolution', () => {
-  it('Batch A ships exactly the six built personas', () => {
+  it('Batches A+B ship exactly the thirty built personas', () => {
     expect([...PERSONA_FIGURE_KEYS].sort()).toEqual(
-      ['coach-f', 'hype-f', 'influencer-f', 'mama-m', 'og-m', 'smooth-m'],
+      ['barber-f', 'barber-m', 'coach-f', 'coach-m', 'comedian-f',
+       'conspiracy-f', 'conspiracy-m', 'deacon-f', 'deacon-m', 'gambler-m',
+       'hothead-f', 'hothead-m', 'hustler-m', 'hype-f', 'influencer-f',
+       'influencer-m', 'lilcuz-f', 'lilcuz-m', 'mama-f', 'mama-m', 'og-f',
+       'og-m', 'petty-f', 'petty-m', 'professor-m', 'silent-m', 'smooth-f',
+       'smooth-m', 'storyteller-f', 'storyteller-m'],
     );
   });
 
@@ -40,11 +45,22 @@ describe('figure-key resolution', () => {
     expect(personaFigureKeyForName('Tasha')).toBe('hype-f');
     expect(personaFigureKeyForName('Luis')).toBe('smooth-m');
     expect(personaFigureKeyForName('Smoke')).toBe('smooth-m'); // persona face, NOT the story rig
+    expect(personaFigureKeyForName('Ravi')).toBe('professor-m'); // Batch B
+    expect(personaFigureKeyForName('Queenie')).toBe('mama-f'); // Batch B
+    expect(personaFigureKeyForName('DeShawn')).toBe('coach-m');
+    expect(personaFigureKeyForName('Carmen')).toBe('conspiracy-f');
+    expect(personaFigureKeyForName('Big Mike')).toBe('hothead-m');
+    expect(personaFigureKeyForName('Malik')).toBe('hustler-m');
+    expect(personaFigureKeyForName('Aaliyah')).toBe('comedian-f');
+    expect(personaFigureKeyForName('Peaches')).toBe('barber-f');
+    expect(personaFigureKeyForName('Anjali')).toBe('deacon-f');
+    expect(personaFigureKeyForName('Priya')).toBe('hothead-f');
   });
 
   it('unbuilt personas and empty names resolve null (portrait treatment stands)', () => {
-    expect(personaFigureKeyForName('Ravi')).toBeNull(); // professor-m: Batch B
-    expect(personaFigureKeyForName('Queenie')).toBeNull(); // mama-f: Batch B
+    expect(personaFigureKeyForName('Boo')).toBeNull(); // hustler-f: Batch C
+    expect(personaFigureKeyForName('Kiara')).toBeNull(); // silent-f: Batch C
+    expect(personaFigureKeyForName('Jasmine')).toBeNull(); // sorelose-f: Batch C
     expect(personaFigureKeyForName('')).toBeNull();
   });
 
