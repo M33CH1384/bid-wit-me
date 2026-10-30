@@ -1698,6 +1698,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       buzzFired: story?.saveCtx?.initialSession?.buzzFired ?? 0,
       buzzSaid: [...(story?.saveCtx?.initialSession?.buzzSaid ?? [])],
     });
+  // Story talk delivery timers (the scene-beat and rail schedulers in the
+  // effect below): the lines they carry land seconds after they are
+  // scheduled, so they are tracked and cleared on unmount — a timer that
+  // outlives the table fires its chat push into a torn-down tree (CI,
+  // 2026-10-30: every test passed, then story-king-rail's environment was
+  // already gone when one landed — "window is not defined" — and the
+  // unhandled error failed the run). useChat's own timers already follow
+  // this exact pattern; these two were the talk path's untracked pair.
+  const talkTimers = useRef<number[]>([]);
+  useEffect(() => () => { talkTimers.current.forEach((t) => window.clearTimeout(t)); talkTimers.current = []; }, []);
   useEffect(() => {
     const scene = story?.scene;
     if (!scene || online) return;
@@ -1740,12 +1750,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             .then((d) => { if (d) offlineTalk.noteHighPriority(performance.now() + delayMs, d); })
             .catch(() => { /* a lookup miss just leaves the room unmarked */ });
         }
-        window.setTimeout(() => {
+        talkTimers.current.push(window.setTimeout(() => {
           push(name, showLine(bt.line), false, 0, true);
           if (bt.speaker !== 'you' && seatIx >= 0 && !sound.voiceMuted(name)) {
             speakBot(name, bt.line, undefined, undefined, undefined, pos[seatIx], n);
           }
-        }, delayMs);
+        }, delayMs));
       });
     };
     // FORWARD BUZZ (word travels fast, owner 2026-10-24): the seated
@@ -1932,7 +1942,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 .then((d) => { if (d) offlineTalk.noteHighPriority(performance.now() + delayMs, d); })
                 .catch(() => { /* a lookup miss just leaves the room unmarked */ });
             }
-            window.setTimeout(() => {
+            talkTimers.current.push(window.setTimeout(() => {
               if (railSide) {
                 push(`${name} · rail`, showLine(l.line), false, 0, true);
                 if (!sound.voiceMuted(name)) speakBot(name, l.line, undefined, undefined, undefined, undefined, n);
@@ -1941,7 +1951,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 const seatIx = names.indexOf(name);
                 if (seatIx >= 0 && !sound.voiceMuted(name)) speakBot(name, l.line, undefined, undefined, undefined, pos[seatIx], n);
               }
-            }, delayMs);
+            }, delayMs));
           });
         }
       }
