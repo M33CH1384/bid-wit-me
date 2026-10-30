@@ -504,6 +504,10 @@ class Engine {
     this.captureScene = false;
     try { this.set({ music: t.music, ambient: t.ambient, venueSound: t.venueSound }); } finally { this.captureScene = true; }
     this.emit();
+    // The context IS a music identity (menus own the menu theme; a table owns its
+    // room's). A track carried over from the previous context must not play out
+    // its remaining minutes here — reconcile the decks against the new identity.
+    this.queueContextRetarget();
   }
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   get = () => this.settings;
@@ -622,6 +626,12 @@ class Engine {
   private fading = false;
   /** One crossfade at a time: a second advance (an 'ended' racing the fade) would flip back and play two tracks. */
   private advancing = false;
+  /** Context-retarget coalescing (see queueContextRetarget): a burst of identity
+   *  mutations in one synchronous commit collapses into a single reconciliation,
+   *  and a reconciliation that finds a crossfade in flight defers on this timer
+   *  instead of fighting it. */
+  private retargetQueued = false;
+  private retargetTimer: number | null = null;
   /** Test probe: decks actually audible right now (not paused, gain up). Must never exceed 2, and is 1 outside a crossfade. */
   playingDeckCount(): number { return this.decks.filter((d) => d.url && !d.el.paused && d.gain.gain.value > 0.01 && !this.deckDead(d)).length; }
 
@@ -749,6 +759,41 @@ class Engine {
       }
     })();
     return d.ready;
+  }
+
+  /**
+   * Does a loaded track BELONG to the music identity in force right now? This
+   * mirrors pickNext()'s precedence exactly — whatever the picker could return
+   * in the current state is in-context; anything else is a carry-over from a
+   * previous context (a menu theme sounding at a table, a venue track riding
+   * into the menus, a foreign look-ahead parked inside The Pj's closed
+   * rotation). The two must never disagree: if pickNext can return it here,
+   * it belongs here.
+   */
+  private trackInContext(track: number | null): boolean {
+    if (track === null) return true; // nothing loaded: the next pick is made fresh, in-context
+    const file = TRACKS[track]?.file;
+    if (!file) return false;
+    // Story moods that pin a single score track (pickNext's first branch).
+    if (this.storyMood === 'danger' || this.storyMood === 'king' || this.storyMood === 'sparse' || this.storyMood === 'porch') {
+      return file === STORY_TRACK_FILE[this.storyMood];
+    }
+    // The theme mood alternates its track with the fall-through rotation below.
+    if (this.storyMood === 'theme' && file === STORY_TRACK_FILE.theme) return true;
+    // A venue pin is a closed set (single track, or The Pj's rotation list):
+    // while it stands, only its own tracks belong — the pool is never reached.
+    const music = this.roomStyle?.music;
+    if (music?.pin) {
+      const files = Array.isArray(music.pin) ? music.pin : [music.pin];
+      if (files.some((f) => TRACKS.some((t) => t.file === f))) return files.includes(file);
+    }
+    // Menus have one signature: the menu theme, and nothing else.
+    if (this.context === 'menu') return file === 'menu-soul';
+    // Everywhere else the general shuffle is the identity, plus the venue's
+    // own signature (lean) tracks, which pickNext can also return here.
+    if (generalPool().includes(track)) return true;
+    if (music && music.lean.includes(file)) return true;
+    return false;
   }
 
   private pickNext(): number {
@@ -2641,6 +2686,10 @@ class Engine {
     }
     if (typeof window !== 'undefined') (window as unknown as { __bwmRoom?: unknown }).__bwmRoom = { name: style.name, venue: style.venue, bed: style.bed, reverb: style.reverb, surface: style.surface, unlocked: this.unlocked };
     this.setVenueBed(style.bed);
+    // The venue's music identity changed with its bed: reconcile the decks
+    // against it (a carried-over track crossfades out now; the venue's own
+    // pick — its pin rotation, or its armed lean — opens the session).
+    this.queueContextRetarget();
     return style;
   }
   private makeIR(seconds: number): AudioBuffer {
@@ -2666,7 +2715,7 @@ class Engine {
    * Pass null when leaving story mode; enterContext('menu') also clears both. The venue bed
    * itself still comes from applySoundscape — the override only fills a silent venue.
    * Call it BEFORE the first scene line: the bed fades in under the scene and the score
-   * crossfades promptly (retargetMusic), so the first 60 seconds land as one production.
+   * crossfades promptly (queueContextRetarget), so the first 60 seconds land as one production.
    */
   /* ---------- The film mix (Porch pilot, sound sample 2026-10-23) ---------- */
   /** The film mix is live only while the Porch identity is: its mood drives the score
@@ -2726,21 +2775,63 @@ class Engine {
     const moodChanged = mood !== this.storyMood;
     this.storyMood = mood;
     if (bed !== this.storyBedOverride) { this.storyBedOverride = bed; this.syncVenue(); }
-    if (moodChanged) this.retargetMusic();
+    if (moodChanged) this.queueContextRetarget();
     this.refreshFilm();
     if (typeof window !== 'undefined') (window as unknown as { __bwmStoryAudio?: unknown }).__bwmStoryAudio = { stop: stopId, mood, bed };
   }
-  /** The story mood changed mid-playback: crossfade to the mood's track now instead of
-   *  waiting out the current song — clear the standby deck so advance() loads the new pick. */
-  private retargetMusic() {
+  /**
+   * The music identity changed — a context switch (enterContext), a new venue
+   * (applySoundscape), or a story mood change (setStoryStop). Identity
+   * mutations arrive in synchronous bursts: a table unmount fires
+   * enterContext('menu') and the next table's mount fires enterContext('game')
+   * + applySoundscape + setStoryStop inside the same commit. Coalesce the
+   * burst on a microtask so the decks reconcile ONCE, against the final
+   * identity — a table hop must not detour through the menu theme on its way
+   * to the new room.
+   */
+  private queueContextRetarget() {
+    if (this.retargetQueued) return;
+    this.retargetQueued = true;
+    queueMicrotask(() => { this.retargetQueued = false; this.retargetToContext(); });
+  }
+
+  /**
+   * Bring the decks in line with the identity now in force (owner report,
+   * 2026-10-30: music playing in the menu kept playing in the game until the
+   * track changed on its own). The decks otherwise choose tracks only at load
+   * moments — first start, look-ahead, crossfade — so without this, a track
+   * chosen under the old identity plays to its natural end in the new one,
+   * and the look-ahead parked on the standby deck plays after it: the menu
+   * theme could sound at a table for two full tracks, and a foreign track
+   * could play inside The Pj's closed rotation. The story pass already knew
+   * this move for mood changes (the old retargetMusic); it is the same lag
+   * on every identity change, so the reconciliation is shared.
+   *
+   * In-context tracks are never touched: a sounding track that belongs here
+   * plays on, and a standby loaded with an in-context pick stays loaded. A
+   * foreign standby is cleared so the next advance loads a fresh pick; a
+   * foreign SOUNDING track crossfades out now through advance() — the
+   * engine's own path (XFADE, announce → the SoundDock title follows).
+   */
+  private retargetToContext() {
     if (!this.ctx || !this.decks.length || !wantsMusic(this.settings)) return;
-    const wantFile = this.storyMood ? STORY_TRACK_FILE[this.storyMood] : null;
     const cur = this.decks[this.active]!;
-    if (wantFile && cur.track !== null && TRACKS[cur.track]?.file === wantFile) return;
+    if (this.advancing || this.deckLoading(cur)) {
+      // A crossfade (or a first-start load) owns the decks, aimed under the
+      // identity in force when it began. Never fight it — re-check when it
+      // lands; the identity is read fresh then, so a burst of switches
+      // settles on the last one and the decks cannot wedge.
+      if (this.retargetTimer === null) {
+        this.retargetTimer = window.setTimeout(() => { this.retargetTimer = null; this.retargetToContext(); }, XFADE * 1000 + 250);
+      }
+      return;
+    }
     const other = this.decks[1 - this.active]!;
-    try { other.el.pause(); } catch { /* not playing */ }
-    other.track = null; other.ready = null;
-    if (cur.track !== null && !cur.el.paused) void this.advance();
+    if (!this.trackInContext(other.track)) {
+      try { other.el.pause(); } catch { /* not playing */ }
+      other.track = null; other.ready = null;
+    }
+    if (cur.track !== null && !cur.el.paused && !this.trackInContext(cur.track)) void this.advance();
   }
   /**
    * The story signature sting: the theme's motif (STORY_MOTIF_HZ) as a short cue.
