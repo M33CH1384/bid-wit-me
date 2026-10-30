@@ -132,7 +132,7 @@ describe('the heal at the slot layer', () => {
     expect(ctx1.sourcesStarted).toBeGreaterThan(before);
     expect(sound.played.voice).toBe(1);
     await flush();
-    expect(sound.loaded).toBe(15); // the whole SFX set decoded (13 + the spray transition's shake/hiss)
+    expect(sound.loaded).toBe(17); // the whole SFX set decoded (13 + the spray transition's shake/hiss + deuce-thump/trump-cut)
   });
 
   it('an interruption rebuilds — and the rebuild itself restores the stems and the slot layer', async () => {
@@ -155,6 +155,6 @@ describe('the heal at the slot layer', () => {
     expect(ctx2.sourcesStarted).toBeGreaterThan(before);
     expect(sound.played.voice).toBe(2);
     await flush();
-    expect(sound.loaded).toBe(15); // the SFX set completed again after the rebuild
+    expect(sound.loaded).toBe(17); // the SFX set completed again after the rebuild
   });
 });

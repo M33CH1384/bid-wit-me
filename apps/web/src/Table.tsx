@@ -57,6 +57,7 @@ import { BoxScore } from './BoxScore';
 import Hype from './Hype';
 import AnimFxLayer from './animfx/AnimFxLayer';
 import { landCueFor, wheelsFor, wheelsMade, wheelsTenth, wheelsTenthBooks } from './landCue';
+import { classifyDeuceFx, deuceLandCue } from './deuceFx';
 import Feedback from './Feedback';
 import { setFeedbackGame } from './feedbackContext';
 import { loadTipJar, openTip, saveTipJar, tipNudgeDue } from './support';
@@ -1604,7 +1605,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (display.hand) fanHandCommitted.current = { handNo: st.handNo, cards: [...display.hand] };
   });
   useGameSounds(st, myTurn, mySide, msgs);
-  const landCue = useCallback((c: Card) => landCueFor(st, c), [st]);
+  // Landing cues carry the Deuce Drop / Cut composition (deuceFx.ts wraps
+  // landCueFor: marquee steals trade the generic over-cut segment for the
+  // recorded thump + metallic cut); Scene also gets the raw classification
+  // for the felt ripple, the knock and the preserved over-cut flight.
+  const landCue = useCallback((c: Card) => deuceLandCue(st, c), [st]);
+  const deuceFx = useCallback((c: Card) => classifyDeuceFx(st, c), [st]);
   // "Learn as you play": coach marks across hands until the player turns tips off (local to this player, online too)
   const [help, setHelp] = useState(false);
   const [tipMarked, setTipMarked] = useState<Card[]>([]);
@@ -2891,6 +2897,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           crowdAnimate={!reduceFx && !fx.osReducedMotion}
           visitRail={visitSoloKing}
           landCue={landCue}
+          deuceFx={deuceFx}
           short={vp.short}
           safe={vp.safe}
           hintLegal={hintLegal}

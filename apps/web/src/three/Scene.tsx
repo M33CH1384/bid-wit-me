@@ -5,6 +5,9 @@ import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEff
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
+import DeuceFxLayer from './DeuceFxLayer';
+import { setDeuceCutPose } from './deuceImpact';
+import type { DeuceFxInfo } from '../deuceFx';
 import KingGun from './KingGun';
 import KingRail from './KingRail';
 import type { CrowdCue } from './kingRailLayout';
@@ -129,6 +132,9 @@ export interface SceneProps {
   animK: number;
   /** Landing sounds for a played card ('play' or 'play,cut' / 'play,broken'). */
   landCue: (card: Card) => string;
+  /** Deuce Drop / Cut classification for a played card (deuceFx.ts), from the same
+   *  state the landCue reads. Absent (watch / broadcast surfaces) = no deuce impacts. */
+  deuceFx?: (card: Card) => DeuceFxInfo | null;
   /** Phone landscape layout (see viewport.ts): own camera, smaller trick, hand between the HUD corners. */
   short?: boolean;
   /** Safe-area insets in CSS px. */
@@ -989,7 +995,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; armed?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick'; variant?: FlightVariant; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
+  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; armed?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick'; variant?: FlightVariant; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean; impactFx?: { kind: 'drop' | 'cut'; victim?: Card | null } | null; knock?: { dirX: number; dirZ: number } | null };
   const items: Item[] = [];
   // Seats still in this hand (a Cutthroat ejection leaves a seat with no cards): the deal
   // schedule goes around these only, or late cards are timed past the end of the deal.
@@ -1087,6 +1093,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // landing) so this trick's first toss never repeats the previous play's toss.
   let prevVariantId: FlightVariantId | undefined;
   piles.forEach((pile, ti) => { pile.plays.forEach((pp) => { prevVariantId = pickFlightVariant(playSeed(props.gameSeed ?? '', handNo, ti, pp.card), prevVariantId).id; }); });
+  const deuceByCard = new Map<Card, DeuceFxInfo>();
   shownTrick.forEach((pl, order) => {
     const autoDelaySec = pl.auto ? 0.35 + 0.12 * (order - firstAuto) : 0;
     const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
@@ -1115,7 +1122,13 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const land = lands[order];
     // Two-tap / bot tosses vary a little per play (same seed → same toss on every client); reduced motion slides.
     const toss = land && !dragged ? 0.8 + ((playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card) % 1000) / 1000) * 0.5 : 1;
-    const overcut = props.landCue(pl.card).includes(',overcut');
+    const dfx = props.deuceFx?.(pl.card) ?? null;
+    if (dfx) deuceByCard.set(pl.card, dfx);
+    // A marquee Cut (deuceFx.ts) keeps its tuned over-cut flight even though
+    // its composed cue no longer carries the segment — the clash replaced
+    // the popup treatment, not the flight. Trump-led steals never had that
+    // flight (wasOvercut false) and keep their toss, exactly as before.
+    const overcut = props.landCue(pl.card).includes(',overcut') || !!dfx?.wasOvercut;
     const flight = overcut ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
     // Toss family (owner, 2026-10-30): every played card draws a toss from the
     // seeded family — never the same family member twice in a row — while the
@@ -1166,6 +1179,34 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     }
     items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, variant, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !overcut ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : flickV ? { motion: 'flick' as const } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), armed: false, ...(playDelay > 0 ? { delay: playDelay } : {}) });
   });
+  // Deuce Drop / Cut threading (deuceFx.ts): the stealer's item carries its
+  // impact; the beaten trump's item carries the knock direction (away from
+  // the stealer's landing spot), and the fx layer gets the victim's resting
+  // pose for its crack of light + spark midpoint. Both cards are items of
+  // this same trick — the victim was pushed by an earlier pass of the loop.
+  if (deuceByCard.size) {
+    const trickCards = new Set(shownTrick.map((pl) => pl.card));
+    const byCard = new Map<Card, Item>();
+    for (const it of items) if (it.public && it.card && trickCards.has(it.card)) byCard.set(it.card, it);
+    for (const [card, dfx] of deuceByCard) {
+      if (!dfx.drop && !dfx.cut) continue;
+      const mine = byCard.get(card);
+      if (!mine) continue;
+      mine.impactFx = { kind: dfx.cut ? 'cut' : 'drop', victim: dfx.cut?.victim ?? null };
+      if (dfx.cut) {
+        const victim = byCard.get(dfx.cut.victim);
+        if (victim) {
+          const dx = victim.target.p[0] - mine.target.p[0];
+          const dz = victim.target.p[2] - mine.target.p[2];
+          const len = Math.hypot(dx, dz) || 1;
+          const dirX = dx / len;
+          const dirZ = dz / len;
+          victim.knock = { dirX, dirZ };
+          setDeuceCutPose(dfx.cut.victim, { x: victim.target.p[0], y: victim.target.p[1], z: victim.target.p[2], dirX, dirZ });
+        }
+      }
+    }
+  }
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
     const { seat, cards } = props.slam;
@@ -1437,6 +1478,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
           onTap={it.tap}
           sfxStart={it.sfxStart}
           sfxLand={it.sfxLand}
+          impactFx={it.impactFx}
+          knock={it.knock}
           spatialSeat={it.spatialSeat}
           spatialN={it.spatialN}
           holdUntilMove={it.holdUntilMove}
@@ -2251,6 +2294,7 @@ export default function Scene(props: SceneProps) {
         />
       )}
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
+      <DeuceFxLayer reducedProp={!!props.reduceFx} />
       <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
       </Fragment>

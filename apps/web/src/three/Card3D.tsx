@@ -17,7 +17,9 @@ import { gatherPose } from './gather';
 import { playFlightPose, type FlightVariant, type PlayFlightOpts } from './flightPose';
 import { impactFraction } from '../landTiming';
 import { PILE_THUMP, slamThump } from './shake';
-import { pendingSweepDue, sweepMustWait, type PendingSweep } from './sweepGate';
+import { PLAY_FLIGHT_MOTIONS, pendingSweepDue, sweepMustWait, type PendingSweep } from './sweepGate';
+import { deuceFxElapsed, deuceImpactsAfter, deuceSeed, lastDeuceImpactId, pushDeuceImpact } from './deuceImpact';
+import type { Card } from '@spades/rules';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -61,6 +63,14 @@ interface Props {
   sfxStart?: Sfx;
   /** Sounds when this card lands on its current target (e.g. play / cut). Fires once per value. */
   sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
+  /** Deuce Drop / Cut impact for this play (deuceFx.ts, classified by Scene from game state):
+   *  on the landing frame this card fires the felt ripple event (deuceImpact.ts), takes the
+   *  tight thump shake and settles with extra weight. `victim` is the beaten trump of a Cut. */
+  impactFx?: { kind: 'drop' | 'cut'; victim?: Card | null } | null;
+  /** This trick card is the beaten trump of a later Cut: the knock direction on the felt
+   *  (unit x/z, pointing away from the stealer's landing spot). The knock itself starts when
+   *  the stealer's impact event lands on the bus (deuceImpact.ts). */
+  knock?: { dirX: number; dirZ: number } | null;
   /** Phase 3: seat this card's sounds come from (spatialised play/slam/deal/collect). */
   spatialSeat?: import('./layout').SeatPos; spatialN?: number;
   /** how the nuke's blast treats this card: table cards are blown outward; hand cards only in Full Nuke */
@@ -100,7 +110,7 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, variant, raise = 0, roll = 0, order = 0, dim, glow, armed, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, variant, raise = 0, roll = 0, order = 0, dim, glow, armed, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, impactFx, knock, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
   const slamNow = useRef(slam);
   const postLand = useRef(0);
   slamNow.current = slam;
@@ -234,6 +244,17 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   });
   const sfx = useRef({ sfxStart, sfxLand });
   sfx.current = { sfxStart, sfxLand };
+  const fxNow = useRef({ impactFx, knock });
+  fxNow.current = { impactFx, knock };
+  // Deuce Drop / Cut runtime (deuceFx.ts / deuceImpact.ts): `impact` is the running
+  // tween's classified landing, snapshotted at adoption like the cue; `dipAt` starts
+  // the heavy settle on the landing frame; `knockAt`/`knockDir` run the beaten
+  // trump's shove + tilt + dim when the stealer's impact names this card.
+  const dk = useRef({
+    impact: null as { kind: 'drop' | 'cut'; victim: Card | null } | null,
+    dipAt: 0, dipDepth: 0, knockAt: 0, knockDir: { x: 0, z: 1 }, innerActive: false,
+    seen: lastDeuceImpactId(), q: new Quaternion(), w: new Vector3(), axis: new Vector3(), dimCol: new Color(),
+  });
   const raiseNow = useRef(raise);
   raiseNow.current = raise;
   const rollNow = useRef(roll);
@@ -394,10 +415,36 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (hideUntilStart.current && !tw.current.started) g.visible = false;
     // A resume hitch must not fast-forward the fan. One frame advances at most 50ms, same as a slow paint.
     const dt = Math.min(Math.max(rawDt, 0), 0.05);
+    // Deuce Cut knock — this card is a beaten trump: drain the impact bus for a
+    // fresh event naming it, while it rests on the felt from its own play flight
+    // (a hand card, a pile card or a card still in the air can never be knocked).
+    // The envelope drives the face dim here and the shove/tilt at the frame's end.
+    const dkS = dk.current;
+    if (lastDeuceImpactId() > dkS.seen) {
+      const freshImpacts = deuceImpactsAfter(dkS.seen);
+      if (freshImpacts.length) {
+        dkS.seen = freshImpacts[freshImpacts.length - 1]!.id;
+        const s0 = tw.current;
+        for (const e of freshImpacts) {
+          if (e.kind === 'cut' && e.victim && e.victim === cardId && fxNow.current.knock
+            && s0.t >= 1 && !s0.isSweep && PLAY_FLIGHT_MOTIONS.has(s0.motionSnap) && g.position.y < 0.35) {
+            dkS.knockAt = e.at;
+            dkS.knockDir.x = fxNow.current.knock.dirX;
+            dkS.knockDir.z = fxNow.current.knock.dirZ;
+          }
+        }
+      }
+    }
+    const knockU = dkS.knockAt ? deuceFxElapsed(performance.now() - dkS.knockAt) / 450 : 1;
+    const knockEnv = knockU < 1 ? Math.pow(Math.sin(Math.PI * Math.min(1, Math.max(0, knockU))), 1.4) : 0;
+    if (knockU >= 1) dkS.knockAt = 0;
     // colour easing (~150 ms), also capped so a long frame does not snap it
     const L = look.current, k = Math.min(1, dt / 0.15);
     const c = frontMat.color;
-    if (Math.abs(c.r - L.target.r) + Math.abs(c.g - L.target.g) + Math.abs(c.b - L.target.b) > 0.004) { c.lerp(L.target, k); invalidate(); } else c.copy(L.target);
+    // A knocked trump dims toward 55% at the envelope's peak (also under reduced
+    // effects, where the dim is the victim's whole treatment).
+    const tgt = knockEnv > 0 ? dkS.dimCol.copy(L.target).multiplyScalar(1 - 0.45 * knockEnv) : L.target;
+    if (Math.abs(c.r - tgt.r) + Math.abs(c.g - tgt.g) + Math.abs(c.b - tgt.b) > 0.004) { c.lerp(tgt, k); invalidate(); } else c.copy(tgt);
     const sat = frontMat.userData.sat as { value: number } | undefined;
     if (sat && Math.abs(sat.value - L.sat) > 0.01) { sat.value += (L.sat - sat.value) * k; invalidate(); } else if (sat) sat.value = L.sat;
     if (!applyTornado(g)) applyBlast(g);
@@ -464,6 +511,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       s.faced = false;
       s.landDone = false;
       s.land = sfx.current.sfxLand; // this tween's landing cue
+      // The adopted tween's deuce classification rides with its cue; a fresh
+      // flight also ends any knock/dip the previous pose was still playing.
+      dk.current.impact = fxNow.current.impactFx ? { kind: fxNow.current.impactFx.kind, victim: fxNow.current.impactFx.victim ?? null } : null;
+      dk.current.knockAt = 0;
+      dk.current.dipAt = 0;
       s.t = 0;
       // last-trick auto-play retargets a card that is already on screen (your last card keeps its hand key).
       // The stagger is a prop; apply it when the card leaves a resting pose, or it never waits.
@@ -566,6 +618,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       s.faced = false;
       s.landDone = false;
       s.land = pend.land;
+      dk.current.impact = null;
+      dk.current.knockAt = 0;
+      dk.current.dipAt = 0;
       s.t = 0;
       s.wait = pend.wait;
       s.motionSnap = pend.motion; s.arcSnap = pend.arc; s.variantSnap = pend.variant; s.durSnap = pend.duration;
@@ -657,8 +712,56 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
           if (land.includes('runSlam')) fx.shake = { start: performance.now(), ...PILE_THUMP };
           else if (sl2 && sl2.shake > 0) fx.shake = { start: performance.now(), ...slamThump(sl2.intensity) };
         }
+        // Deuce Drop / Cut (deuceFx.ts): a classified landing fires its felt
+        // event on this same frame (DeuceFxLayer ripples from the touchdown
+        // point; a Cut's victim knocks), takes its own tight shake — a deep
+        // single beat for the Drop, a short snap for the Cut, never the
+        // nuke's rumble — and starts the heavy settle dip at the frame's end.
+        // Reduced effects keep the event (the layer draws its calm ring) and
+        // the sounds; the shake and the dip stay home.
+        if (dkS.impact) {
+          const impact = dkS.impact;
+          pushDeuceImpact({ at: performance.now(), kind: impact.kind, x: g.position.x, y: g.position.y, z: g.position.z, victim: impact.victim, seed: deuceSeed(`${cardId ?? ''}|${s.key}`) });
+          if (!fx.reduced && !fx.osReducedMotion) {
+            fx.shake = impact.kind === 'cut'
+              ? { start: performance.now(), dur: 0.2, amp: 0.035, thump: true }
+              : { start: performance.now(), dur: 0.5, amp: 0.085, thump: true };
+          }
+          if (!fx.reduced) { dkS.dipAt = performance.now(); dkS.dipDepth = impact.kind === 'cut' ? 0.008 : 0.014; }
+        }
         const lw = window as unknown as { __bwmLandProbe?: boolean; __bwmLandFx?: { card: string; at: number; t: number }[] };
         if (lw.__bwmLandProbe && cardId) (lw.__bwmLandFx ??= []).push({ card: cardId, at: performance.now(), t: s.t });
+      }
+    }
+    // Deuce settle dip + Cut knock on the inner group (world offset → local,
+    // the applyBlast conversion). The blast and the tornado own this group
+    // while they run — never fight them; both shows start at or after trick
+    // completion, long after these half-second envelopes end.
+    {
+      const dipU = dkS.dipAt ? deuceFxElapsed(performance.now() - dkS.dipAt) / 300 : 1;
+      const dipEnv = dipU < 1 ? Math.sin(Math.PI * Math.pow(Math.min(1, Math.max(0, dipU)), 0.8)) : 0;
+      if (dipU >= 1) dkS.dipAt = 0;
+      const ig = inner.current;
+      const owned = bl.current.on || bl.current.flung || tn.current.on || tn.current.gone;
+      if (ig && !owned && (dipEnv > 0 || knockEnv > 0)) {
+        const calm = fx.reduced; // reduced: the victim dims (above) but is never shoved
+        const kx = calm ? 0 : dkS.knockDir.x * 0.055 * knockEnv;
+        const kz = calm ? 0 : dkS.knockDir.z * 0.055 * knockEnv;
+        const w = dkS.w.set(kx, -dkS.dipDepth * dipEnv, kz);
+        dkS.q.copy(g.quaternion).invert();
+        w.applyQuaternion(dkS.q).divideScalar(g.scale.x || 1);
+        ig.position.copy(w);
+        if (!calm && knockEnv > 0) {
+          dkS.axis.set(dkS.knockDir.z, 0, -dkS.knockDir.x).normalize().applyQuaternion(dkS.q);
+          ig.quaternion.setFromAxisAngle(dkS.axis, 0.3 * knockEnv);
+        } else ig.quaternion.identity();
+        dkS.innerActive = true;
+        invalidate();
+      } else if (ig && !owned && dkS.innerActive) {
+        ig.position.set(0, 0, 0);
+        ig.quaternion.identity();
+        dkS.innerActive = false;
+        invalidate();
       }
     }
     if (rw0.__bwmRestProbe && cardId && slamNow.current) ((rw0.__bwmScale ??= {})[cardId] ??= []).push(g.scale.x);

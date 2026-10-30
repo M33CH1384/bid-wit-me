@@ -52,11 +52,15 @@ export type Sfx =
   // chat notifications (synthesized): a DM two-note chime and a soft global-chat blip.
   // Both are UI_SFX, so they sound anywhere in the app, not just at a table.
   | 'dmChime' | 'chatBlip'
+  // Deuce Drop / Cut (owner 2026-10-30): RECORDED library sounds (SSE Library, CC0 —
+  // CREDITS.md), never synthesized: a deep body-fall-on-wood thump under a trump
+  // deuce's landing, and a metallic sword strike layered over a trump steal.
+  | 'deuceThump' | 'trumpCut'
   // the white sheet unrolling over a scorecard: soft fabric rustle (synthesized, no sample)
   | 'cloth';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, mega: 4400, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, mega: 4400, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, trumpCut: 700, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean;
   /** Chat notification sounds (DM chime / global-chat blip). Absent = on. */ chatSounds?: boolean;
@@ -384,6 +388,9 @@ const FILES: Record<string, string[]> = {
   // Spray-paint transition: a real can's rattle-ball shake + aerosol hiss (CREDITS.md).
   // Same fetch/decode path, so warmEffects has both decoded before the first spray.
   'spray-shake': ['spray-shake'], 'spray-hiss': ['spray-hiss'],
+  // Deuce Drop / Cut one-shots (SSE Library recordings, CREDITS.md): the deuce's
+  // deep thump and the steal's metallic strike. Same fetch/decode path.
+  deuceThump: ['deuce-thump'], trumpCut: ['trump-cut'],
 };
 /** Total one-shot SFX buffers a complete load() decodes (the watchdog's readiness bar). */
 const SFX_COUNT = Object.values(FILES).reduce((n, a) => n + a.length, 0);
@@ -1793,6 +1800,11 @@ class Engine {
       case 'shuffle': return this.sample('shuffle', t, 0.75 * g, 1, Math.max(0.3, opts.dur ?? 1.6));
       case 'deal': return this.sample('deal', t, 0.26 * g, 1.2 + Math.random() * 0.25, 0.3, opts.seat, opts.playerCount);
       case 'play': return this.sample('play', t, 0.9 * g, 0.95 + Math.random() * 0.12, undefined, opts.seat, opts.playerCount);
+      // Deuce Drop / Cut: recorded one-shots, spatialised at the seat like the
+      // card smack they layer with; a whisper of rate jitter so no two landings
+      // are sample-identical (kept small — pitch is the thump's weight).
+      case 'deuceThump': return this.sample('deuceThump', t, 0.95 * g, 0.97 + Math.random() * 0.05, undefined, opts.seat, opts.playerCount);
+      case 'trumpCut': return this.sample('trumpCut', t, 0.8 * g, 0.98 + Math.random() * 0.05, undefined, opts.seat, opts.playerCount);
       case 'tap': return this.sample('tap', t, 0.5 * g, 1.1);
       case 'flip': this.sample('deal', t, 0.32 * g, 1.55); this.sample('deal', t + 0.07, 0.22 * g, 1.75); return this.whoosh(t, 0.06 * g);
       case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05, undefined, opts.seat, opts.playerCount); return this.whoosh(t, 0.18 * g);
