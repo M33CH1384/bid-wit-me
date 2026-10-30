@@ -65,7 +65,7 @@
 import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import {
-  Box3, Euler, Group, Mesh, Object3D, Quaternion, Vector3, type Material, type MeshStandardMaterial,
+  Box3, Euler, Group, Matrix4, Mesh, Object3D, Quaternion, Vector3, type Material, type MeshStandardMaterial,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -80,6 +80,19 @@ import { fanRestTarget } from './fanRest';
 /* ------------------------------------------------------------------ */
 
 const FLOOR_Y = -0.9;
+/** Overall figure scale on top of each register's stature (owner
+ *  2026-10-30: "the characters are a bit too small for the table").
+ *  Applied inside prepareFigure's bind scale, so placement, the seat
+ *  gates, the leg/arm IK and the reach settle all measure the SCALED
+ *  skeleton and stay honest — the pelvis is re-anchored to the seat
+ *  analytically, so figures grow about their seat, not the floor.
+ *  1.10 mirrors the owner's own chair correction (0.82 → 0.90). */
+const FIGURE_SCALE = 1.10;
+/** Head-clearance floor (metres) the placement keeps between the
+ *  head's bounding sphere and the held fan's volume, in the open and
+ *  full-rest fan poses (see the placement settle). Covers the frame
+ *  loop's breath/sway amplitude with room to spare. */
+const HEAD_CLEAR_MIN = 0.025;
 /** The production Porch room's folding-chair seat top: PorchDeckRoom
  *  builds `ySeat = FLOOR_Y + 0.49` (its seat box top). The sandbox's
  *  −0.447 was its own studio chair and does NOT apply here. */
@@ -89,24 +102,49 @@ const HIP_BACK = -0.02;    // hip-joint offset from chair centre, away from the 
 const ANKLE_FWD = 0.38;    // ankle target forward of the hip joint (seat frame)
 
 /* Grip calibration against the production opponent fan (opponentFan's
- * middle card): the hands close on the fan's lower edge from behind —
- * GRIP_OUT along the seat direction from the fan centre, GRIP_DOWN
- * below it, GRIP_HALF the lateral half-spread of the two hands. */
-const GRIP_OUT = 0.26;
-const GRIP_DOWN = 0.13;
+ * middle card), built in the FAN's own frame: GRIP_HALF to each side
+ * of the fan's centre line (fan-local +x runs from the seat's right
+ * hand toward its left), GRIP_EDGE below the centre along the fan's
+ * face — just under the bottom edge of the 0.35-tall cards — and
+ * GRIP_BACK to the seat side of the fan's plane, a palm's thickness
+ * off it. The previous calibration targeted a point 0.26 behind +
+ * 0.13 below the fan CENTRE in seat space: ~0.35 from the fan's
+ * bottom edge, past fingertip reach, so the fan floated in front of
+ * the hands (owner 2026-10-30: "the characters hands look a lil
+ * crazy" — see the hand-orientation solve in the frame loop). */
 const GRIP_HALF = 0.085;
+const GRIP_EDGE = 0.185;
+const GRIP_BACK = 0.04;
+
+/** The wrist target for one hand on a held fan, from the fan's
+ * middle-card transform (centre + orientation). */
+function fanGripPoint(fanC: Vector3, fanQ: Quaternion, side: 'Left' | 'Right'): Vector3 {
+  const right = new Vector3(1, 0, 0).applyQuaternion(fanQ);
+  const up = new Vector3(0, 1, 0).applyQuaternion(fanQ);
+  const normal = new Vector3(0, 0, 1).applyQuaternion(fanQ);
+  return fanC.clone()
+    .addScaledVector(right, side === 'Left' ? GRIP_HALF : -GRIP_HALF)
+    .addScaledVector(up, -GRIP_EDGE)
+    .addScaledVector(normal, GRIP_BACK);
+}
 
 /* Reach settle bounds (placement): the cast rigs' arms run short
  * (TRELLIS proportions — a 1.8 m figure's shoulder-to-wrist ≈ 0.45 m)
  * and the production side-seat fans sit ~0.93 m from their chair
  * centres, so an upright sit cannot reach the grips. Real players
  * scoot forward on the seat and lean in; the placement does the same,
- * in that order, capped so the figure never perches off the seat or
- * hunches: at most REACH_SCOOT of forward shift on the chair (the
- * seat is 0.40 deep; the hip joint stays over it) and at most
- * REACH_LEAN of extra spine lean. */
-const REACH_SCOOT = 0.25;
-const REACH_LEAN = 0.20;
+ * in that order, capped so the figure never perches off the seat:
+ * at most REACH_SCOOT of forward shift on the chair (the seat is
+ * 0.40 deep; the hip joint stays over it) and at most REACH_LEAN of
+ * extra spine lean. The lean cap rose 0.20 → 0.40 with the 2026-10-30
+ * hand fix: once the grips moved onto the fan itself (fanGripPoint),
+ * the old caps left side-seat wrists ~0.35 short and the fan floating
+ * in front of correctly-posed hands — a player reaching for a fan
+ * that far away hunches over it, so the settle may too. Both caps
+ * stay need-based: the settle spends only what the grip demands
+ * (near seats sit nearly upright). */
+const REACH_SCOOT = 0.30;
+const REACH_LEAN = 0.40;
 
 /* ------------------------------------------------------------------ */
 /* Per-character registers (sandbox values; Ray/Pat statures are the   */
@@ -413,6 +451,11 @@ interface PreparedFigure {
   bones: Record<string, Object3D | undefined>;
   base: Record<string, Quaternion>;
   fingers: { Left: FingerJoint[]; Right: FingerJoint[] };
+  /** Each hand's anatomical frame (knuckle axis / palm facing /
+   *  finger direction, from knuckleBasis) expressed in the hand
+   *  bone's OWN local space at bind. The frame loop maps this frame
+   *  onto the held fan's frame to orient the hand at the grip. */
+  handFrames: { Left?: { x: Vector3; y: Vector3; z: Vector3 }; Right?: { x: Vector3; y: Vector3; z: Vector3 } };
   ankleFlat: number;
   thigh: number;
   shin: number;
@@ -490,6 +533,7 @@ function prepareFigure(scene: Object3D, reg: FigureRegister, maxAniso = 1): Prep
     }
   };
   const fingers: { Left: FingerJoint[]; Right: FingerJoint[] } = { Left: [], Right: [] };
+  const handFrames: PreparedFigure['handFrames'] = {};
   for (const S of ['L', 'R'] as const) {
     const side = S === 'L' ? 'Left' : 'Right';
     const hand = bones[`${side}Hand`];
@@ -498,6 +542,15 @@ function prepareFigure(scene: Object3D, reg: FigureRegister, maxAniso = 1): Prep
     const tip = chainEnd(hand).getWorldPosition(new Vector3());
     const palm = new Vector3(S === 'L' ? -1 : 1, 0, 0);
     const basis = knuckleBasis(wrist, tip, palm);
+    /* The hand's anatomical frame in the hand bone's own local
+       space (the bind world frame conjugated by the bone's bind
+       world rotation) — see PreparedFigure.handFrames. */
+    const hq = hand.getWorldQuaternion(new Quaternion()).invert();
+    handFrames[side] = {
+      x: basis.x.clone().applyQuaternion(hq),
+      y: basis.y.clone().applyQuaternion(hq),
+      z: basis.z.clone().applyQuaternion(hq),
+    };
     for (const F of FINGER_NAMES) {
       const chain: Object3D[] = [];
       for (let k = 1; k <= 4; k++) {
@@ -525,11 +578,11 @@ function prepareFigure(scene: Object3D, reg: FigureRegister, maxAniso = 1): Prep
   }
   const segLen = (a: string, b: string) => bindPos[a]!.distanceTo(bindPos[b]!);
   const height = bindBox.max.y - bindBox.min.y;
-  const s = reg.stature / height;
+  const s = (reg.stature * FIGURE_SCALE) / height;
   root.scale.setScalar(s);
   holder.updateMatrixWorld(true);
   return {
-    root, bones, base, fingers,
+    root, bones, base, fingers, handFrames,
     ankleFlat: (bindPos.LeftFoot!.y - bindBox.min.y) * s,
     thigh: segLen('LeftUpLeg', 'LeftLeg') * s,
     shin: segLen('LeftLeg', 'LeftFoot') * s,
@@ -594,14 +647,62 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
       root.updateMatrixWorld(true);
       const wp = (nm: string) => b[nm]?.getWorldPosition(new Vector3());
       const target = fanRestTarget({ aspect, view, seatIsActive: active });
-      const fanC = count > 0
-        ? new Vector3(...opponentFan(seatPos, n, (count - 1) / 2, count, target.drop, target.pinch).p)
+      const fanX = count > 0
+        ? opponentFan(seatPos, n, (count - 1) / 2, count, target.drop, target.pinch)
         : null;
-      const d = seatDir(seatPos, n);
-      const right = new Vector3(-d.z, 0, d.x);
-      const gripFor = (side: 'Left' | 'Right') => fanC
-        ? fanC.clone().addScaledVector(right, side === 'Left' ? -GRIP_HALF : GRIP_HALF).addScaledVector(d, GRIP_OUT).add(new Vector3(0, -GRIP_DOWN, 0))
-        : null;
+      const fanC = fanX ? new Vector3(...fanX.p) : null;
+      const fanQ = fanX ? new Quaternion(...fanX.q) : null;
+      const gripFor = (side: 'Left' | 'Right') => (fanC && fanQ ? fanGripPoint(fanC, fanQ, side) : null);
+      /* Fingertip clearance to the fan's plane: the smallest
+       * |signed distance| over the hand's fingertip joints. A hand
+       * that holds the fan has fingertips ON its plane (wrapping
+       * its lower edge); the old grip left them ~0.25 off it. */
+      const tipGap = (S: 'L' | 'R') => {
+        if (!fanC || !fanQ) return null;
+        const normal = new Vector3(0, 0, 1).applyQuaternion(fanQ);
+        let best: number | null = null;
+        root.traverse((o) => {
+          if (!o.name.startsWith(`graft_${S}_`) || !o.name.endsWith('4')) return;
+          const p = o.getWorldPosition(new Vector3());
+          const g = Math.abs(p.clone().sub(fanC).dot(normal));
+          if (best === null || g < best) best = g;
+        });
+        return best === null ? null : Math.round(best * 1000) / 1000;
+      };
+      /* Head clearance to the fan's volume (owner 2026-10-30:
+       * Queenie/mama-f's head poked through her fan at the partner
+       * seat): signed distance from the head bone (as a 0.12-radius
+       * sphere — the head's bounding volume at these statures) to
+       * the fan's oriented box. Negative = the head intersects the
+       * fan. Measured on the probe's rest target; the settle/open
+       * pose is the binding case and is what the fix gates on. */
+      const headClear = () => {
+        if (!fanC || !fanQ || count === 0) return null;
+        const hp = wp('Head');
+        if (!hp) return null;
+        /* Binding case: the OPEN fan (this seat active, no rest
+         * drop) rides highest and nearest the head — report the
+         * worse of the current target fan and the open fan. */
+        const openX = opponentFan(seatPos, n, (count - 1) / 2, count, 0, 0);
+        const restX = opponentFan(seatPos, n, (count - 1) / 2, count, 1, 1);
+        const fans: [Vector3, Quaternion, number][] = [
+          [fanC, fanQ, target.pinch],
+          [new Vector3(...openX.p), new Quaternion(...openX.q), 0],
+          [new Vector3(...restX.p), new Quaternion(...restX.q), 1],
+        ];
+        let worst = Infinity;
+        for (const [fc, fq, pinch] of fans) {
+          const local = hp.clone().sub(fc).applyQuaternion(fq.clone().invert());
+          const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * pinch) + 0.125;
+          const ox = Math.abs(local.x) - halfW;
+          const oy = Math.abs(local.y) - 0.175;
+          const oz = Math.abs(local.z) - 0.012;
+          const outside = Math.hypot(Math.max(ox, 0), Math.max(oy, 0), Math.max(oz, 0));
+          const d = outside > 0 ? outside : -Math.min(-ox, -oy, -oz);
+          worst = Math.min(worst, d - 0.12);
+        }
+        return Math.round(worst * 1000) / 1000;
+      };
       const dist = (nm: string, tgt: Vector3 | null) => {
         const p = wp(nm);
         return p && tgt ? Math.round(p.distanceTo(tgt) * 1000) / 1000 : null;
@@ -626,6 +727,8 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
         hipY: y('Hips'), ankleYL: y('LeftFoot'), ankleYR: y('RightFoot'),
         toeYL: y('LeftToeBase'), toeYR: y('RightToeBase'),
         gripErrL: dist('LeftHand', gripFor('Left')), gripErrR: dist('RightHand', gripFor('Right')),
+        fanGapL: tipGap('L'), fanGapR: tipGap('R'),
+        headClear: headClear(), head: v3(wp('Head') ?? undefined),
         ankleFlat: Math.round(prep.ankleFlat * 1000) / 1000,
         armL: armInfo('Left'), armR: armInfo('Right'), fanC: v3(fanC ?? undefined),
       };
@@ -671,8 +774,10 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
     };
     lean('Spine', reg.spine[0]); lean('Spine1', reg.spine[1]); lean('Spine2', reg.spine[2]);
     root.updateMatrixWorld(true);
+    let leanFlipped = false;
     if (jp('Head').sub(headBefore).dot(faceW) < 0) {
       lean('Spine', -2 * reg.spine[0]); lean('Spine1', -2 * reg.spine[1]); lean('Spine2', -2 * reg.spine[2]);
+      leanFlipped = true;
     }
     /* Hip joints onto the seat: joint world positions converted into
        seat-group space analytically (group = chair spot + ry), the
@@ -696,14 +801,50 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
        inside the arms' reach or the caps run out. Runs BEFORE the
        leg solve so the feet plant for the final seat position. */
     if (count > 0) {
-      const fanC0 = new Vector3(...opponentFan(seatPos, n, (count - 1) / 2, count, 0, 0).p);
-      const d0 = seatDir(seatPos, n);
-      const right0 = new Vector3(-d0.z, 0, d0.x);
-      const gripOf = (side: 'Left' | 'Right') => fanC0.clone()
-        .addScaledVector(right0, side === 'Left' ? -GRIP_HALF : GRIP_HALF)
-        .addScaledVector(d0, GRIP_OUT).add(new Vector3(0, -GRIP_DOWN, 0));
+      const fanX0 = opponentFan(seatPos, n, (count - 1) / 2, count, 0, 0);
+      const fanC0 = new Vector3(...fanX0.p);
+      const fanQ0 = new Quaternion(...fanX0.q);
+      const gripOf = (side: 'Left' | 'Right') => fanGripPoint(fanC0, fanQ0, side);
+      /* Head-clearance gate (owner 2026-10-30: Queenie's fan cut
+         across her chin at the partner seat): the head's bounding
+         volume — a 0.12 sphere on the Head bone — must clear the
+         fan's volume by HEAD_CLEAR_MIN in BOTH the open and the
+         full-rest fan poses, for every key at every seat. If the
+         register lean alone puts the head into the fan, trim the
+         lean first (the character sits up straighter); the settle
+         below is gated on the same metric, so closing reach can
+         never push the head in either. */
+      const headClearNow = () => {
+        const hp = jp('Head');
+        let worst = Infinity;
+        for (const pose of [0, 1] as const) {
+          const fx = opponentFan(seatPos, n, (count - 1) / 2, count, pose, pose);
+          const fc = new Vector3(...fx.p);
+          const fq = new Quaternion(...fx.q);
+          const local = hp.clone().sub(fc).applyQuaternion(fq.invert());
+          const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * pose) + 0.125;
+          const ox = Math.abs(local.x) - halfW;
+          const oy = Math.abs(local.y) - 0.175;
+          const oz = Math.abs(local.z) - 0.012;
+          const outside = Math.hypot(Math.max(ox, 0), Math.max(oy, 0), Math.max(oz, 0));
+          const dd = outside > 0 ? outside : -Math.min(-ox, -oy, -oz);
+          worst = Math.min(worst, dd - 0.12);
+        }
+        return worst;
+      };
+      const leanSign = leanFlipped ? 1 : -1;
+      let trimmed = 0;
+      while (headClearNow() < HEAD_CLEAR_MIN && trimmed < 0.3) {
+        lean('Spine', leanSign * 0.012); lean('Spine1', leanSign * 0.0105); lean('Spine2', leanSign * 0.0075);
+        trimmed += 0.03;
+        root.updateMatrixWorld(true);
+      }
       let scoot = 0; let extraLean = 0;
-      for (let iter = 0; iter < 6; iter++) {
+      /* The iteration budget must cover BOTH caps at their step
+         sizes (scoot closes in ~2 steps; lean advances 0.05/step, so
+         REACH_LEAN 0.40 alone needs 8) — at 6 the loop, not the caps,
+         was the binding constraint and the lean never passed 0.20. */
+      for (let iter = 0; iter < 24; iter++) {
         root.updateMatrixWorld(true);
         let worst = 0;
         for (const side of ['Left', 'Right'] as const) {
@@ -715,10 +856,20 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
         if (scoot < REACH_SCOOT) {
           const s = Math.min(worst * 0.8, REACH_SCOOT - scoot);
           root.position.z += s; scoot += s;
+          root.updateMatrixWorld(true);
+          /* Head gate outranks the last of the reach: a step that
+             puts the head into the fan is reverted and ends the
+             settle (the hands land where honest reach ends). */
+          if (headClearNow() < HEAD_CLEAR_MIN) { root.position.z -= s; scoot -= s; break; }
         } else if (extraLean < REACH_LEAN) {
           const a = Math.min(0.05, REACH_LEAN - extraLean);
           lean('Spine', a * 0.4); lean('Spine1', a * 0.35); lean('Spine2', a * 0.25);
           extraLean += a;
+          root.updateMatrixWorld(true);
+          if (headClearNow() < HEAD_CLEAR_MIN) {
+            lean('Spine', -a * 0.4); lean('Spine1', -a * 0.35); lean('Spine2', -a * 0.25);
+            extraLean -= a; break;
+          }
         } else break;
         root.updateMatrixWorld(true);
       }
@@ -769,9 +920,13 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
     const rest = restCur.current;
     /* The fan's centre card, from the same solver the cards use. */
     const hasCards = count > 0;
-    const fanC = hasCards
-      ? new Vector3(...opponentFan(seatPos, n, (count - 1) / 2, count, rest.drop, rest.pinch).p)
+    const fanX = hasCards
+      ? opponentFan(seatPos, n, (count - 1) / 2, count, rest.drop, rest.pinch)
+      : null;
+    const fanC = fanX
+      ? new Vector3(...fanX.p)
       : group.localToWorld(new Vector3(0, seatTop + 0.3, 0.55));
+    const fanQ = fanX ? new Quaternion(...fanX.q) : null;
     fanRef.current.copy(fanC);
     if (settle) return;
     solvedFrames.current++;
@@ -830,14 +985,12 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
        (hands behind the fan's lower edge, backs of the cards to the
        table: a bot's faces are never shown), the lap when it holds
        none. The grip must be solved, not guessed (Phase A lesson). */
-    const d = seatDir(seatPos, n);
-    const right = new Vector3(-d.z, 0, d.x);
     const solveArm = (side: 'Left' | 'Right') => {
       const arm = b[`${side}Arm`], fore = b[`${side}ForeArm`], hand = b[`${side}Hand`];
       if (!arm || !fore || !hand || !arm.parent || !fore.parent) return;
       root.updateMatrixWorld(true);
-      const targetPos = hasCards
-        ? fanC.clone().addScaledVector(right, side === 'Left' ? -GRIP_HALF : GRIP_HALF).addScaledVector(d, GRIP_OUT).add(new Vector3(0, -GRIP_DOWN, 0))
+      const targetPos = hasCards && fanQ
+        ? fanGripPoint(fanC, fanQ, side)
         : group.localToWorld(new Vector3(side === 'Left' ? 0.18 : -0.18, seatTop + 0.12, 0.25));
       const S = arm.getWorldPosition(new Vector3());
       const E0 = fore.getWorldPosition(new Vector3());
@@ -865,6 +1018,36 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
       aimFull(arm, fore, E);
       root.updateMatrixWorld(true);
       aimFull(fore, hand, T);
+      /* Hand orientation (owner 2026-10-30: the hands "look a lil
+         crazy"): the aims above place the WRIST, but the hand kept
+         its bind orientation — at the side seats one hand landed
+         flat and open on the rail, the other curled into a claw in
+         the air beside the fan. With cards held, rotate the hand
+         bone so the hand's measured anatomical frame (prepareFigure)
+         lands on the fan's frame: fingers run up the fan's face,
+         palm pressed to it — the finger curl then wraps the fan's
+         lower edge instead of empty air. The graft chains hang off
+         the hand bone, so the curled fingers ride the rotation
+         rigidly; their local drives are untouched. */
+      const frame = prep.handFrames[side];
+      if (hasCards && fanQ && frame) {
+        root.updateMatrixWorld(true);
+        const hw = hand.getWorldQuaternion(new Quaternion());
+        const cur = new Matrix4().makeBasis(
+          frame.x.clone().applyQuaternion(hw),
+          frame.y.clone().applyQuaternion(hw),
+          frame.z.clone().applyQuaternion(hw),
+        );
+        const yt = new Vector3(0, 0, -1).applyQuaternion(fanQ);
+        const zt = new Vector3(0, 1, 0).applyQuaternion(fanQ);
+        const xt = new Vector3().crossVectors(yt, zt).normalize();
+        const zto = new Vector3().crossVectors(xt, yt).normalize();
+        const tgt = new Matrix4().makeBasis(xt, yt, zto);
+        const qR = new Quaternion().setFromRotationMatrix(tgt.multiply(cur.transpose()));
+        const parentQ = hand.parent!.getWorldQuaternion(new Quaternion());
+        hand.quaternion.copy(parentQ.invert().multiply(qR.multiply(hw)));
+        root.updateMatrixWorld(true);
+      }
     };
     solveArm('Left');
     solveArm('Right');
@@ -896,13 +1079,40 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
 /* the probe (the Corner sedan's discipline).                          */
 /* ------------------------------------------------------------------ */
 
-class FigureBoundary extends Component<{ id: string; children: ReactNode }, { failed: boolean }> {
+/** Load-retry policy for FigureBoundary: delays before each remount
+ *  attempt. A figure GLB is ~3 MB on a phone network; one transient
+ *  fetch/decode failure must not empty the seat for the session. */
+const FIGURE_RETRY_DELAYS_MS: readonly number[] = [1200, 3500, 8000];
+
+class FigureBoundary extends Component<{ id: string; url: string; children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
+  private attempts = 0;
+  private retryTimer: number | null = null;
   override componentDidCatch() {
     const w = window as unknown as { __bwmPorchFigures?: { mounted: string[]; failed: string[] } };
     w.__bwmPorchFigures ??= { mounted: [], failed: [] };
     if (!w.__bwmPorchFigures.failed.includes(this.props.id)) w.__bwmPorchFigures.failed.push(this.props.id);
+    /* Retry with recovery (owner 2026-10-30: "sometimes the chair is
+       empty when others aren't"): this boundary used to latch failed
+       forever, and the loader cache kept the rejection, so a single
+       transient GLB failure emptied the seat for the whole session.
+       Now: clear the cached loader entry (the residency eviction
+       does the same) and remount the loader child on a backoff, a
+       few times; only a failure that outlives every retry stays
+       degraded to the portrait plate. */
+    if (this.attempts < FIGURE_RETRY_DELAYS_MS.length) {
+      const delay = FIGURE_RETRY_DELAYS_MS[this.attempts]!;
+      this.attempts++;
+      this.retryTimer = window.setTimeout(() => {
+        this.retryTimer = null;
+        useLoader.clear(GLTFLoader, this.props.url);
+        this.setState({ failed: false });
+      }, delay);
+    }
+  }
+  override componentWillUnmount() {
+    if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
   }
   override render() { return this.state.failed ? null : this.props.children; }
 }
@@ -980,7 +1190,7 @@ export default function PorchFigures({ seats, positions, n, handCounts, activeSe
         const url = FIGURE_URLS[id];
         if (!reg || !url) return null;
         return (
-          <FigureBoundary key={seat} id={id}>
+          <FigureBoundary key={seat} id={id} url={url}>
             <Suspense fallback={null}>
               <Figure
                 id={id}

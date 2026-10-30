@@ -86,6 +86,14 @@ const yawOf = (d: Vector3) => Math.atan2(d.x, d.z);
  */
 export const FAN_REST_DROP_CH = 0.42;
 export const FAN_REST_TIGHTEN = 0.36;
+/** Opponent fan centre height (open pose). Dropped 0.30 → 0.25
+ *  (owner 2026-10-30: Queenie's fan cut across her chin/neck at the
+ *  partner seat): at 0.30 the fan's top edge reaches y≈0.45, the
+ *  chin line of the shorter seated figures; at 0.25 the fan is held
+ *  at chest height with the head clear above it. Everything that
+ *  derives from this transform (the figures' grips and head-clearance
+ *  gates, deal flights) follows the fan down together. */
+export const OPP_FAN_BASE_Y = 0.25;
 export const OPP_FAN_REST_DROP = 0.11;
 export const OPP_FAN_REST_OUT = 0.05;
 export const OPP_FAN_REST_TIGHTEN = 0.45;
@@ -104,7 +112,7 @@ export function opponentFan(pos: SeatPos, n: number, i: number, count: number, r
   const pc = clampRest(pinch);
   const d = seatDir(pos, n);
   const side = pos === 'left' || pos === 'right';
-  const base = edgePoint(d, side ? 0.3 : 0.05).add(new Vector3(0, 0.3 - OPP_FAN_REST_DROP * r, 0)).add(d.clone().multiplyScalar(0.12 + OPP_FAN_REST_OUT * r));
+  const base = edgePoint(d, side ? 0.3 : 0.05).add(new Vector3(0, OPP_FAN_BASE_Y - OPP_FAN_REST_DROP * r, 0)).add(d.clone().multiplyScalar(0.12 + OPP_FAN_REST_OUT * r));
   const yaw = yawOf(d);
   const off = i - (count - 1) / 2;
   const spread = 0.038 * (1 - OPP_FAN_REST_TIGHTEN * pc);
