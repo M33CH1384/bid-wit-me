@@ -16,7 +16,8 @@ import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
 import { DEFAULT_SLAM, type DragSample, clearDrop, dragSlamIntensity, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
 import { reducedMotion } from './handLift';
-import { FAN_REST_MS, fanRestSeconds, fanRestTarget, type FanRestPose } from './fanRest';
+import { fanRestSeconds, fanRestTarget, restCharacter, NEUTRAL_REST_CHARACTER, type FanRestPose, type RestCharacter } from './fanRest';
+import { flickFlightFor, pickFlightVariant, type FlightVariant, type FlightVariantId } from './flightPose';
 import { VISIBLE_FELT, landTrick, playSeed, runScatter } from './landing';
 import { shakeOffset, swayOffset } from './shake';
 import { captureFlipFrame, flipHeld, flipRehearsed, flipUserFlipped, markRehearsed, noteFlipSizeCommit, notePresentedFrame, noteRehearsalSize, registerCover, releaseFlipHold, setFlipHoldLock, subscribeFlipHold } from './flipHold';
@@ -905,20 +906,42 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // opponent fan takes the rest duration instead of the deal-fly duration.
   // Reduced motion (OS, or the app's Reduce effects) settles instantly.
   const restReduced = reducedMotion() || !!props.reduceFx || fx.osReducedMotion;
-  const restTrack = useRef<{ hand: number; seats: Map<number, { target: FanRestPose; until: number }> }>({ hand: -1, seats: new Map() });
+  type RestTrack = { target: FanRestPose; until: number; legs: number; char: RestCharacter; overUntil: number };
+  const restTrack = useRef<{ hand: number; seats: Map<number, RestTrack> }>({ hand: -1, seats: new Map() });
   if (restTrack.current.hand !== handNo) restTrack.current = { hand: handNo, seats: new Map() };
-  const restFor = (seat: number): { drop: number; pinch: number; moving: boolean } => {
+  const restFor = (seat: number): { drop: number; pinch: number; moving: boolean; durSec: number } => {
     const target = fanRestTarget({ aspect, view, seatIsActive: props.activeSeat != null && props.activeSeat === seat });
-    if (restReduced) { restTrack.current.seats.set(seat, { target, until: 0 }); return { drop: target.drop, pinch: target.pinch, moving: false }; }
+    if (restReduced) { restTrack.current.seats.set(seat, { target, until: 0, legs: 0, char: NEUTRAL_REST_CHARACTER, overUntil: 0 }); return { drop: target.drop, pinch: target.pinch, moving: false, durSec: fanRestSeconds(true) }; }
     const track = restTrack.current.seats.get(seat);
-    if (!track) { restTrack.current.seats.set(seat, { target, until: 0 }); return { drop: target.drop, pinch: target.pinch, moving: false }; }
+    if (!track) { restTrack.current.seats.set(seat, { target, until: 0, legs: 0, char: NEUTRAL_REST_CHARACTER, overUntil: 0 }); return { drop: target.drop, pinch: target.pinch, moving: false, durSec: fanRestSeconds(false) }; }
+    const now = performance.now();
     if (track.target.drop !== target.drop || track.target.pinch !== target.pinch) {
       track.target = target;
+      track.legs += 1;
+      // Rest character (owner, 2026-10-30): every transition lowers or raises
+      // with its own duration and settle depth — and on some legs a small
+      // overshoot dip past the settle depth before easing back onto it — so
+      // the fan never relaxes the same way twice. Seeded per hand + seat +
+      // leg, so a fan's sequence is stable within the hand. The target (and
+      // therefore WHETHER/WHEN a fan rests) is still fanRestTarget's alone.
+      track.char = restCharacter(handNo * 1000 + seat * 100 + track.legs);
       // Card3D caps its frame dt, so on a starved canvas its tween runs behind
       // wall clock: hold the window a beat past the tween's own length.
-      track.until = performance.now() + FAN_REST_MS + 350;
+      track.until = now + track.char.durMs + 350;
+      track.overUntil = target.drop > 0 && track.char.overshoot > 0 ? now + track.char.durMs * 0.55 : 0;
     }
-    return { drop: target.drop, pinch: target.pinch, moving: performance.now() < track.until };
+    const ch = track.char;
+    const over = now < track.overUntil;
+    return {
+      drop: target.drop * (ch.dropDepth + (over ? ch.overshoot : 0)),
+      pinch: target.pinch * ch.pinchDepth,
+      moving: now < track.until,
+      // The Card3D duration for the current phase: an overshoot leg tweens to
+      // the dipped pose over the first 55% of its duration, then back up to
+      // the settle pose over the rest (one mid-leg retarget); other legs run
+      // their full character duration.
+      durSec: (over ? ch.durMs * 0.55 : track.overUntil > 0 ? ch.durMs * 0.45 : ch.durMs) / 1000,
+    };
   };
   useEffect(() => {
     const w = window as unknown as { __bwmFanRest?: unknown };
@@ -934,7 +957,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; armed?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather'; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
+  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; armed?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick'; variant?: FlightVariant; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean };
   const items: Item[] = [];
   // Seats still in this hand (a Cutthroat ejection leaves a seat with no cards): the deal
   // schedule goes around these only, or late cards are timed past the end of the deal.
@@ -978,6 +1001,11 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     )
     : [];
   const reduced = reducedMotion();
+  // Toss variation (owner, 2026-10-30): fold the completed tricks' plays through
+  // the toss picker (same playSeed grain as the toss height and the physics
+  // landing) so this trick's first toss never repeats the previous play's toss.
+  let prevVariantId: FlightVariantId | undefined;
+  piles.forEach((pile, ti) => { pile.plays.forEach((pp) => { prevVariantId = pickFlightVariant(playSeed(props.gameSeed ?? '', handNo, ti, pp.card), prevVariantId).id; }); });
   shownTrick.forEach((pl, order) => {
     const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
     const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
@@ -1006,8 +1034,18 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const land = lands[order];
     // Two-tap / bot tosses vary a little per play (same seed → same toss on every client); reduced motion slides.
     const toss = land && !dragged ? 0.8 + ((playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card) % 1000) / 1000) * 0.5 : 1;
-    const flight = props.landCue(pl.card).includes(',overcut') ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !props.landCue(pl.card).includes(',overcut') ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), armed: false, ...autoDelay });
+    const overcut = props.landCue(pl.card).includes(',overcut');
+    const flight = overcut ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
+    // Toss family (owner, 2026-10-30): every played card draws a toss from the
+    // seeded family — never the same family member twice in a row — while the
+    // flick gesture overrides with its own flat skim toss built from the
+    // release vector. Dragged/slam plays keep their tuned feel untouched, and
+    // a physics landing keeps its capped hop (only the curve/spin ride along).
+    const picked = pickFlightVariant(playSeed(props.gameSeed ?? '', handNo, trickNo, pl.card), prevVariantId);
+    prevVariantId = picked.id;
+    const flickV = !land && !dragged && !overcut && !reduced ? flickFlightFor(pl.rel) : null;
+    const variant: FlightVariant | undefined = dragged || overcut ? undefined : flickV ? flickV : land ? { curve: picked.variant.curve, spin: picked.variant.spin } : picked.variant;
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, variant, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !overcut ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : flickV ? { motion: 'flick' as const } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), armed: false, ...autoDelay });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
@@ -1057,7 +1095,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
         items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: deck, duration: 0.7, arc: 0.25, motion: 'glide', delay: seat * 0.07 + i * 0.015, sfxStart: 'sweep', spatialSeat: positions[seat]!, spatialN: n });
       } else {
         const rest = restFor(seat);
-        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c, rest.drop, rest.pinch), from: flight ? deck : undefined, delay: flight ? dealDelay(i, seat) : 0, holdUntilMove: flight, duration: !flight && rest.moving ? fanRestSeconds(false) : tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
+        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c, rest.drop, rest.pinch), from: flight ? deck : undefined, delay: flight ? dealDelay(i, seat) : 0, holdUntilMove: flight, duration: !flight && rest.moving ? rest.durSec : tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
       }
     }
   }
@@ -1154,7 +1192,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       // The id comes from the mesh that was hit. Fall back to this card only if the mesh has no stamp.
       tap: c && isLegal ? (hit: string) => onCardTap((hit || c) as Card) : pose === 'illegal' ? null : undefined,
       shadow: false,
-      duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : humanRest.moving ? fanRestSeconds(false) : move.kind === 'slide' ? GAP_S : handSpreadProbe(spreadSeconds()),
+      duration: move.kind === 'flip' ? 0.34 : move.kind === 'deal' ? tl.fly : humanRest.moving ? humanRest.durSec : move.kind === 'slide' ? GAP_S : handSpreadProbe(spreadSeconds()),
       // Rest transition: ride Card3D's slide tween (liftEase) instead of the
       // 'lift' snap, so the fan eases down/up over FAN_REST_MS. The hit quads
       // published this render are the destination pose, as with a gap-close
@@ -1267,6 +1305,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
           duration={it.duration}
           motion={it.motion}
           arc={it.arc}
+          variant={it.variant}
           raise={it.raise}
           roll={it.roll}
           order={it.order}

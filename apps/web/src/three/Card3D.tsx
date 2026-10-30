@@ -14,7 +14,7 @@ import { dealHoldStale, openingFlight } from './dealFlight';
 import { retainFrontTexture } from './cardFace';
 import { restingFacing, trickFacingArrived } from './trickFacing';
 import { gatherPose } from './gather';
-import { playFlightPose } from './flightPose';
+import { playFlightPose, type FlightVariant } from './flightPose';
 import { impactFraction } from '../landTiming';
 import { PILE_THUMP, slamThump } from './shake';
 
@@ -33,8 +33,10 @@ interface Props {
   /** 'lift' is the 200ms group rise. 'slide' closes a gap over 240ms (translate + rotate only, same curve).
    *  'flight' is the deal / table arc. */
   /** glide: tossed, then slides along the felt and slows with friction (physics landing) */
-  motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather';
+  motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick';
   arc?: number;
+  /** Toss character for a played card's flight (flightPose.ts): reshapes the path inside the same duration. */
+  variant?: FlightVariant;
   /** Card-local raise distance. Never folded into `target`, so a select does not retarget the fan.
    *  Applied along screen-up (see `roll`), not along the rolled card, so the end card stays in the fan. */
   raise?: number;
@@ -97,7 +99,7 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, raise = 0, roll = 0, order = 0, dim, glow, armed, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, variant, raise = 0, roll = 0, order = 0, dim, glow, armed, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
   const slamNow = useRef(slam);
   const postLand = useRef(0);
   slamNow.current = slam;
@@ -553,7 +555,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       { p: [s.sp.x, s.sp.y, s.sp.z], q: [s.sq.x, s.sq.y, s.sq.z, s.sq.w], s: s.ss },
       { p: [s.tp.x, s.tp.y, s.tp.z], q: [s.tq.x, s.tq.y, s.tq.z, s.tq.w], s: s.ts },
       s.t,
-      { motion, arc },
+      { motion, arc, variant },
     );
     if (pose) {
       g.position.set(...pose.p);

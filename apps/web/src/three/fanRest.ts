@@ -82,6 +82,51 @@ export function fanRestSeconds(reduced: boolean): number {
   return reduced ? 0 : FAN_REST_MS / 1000;
 }
 
+/**
+ * Rest character (owner, 2026-10-30): the lowering should "vary to look more
+ * realistic" — a person relaxes their hand differently every time. Each rest
+ * or open transition picks ONE character, seeded by the caller (hand + seat +
+ * transition count, so a fan's sequence is stable within a hand):
+ *  - `durMs` — how long the transition takes: a quick drop (~520 ms), the
+ *    standard settle (650 ms), or a slow sag (up to ~880 ms).
+ *  - `dropDepth` / `pinchDepth` — how far the channels settle this time
+ *    (0.86–1.0 of the full pose): some rests sit a touch higher or looser.
+ *  - `overshoot` — on some rests the fan first dips a little PAST its settle
+ *    depth, then eases back up onto it (Scene applies it as a two-phase
+ *    target). 0 on most legs.
+ * The character never changes WHETHER or WHEN a fan rests — fanRestTarget
+ * still decides that — only HOW the transition moves.
+ */
+export interface RestCharacter {
+  durMs: number;
+  dropDepth: number;
+  pinchDepth: number;
+  overshoot: number;
+}
+
+/** The unvaried character: exactly the pre-variation behaviour. */
+export const NEUTRAL_REST_CHARACTER: RestCharacter = { durMs: FAN_REST_MS, dropDepth: 1, pinchDepth: 1, overshoot: 0 };
+
+export function restCharacter(seed: number): RestCharacter {
+  let h = (Math.floor(Math.abs(Number.isFinite(seed) ? seed : 0)) >>> 0) || 1;
+  // Scramble the seed first: sequential seeds (hand/seat/leg counters) through
+  // a bare LCG would hand near-identical characters to neighbouring legs.
+  h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 3266489917) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
+  const rnd = () => { h = (Math.imul(h, 1664525) + 1013904223) >>> 0; return h / 4294967296; };
+  const rDur = rnd();
+  const rDrop = rnd();
+  const rPinch = rnd();
+  const rOver = rnd();
+  return {
+    durMs: Math.round(520 + rDur * 360),
+    dropDepth: 0.9 + rDrop * 0.1,
+    pinchDepth: 0.86 + rPinch * 0.14,
+    overshoot: rOver < 0.35 ? 0.05 : 0,
+  };
+}
+
 export interface FanRestAnim {
   /** Pose where the current leg started. */
   from: FanRestPose;
