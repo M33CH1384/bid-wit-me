@@ -10,6 +10,16 @@
  * co-op) nothing in this module mounts and the seats keep today's
  * treatment exactly (DOM portrait plates + the card fans).
  *
+ * CHARACTER ROLLOUT (owner, 2026-10-29: "add the characters to all
+ * the tables"): this module is now the seated-figures layer for the
+ * whole story route. The pilot's solve is unchanged; what generalized
+ * is the seating data — each stop passes its own seat config
+ * (three/figureSeats.ts: the room's real chair anchors + seat top)
+ * and the gate's per-stop figure list (assetGate STORY_FIGURE_SEAMS).
+ * Solo tables seat Dee + the stop's pair; co-op tables seat only the
+ * pair (the partner seat is a human). The King stop keeps its own
+ * KingRail seated system and never mounts this layer.
+ *
  * What was at those seats before: nothing in the scene — the opponent
  * fan and the room's chair, with the character's portrait living in
  * the DOM plate. (The golden "cages" in the owner's 2026-10-28 Rec
@@ -59,8 +69,8 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { PORCH_FIGURE_GLBS } from '../assetGate';
-import { CHAIR_SPOTS } from './classicStudioLayout';
+import { STORY_FIGURE_SEAMS } from '../assetGate';
+import { FIGURE_SEAT_CONFIGS, type FigureSeatConfig, type FigureSeatSpot } from './figureSeats';
 import { opponentFan, seatDir, type SeatPos } from './layout';
 import { fanRestTarget } from './fanRest';
 
@@ -97,9 +107,6 @@ const GRIP_HALF = 0.085;
 const REACH_SCOOT = 0.25;
 const REACH_LEAN = 0.20;
 
-/** CHAIR_SPOTS index per seat position (classicStudioLayout order). */
-const SPOT_INDEX: Record<SeatPos, number> = { top: 0, bottom: 1, left: 2, right: 3 };
-
 /* ------------------------------------------------------------------ */
 /* Per-character registers (sandbox values; Ray/Pat statures are the   */
 /* pilot's first solve, judged from the seat captures).                */
@@ -130,10 +137,47 @@ const FIGURE_REGISTERS: Record<string, FigureRegister> = {
     breathPeriod: 3.9, breathAmp: 1.1, swayAmp: 1.2, gazeDwell: 2.9,
     gaze: ['fan', 'trick', 'dee', 'trick', 'uncleRay'],
   },
+  /* Rollout batch 1 (2026-10-29): statures are the solve's scale —
+   * every cast rig ships normalized to a ~1 m bind height, so the
+   * register stature IS the figure's height at the table. Values sit
+   * in the pilot trio's band (1.68–1.86). */
+  mrColeman: {
+    stature: 1.78, spine: [0.07, 0.05, 0.04],
+    breathPeriod: 5.2, breathAmp: 0.7, swayAmp: 0.6, gazeDwell: 4.2,
+    gaze: ['trick', 'dee', 'fan', 'human', 'trick'],
+  },
+  june: {
+    stature: 1.70, spine: [0.09, 0.07, 0.05],
+    breathPeriod: 4.4, breathAmp: 0.9, swayAmp: 0.8, gazeDwell: 3.4,
+    gaze: ['fan', 'trick', 'mrColeman', 'dee', 'fan'],
+  },
+  lilMan: {
+    stature: 1.72, spine: [0.14, 0.11, 0.08],
+    breathPeriod: 3.4, breathAmp: 1.2, swayAmp: 1.3, gazeDwell: 2.4,
+    gaze: ['fan', 'human', 'trick', 'trey', 'fan'],
+  },
+  trey: {
+    stature: 1.80, spine: [0.12, 0.09, 0.07],
+    breathPeriod: 3.6, breathAmp: 1.1, swayAmp: 1.2, gazeDwell: 2.6,
+    gaze: ['fan', 'trick', 'lilMan', 'human', 'fan'],
+  },
+  keisha: {
+    stature: 1.75, spine: [0.11, 0.08, 0.06],
+    breathPeriod: 4.0, breathAmp: 1.0, swayAmp: 1.1, gazeDwell: 3.0,
+    gaze: ['fan', 'teisha', 'trick', 'dee', 'fan'],
+  },
+  teisha: {
+    stature: 1.74, spine: [0.11, 0.09, 0.06],
+    breathPeriod: 4.1, breathAmp: 1.0, swayAmp: 1.1, gazeDwell: 3.1,
+    gaze: ['fan', 'keisha', 'trick', 'dee', 'fan'],
+  },
 };
 
+/* id -> GLB url: the union of every story seam's figure list (the
+ * gate's STORY_FIGURE_SEAMS) — one URL source, no drift. The Porch
+ * trio enters through its PORCH_FIGURE_GLBS row of the same table. */
 const FIGURE_URLS: Record<string, string> = Object.fromEntries(
-  PORCH_FIGURE_GLBS.map((f) => [f.id, f.url]),
+  STORY_FIGURE_SEAMS.flatMap((s) => s.figures).map((f) => [f.id, f.url]),
 );
 
 /* Figure fill (owner verdict 2026-10-29: the seated cast read "very
@@ -437,6 +481,10 @@ interface FigureProps {
   url: string;
   reg: FigureRegister;
   seatPos: SeatPos;
+  /** This stop's chair anchor for the seat (figureSeats.ts). */
+  spot: FigureSeatSpot;
+  /** This stop's chair seat-top height (figureSeats.ts). */
+  seatTop: number;
   n: number;
   count: number;
   active: boolean;
@@ -446,7 +494,7 @@ interface FigureProps {
   anchors: { trick: Vector3; human: Vector3; heads: Record<string, Vector3> };
 }
 
-function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate, anchors }: FigureProps) {
+function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect, view, animate, anchors }: FigureProps) {
   const gltf = useLoader(GLTFLoader, url);
   const gl = useThree((s) => s.gl);
   const prep = useMemo(
@@ -545,7 +593,6 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
     /* Torso lean: world-space rotation about the seat's right axis,
        verified closed-loop — if the head did not move toward the
        table, the lean is flipped and re-applied. */
-    const spot = CHAIR_SPOTS[SPOT_INDEX[seatPos]]!;
     const faceW = seatDir(seatPos, n).negate();
     const leanAxis = new Vector3(0, 1, 0).cross(faceW).normalize();
     const headBefore = jp('Head').clone();
@@ -562,7 +609,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
     /* Hip joints onto the seat: joint world positions converted into
        seat-group space analytically (group = chair spot + ry), the
        root offset so the PELVIS midpoint lands at (centred x,
-       PORCH_SEAT_TOP + HIP_OFF, HIP_BACK) in that space. (The sandbox
+       seatTop + HIP_OFF, HIP_BACK) in that space. (The sandbox
        centred on the left hip joint alone; the midpoint keeps the
        shoulders symmetric over the chair, which the side seats' grip
        geometry needs.) */
@@ -572,7 +619,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
     const toLocal = (w: Vector3) => w.sub(new Vector3(spot.x, 0, spot.z)).applyQuaternion(invQ);
     const ulL = toLocal(jp('LeftUpLeg'));
     const ulR = toLocal(jp('RightUpLeg'));
-    root.position.set(-(ulL.x + ulR.x) / 2, (PORCH_SEAT_TOP + HIP_OFF) - ulL.y, HIP_BACK - (ulL.z + ulR.z) / 2);
+    root.position.set(-(ulL.x + ulR.x) / 2, (seatTop + HIP_OFF) - ulL.y, HIP_BACK - (ulL.z + ulR.z) / 2);
     root.updateMatrixWorld(true);
     /* Reach settle (REACH_SCOOT / REACH_LEAN above): measure each
        shoulder's distance to its grip on the OPEN fan (the rested fan
@@ -630,7 +677,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       const foot = jp(`${side}Foot`);
       aim(`${side}Foot`, `${side}ToeBase`, foot.clone().add(new Vector3(faceW.x, -0.02, faceW.z)));
     }
-  }, [prep, seatPos, n, reg]);
+  }, [prep, seatPos, spot, seatTop, n, reg]);
 
   const headWorld = useMemo(() => new Vector3(), []);
 
@@ -656,7 +703,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
     const hasCards = count > 0;
     const fanC = hasCards
       ? new Vector3(...opponentFan(seatPos, n, (count - 1) / 2, count, rest.drop, rest.pinch).p)
-      : group.localToWorld(new Vector3(0, PORCH_SEAT_TOP + 0.3, 0.55));
+      : group.localToWorld(new Vector3(0, seatTop + 0.3, 0.55));
     fanRef.current.copy(fanC);
     if (settle) return;
     solvedFrames.current++;
@@ -723,7 +770,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       root.updateMatrixWorld(true);
       const targetPos = hasCards
         ? fanC.clone().addScaledVector(right, side === 'Left' ? -GRIP_HALF : GRIP_HALF).addScaledVector(d, GRIP_OUT).add(new Vector3(0, -GRIP_DOWN, 0))
-        : group.localToWorld(new Vector3(side === 'Left' ? 0.18 : -0.18, PORCH_SEAT_TOP + 0.12, 0.25));
+        : group.localToWorld(new Vector3(side === 'Left' ? 0.18 : -0.18, seatTop + 0.12, 0.25));
       const S = arm.getWorldPosition(new Vector3());
       const E0 = fore.getWorldPosition(new Vector3());
       const H0 = hand.getWorldPosition(new Vector3());
@@ -768,7 +815,6 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
     }
   });
 
-  const spot = CHAIR_SPOTS[SPOT_INDEX[seatPos]]!;
   return (
     <group ref={groupRef} position={[spot.x, 0, spot.z]} rotation={[0, spot.ry, 0]}>
       <primitive object={prep.root} />
@@ -808,9 +854,13 @@ export interface PorchFiguresProps {
   /** false under reduced effects: figures seat at rest, static (the
    *  King figures' crowdAnimate contract). */
   animate: boolean;
+  /** The stop's chair anchors + seat top (figureSeats.ts). Defaults
+   *  to the Porch row — the pilot's own geometry. */
+  seatConfig?: FigureSeatConfig;
 }
 
-export default function PorchFigures({ seats, positions, n, handCounts, activeSeat, view, animate }: PorchFiguresProps) {
+export default function PorchFigures({ seats, positions, n, handCounts, activeSeat, view, animate, seatConfig }: PorchFiguresProps) {
+  const config = seatConfig ?? FIGURE_SEAT_CONFIGS['porch']!;
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
   const aspect = size.width >= 32 && size.height >= 32 ? size.width / size.height : 390 / 844;
@@ -829,21 +879,21 @@ export default function PorchFigures({ seats, positions, n, handCounts, activeSe
     const heads: Record<string, Vector3> = {};
     seats.forEach((id, seat) => {
       if (!id) return;
-      const spot = CHAIR_SPOTS[SPOT_INDEX[positions[seat]!]]!;
+      const spot = config.spots[positions[seat]!];
       heads[id] = new Vector3(spot.x, 0.42, spot.z);
     });
-    const humanSpot = CHAIR_SPOTS[SPOT_INDEX[positions[0]!]]!;
+    const humanSpot = config.spots[positions[0]!];
     return {
       trick: new Vector3(0, 0.02, 0),
       human: new Vector3(humanSpot.x, 0.42, humanSpot.z),
       heads,
     };
-  }, [seats, positions]);
+  }, [seats, positions, config]);
   return (
     <>
       {seats.map((id, seat) => {
         if (!id) return null;
-        const spot = CHAIR_SPOTS[SPOT_INDEX[positions[seat]!]]!;
+        const spot = config.spots[positions[seat]!];
         const d = seatDir(positions[seat]!, n);
         return (
           <pointLight
@@ -869,6 +919,8 @@ export default function PorchFigures({ seats, positions, n, handCounts, activeSe
                 url={url}
                 reg={reg}
                 seatPos={positions[seat]!}
+                spot={config.spots[positions[seat]!]}
+                seatTop={config.seatTop}
                 n={n}
                 count={handCounts[seat] ?? 0}
                 active={activeSeat === seat}

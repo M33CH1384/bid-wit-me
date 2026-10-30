@@ -1,0 +1,164 @@
+/**
+ * The character rollout pins — Batch 1 (owner, 2026-10-29: "add the
+ * characters to all the tables").
+ *
+ * The Porch pilot's seated-figures layer generalized to the story
+ * route. These tests pin: the gate's per-stop figure rows (the loader
+ * waits on exactly the GLBs the table presents, at High, at the
+ * stop's own venue — and nowhere else), the per-stop seat configs
+ * against the PRODUCTION rooms' chair geometry (the solve seats on
+ * the room's chairs, not a shared guess), the cast registers, the
+ * GLBs' full-quality body textures (the q95 fleet recipe — the
+ * squeezed first-pass textures fail these floors), and the co-op
+ * scoping (pair figures only; Dee never seats in co-op).
+ */
+import { describe, it, expect } from 'vitest';
+import { readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { STORY_FIGURE_SEAMS, roomGlbUrls, storyFigureGlbs } from '../src/assetGate';
+import { FIGURE_SEAT_CONFIGS, KIT_SEAT_TOP } from '../src/three/figureSeats';
+
+const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
+const pub = (url: string) => join(process.cwd(), 'apps/web', 'public', url);
+
+const BATCH1: Record<string, { venue: string; ids: string[] }> = {
+  barbershop: { venue: 'barbershop', ids: ['dee', 'mrColeman', 'june'] },
+  'rec-center': { venue: 'classic', ids: ['dee', 'lilMan', 'trey'] },
+  cookout: { venue: 'backyard', ids: ['dee', 'keisha', 'teisha'] },
+};
+
+describe('the gate figure rows (Batch 1 stops)', () => {
+  it('each Batch 1 stop gates exactly Dee + its pair, at its own venue, High only', () => {
+    for (const [stop, { venue, ids }] of Object.entries(BATCH1)) {
+      expect(storyFigureGlbs(venue, stop).map((f) => f.id)).toEqual(ids);
+      expect(roomGlbUrls(venue, 'high', stop).map((g) => g.url))
+        .toEqual(ids.map((id) => `/assets/figures/${id}.glb`));
+      expect(roomGlbUrls(venue, 'low', stop)).toEqual([]);
+      // a stop id at the wrong venue gates nothing
+      expect(storyFigureGlbs('grandma', stop)).toEqual([]);
+    }
+    expect(roomGlbUrls('classic', 'high', null)).toEqual([]);
+  });
+
+  it('the seam table covers the Porch pilot row unchanged', () => {
+    const porch = STORY_FIGURE_SEAMS.find((s) => s.stop === 'porch')!;
+    expect(porch.venue).toBe('grandma');
+    expect(porch.figures.map((f) => f.id)).toEqual(['dee', 'uncleRay', 'pat']);
+  });
+
+  it('the King stop has no figure row — its seated figures ride KingRail', () => {
+    expect(STORY_FIGURE_SEAMS.find((s) => s.stop === 'king')).toBeUndefined();
+    expect(FIGURE_SEAT_CONFIGS['king']).toBeUndefined();
+  });
+});
+
+describe('the Batch 1 GLBs', () => {
+  it('exist in the production tree, full-size', () => {
+    for (const { ids } of Object.values(BATCH1)) {
+      for (const id of ids) {
+        const st = statSync(pub(`/assets/figures/${id}.glb`));
+        expect(st.size, id).toBeGreaterThan(1_000_000);
+      }
+    }
+  });
+
+  it('carry full-quality body textures (q95 recipe), not the squeezed first pass', () => {
+    // Floors sit between the sandbox -opt squeeze (89–173 KB) and the
+    // q95 re-encode from the Forge source PNGs (216–434 KB).
+    const floors: Record<string, number> = {
+      mrColeman: 200_000, june: 300_000, lilMan: 200_000,
+      trey: 150_000, keisha: 180_000, teisha: 200_000,
+    };
+    for (const [id, floor] of Object.entries(floors)) {
+      const buf = readFileSync(pub(`/assets/figures/${id}.glb`));
+      const jsonLen = buf.readUInt32LE(12);
+      const gltf = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'));
+      const largest = Math.max(...gltf.images.map((im: { bufferView: number }) => gltf.bufferViews[im.bufferView].byteLength));
+      expect(largest, `${id} body texture`).toBeGreaterThan(floor);
+    }
+  });
+});
+
+describe('the cast registers', () => {
+  const fig = src('src/three/PorchFigures.tsx');
+
+  it('carries a register for every Batch 1 character, statures in the pilot band', () => {
+    const statures: Record<string, number> = {
+      mrColeman: 1.78, june: 1.70, lilMan: 1.72, trey: 1.80, keisha: 1.75, teisha: 1.74,
+    };
+    for (const [id, s] of Object.entries(statures)) {
+      expect(fig).toContain(`${id}: {\n    stature: ${s.toFixed(2)}`);
+    }
+  });
+
+  it('every gated figure id resolves to a register + URL in the module', () => {
+    for (const seam of STORY_FIGURE_SEAMS) {
+      for (const f of seam.figures) {
+        expect(fig).toContain(`${f.id}: {`);
+        expect(f.url).toBe(`/assets/figures/${f.id}.glb`);
+      }
+    }
+  });
+});
+
+describe('the per-stop seat configs', () => {
+  it('the Porch row is the pilot geometry (classic anchors, PORCH_SEAT_TOP)', () => {
+    // PORCH_SEAT_TOP itself is pinned in porch-figures.test.ts.
+    expect(src('src/three/PorchFigures.tsx')).toContain('export const PORCH_SEAT_TOP = -0.41');
+    expect(FIGURE_SEAT_CONFIGS['porch']!.seatTop).toBe(-0.41);
+    expect(FIGURE_SEAT_CONFIGS['porch']!.spots.top).toEqual({ x: 0, z: -2.45, ry: 0 });
+    expect(FIGURE_SEAT_CONFIGS['porch']!.spots.bottom).toEqual({ x: 0, z: 2.8, ry: Math.PI });
+  });
+
+  it('the kit-chair seat top is the rooms’ own arithmetic (FLOOR_Y + 0.49 + half the box)', () => {
+    expect(KIT_SEAT_TOP).toBeCloseTo(-0.9 + 0.49 + 0.014, 10);
+    for (const stop of ['barbershop', 'rec-center', 'cookout']) {
+      expect(FIGURE_SEAT_CONFIGS[stop]!.seatTop).toBe(KIT_SEAT_TOP);
+    }
+    // the kit seat box, identical in all three room sources
+    for (const room of ['BarbershopMirrorRoom.tsx', 'RecCenterGymRoom.tsx', 'CookoutYardRoom.tsx']) {
+      expect(src(`src/three/${room}`)).toContain('box(0.42, 0.028, 0.40, 0, 0.49, 0.02)');
+    }
+  });
+
+  it('Barbershop + Cookout configs match the rooms’ LOCAL chair spots', () => {
+    for (const stop of ['barbershop', 'cookout']) {
+      const spots = FIGURE_SEAT_CONFIGS[stop]!.spots;
+      expect(spots.top).toEqual({ x: 0, z: -1.98, ry: 0 });
+      expect(spots.bottom).toEqual({ x: 0, z: 1.98, ry: Math.PI });
+      expect(spots.left).toEqual({ x: -2.14, z: 0, ry: Math.PI / 2 });
+      expect(spots.right).toEqual({ x: 2.14, z: 0, ry: -Math.PI / 2 });
+    }
+    for (const room of ['BarbershopMirrorRoom.tsx', 'CookoutYardRoom.tsx']) {
+      const text = src(`src/three/${room}`);
+      expect(text).toContain('{ pos: [0, FLOOR_Y, -1.98], ry: 0 }');
+      expect(text).toContain('{ pos: [0, FLOOR_Y, 1.98], ry: Math.PI }');
+      expect(text).toContain('{ pos: [-2.14, FLOOR_Y, 0], ry: Math.PI / 2 }');
+      expect(text).toContain('{ pos: [2.14, FLOOR_Y, 0], ry: -Math.PI / 2 }');
+    }
+  });
+
+  it('the Rec Center config uses the shared studio anchors its room imports', () => {
+    const spots = FIGURE_SEAT_CONFIGS['rec-center']!.spots;
+    expect(spots.top).toEqual({ x: 0, z: -2.45, ry: 0 });
+    expect(spots.left).toEqual({ x: -2.3, z: 0, ry: Math.PI / 2 });
+    expect(spots.right).toEqual({ x: 2.3, z: 0, ry: -Math.PI / 2 });
+    expect(src('src/three/RecCenterGymRoom.tsx')).toContain("import { CHAIR_SPOTS } from './classicStudioLayout'");
+    expect(src('src/three/classicStudioLayout.ts')).toContain('{ x: 0, z: -2.45, ry: 0 }');
+  });
+
+  it('Scene only mounts figures where a seat config exists', () => {
+    const scene = src('src/three/Scene.tsx');
+    expect(scene).toContain('const figureSeatConfig = props.storyStopId ? FIGURE_SEAT_CONFIGS[props.storyStopId] : undefined');
+    expect(scene).toContain('seatConfig={figureSeatConfig}');
+  });
+});
+
+describe('the co-op scoping', () => {
+  it('OnlineTable seats the pair at the bot seats for non-King story stops, humans never', () => {
+    const online = src('src/online/OnlineTable.tsx');
+    expect(online).toContain("figureSeats: room.story && room.story.stopId !== 'king'");
+    expect(online).toContain('STORY_STOPS.find((s) => s.id === room.story!.stopId)!.pair[srv === 1 ? 0 : 1]');
+    expect(online).toContain("room.seats[srv]?.kind === 'bot'");
+  });
+});

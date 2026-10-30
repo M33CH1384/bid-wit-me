@@ -245,6 +245,20 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
                 return null;
               })
             : undefined,
+          // Character rollout (owner, 2026-10-29): the same two bot
+          // seats at every OTHER story stop seat the stop's pair as
+          // rigged figures (three/PorchFigures.tsx). Human seats stay
+          // null — Dee is never seated in co-op, the partner seat is
+          // the other player.
+          figureSeats: room.story && room.story.stopId !== 'king'
+            ? localSeats.map((L) => {
+                const srv = rot.R(L);
+                if ((srv === 1 || srv === 3) && room.seats[srv]?.kind === 'bot') {
+                  return STORY_STOPS.find((s) => s.id === room.story!.stopId)!.pair[srv === 1 ? 0 : 1];
+                }
+                return null;
+              })
+            : undefined,
           versusPairNote: versusPairNote ?? null,
           victory: (winners, losers, title, sub) => {
             const sp = (L: number) => {

@@ -57,8 +57,8 @@ import CornerStreetRoom from './CornerStreetRoom';
 import SpeakeasyLoungeRoom from './SpeakeasyLoungeRoom';
 import PorchDeckRoom from './PorchDeckRoom';
 import PorchFigures from './PorchFigures';
-import PersonaFigures from './PersonaFigures';
 import SeatVideoLayer from './SeatVideo';
+import { FIGURE_SEAT_CONFIGS } from './figureSeats';
 import GrandmasKitchenRoom from './GrandmasKitchenRoom';
 import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
@@ -184,19 +184,15 @@ export interface SceneProps {
    *  King table the seated story characters render in the scene. */
   seatedFigures?: readonly (string | null)[];
   /** Per-seat rigged 3D figures (character id or null, by seat) for the
-   *  Porch pilot (character phase step 2): Table sets this ONLY for solo
-   *  story tables at stop `porch`; the scene seats the real cast at High
-   *  quality (three/PorchFigures.tsx) and raises the Sitting camera to
-   *  the people framing while the pilot is active. Absent everywhere
-   *  else — Low, non-story, other stops and co-op never see a figure. */
-  porchFigureSeats?: readonly (string | null)[];
-  /** Per-seat persona figure keys (or null, by seat) for REGULAR
-   *  (non-story) tables: Table sets this for bot seats whose persona
-   *  has a shipped rigged figure (three/PersonaFigures.tsx). The
-   *  figures lazy-mount over the portrait treatment at High quality;
-   *  they are not part of the loader's asset gate. Absent at story
-   *  tables, where the cast system owns the seats. */
-  personaFigureSeats?: readonly (string | null)[];
+   *  story tables (the Porch pilot, character phase step 2, rolled out
+   *  route-wide 2026-10-29): Table sets this ONLY for story tables —
+   *  solo seats Dee + the stop's pair, co-op seats the pair only (the
+   *  partner seat is a human) — and never for the King stop, whose
+   *  seated figures ride KingRail above. The scene seats the real cast
+   *  at High quality (three/PorchFigures.tsx) and raises the Sitting
+   *  camera to the people framing while figures are active. Absent
+   *  everywhere else — Low and non-story tables never see a figure. */
+  figureSeats?: readonly (string | null)[];
   /** Per-seat live camera feeds (MediaStream or null, by local seat):
    *  a remote seated human's video renders on a plane at their chair
    *  (three/SeatVideo.tsx; owner directive 2026-10-30). Built only by
@@ -837,8 +833,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // targets (cardScreenQuad re-derives the same screen points the
   // refit preserves). Departure slots inherit the refit because
   // nextSlots stores the refit targets.
-  const peopleCam = view === 'sitting' && quality === 'high' && props.venue === 'grandma'
-    && props.storyStopId === 'porch' && !!(props.porchFigureSeats?.some(Boolean));
+  const peopleCam = view === 'sitting' && quality === 'high'
+    && !!(props.figureSeats?.some(Boolean)) && !!(props.storyStopId && FIGURE_SEAT_CONFIGS[props.storyStopId]);
   // Adjustable view (owner, 2026-10-29): CameraRig renders the base spec
   // (stock, or the people spec at the pilot) with the player's tilt/zoom on
   // top; the fan refit generalizes the people refit to that rendered spec,
@@ -1852,14 +1848,12 @@ export default function Scene(props: SceneProps) {
   const grandma = def.id === 'grandma';
   const mansion = def.id === 'mansion';
   const cubeRoom = barbershop || rooftop || yacht || beach || backyard || church || vegas || speakeasy || grandma || mansion;
-  // Porch pilot (character phase step 2): the figures seat only where
-  // Table says the solo Porch cast sits, at High, on the story seam —
-  // the same conditions that mount PorchDeckRoom, plus the prop.
-  const porchFiguresActive = grandma && props.storyStopId === 'porch' && hi && !!(props.porchFigureSeats?.some(Boolean));
-  // Persona figures (regular tables): bot seats at NON-story tables,
-  // High only. Story tables never mount them (their cast system owns
-  // the seats), whatever the prop carries.
-  const personaFiguresActive = !props.storyStopId && hi && !!(props.personaFigureSeats?.some(Boolean));
+  // Seated figures (the Porch pilot, rolled out route-wide): the
+  // figures seat only where Table says a story cast sits, at High,
+  // and only at a stop with a seat config (three/figureSeats.ts) —
+  // the King stop has none: its seated figures ride KingRail.
+  const figureSeatConfig = props.storyStopId ? FIGURE_SEAT_CONFIGS[props.storyStopId] : undefined;
+  const storyFiguresActive = hi && !!figureSeatConfig && !!(props.figureSeats?.some(Boolean));
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -1936,7 +1930,7 @@ export default function Scene(props: SceneProps) {
       <EffectWarmup quality={props.quality} />
       <SnapHook />
       <FirstFrameSignal onFirstFrame={firstFrame} />
-      <CameraRig view={props.view} people={porchFiguresActive} />
+      <CameraRig view={props.view} people={storyFiguresActive} />
       <ViewAdjustControls />
       <FxShake table={tableGroup} />
       <color attach="background" args={[def.clear]} />
@@ -2016,27 +2010,16 @@ export default function Scene(props: SceneProps) {
           short={!!props.short}
         />
       )}
-      {showTable && textured && porchFiguresActive && (
+      {showTable && textured && storyFiguresActive && (
         <PorchFigures
-          seats={props.porchFigureSeats!}
+          seats={props.figureSeats!}
           positions={props.positions}
           n={props.n}
           handCounts={props.handCounts}
           activeSeat={props.activeSeat ?? null}
           view={props.view ?? 'standing'}
           animate={props.crowdAnimate ?? false}
-        />
-      )}
-      {showTable && textured && personaFiguresActive && (
-        <PersonaFigures
-          seats={props.personaFigureSeats!}
-          positions={props.positions}
-          n={props.n}
-          handCounts={props.handCounts}
-          activeSeat={props.activeSeat ?? null}
-          view={props.view ?? 'standing'}
-          animate={props.crowdAnimate ?? false}
-          venue={def.id}
+          seatConfig={figureSeatConfig}
         />
       )}
       {showTable && (props.seatVideos?.some(Boolean) ?? false) && (

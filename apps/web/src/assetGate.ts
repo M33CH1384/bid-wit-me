@@ -61,12 +61,58 @@ export const PORCH_FIGURE_GLBS: readonly { id: string; label: string; url: strin
 ];
 
 /**
+ * The character rollout (owner, 2026-10-29: "add the characters to
+ * all the tables"): every story stop seats its cast as rigged figures
+ * at High — Dee (the solo partner) plus the stop's pair. One row per
+ * (venue, stop): the gate matches the pair exactly, so a stop id at
+ * the wrong venue gates nothing. The King stop is NOT a row — its
+ * seated figures ride the KingRail system, not this one.
+ * three/PorchFigures.tsx builds its id -> URL map from these rows.
+ */
+export interface StoryFigureSeam {
+  venue: string;
+  stop: string;
+  figures: readonly { id: string; label: string; url: string }[];
+}
+
+const figureGlb = (id: string, name: string): { id: string; label: string; url: string } => ({
+  id, label: `glb figure (${name})`, url: `/assets/figures/${id}.glb`,
+});
+
+export const STORY_FIGURE_SEAMS: readonly StoryFigureSeam[] = [
+  { venue: 'grandma', stop: 'porch', figures: PORCH_FIGURE_GLBS },
+  {
+    venue: 'barbershop', stop: 'barbershop',
+    figures: [figureGlb('dee', 'Barbershop Dee'), figureGlb('mrColeman', 'Mr. Coleman'), figureGlb('june', 'June')],
+  },
+  {
+    venue: 'classic', stop: 'rec-center',
+    figures: [figureGlb('dee', 'Rec Center Dee'), figureGlb('lilMan', "Lil' Man"), figureGlb('trey', 'Trey')],
+  },
+  {
+    venue: 'backyard', stop: 'cookout',
+    figures: [figureGlb('dee', 'Cookout Dee'), figureGlb('keisha', 'Keisha'), figureGlb('teisha', 'Teisha')],
+  },
+];
+
+/** The figure GLBs a story table presents (empty at non-story tables). */
+export function storyFigureGlbs(
+  venue: string,
+  storyStopId: string | null,
+): readonly { id: string; label: string; url: string }[] {
+  if (storyStopId === null) return [];
+  const row = STORY_FIGURE_SEAMS.find((s) => s.venue === venue && s.stop === storyStopId);
+  return row ? row.figures : [];
+}
+
+/**
  * GLB files a room presents that are NOT in its venue asset set: the
  * shared street sedan — the Pj's own room at High, and the story Corner
  * (venue `speakeasy`, stop `corner`) which reuses the same car — and, at
- * the Porch story seam, the pilot's three seated figures (the Porch
- * deck ROOM is procedural, but the figures the table presents are
- * downloads, and the gate's promise covers what the table shows). The
+ * a story seam, the seated figures the table presents (the rooms are
+ * procedural, but the figures are downloads, and the gate's promise
+ * covers what the table shows — the Porch pilot's rule, route-wide
+ * since the character rollout). The
  * king stop parks no sedan (the King's Lounge replaces the street room
  * there); its GLBs are the studio set, which rides the classic ledger
  * instead. Low quality never mounts the 3D street rooms or the
@@ -78,15 +124,20 @@ export function roomGlbUrls(
   storyStopId: string | null,
 ): { label: string; url: string }[] {
   if (quality !== 'high') return [];
+  const out: { label: string; url: string }[] = [];
   if (venue === 'blockAfterDark') {
     // The King's Lounge replaces the street room at the king stop (High):
     // no sedan is parked there, so the gate must not wait on it.
-    if (storyStopId === 'king') return [];
-    return [{ label: 'glb sedan (Pj\'s street)', url: SEDAN_GLB_URL }];
+    if (storyStopId !== 'king') out.push({ label: 'glb sedan (Pj\'s street)', url: SEDAN_GLB_URL });
+  } else if (venue === 'speakeasy' && storyStopId === 'corner') {
+    out.push({ label: 'glb sedan (Corner street)', url: SEDAN_GLB_URL });
   }
-  if (venue === 'speakeasy' && storyStopId === 'corner') return [{ label: 'glb sedan (Corner street)', url: SEDAN_GLB_URL }];
-  if (venue === 'grandma' && storyStopId === 'porch') return PORCH_FIGURE_GLBS.map((f) => ({ label: f.label, url: f.url }));
-  return [];
+  // The seated figures the table presents (character rollout): at a
+  // story seam the cast's GLBs are downloads like any room asset, so
+  // the gate's promise covers them (the Porch pilot's rule, now
+  // route-wide via STORY_FIGURE_SEAMS).
+  for (const f of storyFigureGlbs(venue, storyStopId)) out.push({ label: f.label, url: f.url });
+  return out;
 }
 
 /**

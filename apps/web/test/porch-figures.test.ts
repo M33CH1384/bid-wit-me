@@ -50,17 +50,22 @@ describe('the asset gate at the Porch seam', () => {
 });
 
 describe('the pilot seam wiring', () => {
-  it('Table computes the seats solo-Porch-only, player seat empty', () => {
+  it('Table computes the seats solo-story, player seat empty, King excluded', () => {
     const table = src('src/Table.tsx');
-    expect(table).toContain("story?.scene?.stop.id === 'porch' && storySeatIds");
+    // Character rollout (2026-10-29): the pilot's solo-Porch scoping
+    // generalized to every solo story stop except the King (whose
+    // seated figures ride KingRail); co-op arrives via the online
+    // object with the pair only.
+    expect(table).toContain("story?.scene && story.scene.stop.id !== 'king' && storySeatIds");
     expect(table).toContain('seat === 0 ? null : (storySeatIds[seat] ?? null)');
-    expect(table).toContain('porchFigureSeats={porchFigureSeats}');
+    expect(table).toContain('figureSeats={figureSeats}');
+    expect(table).toContain('storyFigureSeats ?? online?.figureSeats');
   });
 
-  it('Scene activates the pilot on the seam + High + the prop, and only there', () => {
+  it('Scene activates the figures on High + the prop + a seat config, and only there', () => {
     const scene = src('src/three/Scene.tsx');
-    expect(scene).toContain("const porchFiguresActive = grandma && props.storyStopId === 'porch' && hi && !!(props.porchFigureSeats?.some(Boolean))");
-    expect(scene).toContain('{showTable && textured && porchFiguresActive && (');
+    expect(scene).toContain('const storyFiguresActive = hi && !!figureSeatConfig && !!(props.figureSeats?.some(Boolean))');
+    expect(scene).toContain('{showTable && textured && storyFiguresActive && (');
     expect(scene).toContain('<PorchFigures');
     // the King system is untouched by the pilot
     expect(scene).toContain('seated={props.seatedFigures ?? []}');
@@ -76,7 +81,10 @@ describe('the figures module', () => {
   const fig = src('src/three/PorchFigures.tsx');
 
   it('loads declaratively off the gate list — one URL source, no drift', () => {
-    expect(fig).toContain("import { PORCH_FIGURE_GLBS } from '../assetGate'");
+    // Rollout: the URL map derives from the gate's seam table (whose
+    // porch row IS PORCH_FIGURE_GLBS) — still one source, no drift.
+    expect(fig).toContain("import { STORY_FIGURE_SEAMS } from '../assetGate'");
+    expect(fig).toContain('STORY_FIGURE_SEAMS.flatMap((s) => s.figures)');
     expect(fig).toContain('useLoader(GLTFLoader, url)');
     expect(fig).toContain('<Suspense fallback={null}>');
     expect(fig).not.toContain('new GLTFLoader');
@@ -149,7 +157,7 @@ describe('the people-framing camera (ratification candidate)', () => {
     const scene = src('src/three/Scene.tsx');
     expect(scene).toContain('export const PEOPLE_CAM = { raise: 0.37, lookDy: 0.48, lookDz: -0.38 } as const');
     expect(scene).toContain("people && view === 'sitting' ? peopleSpec(stockSpec) : stockSpec");
-    expect(scene).toContain('<CameraRig view={props.view} people={porchFiguresActive} />');
+    expect(scene).toContain('<CameraRig view={props.view} people={storyFiguresActive} />');
   });
 
   it('the hand refit rides the same matrix family (M = V * S^-1)', () => {

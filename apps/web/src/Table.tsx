@@ -27,7 +27,6 @@ import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import PersonaFace from './PersonaFace';
-import { personaFigureKeyForName } from './personaFigureKey';
 import StoryFace from './story/StoryFace';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
@@ -217,6 +216,12 @@ export interface OnlineBinding {
    *  (character id or null) — the King + Ringer bot seats render in
    *  the scene; human seats keep their photo plates. */
   seatedFigures?: (string | null)[];
+  /** Story co-op (character rollout): per-LOCAL-seat rigged figures
+   *  for the seated-figures layer — the stop's pair at the two bot
+   *  seats, null at the human seats (Dee is never seated in co-op:
+   *  the partner seat is a person). King stop excluded — it rides
+   *  seatedFigures / KingRail above. */
+  figureSeats?: (string | null)[];
   /** Story co-op: the pair's narrative line for this stop (attempts/clears from
    *  the pair context), shown as the viewer side's headline on the versus card. */
   versusPairNote?: string | null;
@@ -2735,27 +2740,19 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const seatedFiguresArr: (string | null)[] | undefined = seatedFigureIds
     ? Array.from({ length: n }, (_, seat) => seatedFigureIds[seat] ?? null)
     : undefined;
-  // PORCH PILOT (character phase step 2, owner go 2026-10-28): at the
-  // solo Porch story table the three bot seats get real rigged 3D
-  // figures in the scene (three/PorchFigures.tsx). Solo only:
-  // storySeatIds exists only on the solo story path (co-op runs
-  // through OnlineTable, which never sets the `story` prop this table
-  // reads), and seat 0 is the player — first-person, never a figure.
-  const porchFigureSeats: (string | null)[] | undefined = story?.scene?.stop.id === 'porch' && storySeatIds
+  // SEATED FIGURES (the Porch pilot, character phase step 2, rolled
+  // out to every story table — owner, 2026-10-29): the bot seats get
+  // real rigged 3D figures in the scene (three/PorchFigures.tsx).
+  // Solo: storySeatIds exists only on the solo story path, and seat 0
+  // is the player — first-person, never a figure. The King stop is
+  // excluded: its seated figures ride the KingRail system above.
+  // Co-op runs through OnlineTable, which never sets the `story` prop
+  // this table reads; it passes the pair-only seats via the online
+  // object instead (no Dee figure — the partner seat is a human).
+  const storyFigureSeats: (string | null)[] | undefined = story?.scene && story.scene.stop.id !== 'king' && storySeatIds
     ? Array.from({ length: n }, (_, seat) => (seat === 0 ? null : (storySeatIds[seat] ?? null)))
     : undefined;
-  // PERSONA FIGURES (regular tables, owner go 2026-10-29): at NON-story
-  // tables each bot seat whose persona has a shipped rigged figure gets
-  // the body in the scene (three/PersonaFigures.tsx), keyed by the same
-  // persona+gender key as its portrait plate — face and body can never
-  // disagree. Story tables are excluded on both paths (solo via the
-  // story prop, co-op via the binding's storyStopId): their seats are
-  // story characters, owned by the cast system. Human seats never get
-  // figures (isBotSeat), and personas without a shipped figure resolve
-  // null — the seat keeps the portrait treatment.
-  const personaFigureSeats: (string | null)[] | undefined = !story && !online?.storyStopId
-    ? Array.from({ length: n }, (_, seat) => (isBotSeat(seat) ? personaFigureKeyForName(names[seat] ?? '') : null))
-    : undefined;
+  const figureSeats: (string | null)[] | undefined = storyFigureSeats ?? online?.figureSeats;
   // The crowd cue channel (three/kingRailLayout.ts): the table stamps
   // real match moments + speakers here; the 3D figures read it inside
   // useFrame. A plain mutable ref — stamping never re-renders.
@@ -2857,8 +2854,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           storyStopId={storyStopId ?? online?.storyStopId ?? null}
           kingRailCast={kingRail}
           seatedFigures={seatedFiguresArr}
-          porchFigureSeats={porchFigureSeats}
-          personaFigureSeats={personaFigureSeats}
+          figureSeats={figureSeats}
           seatVideos={online?.seatVideos}
           crowdCue={crowdCue}
           crowdAnimate={!reduceFx && !fx.osReducedMotion}
