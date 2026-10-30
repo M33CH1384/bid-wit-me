@@ -92,9 +92,17 @@ export const FAN_REST_TIGHTEN = 0.36;
  *  chin line of the shorter seated figures; at 0.25 the fan is held
  *  at chest height with the head clear above it. Everything that
  *  derives from this transform (the figures' grips and head-clearance
- *  gates, deal flights) follows the fan down together. */
-export const OPP_FAN_BASE_Y = 0.25;
-export const OPP_FAN_REST_DROP = 0.11;
+ *  gates, deal flights) follows the fan down together. Round 2
+ *  (owner 2026-10-30 13:16: the partner's face "still protruding
+ *  through the cards"): 0.25 → 0.165 — at 0.25 the shortest cast
+ *  member's chin still met the fan's top edge in screen space from
+ *  the sitting camera even with the world-space gate satisfied;
+ *  the fan now sits at sternum height, the way a held fan rides
+ *  when the holder peers over it. The rest drop eased 0.11 → 0.09
+ *  with it so the lowered fan's bottom edge keeps its clearance
+ *  over the rail. */
+export const OPP_FAN_BASE_Y = 0.165;
+export const OPP_FAN_REST_DROP = 0.09;
 export const OPP_FAN_REST_OUT = 0.05;
 export const OPP_FAN_REST_TIGHTEN = 0.45;
 

@@ -77,15 +77,24 @@ const FLOOR_Y = -0.9;
  *  gates, the leg/arm IK and the reach settle all measure the SCALED
  *  skeleton and stay honest — the pelvis is re-anchored to the seat
  *  analytically, so figures grow about their seat, not the floor.
- *  1.10 mirrors the owner's own chair correction (0.82 → 0.90). */
-const FIGURE_SCALE = 1.10;
+ *  1.10 mirrors the owner's own chair correction (0.82 → 0.90).
+ *  Round 2 (owner 2026-10-30 13:16: "still need to be a bit
+ *  bigger"): 1.10 → 1.20, judged from player-seat renders — the
+ *  added torso height also lifts every head relative to the held
+ *  fan, which the face-over-fan composition needed. */
+const FIGURE_SCALE = 1.20;
 /** Head-clearance floor (metres) the placement keeps between the
  *  head's bounding sphere and the held fan's volume, in the open and
  *  full-rest fan poses (see the placement settle). Covers the frame
  *  loop's breath/sway amplitude with room to spare. */
 const HEAD_CLEAR_MIN = 0.025;
+/** Chin-point clearance floor (metres) in the placement gate
+ *  (round 2): the chin — below the Head bone, toward the table —
+ *  is where the fan met the face on screen; the sphere alone
+ *  passed it. */
+const CHIN_CLEAR_MIN = 0.015;
 const HIP_OFF = 0.05;      // hip-joint centre above the seat surface
-const HIP_BACK = -0.02;    // hip-joint offset from chair centre, away from the table (seat frame)
+const HIP_BACK = -0.12;    // hip-joint offset from chair centre, away from the table (seat frame). Round 2: -0.02 -> -0.12 — figures sit deeper in their chairs, heads off the held fan's plane (the partner-seat face/fan failure was depth as much as height); the reach settle re-spends scoot only where grips actually demand it, so the depth persists where it is needed.
 const ANKLE_FWD = 0.38;    // ankle target forward of the hip joint (seat frame)
 
 /* Grip calibration against the production opponent fan (opponentFan's
@@ -100,20 +109,37 @@ const ANKLE_FWD = 0.38;    // ankle target forward of the hip joint (seat frame)
  * the hands (owner 2026-10-30: "the characters hands look a lil
  * crazy" — see the hand-orientation solve in the frame loop). */
 const GRIP_HALF = 0.085;
-const GRIP_EDGE = 0.185;
-const GRIP_BACK = 0.04;
+/* Round 2 (owner 2026-10-30 13:17: fingers "poke thru the cards"):
+ * the wrist sat only 0.01 below the fan's bottom edge, so fingers
+ * rising parallel to the fan hooked through its lower third. The
+ * grip drops to 0.055 below the edge and farther back, and
+ * the hand's approach pitches toward the fan (HAND_PITCH in the
+ * frame loop) with the held curl redistributed to the distal
+ * joints (GRIP_JOINT_SCALE) — fingers wrap the bottom edge, tips
+ * landing just past it on the far side, instead of spearing up
+ * the fan's face. */
+const GRIP_EDGE = 0.23;
+const GRIP_BACK = 0.07;
 
 /** The wrist target for one hand on a held fan, from the fan's
  * middle-card transform (centre + orientation). */
-function fanGripPoint(fanC: Vector3, fanQ: Quaternion, side: 'Left' | 'Right'): Vector3 {
+function fanGripPoint(fanC: Vector3, fanQ: Quaternion, side: 'Left' | 'Right', back: number = GRIP_BACK): Vector3 {
   const right = new Vector3(1, 0, 0).applyQuaternion(fanQ);
   const up = new Vector3(0, 1, 0).applyQuaternion(fanQ);
   const normal = new Vector3(0, 0, 1).applyQuaternion(fanQ);
   return fanC.clone()
     .addScaledVector(right, side === 'Left' ? GRIP_HALF : -GRIP_HALF)
     .addScaledVector(up, -GRIP_EDGE)
-    .addScaledVector(normal, GRIP_BACK);
+    .addScaledVector(normal, back);
 }
+
+/* Round 2: a bigger hand's palm carries its knuckles — and so its
+ * whole finger arc — closer to the fan from the same wrist point.
+ * The grip backs off in proportion to the hand's measured size
+ * (prep.midLen over the reference hand) so every rig's fingertips
+ * land in the same corridor behind the fan's bottom edge. */
+const gripBackFor = (prep: PreparedFigure, side: 'Left' | 'Right'): number =>
+  GRIP_BACK + Math.max(0, prep.midLen[side] - 0.11) * 1.35;
 
 /* Reach settle bounds (placement): the cast rigs' arms run short
  * (TRELLIS proportions — a 1.8 m figure's shoulder-to-wrist ≈ 0.45 m)
@@ -130,6 +156,12 @@ function fanGripPoint(fanC: Vector3, fanQ: Quaternion, side: 'Left' | 'Right'): 
  * reaching for a fan that far away hunches over it, so the settle
  * may too. Both caps stay need-based: the settle spends only what
  * the grip demands (near seats sit nearly upright). */
+/** Round 2: pitch of the hand's approach frame at the fan
+ *  (radians about the fan's right/knuckle axis, applied in the
+ *  frame-loop orientation solve). Negative tips the fingers
+ *  toward the fan's plane as they rise, so they meet the fan's
+ *  bottom edge instead of running parallel to its face. */
+const HAND_PITCH = -0.24;
 const REACH_SCOOT = 0.30;
 const REACH_LEAN = 0.40;
 
@@ -532,7 +564,15 @@ const FINGER_GRIP_SCALE: Record<string, number> = {
 };
 const FINGER_NAMES = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'] as const;
 
-interface FingerJoint { bone: Object3D; rest: Quaternion; axis: Vector3; angle: number }
+interface FingerJoint { bone: Object3D; rest: Quaternion; axis: Vector3; angle: number; gripScale: number }
+
+/** Round 2: per-joint share of the held-fan curl, base → tip.
+ *  Round 1 applied the full FINGER_CURL at every joint (~2.4 rad
+ *  total on the long fingers): the finger rose parallel to the fan
+ *  and hooked through it like a fist. A fan grip is mostly distal —
+ *  the base joints stay nearly straight along the fan's back while
+ *  the last joints wrap the bottom edge. */
+const GRIP_JOINT_SCALE: readonly number[] = [0.32, 0.5, 0.95, 1.05];
 
 /** Anatomical frame at the wrist (the graft prototype's basis):
  *  z along the hand's bones (wrist -> chain end), y the palm
@@ -571,6 +611,12 @@ interface PreparedFigure {
    *  bone's OWN local space at bind. The frame loop maps this frame
    *  onto the held fan's frame to orient the hand at the grip. */
   handFrames: { Left?: { x: Vector3; y: Vector3; z: Vector3 }; Right?: { x: Vector3; y: Vector3; z: Vector3 } };
+  /** Per-hand held-curl multiplier from the hand's own size
+   *  (round 2: long hands need more bend to land tips in the
+   *  same corridor — see prepareFigure). */
+  curlF: { Left: number; Right: number };
+  /** Rendered middle-finger lengths the curlF calibration read. */
+  midLen: { Left: number; Right: number };
   ankleFlat: number;
   thigh: number;
   shin: number;
@@ -649,6 +695,7 @@ function prepareFigure(scene: Object3D, reg: FigureRegister, maxAniso = 1): Prep
   };
   const fingers: { Left: FingerJoint[]; Right: FingerJoint[] } = { Left: [], Right: [] };
   const handFrames: PreparedFigure['handFrames'] = {};
+  const curlF: { Left: number; Right: number } = { Left: 1, Right: 1 };
   for (const S of ['L', 'R'] as const) {
     const side = S === 'L' ? 'Left' : 'Right';
     const hand = bones[`${side}Hand`];
@@ -681,12 +728,23 @@ function prepareFigure(scene: Object3D, reg: FigureRegister, maxAniso = 1): Prep
         const moved = c0.clone().sub(o).applyQuaternion(rot).add(o);
         sign = moved.sub(c0).dot(palm) > 0 ? 1 : -1;
       }
+      /* Round 2: normalize the held curl by the finger's rendered
+         length — the same angles over-reach on long-fingered rigs
+         (their tips climbed the fan and hooked deep past it) while
+         short fingers barely wrap. Only ever reduces the curl. */
+      let fl = 0.02;
+      for (let k = 0; k + 1 < chain.length; k++) {
+        fl += chain[k]!.getWorldPosition(new Vector3()).distanceTo(chain[k + 1]!.getWorldPosition(new Vector3()));
+      }
+      const renderScale = (reg.stature * FIGURE_SCALE) / (bindBox.max.y - bindBox.min.y);
+      const lenF = Math.min(1, Math.max(0.8, 0.16 / (fl * renderScale)));
       chain.forEach((j, k) => {
         const pq = j.parent!.getWorldQuaternion(new Quaternion());
         const axis = basis.x.clone().applyQuaternion(pq.invert()).normalize();
         fingers[side].push({
           bone: j, rest: j.quaternion.clone(), axis,
           angle: sign * FINGER_CURL[F]![k]! * FINGER_GRIP_SCALE[F]!,
+          gripScale: (GRIP_JOINT_SCALE[k] ?? 1) * lenF,
         });
       });
     }
@@ -696,8 +754,30 @@ function prepareFigure(scene: Object3D, reg: FigureRegister, maxAniso = 1): Prep
   const s = (reg.stature * FIGURE_SCALE) / height;
   root.scale.setScalar(s);
   holder.updateMatrixWorld(true);
+  /* Round 2: per-hand grip calibration from the middle finger's
+     RENDERED length, measured on the scaled figure (the graft
+     chains are near-uniform in bind; hand size rides the rig's
+     bone scales, so bind lengths cannot see it). A longer hand at
+     the same angles lands its tips higher up the fan and deeper
+     past it (the chord grows with the arc); hitting the same tip
+     target takes MORE total bend, and the approach pitch shallows
+     in step so the chord's direction (pitch + bend/2) holds. */
+  const midLenOf = (S: 'L' | 'R'): number => {
+    const pts = [1, 2, 3, 4]
+      .map(k => graftByName.get(`graft_${S}_Middle${k}`))
+      .filter((o): o is Object3D => !!o);
+    if (pts.length < 2) return 0.17;
+    let L = 0;
+    for (let k = 0; k + 1 < pts.length; k++) {
+      L += pts[k]!.getWorldPosition(new Vector3()).distanceTo(pts[k + 1]!.getWorldPosition(new Vector3()));
+    }
+    return L + (L / (pts.length - 1)) * 0.6;
+  };
+  const midLen = { Left: midLenOf('L'), Right: midLenOf('R') };
+  curlF.Left = Math.min(1.6, Math.max(1, 1 + (midLen.Left - 0.11) * 8.5));
+  curlF.Right = Math.min(1.6, Math.max(1, 1 + (midLen.Right - 0.11) * 8.5));
   return {
-    root, bones, base, fingers, handFrames,
+    root, bones, base, fingers, handFrames, curlF, midLen,
     ankleFlat: (bindPos.LeftFoot!.y - bindBox.min.y) * s,
     thigh: segLen('LeftUpLeg', 'LeftLeg') * s,
     shin: segLen('LeftLeg', 'LeftFoot') * s,
@@ -741,6 +821,11 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
   const restCur = useRef<{ drop: number; pinch: number } | null>(null);
   const fanRef = useRef(new Vector3());
   const solvedFrames = useRef(0);
+  /* Round-2 diagnosis: what the placement effect saw (the card
+     count at mount) and the head clearance it ended with. */
+  const placedRef = useRef<{ count: number; clear: number | null }>({ count: -1, clear: null });
+  const camera = useThree((s) => s.camera);
+  const viewSize = useThree((s) => s.size);
 
   useEffect(() => {
     const w = window as unknown as { __bwmPersonaFigures?: { mounted: string[]; failed: string[] } };
@@ -766,7 +851,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
         : null;
       const fanC = fanX ? new Vector3(...fanX.p) : null;
       const fanQ = fanX ? new Quaternion(...fanX.q) : null;
-      const gripFor = (side: 'Left' | 'Right') => (fanC && fanQ ? fanGripPoint(fanC, fanQ, side) : null);
+      const gripFor = (side: 'Left' | 'Right') => (fanC && fanQ ? fanGripPoint(fanC, fanQ, side, gripBackFor(prep, side)) : null);
       /* Fingertip clearance to the fan's plane: the smallest
        * |signed distance| over the hand's fingertip joints. A hand
        * that holds the fan has fingertips ON its plane (wrapping
@@ -788,15 +873,22 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
        * seat): signed distance from the head bone (as a 0.12-radius
        * sphere — the head's bounding volume at these statures) to
        * the fan's oriented box. Negative = the head intersects the
-       * fan. Measured on the probe's rest target; the settle/open
-       * pose is the binding case and is what the fix gates on. */
-      const headClear = () => {
+       * fan. Measured over the current target fan, the open fan
+       * (the binding case — it rides highest and nearest the head)
+       * and the full-rest fan. chinClear (round 2) is the same
+       * measure for the chin point with no radius: the face's
+       * lowest, most forward point is where the fan met it. */
+      const fanDist = (p: Vector3, fc: Vector3, fq: Quaternion, pinch: number) => {
+        const local = p.clone().sub(fc).applyQuaternion(fq.clone().invert());
+        const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * pinch) + 0.125;
+        const ox = Math.abs(local.x) - halfW;
+        const oy = Math.abs(local.y) - 0.175;
+        const oz = Math.abs(local.z) - 0.012;
+        const outside = Math.hypot(Math.max(ox, 0), Math.max(oy, 0), Math.max(oz, 0));
+        return outside > 0 ? outside : -Math.min(-ox, -oy, -oz);
+      };
+      const clearOverFans = (p: Vector3, radius: number) => {
         if (!fanC || !fanQ || count === 0) return null;
-        const hp = wp('Head');
-        if (!hp) return null;
-        /* Binding case: the OPEN fan (this seat active, no rest
-         * drop) rides highest and nearest the head — report the
-         * worse of the current target fan and the open fan. */
         const openX = opponentFan(seatPos, n, (count - 1) / 2, count, 0, 0);
         const restX = opponentFan(seatPos, n, (count - 1) / 2, count, 1, 1);
         const fans: [Vector3, Quaternion, number][] = [
@@ -805,17 +897,96 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
           [new Vector3(...restX.p), new Quaternion(...restX.q), 1],
         ];
         let worst = Infinity;
-        for (const [fc, fq, pinch] of fans) {
-          const local = hp.clone().sub(fc).applyQuaternion(fq.clone().invert());
-          const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * pinch) + 0.125;
-          const ox = Math.abs(local.x) - halfW;
-          const oy = Math.abs(local.y) - 0.175;
-          const oz = Math.abs(local.z) - 0.012;
-          const outside = Math.hypot(Math.max(ox, 0), Math.max(oy, 0), Math.max(oz, 0));
-          const d = outside > 0 ? outside : -Math.min(-ox, -oy, -oz);
-          worst = Math.min(worst, d - 0.12);
-        }
+        for (const [fc, fq, pinch] of fans) worst = Math.min(worst, fanDist(p, fc, fq, pinch) - radius);
         return Math.round(worst * 1000) / 1000;
+      };
+      const headClear = () => {
+        const hp = wp('Head');
+        return hp ? clearOverFans(hp, 0.12) : null;
+      };
+      const chinClear = () => {
+        const hp = wp('Head');
+        if (!hp) return null;
+        const faceW = seatDir(seatPos, n).negate();
+        const chin = hp.clone().add(new Vector3(0, -0.105, 0)).addScaledVector(faceW, 0.055);
+        return clearOverFans(chin, 0);
+      };
+      /* Round 2 (owner 2026-10-30 13:17: hands "poke thru the
+       * cards", "wrong orientation"): a SIGNED audit of every hand
+       * joint in the fan's own frame — round 1's fanGap was an
+       * unsigned plane distance, so a fingertip punching THROUGH
+       * the fan scored like one resting on it. pen = deepest
+       * crossing of the fan's front-face plane (fan-local z <
+       * -0.002, the card-face side) by a joint inside the fan's
+       * bounds above the bottom wrap band (y >= -0.155): fingers
+       * may wrap the bottom edge, nothing may cross mid-fan.
+       * tips = each fingertip's fan-local (y, z): a real hold has
+       * them at the bottom edge, z near 0. wrist likewise. */
+      const handAudit = (S: 'L' | 'R') => {
+        if (!fanC || !fanQ || count === 0) return null;
+        const inv = fanQ.clone().invert();
+        const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * target.pinch) + 0.125;
+        let pen = 0; let penJoint = '';
+        const tips: Record<string, [number, number]> = {};
+        const local = (o: Object3D) => o.getWorldPosition(new Vector3()).sub(fanC).applyQuaternion(inv);
+        const testPen = (p: Vector3, name: string) => {
+          /* Corridor rule: fingers legitimately wrap the bottom
+             edge — in the wrap band (y in [-0.16, -0.10]) tips may
+             sit up to 0.035 past the plane (pads on the backs);
+             above the band, nothing crosses the front-face plane;
+             below the band is open air under the fan. pen = the
+             deepest violation of that corridor. */
+          if (Math.abs(p.x) > halfW + 0.03 || p.y < -0.16) return;
+          const allowed = p.y >= -0.10 ? -0.002 : -0.035;
+          if (p.z < allowed) {
+            const depth = allowed - p.z;
+            if (depth > pen) { pen = depth; penJoint = name; }
+          }
+        };
+        root.traverse((o) => {
+          if (!o.name.startsWith(`graft_${S}_`)) return;
+          const p = local(o);
+          testPen(p, o.name);
+          if (o.name.endsWith('4')) {
+            tips[o.name.split('_')[2]!.replace(/4$/, '')] = [Math.round(p.y * 1000) / 1000, Math.round(p.z * 1000) / 1000];
+          }
+        });
+        const hw = wp(S === 'L' ? 'LeftHand' : 'RightHand');
+        let wrist: [number, number, number] | null = null;
+        if (hw) {
+          const p = hw.clone().sub(fanC).applyQuaternion(inv);
+          testPen(p, 'Hand');
+          wrist = [Math.round(p.x * 1000) / 1000, Math.round(p.y * 1000) / 1000, Math.round(p.z * 1000) / 1000];
+        }
+        return { pen: Math.round(pen * 1000) / 1000, penJoint, tips, wrist, ml: Math.round(prep.midLen[S === 'L' ? 'Left' : 'Right'] * 1000) / 1000, cf: Math.round(prep.curlF[S === 'L' ? 'Left' : 'Right'] * 100) / 100 };
+      };
+      /* Round 2: the composition the owner's eye judges, in screen
+       * space from the live camera — chin point and the fan's top
+       * edge projected to pixels. margin = fan-top y at the chin's
+       * x minus chin y (px): positive means the fan's top edge sits
+       * BELOW the chin (peering over); negative = the fan crosses
+       * the face. Round 1's gate was world-space only and passed
+       * compositions the owner failed on sight. */
+      const scr = () => {
+        const hp = wp('Head');
+        if (!hp || !fanC || !fanQ || count === 0) return null;
+        const px = (v: Vector3): [number, number] => {
+          const p = v.clone().project(camera);
+          return [Math.round((p.x * 0.5 + 0.5) * viewSize.width), Math.round((1 - (p.y * 0.5 + 0.5)) * viewSize.height)];
+        };
+        const faceW = seatDir(seatPos, n).negate();
+        const chin = hp.clone().add(new Vector3(0, -0.105, 0)).addScaledVector(faceW, 0.055);
+        const crown = hp.clone().add(new Vector3(0, 0.13, 0));
+        const right = new Vector3(1, 0, 0).applyQuaternion(fanQ);
+        const up = new Vector3(0, 1, 0).applyQuaternion(fanQ);
+        const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * target.pinch) + 0.125;
+        const tl = fanC.clone().addScaledVector(right, -halfW).addScaledVector(up, 0.175);
+        const tr = fanC.clone().addScaledVector(right, halfW).addScaledVector(up, 0.175);
+        const [hx, hy] = px(hp); const [cx, cy] = px(chin); const [, cry] = px(crown);
+        const [lx, ly] = px(tl); const [rx, ry] = px(tr);
+        const t = rx === lx ? 0 : Math.max(0, Math.min(1, (cx - lx) / (rx - lx)));
+        const fanTop = Math.round(ly + (ry - ly) * t);
+        return { head: [hx, hy], chin: [cx, cy], crownY: cry, fanTop, margin: fanTop - cy };
       };
       const dist = (nm: string, tgt: Vector3 | null) => {
         const p = wp(nm);
@@ -842,7 +1013,9 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
         toeYL: y('LeftToeBase'), toeYR: y('RightToeBase'),
         gripErrL: dist('LeftHand', gripFor('Left')), gripErrR: dist('RightHand', gripFor('Right')),
         fanGapL: tipGap('L'), fanGapR: tipGap('R'),
-        headClear: headClear(), head: v3(wp('Head') ?? undefined),
+        headClear: headClear(), chinClear: chinClear(), head: v3(wp('Head') ?? undefined),
+        gateCount: placedRef.current.count, placedClear: placedRef.current.clear,
+        auditL: handAudit('L'), auditR: handAudit('R'), scr: scr(),
         ankleFlat: Math.round(prep.ankleFlat * 1000) / 1000,
         armL: armInfo('Left'), armR: armInfo('Right'), fanC: v3(fanC ?? undefined),
       };
@@ -919,7 +1092,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       const fanX0 = opponentFan(seatPos, n, (count - 1) / 2, count, 0, 0);
       const fanC0 = new Vector3(...fanX0.p);
       const fanQ0 = new Quaternion(...fanX0.q);
-      const gripOf = (side: 'Left' | 'Right') => fanGripPoint(fanC0, fanQ0, side);
+      const gripOf = (side: 'Left' | 'Right') => fanGripPoint(fanC0, fanQ0, side, gripBackFor(prep, side));
       /* Head-clearance gate (owner 2026-10-30: Queenie's fan cut
          across her chin at the partner seat): the head's bounding
          volume — a 0.12 sphere on the Head bone — must clear the
@@ -931,19 +1104,33 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
          never push the head in either. */
       const headClearNow = () => {
         const hp = jp('Head');
+        /* Round 2 (owner 2026-10-30 13:16): the sphere on the Head
+           bone passed while the FACE — which extends down and
+           toward the table from the bone — still met the fan, and
+           for the shortest cast member (influencer-f, stature
+           1.68) lean trim alone exhausted with the sphere still
+           intersecting: the gate failed silently. The gate now
+           also clears the CHIN point (below the bone, toward the
+           table — the screen-space failure point) by CHIN_CLEAR_MIN
+           in the same two poses; the fan drop (OPP_FAN_BASE_Y
+           0.25 → 0.21) and the 1.20 figure scale give the trim the
+           room it was missing. */
+        const chin = hp.clone().add(new Vector3(0, -0.105, 0)).addScaledVector(faceW, 0.055);
         let worst = Infinity;
         for (const pose of [0, 1] as const) {
           const fx = opponentFan(seatPos, n, (count - 1) / 2, count, pose, pose);
           const fc = new Vector3(...fx.p);
           const fq = new Quaternion(...fx.q);
-          const local = hp.clone().sub(fc).applyQuaternion(fq.invert());
-          const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * pose) + 0.125;
-          const ox = Math.abs(local.x) - halfW;
-          const oy = Math.abs(local.y) - 0.175;
-          const oz = Math.abs(local.z) - 0.012;
-          const outside = Math.hypot(Math.max(ox, 0), Math.max(oy, 0), Math.max(oz, 0));
-          const dd = outside > 0 ? outside : -Math.min(-ox, -oy, -oz);
-          worst = Math.min(worst, dd - 0.12);
+          const distTo = (p: Vector3) => {
+            const local = p.clone().sub(fc).applyQuaternion(fq.clone().invert());
+            const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * pose) + 0.125;
+            const ox = Math.abs(local.x) - halfW;
+            const oy = Math.abs(local.y) - 0.175;
+            const oz = Math.abs(local.z) - 0.012;
+            const outside = Math.hypot(Math.max(ox, 0), Math.max(oy, 0), Math.max(oz, 0));
+            return outside > 0 ? outside : -Math.min(-ox, -oy, -oz);
+          };
+          worst = Math.min(worst, distTo(hp) - 0.12, distTo(chin) - CHIN_CLEAR_MIN + HEAD_CLEAR_MIN);
         }
         return worst;
       };
@@ -1010,6 +1197,29 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       aim(`${side}Leg`, `${side}Foot`, ankle);
       const foot = jp(`${side}Foot`);
       aim(`${side}Foot`, `${side}ToeBase`, foot.clone().add(new Vector3(faceW.x, -0.02, faceW.z)));
+    }
+    /* Round-2 diagnosis: record the count placement saw and the
+       head clearance the placed pose ends with (13-card fan either
+       way — the binding width), so the probe can tell a gate that
+       never ran from a gate that ran and lost. */
+    {
+      const hp = jp('Head');
+      let worst = Infinity;
+      const ec = 13;
+      for (const pose of [0, 1] as const) {
+        const fx = opponentFan(seatPos, n, (ec - 1) / 2, ec, pose, pose);
+        const fc = new Vector3(...fx.p);
+        const fq = new Quaternion(...fx.q);
+        const local = hp.clone().sub(fc).applyQuaternion(fq.clone().invert());
+        const halfW = ((ec - 1) / 2) * 0.038 * (1 - 0.45 * pose) + 0.125;
+        const ox = Math.abs(local.x) - halfW;
+        const oy = Math.abs(local.y) - 0.175;
+        const oz = Math.abs(local.z) - 0.012;
+        const outside = Math.hypot(Math.max(ox, 0), Math.max(oy, 0), Math.max(oz, 0));
+        const dd = outside > 0 ? outside : -Math.min(-ox, -oy, -oz);
+        worst = Math.min(worst, dd - 0.12);
+      }
+      placedRef.current = { count, clear: Math.round(worst * 1000) / 1000 };
     }
   }, [prep, seatPos, n, reg, spots, seatTop, floorY]);
 
@@ -1105,7 +1315,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       if (!arm || !fore || !hand || !arm.parent || !fore.parent) return;
       root.updateMatrixWorld(true);
       const targetPos = hasCards && fanQ
-        ? fanGripPoint(fanC, fanQ, side)
+        ? fanGripPoint(fanC, fanQ, side, gripBackFor(prep, side))
         : group.localToWorld(new Vector3(side === 'Left' ? 0.18 : -0.18, seatTop + 0.12, 0.25));
       const S = arm.getWorldPosition(new Vector3());
       const E0 = fore.getWorldPosition(new Vector3());
@@ -1156,6 +1366,13 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
         const yt = new Vector3(0, 0, -1).applyQuaternion(fanQ);
         const zt = new Vector3(0, 1, 0).applyQuaternion(fanQ);
         const xt = new Vector3().crossVectors(yt, zt).normalize();
+        /* Round 2: pitch the target frame about the fan's right
+           (knuckle) axis — the fingers angle TOWARD the fan's
+           bottom edge and the palm cradles under it, the way a
+           hand actually takes a fan from below. Round 1's frame
+           sent the fingers straight up the fan's face, where the
+           grip curl hooked them through the cards. */
+        yt.applyQuaternion(new Quaternion().setFromAxisAngle(xt, HAND_PITCH + (prep.curlF[side] - 1) * 0.31));
         const zto = new Vector3().crossVectors(xt, yt).normalize();
         const tgt = new Matrix4().makeBasis(xt, yt, zto);
         const qR = new Quaternion().setFromRotationMatrix(tgt.multiply(cur.transpose()));
@@ -1172,12 +1389,12 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
        from looking machined. Rigs without grafts skip entirely. */
     if (fingers.Left.length || fingers.Right.length) {
       const factor = !hasCards ? 0.45 : active ? 1.0 : 0.8;
-      const applyHand = (list: FingerJoint[], phase: number) => {
+      const applyHand = (list: FingerJoint[], phase: number, curlF: number) => {
         const f = animate ? Math.min(1.05, Math.max(0, factor * (1 + 0.03 * Math.sin(t * 1.3 + phase)))) : factor;
-        for (const j of list) j.bone.quaternion.setFromAxisAngle(j.axis, j.angle * f).multiply(j.rest);
+        for (const j of list) j.bone.quaternion.setFromAxisAngle(j.axis, j.angle * f * (hasCards ? j.gripScale * curlF : 1)).multiply(j.rest);
       };
-      applyHand(fingers.Left, 0.7);
-      applyHand(fingers.Right, 2.1);
+      applyHand(fingers.Left, 0.7, prep.curlF.Left);
+      applyHand(fingers.Right, 2.1, prep.curlF.Right);
     }
   });
 
