@@ -1393,18 +1393,27 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
           const s = fireFx.spot;
           const padX = 12;
           const padB = 12;
+          // Step-up (2026-10-30): the procedural fire CASTS light past
+          // the flame box — the container grows a glow margin on the
+          // sides and below (the rise above already hosts the crown)
+          // so the shader's flickering halo lands on the felt/rim
+          // instead of being clipped at the flame's edge. The plate
+          // mask and the chip keep their exact positions relative to
+          // the plate: mask.x absorbs the extra left margin.
+          const glowPadX = 18;
+          const glowPadB = 16;
           const rise = f.kind === 'smolder' ? 22 : 38 + f.tier * 12;
           return (
-            <div key={`fr${s.seat}`} className="animfx-platefire" style={{ left: s.x - s.w / 2 - padX, top: s.y - s.h / 2 - rise, width: s.w + padX * 2, height: s.h + rise + padB }}>
+            <div key={`fr${s.seat}`} className="animfx-platefire" style={{ left: s.x - s.w / 2 - padX - glowPadX, top: s.y - s.h / 2 - rise, width: s.w + (padX + glowPadX) * 2, height: s.h + rise + padB + glowPadB }}>
               <FireCanvas
                 mode="plate"
                 testId={f.kind === 'fire' ? 'animfx-firering' : 'animfx-smolder'}
                 params={f.kind === 'smolder' ? SMOLDER_PARAMS : TRICK_FIRE_TIERS[f.tier]}
-                mask={{ x: padX, y: rise, w: s.w, h: s.h }}
+                mask={{ x: padX + glowPadX, y: rise, w: s.w, h: s.h }}
                 calm={reduced}
                 label={trickFireLabel(fireFx.count)}
                 labelTestId="animfx-firelabel"
-                chipStyle={{ top: rise - 9, right: padX - 6 }}
+                chipStyle={{ top: rise - 9, right: padX + glowPadX - 6 }}
               />
             </div>
           );

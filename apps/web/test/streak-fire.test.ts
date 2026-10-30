@@ -9,18 +9,24 @@
  *    EXISTING animfx detector (trickStreak) from a scripted trick
  *    sequence — including reset when another seat takes a trick and
  *    reset at a new hand (a fresh hand starts from an empty tricks list);
- *  - tier params scale monotonically: a bigger streak never burns lower.
+ *  - tier params scale monotonically: a bigger streak never burns lower;
+ *  - the 2026-10-30 step-up: the sprite atlas is retired — the engine
+ *    is a real-time procedural shader flame, tier rows reach it through
+ *    the pinned shaderUniformsFor mapping (SMOLDER = embers + glow
+ *    only, shimmer only at the top tier), and the cross-fade / breathe
+ *    / calm contracts survive the renderer swap.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { trickStreak } from '../src/animfx/detect';
 import {
-  HOME_BREATHE_PERIOD_MS, HOME_FIRE_TIERS, SMOLDER_PARAMS, STREAK_FIRE_ATLAS, TRICK_FIRE_TIERS,
+  HOME_BREATHE_PERIOD_MS, HOME_FIRE_TIERS, SMOLDER_PARAMS, TRICK_FIRE_TIERS,
   TIER_CROSSFADE_MS,
-  atlasEmberFrame, atlasFlameFrame, atlasGlowFrame, atlasSmokeFrame, blendFireParams,
+  blendFireParams,
   homeBreatheFactor, homeFireLabel, homeFireTier, homeStreakFromProfile, homeStreakFromTotals,
   trickFire, trickFireLabel, type FireTier, type FireTierParams,
 } from '../src/streakFire';
+import { fireSeed, fireStartPhase, shaderUniformsFor } from '../src/fire/fireEngine';
 
 const wt = (winner: number | null) => ({ leader: 0, plays: [], winner }) as never;
 const run = (winners: (number | null)[]) => trickStreak(winners.map(wt));
@@ -140,56 +146,91 @@ describe('in-game derivation from a scripted trick sequence', () => {
   });
 });
 
-describe('Wave A atlas rebuild (rows 60–61)', () => {
-  it('the atlas asset exists, is WebP, and fits the 90 KB texture cap', () => {
-    const buf = readFileSync(new URL('../public/assets/fire/streak-fire-atlas.webp', import.meta.url));
-    expect(buf.length).toBeGreaterThan(0);
-    expect(buf.length).toBeLessThanOrEqual(90 * 1024);
-    expect(buf.subarray(0, 4).toString('ascii')).toBe('RIFF');
-    expect(buf.subarray(8, 12).toString('ascii')).toBe('WEBP');
-    expect(STREAK_FIRE_ATLAS.url).toBe('/assets/fire/streak-fire-atlas.webp');
-    expect(STREAK_FIRE_ATLAS.width).toBe(512);
-    expect(STREAK_FIRE_ATLAS.height).toBe(480);
+describe('procedural shader renderer (2026-10-30 step-up)', () => {
+  const engineSrc = () => readFileSync(new URL('../src/fire/fireEngine.ts', import.meta.url), 'utf8');
+
+  it('the sprite atlas is retired: asset deleted, no stamped tongues anywhere', () => {
+    expect(existsSync(new URL('../public/assets/fire/streak-fire-atlas.webp', import.meta.url))).toBe(false);
+    const src = engineSrc();
+    expect(src).not.toContain('STREAK_FIRE_ATLAS');
+    expect(src).not.toContain('atlasFlameFrame');
+    expect(src).not.toContain('drawImage');
+    expect(src).not.toContain('createImageData');
+    const logic = readFileSync(new URL('../src/streakFire.ts', import.meta.url), 'utf8');
+    expect(logic).not.toContain('STREAK_FIRE_ATLAS');
+    expect(logic).not.toContain('atlasFlameFrame');
   });
 
-  it('every atlas frame lands in-bounds', () => {
-    const frames = [
-      atlasGlowFrame(), atlasEmberFrame(),
-      ...[0, 0.24, 0.25, 0.5, 0.99, 1, -1, 7].flatMap((life) =>
-        [-3, 0, 1, 7, 8, 100].map((variant) => atlasFlameFrame(life, variant))),
-      ...[0, 1, 2, 3, 4, -1, 99].map((variant) => atlasSmokeFrame(0.5, variant)),
-    ];
-    for (const f of frames) {
-      expect(f.w).toBeGreaterThan(0);
-      expect(f.h).toBeGreaterThan(0);
-      expect(f.x).toBeGreaterThanOrEqual(0);
-      expect(f.y).toBeGreaterThanOrEqual(0);
-      expect(f.x + f.w).toBeLessThanOrEqual(STREAK_FIRE_ATLAS.width);
-      expect(f.y + f.h).toBeLessThanOrEqual(STREAK_FIRE_ATLAS.height);
+  it('the engine is a real-time procedural shader flame (with a procedural 2D fallback)', () => {
+    const src = engineSrc();
+    expect(src).toContain("getContext('webgl'");
+    expect(src).toContain('createShader');
+    expect(src).toContain('float fbm'); // GLSL turbulence field
+    expect(src).toContain('emberLayer'); // procedural ember/spark points
+    expect(src).toContain('u_mask'); // plate clip lives in the shader
+    expect(src).toContain('u_shimmer'); // T4 heat shimmer
+    expect(src).toContain('shaderUniformsFor');
+    expect(src).toContain('drawStatic'); // calm mode: one static frame
+    expect(src).toContain("clip('evenodd')"); // 2D fallback keeps the plate clip
+    expect(src).not.toContain('Math.random'); // deterministic, seeded
+  });
+
+  it('the shader mapping: SMOLDER is embers + glow only — flame body off, no smoke', () => {
+    const u = shaderUniformsFor(SMOLDER_PARAMS, 'plate', 140, 48);
+    expect(u.flameOn).toBe(0);
+    expect(u.flamePx).toBe(0);
+    expect(u.smoke).toBe(0);
+    expect(u.ember).toBeGreaterThan(0);
+    expect(u.glow).toBeGreaterThan(0);
+    expect(u.shimmer).toBe(0);
+  });
+
+  it('the shader mapping: flame height mirrors the shipped spawn-band geometry', () => {
+    // band: flamePx = canvas height × flameHeight
+    expect(shaderUniformsFor(HOME_FIRE_TIERS[2], 'band', 200, 0).flamePx).toBeCloseTo(200 * 0.68, 9);
+    expect(shaderUniformsFor(HOME_FIRE_TIERS[4], 'band', 224, 0).flamePx).toBeCloseTo(224, 9);
+    // plate: flamePx = (plate height × 0.9 + 46) × flameHeight
+    expect(shaderUniformsFor(TRICK_FIRE_TIERS[2], 'plate', 140, 48).flamePx).toBeCloseTo((48 * 0.9 + 46) * 0.78, 9);
+    expect(shaderUniformsFor(TRICK_FIRE_TIERS[4], 'plate', 154, 52).flamePx).toBeCloseTo(52 * 0.9 + 46, 9);
+  });
+
+  it('the shader mapping: density is the tier cap normalized per surface', () => {
+    expect(shaderUniformsFor(HOME_FIRE_TIERS[4], 'band', 224, 0).dens).toBe(1); // 96/96
+    expect(shaderUniformsFor(TRICK_FIRE_TIERS[4], 'plate', 154, 52).dens).toBe(1); // 60/60
+    expect(shaderUniformsFor(TRICK_FIRE_TIERS[1], 'plate', 110, 48).dens).toBeCloseTo(20 / 60, 9);
+    expect(shaderUniformsFor(HOME_FIRE_TIERS[1], 'band', 118, 0).dens).toBeCloseTo(30 / 96, 9);
+    // ceiling fade: plate crowns fade deeper than the home band
+    expect(shaderUniformsFor(HOME_FIRE_TIERS[4], 'band', 224, 0).ceil).toBe(0.22);
+    expect(shaderUniformsFor(TRICK_FIRE_TIERS[4], 'plate', 154, 52).ceil).toBe(0.45);
+  });
+
+  it('the shader mapping: heat shimmer exists only at the top tier(s)', () => {
+    expect(shaderUniformsFor(HOME_FIRE_TIERS[4], 'band', 224, 0).shimmer).toBe(1);
+    expect(shaderUniformsFor(HOME_FIRE_TIERS[3], 'band', 184, 0).shimmer).toBe(0);
+    expect(shaderUniformsFor(TRICK_FIRE_TIERS[4], 'plate', 154, 52).shimmer).toBeGreaterThan(0);
+    expect(shaderUniformsFor(TRICK_FIRE_TIERS[3], 'plate', 140, 48).shimmer).toBe(0);
+  });
+
+  it('the shader mapping scales monotonically with the tier tables', () => {
+    for (const [table, mode] of [[HOME_FIRE_TIERS, 'band'], [TRICK_FIRE_TIERS, 'plate']] as const) {
+      let prev = { dens: -1, ember: -1, smoke: -1, glow: -1, flamePx: -1 };
+      for (const t of [1, 2, 3, 4] as FireTier[]) {
+        const u = shaderUniformsFor(table[t], mode, 200, 48);
+        expect(u.dens).toBeGreaterThanOrEqual(prev.dens);
+        expect(u.ember).toBeGreaterThanOrEqual(prev.ember);
+        expect(u.smoke).toBeGreaterThanOrEqual(prev.smoke);
+        expect(u.glow).toBeGreaterThanOrEqual(prev.glow);
+        expect(u.flamePx).toBeGreaterThanOrEqual(prev.flamePx);
+        prev = u;
+      }
     }
   });
 
-  it('frame selection is seekable: frame = f(life fraction, variant), pure', () => {
-    expect(atlasFlameFrame(0, 0)).toEqual({ x: 0, y: 0, w: 64, h: 104 });
-    expect(atlasFlameFrame(0.3, 2)).toEqual({ x: 128, y: 104, w: 64, h: 104 });
-    expect(atlasFlameFrame(0.99, 7)).toEqual({ x: 448, y: 312, w: 64, h: 104 });
-    expect(atlasFlameFrame(1, 0).y).toBe(312); // life clamps to the old stage
-    expect(atlasFlameFrame(0.42, 5)).toEqual(atlasFlameFrame(0.42, 5)); // pure
-    expect(atlasSmokeFrame(0.5, 5)).toEqual({ x: 64, y: 416, w: 64, h: 64 }); // variant wraps over 4 puffs
-    expect(atlasGlowFrame()).toEqual({ x: 256, y: 416, w: 64, h: 64 });
-    expect(atlasEmberFrame()).toEqual({ x: 320, y: 416, w: 64, h: 64 });
-  });
-
-  it('the engine draws the atlas — no runtime sprite baking, no unseeded randomness', () => {
-    const src = readFileSync(new URL('../src/fire/fireEngine.ts', import.meta.url), 'utf8');
-    expect(src).toContain('STREAK_FIRE_ATLAS');
-    expect(src).toContain('atlasFlameFrame');
-    expect(src).toContain('drawImage');
-    expect(src).not.toContain('createImageData');
-    expect(src).not.toContain('makeFlameSprite');
-    expect(src).not.toContain('makeSmokeSprite');
-    expect(src).not.toContain('makeGlowDot');
-    expect(src).not.toContain('Math.random');
+  it('start phase and shader seed are deterministic per tier row', () => {
+    expect(fireStartPhase(HOME_FIRE_TIERS[3])).toBe(fireStartPhase(HOME_FIRE_TIERS[3]));
+    expect(fireSeed(HOME_FIRE_TIERS[3])).toBe(fireSeed(HOME_FIRE_TIERS[3]));
+    expect(fireSeed(HOME_FIRE_TIERS[1])).not.toBe(fireSeed(HOME_FIRE_TIERS[4]));
+    expect(fireSeed(TRICK_FIRE_TIERS[2])).not.toBe(fireSeed(TRICK_FIRE_TIERS[4]));
   });
 
   it('tier cross-fade: endpoints exact, midpoint blended, smoothstepped, clamped', () => {
@@ -211,7 +252,7 @@ describe('Wave A atlas rebuild (rows 60–61)', () => {
     expect(blendFireParams(HOME_FIRE_TIERS[4], HOME_FIRE_TIERS[0], 0.5).particles).toBeCloseTo(48, 9);
   });
 
-  it('particle caps, the DPR cap and the plate clip survive the rebuild', () => {
+  it('particle caps, the DPR cap and the plate clip survive the renderer swap', () => {
     expect(HOME_FIRE_TIERS[4].particles).toBe(96);
     expect(TRICK_FIRE_TIERS[4].particles).toBe(60);
     // a blended cap never exceeds the higher endpoint tier's cap
@@ -224,7 +265,7 @@ describe('Wave A atlas rebuild (rows 60–61)', () => {
         expect(blendFireParams(a, b, t).particles).toBeLessThanOrEqual(Math.max(a.particles, b.particles) + 1e-9);
       }
     }
-    const src = readFileSync(new URL('../src/fire/fireEngine.ts', import.meta.url), 'utf8');
+    const src = engineSrc();
     expect(src).toContain('MAX_DPR = 1.5');
     expect(src).toContain("clip('evenodd')");
   });

@@ -11,15 +11,14 @@
  *
  * Reduced motion / Reduce effects (the app's fx prefs, passed in as
  * `calm`): no loop — the engine paints ONE static frame (a gentle glow
- * with a few still tongues), the same "persistent looks stay, motion
- * goes" convention the animfx layer already follows.
+ * with a still flame silhouette), the same "persistent looks stay,
+ * motion goes" convention the animfx layer already follows.
  *
- * Wave A rebuild: the engine now draws from the one shared pre-rendered
- * sprite atlas (streakFire.ts STREAK_FIRE_ATLAS) instead of baking
- * sprites at runtime, and tier changes cross-fade over 300 ms. This
- * shell is unchanged by the rebuild — same props, same DOM — so the
- * Setup.tsx home band and the AnimFxLayer.tsx plate mounts needed no
- * edits.
+ * Step-up (owner, 2026-10-30): the engine is now a real-time
+ * procedural shader flame (fireEngine.ts) — the Wave A sprite atlas
+ * read as stamped, repeating tongues and is retired. This shell is
+ * unchanged by the swap — same props, same DOM — so the Setup.tsx
+ * home band and the AnimFxLayer.tsx plate mounts needed no edits.
  */
 import { useEffect, useRef, type CSSProperties } from 'react';
 import type { FireTierParams } from '../streakFire';

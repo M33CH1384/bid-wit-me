@@ -27,17 +27,15 @@
  *    · 3 T1 · 4 T2 · 5–6 T3 · 7+ T4. Real flames start at 3, matching the
  *    existing FIRE_STREAK arming convention in animfx/detect.ts.
  *
- * Wave A rebuild (animation replacement program rows 60–61 + §D): the
- * renderer no longer bakes sprites at runtime. Every tongue, puff and
- * core is pre-rendered ONCE into a single sprite atlas (see
- * STREAK_FIRE_ATLAS below) by a deterministic script porting this
- * engine's own fbm-eroded tongue math (seed 20261027), and the live
- * engine draws sub-rects from it — so a frame is a pure function of
- * (life fraction, variant), seekable and identical on every client.
- * Tier changes cross-fade (TIER_CROSSFADE_MS) instead of popping, and
- * the home band breathes at the menu's idle rate
- * (HOME_BREATHE_PERIOD_MS). Tier tables and streak derivation are
- * unchanged from the original build.
+ * Renderer history: the original build baked noise-eroded flame
+ * sprites at runtime; Wave A (2026-10-28) pre-rendered them into a
+ * sprite atlas. The owner still read stamped tongues as "really fake
+ * and lazy" in motion (2026-10-30), so the atlas is retired: the live
+ * engine is a real-time procedural shader flame (see the renderer
+ * note below and fire/fireEngine.ts). Tier changes cross-fade
+ * (TIER_CROSSFADE_MS) instead of popping, and the home band breathes
+ * at the menu's idle rate (HOME_BREATHE_PERIOD_MS). Tier tables and
+ * streak derivation are unchanged from the original build.
  */
 
 export type FireTier = 0 | 1 | 2 | 3 | 4;
@@ -87,75 +85,23 @@ export const TRICK_FIRE_TIERS: Record<FireTier, FireTierParams> = {
  *  low glow only — no flame tongues, no smoke column. */
 export const SMOLDER_PARAMS: FireTierParams = T(0, 0, 0, 5, 0.3, 0.22, 0);
 
-/* ------------------------------------------------- atlas (Wave A) --- */
-
-/** A sub-rectangle of the atlas, in atlas pixels. */
-export interface AtlasFrame { x: number; y: number; w: number; h: number }
+/* --------------------------------------- renderer (procedural) --- */
 
 /**
- * The ONE streak-fire atlas: `apps/web/public/assets/fire/…`, generated
- * deterministically (seed 20261027) from the engine's own tongue math —
- * teardrop half-width profile, turbulence erosion
- * `fbm(u·3.1 + stage·7.3 + var·11.7, v·4.2 − stage·1.7, 41 + var·17)`,
- * and the shipped white-hot → yellow → orange → deep-red → transparent
- * flame ramp. Per-variant offsets (fbm x jitter, half-width scale) are
- * derived from the seed in that order: variants 0–7.
- *
- * Layout: a flame grid of 8 variants × 4 life stages (cell 64×104,
- * stage = row, variant = column) over a bottom strip at y=416 holding
- * 4 smoke variants (x 0/64/128/192), the base glow dot (x 256) and the
- * hot ember core (x 320), each 64×64. 55 KB on disk — under the repo's
- * 90 KB texture cap, pinned by test.
+ * Step-up (owner, 2026-10-30 — "the heat streak flames look really
+ * fake and lazy step it up"): the Wave A sprite atlas is RETIRED.
+ * Stamped tongues repeat — eight variants cycling by life fraction
+ * reads as wallpaper in motion. The renderer (fire/fireEngine.ts) is
+ * now a real-time procedural flame: a WebGL fragment shader evaluates
+ * a rising fbm turbulence field per pixel (tongues form, tear off and
+ * die continuously; nothing cycles), with a canvas-2D procedural
+ * fallback where WebGL is unavailable. The tier tables, the streak
+ * derivations, the cross-fade and the home breathe in this module are
+ * unchanged — the shader reads the same FireTierParams rows through
+ * fireEngine's shaderUniformsFor mapping.
  */
-export const STREAK_FIRE_ATLAS = {
-  url: '/assets/fire/streak-fire-atlas.webp',
-  width: 512,
-  height: 480,
-  seed: 20261027,
-  flameCellW: 64,
-  flameCellH: 104,
-  flameVariants: 8,
-  flameStages: 4,
-  stripY: 416,
-  smokeVariants: 4,
-  smokeCell: 64,
-  glowX: 256,
-  emberX: 320,
-} as const;
 
 const clamp01 = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
-const wrapIdx = (n: number, count: number): number => {
-  const i = Number.isFinite(n) ? Math.floor(n) : 0;
-  return ((i % count) + count) % count;
-};
-
-/** The flame tongue frame for a life fraction (0 young → 1 old) and a
- *  variant. Pure: the same (life, variant) always names the same frame,
- *  on every client — the composition is seekable. */
-export function atlasFlameFrame(life: number, variant: number): AtlasFrame {
-  const stage = Math.min(STREAK_FIRE_ATLAS.flameStages - 1, Math.floor(clamp01(life) * STREAK_FIRE_ATLAS.flameStages));
-  const varIdx = wrapIdx(variant, STREAK_FIRE_ATLAS.flameVariants);
-  return { x: varIdx * STREAK_FIRE_ATLAS.flameCellW, y: stage * STREAK_FIRE_ATLAS.flameCellH, w: STREAK_FIRE_ATLAS.flameCellW, h: STREAK_FIRE_ATLAS.flameCellH };
-}
-
-/** A smoke puff frame from the bottom strip (variant selects the puff;
- *  life is accepted for symmetry with the flame selector — the puff's
- *  growth/fade is done by the engine's size/alpha, not by swapping). */
-export function atlasSmokeFrame(life: number, variant: number): AtlasFrame {
-  void life;
-  const varIdx = wrapIdx(variant, STREAK_FIRE_ATLAS.smokeVariants);
-  return { x: varIdx * STREAK_FIRE_ATLAS.smokeCell, y: STREAK_FIRE_ATLAS.stripY, w: STREAK_FIRE_ATLAS.smokeCell, h: STREAK_FIRE_ATLAS.smokeCell };
-}
-
-/** The base glow dot frame (bottom strip, x 256). */
-export function atlasGlowFrame(): AtlasFrame {
-  return { x: STREAK_FIRE_ATLAS.glowX, y: STREAK_FIRE_ATLAS.stripY, w: STREAK_FIRE_ATLAS.smokeCell, h: STREAK_FIRE_ATLAS.smokeCell };
-}
-
-/** The hot ember core frame (bottom strip, x 320). */
-export function atlasEmberFrame(): AtlasFrame {
-  return { x: STREAK_FIRE_ATLAS.emberX, y: STREAK_FIRE_ATLAS.stripY, w: STREAK_FIRE_ATLAS.smokeCell, h: STREAK_FIRE_ATLAS.smokeCell };
-}
 
 /* ------------------------------------------- tier cross-fade / breathe */
 
