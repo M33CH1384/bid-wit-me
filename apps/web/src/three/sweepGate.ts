@@ -84,3 +84,91 @@ export interface PendingSweep<T> {
 export function pendingSweepDue(pending: PendingSweep<unknown> | null, currentT: number): boolean {
   return pending !== null && currentT >= 1;
 }
+
+/**
+ * Review-hold anchoring + next-trick serialization (owner, 2026-10-30, the
+ * follow-up report on the fix above): the gate stopped the sweep from
+ * interrupting a flight, but the REVIEW the hold was bought for still was
+ * not happening — and the next trick could start under the sweep.
+ *
+ * Two facts from the audit:
+ *  - The finished-trick hold (finishedTrickHoldMs: TRICK_HOLD_MS /
+ *    HAND_END_REVEAL_MS, speed-scaled) runs on the hooks' WALL clock from
+ *    the moment the completing state is applied, so the last card's ~500 ms
+ *    flight CONSUMES it: the completed trick actually sits reviewable for
+ *    ~650 ms at normal speed and ~75 ms at fast speed (k=0.5) — "as soon
+ *    as it hits the table, the cards are being collected into a book".
+ *  - Nothing serialized the next trick behind the sweep: at pause release
+ *    the state has already advanced, so trick N+1's first play flight can
+ *    begin — and land — while trick N's cards are still being gathered
+ *    (TRICK_SWEEP_MS 550 on the frame clock).
+ *
+ * Both fixes live on the frame clock Scene and Card3D already share (the
+ * dealClock idiom: capped-dt accumulation, identical on every client that
+ * renders the same plays):
+ *  - Scene stamps each play's predicted rest (item build frame + delay +
+ *    duration) and, when the trick flips into the piles, delays the gather
+ *    so it starts at LAST rest + the hold — the hold's nominal value is
+ *    unchanged; it finally measures what it was always supposed to
+ *    measure: the completed trick sitting on the table, reviewable.
+ *  - The same computation yields the sweep's end frame; Scene floors the
+ *    next trick's play delays at that end, so no play flight of trick N+1
+ *    starts before trick N's collection has finished.
+ * A held (pending) sweep's wait is a schedule offset on this same clock:
+ * Card3D elapses it while the play flight finishes, so when the gate
+ * adopts the sweep at rest, only the remainder of the review hold is left
+ * to wait — the two paths agree on the same start frame.
+ * (Rendered tolerance: a flight quantizes up in whole frames — stagger
+ * wait ceil + tween ceil — so measured from the ACTUAL rest frame the
+ * review can sit up to ~2 capped frames inside the nominal hold. That
+ * is the frame tolerance the whole timing system runs on, against the
+ * 500-1075 ms the wall clock used to eat.)
+ */
+
+/** Frame-clock second at which a play built at `builtAtFrameSec` comes to rest. */
+export function playRestFrameSec(builtAtFrameSec: number, delaySec: number, durationSec: number): number {
+  return builtAtFrameSec + delaySec + durationSec;
+}
+
+/** The last rest of a completed trick, or null when no play's rest is known (e.g. a resumed table). */
+export function lastRestFrameSec(rests: readonly (number | undefined)[]): number | null {
+  let last: number | null = null;
+  for (const r of rests) if (r !== undefined && (last === null || r > last)) last = r;
+  return last;
+}
+
+/**
+ * Delay (frame-clock seconds, >= 0) Scene puts on a just-completed trick's
+ * gather items so the sweep starts exactly at last rest + the review hold.
+ * Null last rest (resume) or an already-expired hold means no added delay:
+ * today's behaviour, with the gate above still guarding mid-flight cards.
+ */
+export function reviewDelaySec(o: { lastRestFrameSec: number | null; holdSec: number; nowFrameSec: number }): number {
+  if (o.lastRestFrameSec === null) return 0;
+  return Math.max(0, o.lastRestFrameSec + o.holdSec - o.nowFrameSec);
+}
+
+/** Frame-clock second at which a sweep that starts at `startFrameSec` has fully collected. */
+export function sweepEndFrameSec(startFrameSec: number, sweepDurationSec: number): number {
+  return startFrameSec + sweepDurationSec;
+}
+
+/**
+ * One capped frame of schedule slack for the serialization floor. A
+ * Card3D wait counts down in whole frames, so a sweep's motion can begin
+ * up to one frame after its planned start; flooring the next play at
+ * planned-end + this slack keeps "no flight before the sweep completes"
+ * true on the rendered frames, not just on the plan. 50 ms is the frame
+ * clock's own cap — the same quantum dealClock already tolerates.
+ */
+export const SEQUENCE_FRAME_SLACK_SEC = 0.05;
+
+/**
+ * A play flight's effective delay once the previous trick's sweep is taken
+ * into account: the flight never starts before the sweep's end frame.
+ * Input prompts, turn timers and game state are untouched — only the
+ * flight's start waits, exactly like the auto-play stagger already does.
+ */
+export function serializedPlayDelaySec(o: { itemDelaySec?: number; sweepEndFrameSec: number; nowFrameSec: number }): number {
+  return Math.max(o.itemDelaySec ?? 0, o.sweepEndFrameSec - o.nowFrameSec, 0);
+}

@@ -8,6 +8,7 @@ import { getViewAdjustState, isDefaultViewAdjust, onViewAdjustCommit, seedViewAd
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
 import { FIRST_FRAME_FALLBACK_MS, dealGateOpen } from './three/dealFlight';
+import { finishedTrickHoldMs } from './trickTiming';
 import { useEscapeClose } from './useEscapeClose';
 import { AvatarCircle, useAvatar } from './avatar';
 import { useAccount } from './account/api';
@@ -2880,6 +2881,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           hintLegal={hintLegal}
           marked={tipMarked}
           collecting={collecting}
+          reviewHoldMs={finishedTrickHoldMs({ speed: k, handEnding: st.phase === 'handOver' || st.phase === 'gameOver', run: false, nuke: null })}
         />
       </Suspense>
       {!loadGone && <TableLoading progress={loadProgress} leaving={!loading && (!versusActive || versusStoryDone)} room={storyRoomLabel ?? roomName} seats={loadingSeats} reducedMotion={reduceFx || fx.osReducedMotion} versus={versusModel ? <VersusIntro model={versusModel} reduced={reduceFx || fx.osReducedMotion} ready={!loading} onStoryComplete={() => setVersusStoryDone(true)} /> : undefined} />}

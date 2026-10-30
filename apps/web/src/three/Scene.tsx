@@ -3,7 +3,7 @@ import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
-import { type Card, type Play, type Trick } from '@spades/rules';
+import { type Card, type Play, type Trick, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import KingGun from './KingGun';
 import KingRail from './KingRail';
@@ -26,6 +26,7 @@ import { type DealTimeline, dealTimeline, seatDealDelay } from './dealTimeline';
 import { dealHeld, handDealsIn, handOnFan, handSlotKey } from './dealFlight';
 import { cardShowsFace, flatFanHidden, handLatched, latchHand, resumeDrawList, showResumeHand3D, visibleFaceIds } from './cardFace';
 import { openingTrickKeys, trickCardLaunches, trickPlayFrom } from './trickFacing';
+import { lastRestFrameSec, playRestFrameSec, reviewDelaySec, serializedPlayDelaySec, sweepEndFrameSec, SEQUENCE_FRAME_SLACK_SEC } from './sweepGate';
 import { type Sfx, sound } from '../audio';
 import { fx } from '../fx';
 import { backTexture, faceTexture, logoTexture, peekFaceTexture, refreshFacesGradually } from './cardTextures';
@@ -147,6 +148,13 @@ export interface SceneProps {
   venue?: VenueId;
   /** Post-hand: books slide to the next dealer for collection (Demetrius 2026-10-19). */
   collecting?: boolean;
+  /** The finished-trick hold (finishedTrickHoldMs, plain path — no Run It, no
+   *  nuke) for the trick that most recently finished, in ms. Scene anchors it
+   *  to the last card's rest on the shared frame clock (sweepGate.ts): the
+   *  completed trick sits reviewable for this long AFTER its last card lands,
+   *  and the next trick's first flight waits for the sweep that follows.
+   *  Absent (watch/broadcast surfaces) = no anchoring, today's behaviour. */
+  reviewHoldMs?: number;
   /** Misdeal redeal, beat 1: every hand on the table glides to the deck spot (the collection
    *  glide) while the call is announced, before the redeal deals out. The deck spot sits in
    *  front of the CURRENT dealer — and a misdeal passes the deal, so on the redealt state this
@@ -804,9 +812,19 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // The cards' tweens advance at most 50ms a frame, so on a slow device they run behind the wall clock.
   // Count the deal the same way and report when the last card has landed: until then nobody acts.
   const dealClock = useRef<{ hand: number; t: number; done: boolean }>({ hand: -1, t: 0, done: false });
+  // Trick sequencing on the same capped-dt frame clock the cards fly on
+  // (sweepGate.ts, review anchoring): seqClock accumulates every frame;
+  // playRests stamps each play's predicted rest (item key -> frame second)
+  // when its item is first built; pileSeq remembers which pile was last
+  // seen complete and the frame second its collection finishes, so the
+  // next trick's flights can be serialized behind that sweep.
+  const seqClock = useRef(0);
+  const playRests = useRef<{ hand: number; rests: Map<string, number> }>({ hand: -1, rests: new Map() });
+  const pileSeq = useRef<{ hand: number; seenPileId: string; sweepUntil: number; anchorPileId: string; anchorStart: number }>({ hand: -1, seenPileId: '', sweepUntil: 0, anchorPileId: '', anchorStart: 0 });
   const onDealDone = props.onDealDone;
   const dealArmed = intro && !held0;
   useFrame((_, rawDt) => {
+    seqClock.current += Math.min(Math.max(rawDt, 0), 0.05);
     const c = dealClock.current;
     if (!dealArmed) return;
     if (c.hand !== handNo) { c.hand = handNo; c.t = 0; c.done = false; }
@@ -971,17 +989,65 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const collecting = !!props.collecting;
   const nextDealer = (dealer + 1) % n;
   const collectTarget = deckSpot(positions[nextDealer]!, n);
+  // Review anchoring + sweep serialization (sweepGate.ts): when a trick newly
+  // flips into the piles, a plain trick's (no Run It, no nuke — those shows
+  // own their own clocks) gather is delayed so the sweep starts at the last
+  // card's rest + the review hold: the completed trick sits reviewable for
+  // the full hold AFTER landing, at every table speed. The fresh pile's
+  // sweep end frame is recorded in pileSeq, and the shown-trick loop below
+  // floors the next trick's play delays at it — no flight of trick N+1
+  // starts before trick N's collection has finished.
+  const frameNow = seqClock.current;
+  if (playRests.current.hand !== handNo) playRests.current = { hand: handNo, rests: new Map() };
+  const newestPile = piles[piles.length - 1];
+  const newestPileId = newestPile ? newestPile.plays.map((pl) => `${handNo}-${pl.card}`).join(',') : '';
+  let freshPile: Trick | null = null;
+  if (pileSeq.current.hand !== handNo) {
+    // First render of a hand (fresh table or a resumed one): piles already
+    // stacked are history, not a completion — pre-seed so nothing re-anchors.
+    pileSeq.current = { hand: handNo, seenPileId: newestPileId, sweepUntil: 0, anchorPileId: '', anchorStart: 0 };
+  } else if (newestPile && newestPileId !== pileSeq.current.seenPileId) {
+    pileSeq.current.seenPileId = newestPileId;
+    freshPile = newestPile;
+    const plain = !newestPile.plays.some((pl) => pl.run) && !isNukeTrick(newestPile.plays);
+    let start = frameNow;
+    if (plain && props.reviewHoldMs) {
+      const lastRest = lastRestFrameSec(newestPile.plays.map((pl) => playRests.current.rests.get(`${handNo}-${pl.card}`)));
+      start += reviewDelaySec({ lastRestFrameSec: lastRest, holdSec: props.reviewHoldMs / 1000, nowFrameSec: frameNow });
+    }
+    // The anchor names the frame the fresh pile's sweep starts. Every later
+    // render re-derives the item delay as the remainder to that same frame
+    // (never a fresh full delay), so a held sweep's wait and Card3D's own
+    // frame-clock elapsing of it agree (sweepGate.ts).
+    pileSeq.current.anchorPileId = newestPileId;
+    pileSeq.current.anchorStart = start;
+  }
+  // Delay the anchored (newest) pile's items still owe before their sweep
+  // starts — the full review delay on the flip render, decaying on the frame
+  // clock afterwards; 0 once the start frame has passed (items adopted by
+  // then ignore the prop, and a rested card's sweep is already running).
+  const anchorDelay = newestPile && pileSeq.current.anchorPileId === newestPileId
+    ? Math.max(0, pileSeq.current.anchorStart - frameNow)
+    : 0;
+  let freshPileEnd = 0;
   for (const t of piles) {
     const w = t.winner!;
     const k = pileCount[w]!++;
+    const anchored = t === newestPile && anchorDelay > 0;
+    const fresh = t === freshPile;
     t.plays.forEach((pl, j) => {
       if (collecting) {
-        items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: collectTarget, duration: 0.7, arc: 0.25, motion: 'glide', delay: w * 0.5 + k * 0.08, sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
+        const delay = Math.max(w * 0.5 + k * 0.08, anchored ? anchorDelay : 0);
+        if (fresh) freshPileEnd = Math.max(freshPileEnd, delay + 0.7 + SEQUENCE_FRAME_SLACK_SEC);
+        items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: collectTarget, duration: 0.7, arc: 0.25, motion: 'glide', delay, sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
       } else {
-        items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(pl.card)), duration: 0.55, arc: 0.15, motion: 'gather', sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
+        const delay = anchored ? anchorDelay : 0;
+        if (fresh) freshPileEnd = Math.max(freshPileEnd, delay + 0.55 + SEQUENCE_FRAME_SLACK_SEC);
+        items.push({ key: `${handNo}-${pl.card}`, card: pl.card, target: pileSpot(positions[w]!, n, k, j, jitterOf(pl.card)), duration: 0.55, arc: 0.15, motion: 'gather', ...(delay > 0 ? { delay } : {}), sfxStart: 'sweep', spatialSeat: positions[w]!, spatialN: n });
       }
     });
   }
+  if (freshPile) pileSeq.current.sweepUntil = Math.max(pileSeq.current.sweepUntil, sweepEndFrameSec(frameNow, freshPileEnd));
   // cards on the table this trick
   // legacy last-trick nuke stagger (the engine no longer auto-plays: an armed nuke waits for every
   // seat to throw): auto-played cards from older games still fly in one after another
@@ -1007,7 +1073,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   let prevVariantId: FlightVariantId | undefined;
   piles.forEach((pile, ti) => { pile.plays.forEach((pp) => { prevVariantId = pickFlightVariant(playSeed(props.gameSeed ?? '', handNo, ti, pp.card), prevVariantId).id; }); });
   shownTrick.forEach((pl, order) => {
-    const autoDelay = pl.auto ? { delay: 0.35 + 0.12 * (order - firstAuto) } : {};
+    const autoDelaySec = pl.auto ? 0.35 + 0.12 * (order - firstAuto) : 0;
     const leftHand = pl.seat === human ? departureSlot(held.current.slots, held.current.cards, pl.card) : undefined;
     const playKey = `${handNo}-${pl.card}`;
     const fanRest = restFor(pl.seat);
@@ -1045,7 +1111,19 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     prevVariantId = picked.id;
     const flickV = !land && !dragged && !overcut && !reduced ? flickFlightFor(pl.rel) : null;
     const variant: FlightVariant | undefined = dragged || overcut ? undefined : flickV ? flickV : land ? { curve: picked.variant.curve, spin: picked.variant.spin } : picked.variant;
-    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, variant, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !overcut ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : flickV ? { motion: 'flick' as const } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), armed: false, ...autoDelay });
+    // Serialization (sweepGate.ts): this flight never starts before the
+    // previous trick's collection has finished — its delay is floored at
+    // that sweep's end frame, the same way the auto-play stagger floors it
+    // in time. Whose turn it is, prompts and timers are untouched; only
+    // the flight's start waits.
+    const playDelay = serializedPlayDelaySec({ itemDelaySec: autoDelaySec, sweepEndFrameSec: pileSeq.current.sweepUntil, nowFrameSec: frameNow });
+    // Stamp the predicted rest (this build frame + delay + duration, on the
+    // same capped-dt frame time Card3D flies on) so this trick's gather can
+    // be anchored to its last card's rest when it completes. First show
+    // only: a later render must not push the rest past the flight already
+    // in the air.
+    if (launches) playRests.current.rests.set(playKey, playRestFrameSec(frameNow, playDelay, flight.duration));
+    items.push({ key: playKey, card: pl.card, public: true, target: trickSpot(positions[pl.seat]!, n, order, jitterOf(pl.card), trickScale, land), from, origin, slam: dragged ? feel : { ...feel, intensity: -1 }, ...flight, variant, ...(land && reduced ? { motion: 'slide' as const, arc: 0 } : land && !overcut ? { motion: 'glide' as const, arc: Math.min(0.3, flight.arc) } : flickV ? { motion: 'flick' as const } : {}), sfxLand: props.landCue(pl.card), spatialSeat: positions[pl.seat]!, spatialN: n, glow: !!props.marked?.includes(pl.card), armed: false, ...(playDelay > 0 ? { delay: playDelay } : {}) });
   });
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {

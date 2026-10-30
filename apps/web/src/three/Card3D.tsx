@@ -516,6 +516,14 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         liftG.scale.set(1, 1, 1);
       }
     }
+    // A held sweep's wait is a schedule offset on the shared frame clock —
+    // Scene computes it against the same capped-dt accumulation (the
+    // review anchor, sweepGate.ts) — so it elapses while this flight
+    // finishes, and adoption below waits only the remainder. On the set
+    // frame the pending is written by the gate block above with the item's
+    // full delay; from the next frame on, this keeps the held wait in
+    // lockstep with the flight it is waiting out.
+    if (s.pending && s.t < 1) s.pending.wait = Math.max(0, s.pending.wait - dt);
     if (s.t >= 1) {
       // Test probe: keep sampling a slammed card's screen position for a few frames after it lands.
       if (slamNow.current && cardId && postLand.current < 30) {
