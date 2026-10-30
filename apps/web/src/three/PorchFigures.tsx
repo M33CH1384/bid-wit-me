@@ -71,6 +71,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { STORY_FIGURE_SEAMS } from '../assetGate';
 import { FIGURE_SEAT_CONFIGS, type FigureSeatConfig, type FigureSeatSpot } from './figureSeats';
+import { useFigureResidency } from './figureResidency';
 import { opponentFan, seatDir, type SeatPos } from './layout';
 import { fanRestTarget } from './fanRest';
 
@@ -559,6 +560,10 @@ interface FigureProps {
 
 function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect, view, animate, anchors }: FigureProps) {
   const gltf = useLoader(GLTFLoader, url);
+  /* Residency (crash hardening): the GLB's decoded textures are
+     accounted to the shared figure budget while this seat is mounted
+     and become LRU-evictable when it unmounts — see figureResidency. */
+  useFigureResidency(url, gltf);
   const gl = useThree((s) => s.gl);
   const prep = useMemo(
     () => prepareFigure(gltf.scene, reg, Math.min(8, gl.capabilities.getMaxAnisotropy())),

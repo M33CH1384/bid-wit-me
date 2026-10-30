@@ -61,6 +61,7 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PERSONA_FIGURE_KEYS } from '../personaFigureKey';
+import { useFigureResidency } from './figureResidency';
 import { CHAIR_SPOTS } from './classicStudioLayout';
 import { opponentFan, seatDir, type SeatPos } from './layout';
 import { fanRestTarget } from './fanRest';
@@ -514,6 +515,9 @@ interface FigureProps {
 
 function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate, anchors, spots, seatTop, floorY }: FigureProps) {
   const gltf = useLoader(GLTFLoader, url);
+  /* Residency (crash hardening): same shared figure budget as the
+     story cast — see figureResidency / PorchFigures. */
+  useFigureResidency(url, gltf);
   const gl = useThree((s) => s.gl);
   const prep = useMemo(
     () => prepareFigure(gltf.scene, reg, Math.min(8, gl.capabilities.getMaxAnisotropy())),

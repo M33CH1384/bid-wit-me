@@ -1,7 +1,7 @@
 import { RUN_SLAM_MS } from '../runIt';
 import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
-import { type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
@@ -1908,6 +1908,17 @@ export default function Scene(props: SceneProps) {
   const [dprCap, setDprCap] = useState(1);
   const [textured, setTextured] = useState(false);
   const [hallGo, setHallGo] = useState(false);
+  // WebGL context-loss recovery (crash hardening, 2026-10-30): when the
+  // GPU context dies and the browser restores it, three re-inits the
+  // renderer with EMPTY resource records — but React-side state built
+  // on the dead context (a figure boundary that tripped on a throw
+  // during the loss, render targets, video textures) only rebuilds on
+  // a remount. The restore listener in onCreated bumps this epoch,
+  // which re-mounts the scene's resource subtree INSIDE the table:
+  // the player sees the table flicker and rebuild around their hand.
+  // No route change, no reload — game state lives in Table's props
+  // and is never touched.
+  const [glEpoch, setGlEpoch] = useState(0);
   // Drag-to-play: the card under the finger is drawn by the lifted copy, so its slot in the fan is left open.
   const [dragCard, setDragCard] = useState<Card | null>(null);
   const onTableReady = props.onTableReady;
@@ -1946,6 +1957,17 @@ export default function Scene(props: SceneProps) {
           noteCrumb('webgl', 'restored');
           reportCrash('webgl-restored', new Error('WebGL context restored'), { venue: def.id, quality: props.quality });
         });
+        // Recovery (crash hardening, 2026-10-30): the reporting pair
+        // above observes; this pair RECOVERS, and both stay. Our own
+        // preventDefault on the loss keeps the context restorable
+        // (three's renderer calls it too — belt and braces, so the
+        // guarantee lives in app code, not a library habit), and the
+        // restore bumps glEpoch to remount the scene's resource
+        // subtree in place (see the state declaration). Listeners are
+        // additive: registering ours after telemetry's changes neither
+        // its firing nor its reports.
+        gl.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); });
+        gl.domElement.addEventListener('webglcontextrestored', () => { setGlEpoch((n) => n + 1); });
         const w = window as unknown as { __bwmParallelShaders?: boolean };
         w.__bwmParallelShaders = gl.extensions.has('KHR_parallel_shader_compile');
         setAspect(size.width / size.height);
@@ -1994,6 +2016,12 @@ export default function Scene(props: SceneProps) {
       <CameraRig view={props.view} people={storyFiguresActive} />
       <ViewAdjustControls />
       <FxShake table={tableGroup} />
+      {/* Everything from here down owns GPU resources (rooms, table,
+          cards, figures, effects, badges). The keyed Fragment is the
+          context-restore remount: bumping glEpoch rebuilds exactly
+          this subtree against the restored context while the Canvas,
+          the camera rig and the controls above never unmount. */}
+      <Fragment key={glEpoch}>
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
       <Lights quality={props.quality} def={def} shadowSize={shadowSize} />
@@ -2106,6 +2134,7 @@ export default function Scene(props: SceneProps) {
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
       <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
+      </Fragment>
     </Canvas>
     <FlipCoverOverlay />
     <div ref={badgeLayer} className="badge-layer" />
