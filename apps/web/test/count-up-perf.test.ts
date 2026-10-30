@@ -22,7 +22,10 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import GameOverRewards, { computeRewards, type RewardsData, type RewardsProfile } from '../src/GameOverRewards';
+import { type GameState, applyAction, makeRules, newGame, pendingTurn, viewFor } from '@spades/rules';
+import { chooseBotAction } from '@spades/bots';
+import GameOverRewards, { computeRewards, tallyTone, type RewardsData, type RewardsProfile } from '../src/GameOverRewards';
+import { BoxScore } from '../src/BoxScore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -327,5 +330,137 @@ describe('count-up performance', () => {
     advance(2000);
     expect(rollSpans()).toHaveLength(0);
     expect(nums()).toEqual(['+50', '+150', '▲ 12', '+8 XP']);
+  });
+});
+
+
+/* ── The in-table victory overlay (owner, 2026-10-30: "Extend it there
+   to") — the SAME count-up machinery, one implementation, drives the
+   overlay's final tallies: the standings placements in Table.tsx and
+   the box score's Final row (BoxScore's opt-in `roll`). Per-hand rows,
+   headline lines and every other record stay static. ──────────────── */
+
+/** A decided game with real history (one played hand) and stamped
+ *  finals — the state the victory overlay renders. */
+function decidedGame(finalScores: [number, number], winners: number[]): GameState {
+  const rules = makeRules('joker', { targetScore: 500 });
+  let st = newGame(rules, 'countup-overlay');
+  for (let g = 0; g < 8000 && st.phase !== 'handOver' && st.phase !== 'gameOver'; g++) {
+    const t = pendingTurn(st);
+    if (!t) break;
+    st = applyAction(st, chooseBotAction(viewFor(st, t.seat), 'pro')!);
+  }
+  // Placement follows the crown, not the points: a side can win a
+  // shot-out ending while behind on score, and the sheet ranks it first.
+  const placements = finalScores.map((_, i) => (winners.includes(i) ? 1 : 2));
+  return { ...st, result: { endReason: 'target', finalScores: [...finalScores], placements, winners } };
+}
+
+function mountBox(st: GameState, opts: { roll?: boolean; reduced?: boolean } = {}): Root {
+  const hosts = [...document.querySelectorAll('.box-host')];
+  hosts.forEach((h) => h.remove());
+  const hostEl = document.createElement('div');
+  hostEl.className = 'box-host';
+  document.body.appendChild(hostEl);
+  root = createRoot(hostEl);
+  act(() => {
+    root.render(createElement(BoxScore, {
+      st,
+      label: (s: number) => ['Us', 'Them'][s]!,
+      mySide: 0,
+      winners: st.result!.winners,
+      roll: opts.roll ?? true,
+      reduced: opts.reduced ?? false,
+    }));
+  });
+  return root;
+}
+
+const finalCells = () => [...document.querySelectorAll('[data-testid="box-final"] td b')];
+
+describe('tallyTone — the overlay tally honesty rules', () => {
+  it('the winner warms to gold whatever the sign of their score', () => {
+    expect(tallyTone(500, true)).toBe('gainGold');
+    expect(tallyTone(-20, true)).toBe('gainGold'); // shot-out: crowned while behind
+    expect(tallyTone(0, true)).toBe('gainGold');
+  });
+
+  it('a non-winner never travels gold: negative cools, anything else stays flat', () => {
+    expect(tallyTone(-80, false)).toBe('scoreLoss');
+    expect(tallyTone(120, false)).toBe('scoreFlat');
+    expect(tallyTone(0, false)).toBe('scoreFlat');
+  });
+});
+
+describe('the victory overlay box score — Final row count-up', () => {
+  it('rolls both finals in step with the standings and lands exactly; records stay static', () => {
+    mountBox(decidedGame([152, -80], [0]));
+    // The Final row's tallies perform; per-hand rows and headline lines
+    // are records — no rolling element anywhere else in the section.
+    expect(document.querySelectorAll('.box-score .roll-num')).toHaveLength(2);
+    expect(document.querySelector('[data-testid="box-row-1"]')!.querySelector('.roll-num')).toBeNull();
+    expect(document.querySelector('.box-lines')!.querySelector('.roll-num')).toBeNull();
+
+    /* mid-flight: the winner is growing and traveling toward gold */
+    advance(200); // the winner's roll starts (placement-1 delay)
+    let ts = pumpUntil(() => Number(finalCells()[0]!.textContent) > 0, 0, 50);
+    const [winCell, loseCell] = finalCells();
+    const winV = Number(winCell!.textContent);
+    expect(winV).toBeGreaterThan(0);
+    expect(winV).toBeLessThan(152);
+    const winSpan = winCell!.querySelector('.roll-num') as HTMLElement;
+    expect(scaleOf(winSpan)).toBeGreaterThan(1);
+    const [r, g, b] = rgbOf(winSpan);
+    expect([r, g, b]).not.toEqual([245, 197, 66]); // traveling — not yet resting gold
+    expect([r, g, b]).not.toEqual([179, 167, 204]); // and has left the muted start
+
+    /* the loser's tally rolls down and never touches gold */
+    advance(120); // theirs starts 120 ms later (placement-2 stagger)
+    ts = pumpUntil(() => Number(finalCells()[1]!.textContent) < 0, ts, 50);
+    const loseV = Number(loseCell!.textContent);
+    expect(loseV).toBeLessThan(0);
+    expect(loseV).toBeGreaterThan(-80);
+    const loseSpan = loseCell!.querySelector('.roll-num') as HTMLElement;
+    const [lr, lg] = rgbOf(loseSpan);
+    expect(lg).toBeLessThanOrEqual(lr + 40); // gold's green runs far ahead of its red
+
+    /* landing: exact integers, elements gone, plain text at rest.
+       Pump a fixed frame span — the rounded text reaches the final
+       integers slightly BEFORE the tween's own clock does, and the
+       settle only starts once the tween itself reports done. */
+    for (let i = 0; i < 34; i++) { ts += 50; pumpFrame(ts); }
+    advance(600); // the settle pop plays out; spans hand back to plain text
+    expect(finalCells().map((c) => c.textContent)).toEqual(['152', '-80']);
+    expect(document.querySelectorAll('.box-score .roll-num')).toHaveLength(0);
+  });
+
+  it('reduced motion hands over the exact finals instantly, no spans ever', () => {
+    mountBox(decidedGame([152, -80], [0]), { reduced: true });
+    expect(finalCells().map((c) => c.textContent)).toEqual(['152', '-80']);
+    expect(document.querySelectorAll('.box-score .roll-num')).toHaveLength(0);
+    advance(3000);
+    pumpFrame(0);
+    pumpFrame(50);
+    expect(finalCells().map((c) => c.textContent)).toEqual(['152', '-80']);
+    expect(document.querySelectorAll('.box-score .roll-num')).toHaveLength(0);
+  });
+
+  it('a side finishing on zero renders plain — the no-change case', () => {
+    mountBox(decidedGame([0, -80], [1])); // side 1 crowned while negative
+    // Only the non-zero tally performs; the zero stays plain text.
+    expect(document.querySelectorAll('.box-score .roll-num')).toHaveLength(1);
+    expect(finalCells()[0]!.textContent).toBe('0');
+    advance(200);
+    let ts = 0;
+    for (let i = 0; i < 30; i++) { ts += 50; pumpFrame(ts); }
+    advance(600);
+    expect(finalCells().map((c) => c.textContent)).toEqual(['0', '-80']);
+    expect(document.querySelectorAll('.box-score .roll-num')).toHaveLength(0);
+  });
+
+  it('without the roll opt-in the Final row is static (records surfaces untouched)', () => {
+    mountBox(decidedGame([152, -80], [0]), { roll: false });
+    expect(finalCells().map((c) => c.textContent)).toEqual(['152', '-80']);
+    expect(document.querySelectorAll('.box-score .roll-num')).toHaveLength(0);
   });
 });

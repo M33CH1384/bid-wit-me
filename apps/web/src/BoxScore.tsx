@@ -18,6 +18,7 @@
  */
 import { type GameState, type HandRecord, shotCounts, shotCovers } from '@spades/rules';
 import { handWinner } from './fx';
+import { RollNum, tallyTone } from './GameOverRewards';
 
 const sgn = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
 
@@ -121,11 +122,16 @@ export function gameHeadlines(st: GameState, winnersArg?: number[]): GameHeadlin
  * history plus its headline lines. Presentation only — it reads the same
  * GameState the table already holds and changes nothing about the flow.
  */
-export function BoxScore({ st, label, mySide, winners }: {
+export function BoxScore({ st, label, mySide, winners, roll = false, reduced = false }: {
   st: GameState;
   label: (side: number) => string;
   mySide: number;
   winners: number[];
+  /** Count-up performance on the Final row (the game-over overlays pass
+   *  this; the tallies perform in step with the standings above them).
+   *  Per-hand rows and the headline lines are records and never roll. */
+  roll?: boolean;
+  reduced?: boolean;
 }) {
   const rows = boxScoreRows(st.history);
   const head = gameHeadlines(st, winners);
@@ -158,7 +164,19 @@ export function BoxScore({ st, label, mySide, winners }: {
             <tr className="box-final" data-testid="box-final">
               <th>Final</th>
               {finals.map((score, side) => (
-                <td key={side} className={winners.includes(side) ? 'win' : ''}><b>{score}</b></td>
+                <td key={side} className={winners.includes(side) ? 'win' : ''}><b>{roll ? (
+                  <RollNum
+                    to={score}
+                    play
+                    reduced={reduced}
+                    duration={1150}
+                    delay={200 + ((st.result?.placements?.[side] ?? side + 1) - 1) * 120}
+                    step={50}
+                    tone={tallyTone(score, winners.includes(side))}
+                    origin="100% 50%"
+                    format={(v) => String(v)}
+                  />
+                ) : score}</b></td>
               ))}
             </tr>
           </tbody>

@@ -560,6 +560,21 @@ function useRollValue(from: number, to: number, o: { play: boolean; reduced: boo
 }
 
 /**
+ * The tone for a FINAL TALLY on a standings surface (the in-table victory
+ * overlay's placements, the box score's Final row). Those surfaces rest
+ * the winning side's tally at gold and everyone else at ink, so the
+ * winner warms to gold — whatever the sign of their score (a side can
+ * win a shot-out ending while behind on points, and the sheet still
+ * crowns them in gold) — while a non-winner NEVER travels gold: a
+ * negative tally cools through the lavender-red path, any other stays
+ * flat. Every ramp lands exactly on the surface's resting color.
+ */
+export function tallyTone(score: number, winner: boolean): RollTone {
+  if (winner) return 'gainGold';
+  return score < 0 ? 'scoreLoss' : 'scoreFlat';
+}
+
+/**
  * A rolling number with the count-up performance. Renders PLAIN text —
  * no element, no styles — whenever there is nothing to perform: reduced
  * motion, a zero delta, the pre-gate hold, and the final rest state.
@@ -567,7 +582,7 @@ function useRollValue(from: number, to: number, o: { play: boolean; reduced: boo
  * inline-block span carrying only transform + color, so the surrounding
  * layout never moves.
  */
-function RollNum({
+export function RollNum({
   from = 0, to, play, reduced, duration, delay, step, tone, format, origin = '50% 50%', maxGrow = 0.26,
 }: {
   from?: number;

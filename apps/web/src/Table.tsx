@@ -81,7 +81,7 @@ import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading, type LoadingSeat } from './TableLoading';
 import { VersusIntro, markVersusShown, versusDismissReady, versusEligible, type VersusMember, type VersusModel } from './VersusIntro';
-import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, type RewardsProfile } from './GameOverRewards';
+import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, RollNum, tallyTone, type RewardsProfile } from './GameOverRewards';
 import { stashRewards } from './RewardsPage';
 import { flushLocalGames, localGameId } from './localStats';
 import { warmTableEffects } from './effects/warm';
@@ -3277,11 +3277,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                   {res.finalScores
                     .map((score, side) => ({ side, score, place: res.placements[side]! }))
                     .sort((a, b) => a.place - b.place)
-                    .map((x) => (
-                      <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${res.winners.includes(x.side) ? ' win' : ''}`}><span className="place">#{x.place}</span><span>{sideName(r, x.side, names)}</span><b>{x.score}</b></li>
+                    .map((x, i) => (
+                      <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${res.winners.includes(x.side) ? ' win' : ''}`}><span className="place">#{x.place}</span><span>{sideName(r, x.side, names)}</span><b><RollNum to={x.score} play reduced={reduceFx} duration={1150} delay={200 + i * 120} step={50} tone={tallyTone(x.score, res.winners.includes(x.side))} origin="100% 50%" format={(v) => String(v)} /></b></li>
                     ))}
                 </ol>
-                <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} />
+                <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} roll reduced={reduceFx} />
                 {seriesChip()}
                 <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
               </div>
@@ -3318,16 +3318,16 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {st.result.finalScores
                 .map((score, side) => ({ side, score, place: st.result!.placements[side]! }))
                 .sort((a, b) => a.place - b.place)
-                .map((x) => (
+                .map((x, i) => (
                   <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${st.result!.winners.includes(x.side) ? ' win' : ''}`}>
                     <span className="place">#{x.place}</span>
                     <span>{sideName(r, x.side, names)}</span>
-                    <b>{x.score}</b>
+                    <b><RollNum to={x.score} play reduced={reduceFx} duration={1150} delay={200 + i * 120} step={50} tone={tallyTone(x.score, st.result!.winners.includes(x.side))} origin="100% 50%" format={(v) => String(v)} /></b>
                   </li>
                 ))}
             </ol>
             <div className="scroll go-scroll" data-testid="gameover-scroll">
-              <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} />
+              <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} roll reduced={reduceFx} />
               {tipNudge && (
                 <p className="tip-nudge" data-testid="tip-nudge">
                   Enjoying BWM? <button type="button" className="link" onClick={openTip}>Tip the devs ♥</button> <small>(a donation, not a prize)</small>
