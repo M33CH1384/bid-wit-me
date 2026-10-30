@@ -22,6 +22,7 @@ import BroadcastOverlay from './BroadcastOverlay';
 import { navigate } from './nav';
 import { orientRun } from '../runPlayback';
 import type { VideoMesh } from './video';
+import { seatVideoFeedsFor } from './seatVideoFeeds';
 
 /** The 3D table, driven by the server: rotated per-seat view, real chat, video bubbles, turn clock. */
 export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versusPairNote, watchOnly = false, broadcast = false, initialSettings }: { conn: TableConnection; cs: ConnState; mesh: VideoMesh | null; onLobby: () => void; onMainMenu?: () => void; /** story co-op: the pair's narrative versus headline for this stop (StoryRoom computes it from the pair context) */ versusPairNote?: string | null; /** Streaming watch surface (/watch/<CODE>): chat reads but never posts, no take-seat prompt — watching is the whole surface */ watchOnly?: boolean; /** Streaming broadcast frame (/watch/<CODE>/broadcast): the OBS variant — no chat surface at all, broadcast bug instead of the spectator banner */ broadcast?: boolean; /** settings merged over the saved ones for this mount (the broadcast frame pins High quality + the sitting camera) */ initialSettings?: Partial<Settings> }) {
@@ -149,6 +150,10 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
   if (!drawn || !source || !rot) return <TableLoading progress={0.24} seats={joinSeats} reducedMotion={fx.osReducedMotion} />;
   const r = room.rules;
   const turnLocal = localSeatOfServerTurn(cs.view?.turn ?? null, spectator || cs.seat === null ? null : cs.seat, r.playerCount);
+  // Seat-placed video (owner 2026-10-30): the per-local-seat camera streams
+  // the 3D scene seats at each player's chair. Empty for spectators (no new
+  // spectator video) and on the watch/broadcast surfaces (no mesh at all).
+  const seatVideos = seatVideoFeedsFor({ spectator, seats: room.seats, remote: vs.remote, hidden: vs.hidden, realOfLocal: (l) => rot.R(l), n: rot.n });
   const onClock = turnDeadline != null && turnStart != null && (gp === 'bidding' || gp === 'playing' || gp === 'exchange');
 
   // host: Kick (with confirm); seated non-hosts: Vote to kick (majority of the other humans)
@@ -164,7 +169,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
     const offline = seat?.kind === 'human' && !seat.connected;
     return (
       <>
-        <SeatMedia seat={seat} seatPos={(rot.n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'])[local] as import('../spatial').SeatPos} playerCount={rot.n} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} />
+        <SeatMedia seat={seat} seatPos={(rot.n === 4 ? ['bottom', 'left', 'top', 'right'] : ['bottom', 'left', 'right'])[local] as import('../spatial').SeatPos} playerCount={rot.n} isMe={local === 0 && !spectator} mesh={mesh} vs={vs} limited={!!seat && seat.kind === 'human' && vs.limited.includes(seat.playerId)} kick={kickFor(real)} sceneVideo={!!seatVideos[local]} />
         {offline && <span className="chip bad seat-offline">OFFLINE</span>}
         {turnLocal === local && secs !== null && !source.pause && <span className={`turn-clock ${secs <= 5 ? 'hot' : ''}`} data-testid={`clock-${local}`} data-turn-sec={room.turnSec ?? ''}>{secs}s</span>}
         {onClock && turnLocal === local && turnStart != null && turnDeadline != null && <TurnCountdown start={turnStart} deadline={turnDeadline} mine={local === 0 && !spectator} />}
@@ -198,7 +203,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
         onViewAdjust={(viewAdjust) => { const s = { ...settings, viewAdjust }; setSettings(s); saveSettings({ ...loadSettings(), viewAdjust }); }}
         onTurnUp={(turnUp) => { const s = { ...settings, turnUp }; setSettings(s); saveSettings({ ...loadSettings(), turnUp }); }}
         online={{
-          source, names, seatExtra, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity,
+          source, names, seatExtra, seatVideos, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity,
           // Streaming surfaces reshape the chat binding: the broadcast frame has
           // no chat surface at all; the watch view reads chat but never posts
           // (its one affordance sends the viewer to the play door). The server

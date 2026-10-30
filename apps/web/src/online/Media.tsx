@@ -55,7 +55,7 @@ export interface KickInfo { host: boolean; votes: number; need: number; voted: b
 /** Only one bubble menu is open at a time: opening one closes the others. */
 const MENU_EVT = 'bwm-vbmenu';
 
-export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos, playerCount = 4 }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState; limited?: boolean; kick?: KickInfo; seatPos?: SeatPos; playerCount?: number }) {
+export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos, playerCount = 4, sceneVideo = false }: { seat: SeatInfo | undefined; isMe: boolean; mesh: VideoMesh | null; vs: VideoState; limited?: boolean; kick?: KickInfo; seatPos?: SeatPos; playerCount?: number; /** the 3D scene seats this player's feed at their chair (online table, seated clients): while frames flow, the plate bubble collapses to badges + menu and the video element stays only as the audio path / frame detector */ sceneVideo?: boolean }) {
   const [routed, setRouted] = useState(false);
   useSoundSettings(); // re-render on persisted mute / rebuild emits: mutedVoices is the single mute source
   const vcGen = sound.voiceChatGeneration;
@@ -103,6 +103,10 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
   }, [stream, seatPos, playerCount, vs.needsTap, vcGen]);
   useEffect(() => { if (routed) sound.updateVoiceChat(id, { muted: peerMuted || limited, ducked: vs.ducked?.includes(id) }); }, [routed, id, peerMuted, limited, vs.ducked]);
   const hasMedia = camOn || micOn;
+  // the scene plane at the seat is showing this feed (frames flowing):
+  // the bubble's visual clip stands down so the player appears once, at
+  // their seat — badges, the tap menu and the audio path stay here.
+  const inScene = sceneVideo && camOn && !hidden && frames;
   // no camera/mic (or offline): no "…" bubble — just their initial (with the OFFLINE badge on the plate), still
   // clickable when there's a kick option
   if (!hasMedia && !kick) return null;
@@ -125,7 +129,7 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
   return (
     <>
     {hasMedia ? (
-      <div className={`vbubble ${camOn && !hidden ? '' : 'audio-only'}`} data-testid={`video-${id}`} data-live={live ? 'true' : 'false'}>
+      <div className={`vbubble ${camOn && !hidden ? '' : 'audio-only'}${inScene ? ' in-scene' : ''}`} data-testid={`video-${id}`} data-live={live ? 'true' : 'false'} data-scene={inScene ? 'true' : 'false'}>
         {/* the clip layer keeps video circular everywhere (Safari ignores overflow+radius on <video> without its own layer) */}
         <div className={`vb-clip ${frames ? '' : 'no-frames'}`}>{stream && <StreamVideo stream={stream} muted={routed ? true : muted} onFrames={setFrames} volume={vs.ducked?.includes(id) ? 0.4 : 1} />}</div>
         {/* camera off (or hidden): their uploaded picture, else the icon — the pic stands in for the camera */}

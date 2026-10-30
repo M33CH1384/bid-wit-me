@@ -174,6 +174,11 @@ export interface OnlineBinding {
     hidden?: boolean };
   /** video bubble / timer chip etc. inside a seat's name plate (local seat index) */
   seatExtra: (seat: number) => ReactNode;
+  /** Seat-placed video (owner directive 2026-10-30): per LOCAL seat, the
+   *  remote human's camera stream that belongs in that seat's chair in
+   *  the 3D scene, or null. Built by the online table only for seated
+   *  (non-spectator) clients; the local seat is always null. */
+  seatVideos?: (MediaStream | null)[];
   /** scorebug label for a (local) side */
   sideLabel: (side: number) => string;
   /** Extra buttons for the bottom-right control cluster (camera / mic). */
@@ -2840,6 +2845,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           kingRailCast={kingRail}
           seatedFigures={seatedFiguresArr}
           porchFigureSeats={porchFigureSeats}
+          seatVideos={online?.seatVideos}
           crowdCue={crowdCue}
           crowdAnimate={!reduceFx && !fx.osReducedMotion}
           visitRail={visitSoloKing}

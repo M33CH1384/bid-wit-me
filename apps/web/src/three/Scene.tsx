@@ -57,6 +57,7 @@ import CornerStreetRoom from './CornerStreetRoom';
 import SpeakeasyLoungeRoom from './SpeakeasyLoungeRoom';
 import PorchDeckRoom from './PorchDeckRoom';
 import PorchFigures from './PorchFigures';
+import SeatVideoLayer from './SeatVideo';
 import GrandmasKitchenRoom from './GrandmasKitchenRoom';
 import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
@@ -188,6 +189,13 @@ export interface SceneProps {
    *  the people framing while the pilot is active. Absent everywhere
    *  else — Low, non-story, other stops and co-op never see a figure. */
   porchFigureSeats?: readonly (string | null)[];
+  /** Per-seat live camera feeds (MediaStream or null, by local seat):
+   *  a remote seated human's video renders on a plane at their chair
+   *  (three/SeatVideo.tsx; owner directive 2026-10-30). Built only by
+   *  the online table for seated (non-spectator) clients; absent
+   *  everywhere else — solo, lobby, watch/broadcast surfaces. The
+   *  human's own seat is always null here (first person). */
+  seatVideos?: readonly (MediaStream | null)[];
   /** The crowd cue channel (stirs + speakers), stamped by the table. */
   crowdCue?: CrowdCue;
   /** False under reduced effects: figures render at rest, static. */
@@ -2005,6 +2013,14 @@ export default function Scene(props: SceneProps) {
           activeSeat={props.activeSeat ?? null}
           view={props.view ?? 'standing'}
           animate={props.crowdAnimate ?? false}
+        />
+      )}
+      {showTable && (props.seatVideos?.some(Boolean) ?? false) && (
+        <SeatVideoLayer
+          seats={props.seatVideos!}
+          positions={props.positions}
+          n={props.n}
+          human={props.human}
         />
       )}
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
