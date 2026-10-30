@@ -116,10 +116,25 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** Drives the reveal gate + count-ups to completion on the manual rAF
+ *  queue (the header XP performs a count-up since the count-up treatment;
+ *  its resting text is the final amount). */
+function settleCounts() {
+  let t = 0;
+  for (let i = 0; i < 60; i++) {
+    t += 60;
+    const q = rafQ; rafQ = [];
+    act(() => { for (const f of q) f.cb(t); });
+    act(() => { vi.advanceTimersByTime(60); });
+  }
+  act(() => { vi.advanceTimersByTime(1000); }); // settle pops finish
+}
+
 describe('the "Playing well" section', () => {
   it('renders exactly the earned lines, in order, with their amounts', () => {
     const d = computeRewards(profile(), profile({ playWell: ROW }), OPTS);
     mount(d);
+    settleCounts();
     const section = container.querySelector('[data-testid="rewards-playwell"]');
     expect(section).not.toBeNull();
     expect(section!.textContent).toContain('Playing well');

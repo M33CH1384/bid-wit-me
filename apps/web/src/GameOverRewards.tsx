@@ -411,6 +411,99 @@ function useRowsInView(ref: RefObject<HTMLDivElement | null>, play: boolean, red
   return reduced || inView;
 }
 
+/* ── Count-up performance (owner, 2026-10-30: "as it counts up here the
+ * rolling numbers should change colors and enlarge") ─────────────────────
+ * One treatment for every rolling number on this screen, built on the
+ * tween below: as a number counts it GROWS (transform scale only — zero
+ * layout shift; tabular figures keep digit widths steady), its color
+ * TRAVELS through the theme's accent ramp, crossing a round milestone
+ * earns a micro-pulse (a beat of extra scale + brightness), and the
+ * landing gets a settle pop — a slight overshoot, then rest. The
+ * displayed integer is the tween's own value: it can arrive at the
+ * target but never passes it; only the scale pops. At rest the inline
+ * styles come off entirely, so the final color is exactly the surface's
+ * own semantic color (the class on the wrapping element) — and a number
+ * with nowhere to go (a zero delta) never performs at all. */
+
+type Rgb = [number, number, number];
+
+function hexRgb(hex: string, fallback: Rgb): Rgb {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return fallback;
+  const n = parseInt(m[1]!, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+const rgbCss = (c: Rgb) => `rgb(${Math.round(c[0])}, ${Math.round(c[1])}, ${Math.round(c[2])})`;
+
+/** The theme's ramp colors, read from the CSS vars on <html> so Classic
+ *  and Neon each travel their own palette. Resolved when a RollNum
+ *  mounts — the theme is set before this page renders. */
+function themeRamp() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
+  return {
+    ink: hexRgb(v('--ink', '#f6f2ff'), [246, 242, 255]),
+    muted: hexRgb(v('--muted', '#b3a7cc'), [179, 167, 204]),
+    lav: hexRgb(v('--lav', '#cdb8ff'), [205, 184, 255]),
+    accent: hexRgb(v('--purple-hot', '#b980ff'), [185, 128, 255]),
+    gold: hexRgb(v('--gold', '#f5c542'), [245, 197, 66]),
+    goldHi: hexRgb(v('--gold-hi', '#ffd969'), [255, 217, 105]),
+    panel: hexRgb(v('--panel', '#140b22'), [20, 11, 34]),
+    white: [255, 255, 255] as Rgb,
+    up: [125, 255, 154] as Rgb,
+    down: [255, 138, 138] as Rgb,
+  };
+}
+
+type RampTheme = ReturnType<typeof themeRamp>;
+type RampStop = [number, Rgb];
+
+/** The color journey per surface. Every ramp starts at the resting ink
+ *  family and its LAST stop is the surface's resting semantic color, so
+ *  the travel is a visit, never a repaint: gold-class for gains/wins,
+ *  gains through the accent to bright white (XP) or green (rating up);
+ *  losses cool through lavender toward their red; table tallies land
+ *  back on the table's ink. */
+export type RollTone = 'gainGold' | 'gainBright' | 'gainGreen' | 'lossRed' | 'scoreWin' | 'scoreLoss' | 'scoreFlat' | 'smallGain';
+
+function rampFor(tone: RollTone, t: RampTheme): RampStop[] {
+  switch (tone) {
+    case 'gainGold': return [[0, t.muted], [0.45, t.accent], [0.8, t.goldHi], [1, t.gold]];
+    case 'gainBright': return [[0, t.muted], [0.45, t.accent], [0.78, t.goldHi], [1, t.white]];
+    case 'gainGreen': return [[0, t.muted], [0.55, t.lav], [1, t.up]];
+    case 'lossRed': return [[0, t.muted], [0.5, t.lav], [1, t.down]];
+    case 'scoreWin': return [[0, t.muted], [0.45, t.accent], [0.8, t.goldHi], [1, t.ink]];
+    case 'scoreLoss': return [[0, t.muted], [0.5, t.lav], [0.82, mixRgb(t.lav, t.down, 0.55)], [1, t.ink]];
+    case 'scoreFlat': return [[0, t.muted], [0.6, t.lav], [1, t.ink]];
+    case 'smallGain': return [[0, mixRgb(t.muted, t.panel, 0.4)], [0.55, t.lav], [1, t.muted]];
+  }
+}
+
+function sampleRamp(stops: RampStop[], p: number): Rgb {
+  if (p <= 0) return stops[0]![1];
+  for (let i = 1; i < stops.length; i++) {
+    if (p <= stops[i]![0]) {
+      const [p0, c0] = stops[i - 1]!;
+      const [p1, c1] = stops[i]!;
+      return mixRgb(c0, c1, (p - p0) / Math.max(1e-6, p1 - p0));
+    }
+  }
+  return stops[stops.length - 1]![1];
+}
+
+/** How much a count grows, by the size of the count itself: big tallies
+ *  earn a bigger swell, capped so nothing reads cartoonish. */
+function growthFor(delta: number, cap: number): number {
+  return Math.min(cap, 0.07 + 0.055 * Math.log10(Math.max(1, Math.abs(delta))));
+}
+
+interface RollState { val: number; p: number; pulse: number; done: boolean }
+
 /**
  * Ease-out cubic tween from `from` to `to`, driven by the reveal gate:
  * before the gate opens the value sits AT `from` (the pre-game value — 0
@@ -418,34 +511,120 @@ function useRowsInView(ref: RefObject<HTMLDivElement | null>, play: boolean, red
  * motion jumps straight to `to`. If `to` changes mid-flight (a settled
  * re-check landing a corrected value), the tween re-targets from wherever
  * it currently is — never a snap back to the start.
+ *
+ * Alongside the value it reports the performance signals for RollNum:
+ * eased progress `p` (growth + color travel ride it, so size and color
+ * track how much of the count is covered) and a milestone `pulse` — when
+ * |value| crosses a multiple of `step`, the pulse envelope restarts and
+ * decays over ~230 ms of frame time. Timing is the plain tween's own —
+ * same delay, same duration, same ease — so counts finish exactly when
+ * they always did and the XP bar stays in sync.
  */
-function useTweenValue(from: number, to: number, o: { play: boolean; reduced: boolean; duration?: number; delay?: number }): number {
+function useRollValue(from: number, to: number, o: { play: boolean; reduced: boolean; duration?: number; delay?: number; step?: number }): RollState {
   const duration = o.duration ?? 1000;
   const delay = o.delay ?? 0;
-  const [val, setVal] = useState(from);
+  const step = o.step ?? 0;
+  const [st, setSt] = useState<RollState>({ val: from, p: 0, pulse: 0, done: false });
   const valRef = useRef(from);
   const startedRef = useRef(false);
-  useEffect(() => { valRef.current = val; }, [val]);
+  useEffect(() => { valRef.current = st.val; }, [st.val]);
   useEffect(() => {
-    if (o.reduced) { setVal(to); return; }
-    if (!o.play) { setVal(from); return; }
+    if (o.reduced) { setSt({ val: to, p: 1, pulse: 0, done: true }); return; }
+    if (!o.play) { setSt({ val: from, p: 0, pulse: 0, done: false }); return; }
     let raf = 0;
     let start: number | null = null;
     const startVal = valRef.current;
     const wait = startedRef.current ? 0 : delay;
     const t = window.setTimeout(() => {
       startedRef.current = true;
-      const step = (ts: number) => {
+      let lastMile = step > 0 ? Math.floor(Math.abs(startVal) / step) : 0;
+      let pulseStart = Number.NEGATIVE_INFINITY;
+      const frame = (ts: number) => {
         if (start === null) start = ts;
         const p = Math.min(1, (ts - start) / duration);
-        setVal(Math.round(startVal + (to - startVal) * (1 - Math.pow(1 - p, 3))));
-        if (p < 1) raf = requestAnimationFrame(step);
+        const eased = 1 - Math.pow(1 - p, 3);
+        const val = Math.round(startVal + (to - startVal) * eased);
+        if (step > 0 && p < 1) {
+          const mile = Math.floor(Math.abs(val) / step);
+          if (mile > lastMile) { lastMile = mile; pulseStart = ts; }
+        }
+        const pulse = pulseStart === Number.NEGATIVE_INFINITY ? 0 : Math.max(0, 1 - (ts - pulseStart) / 230);
+        setSt({ val, p: eased, pulse, done: p >= 1 });
+        if (p < 1) raf = requestAnimationFrame(frame);
       };
-      raf = requestAnimationFrame(step);
+      raf = requestAnimationFrame(frame);
     }, wait);
     return () => { window.clearTimeout(t); cancelAnimationFrame(raf); };
-  }, [from, to, o.play, o.reduced, duration, delay]);
-  return val;
+  }, [from, to, o.play, o.reduced, duration, delay, step]);
+  return st;
+}
+
+/**
+ * A rolling number with the count-up performance. Renders PLAIN text —
+ * no element, no styles — whenever there is nothing to perform: reduced
+ * motion, a zero delta, the pre-gate hold, and the final rest state.
+ * During the count (and the brief settle that follows it) it renders an
+ * inline-block span carrying only transform + color, so the surrounding
+ * layout never moves.
+ */
+function RollNum({
+  from = 0, to, play, reduced, duration, delay, step, tone, format, origin = '50% 50%', maxGrow = 0.26,
+}: {
+  from?: number;
+  to: number;
+  play: boolean;
+  reduced: boolean;
+  duration?: number;
+  delay?: number;
+  step?: number;
+  tone: RollTone;
+  format: (v: number) => string;
+  origin?: string;
+  maxGrow?: number;
+}) {
+  const st = useRollValue(from, to, { play, reduced, duration, delay, step });
+  const [ramp] = useState<RampStop[]>(() => rampFor(tone, themeRamp()));
+  const [phase, setPhase] = useState<'roll' | 'pop' | 'rest' | 'gone'>('roll');
+  const active = !reduced && to !== from;
+  useEffect(() => {
+    if (!active) return;
+    if (!st.done) { setPhase('roll'); return; }
+    setPhase('pop');
+    const t1 = window.setTimeout(() => setPhase('rest'), 170);
+    const t2 = window.setTimeout(() => setPhase('gone'), 540);
+    return () => { window.clearTimeout(t1); window.clearTimeout(t2); };
+  }, [active, st.done]);
+  if (!active || (phase === 'gone' && st.done)) return <>{format(to)}</>;
+  if (!play && !st.done) return <>{format(from)}</>;
+  const grow = growthFor(to - from, maxGrow);
+  let scale: number;
+  let transition: string | undefined;
+  if (!st.done || phase === 'roll') {
+    scale = 1 + grow * st.p + 0.055 * st.pulse;
+  } else if (phase === 'pop') {
+    scale = 1.05 + grow * 0.25;
+    transition = 'transform 170ms cubic-bezier(.3,1.5,.4,1)';
+  } else {
+    scale = 1;
+    transition = 'transform 340ms cubic-bezier(.2,.8,.3,1)';
+  }
+  let color = sampleRamp(ramp, st.done ? 1 : st.p);
+  if (!st.done && st.pulse > 0) color = mixRgb(color, [255, 255, 255], st.pulse * 0.4);
+  return (
+    <span
+      className="roll-num"
+      data-roll={st.done ? 'done' : 'rolling'}
+      style={{
+        display: 'inline-block',
+        transform: `scale(${scale.toFixed(4)})`,
+        transformOrigin: origin,
+        color: rgbCss(color),
+        ...(transition ? { transition } : {}),
+      }}
+    >
+      {format(st.val)}
+    </span>
+  );
 }
 
 const pctOf = (into: number, span: number) => Math.min(100, Math.max(0, (into / Math.max(1, span)) * 100));
@@ -486,7 +665,6 @@ function useXpBar(o: { play: boolean; reduced: boolean; beforePct: number; after
 }
 
 function XpRow({ d, index, play, reduced }: { d: RewardsData; index: number; play: boolean; reduced: boolean }) {
-  const xp = useTweenValue(0, d.xpGained, { play, reduced, duration: 1000, delay: 200 + index * 160 });
   const bar = useXpBar({
     play, reduced,
     beforePct: pctOf(d.xpIntoLevelBefore ?? 0, d.xpForNextBefore ?? 1),
@@ -499,7 +677,7 @@ function XpRow({ d, index, play, reduced }: { d: RewardsData; index: number; pla
     <div className="rw-row" style={{ animationDelay: `${index * 160}ms` }}>
       <div className="rw-icon">⚡</div>
       <div className="rw-body">
-        <div className="rw-top"><span>XP earned</span><b className="rw-num">+{xp.toLocaleString()}</b></div>
+        <div className="rw-top"><span>XP earned</span><b className="rw-num"><RollNum to={d.xpGained} play={play} reduced={reduced} delay={200 + index * 160} step={10} tone="gainBright" origin="100% 50%" format={(v) => `+${v.toLocaleString()}`} /></b></div>
         <div className="rw-levelbar"><div className={`rw-levelbar-fill${bar.cls}`} style={{ width: `${bar.pct}%` }} /></div>
         <div className="rw-sub">
           {d.rankAfter ? <>{rankGlyph(d.rankAfter)} · </> : <>Level {d.levelAfter} · </>}{d.xpIntoLevel.toLocaleString()}/{d.xpForNext.toLocaleString()} XP
@@ -548,12 +726,11 @@ function CardUpRow({ d, index }: { d: RewardsData; index: number }) {
 }
 
 function CoinsRow({ d, index, play, reduced }: { d: RewardsData; index: number; play: boolean; reduced: boolean }) {
-  const coins = useTweenValue(0, d.coinsGained, { play, reduced, duration: 1000, delay: 200 + index * 160 });
   return (
     <div className="rw-row" style={{ animationDelay: `${index * 160}ms` }}>
       <div className="rw-icon"><CoinIcon size={22} /></div>
       <div className="rw-body">
-        <div className="rw-top"><span>Coins earned</span><b className="rw-num gold">+{coins.toLocaleString()}</b></div>
+        <div className="rw-top"><span>Coins earned</span><b className="rw-num gold"><RollNum to={d.coinsGained} play={play} reduced={reduced} delay={200 + index * 160} step={25} tone="gainGold" origin="100% 50%" format={(v) => `+${v.toLocaleString()}`} /></b></div>
         <div className="rw-sub">Spend them at the stake tables</div>
       </div>
     </div>
@@ -562,7 +739,6 @@ function CoinsRow({ d, index, play, reduced }: { d: RewardsData; index: number; 
 
 function EloRow({ d, index, play, reduced }: { d: RewardsData; index: number; play: boolean; reduced: boolean }) {
   const delta = d.eloBefore != null && d.eloAfter != null ? d.eloAfter - d.eloBefore : 0;
-  const shown = useTweenValue(0, Math.abs(delta), { play, reduced, duration: 1000, delay: 200 + index * 160 });
   if (d.eloBefore == null || d.eloAfter == null) return null;
   // Plain-language labels (Demetrius 2026-10-19): "Partnership rating / 1,000 → 1,000 Elo"
   // meant nothing to players. Say what it is and what happened, in words.
@@ -588,7 +764,7 @@ function EloRow({ d, index, play, reduced }: { d: RewardsData; index: number; pl
       <div className="rw-body">
         <div className="rw-top">
           <span>{label}</span>
-          <b className={`rw-num ${up ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {shown.toLocaleString()}</b>
+          <b className={`rw-num ${up ? 'up' : 'down'}`}><RollNum to={Math.abs(delta)} play={play} reduced={reduced} delay={200 + index * 160} step={10} tone={up ? 'gainGreen' : 'lossRed'} origin="100% 50%" format={(v) => `${up ? '▲' : '▼'} ${v.toLocaleString()}`} /></b>
         </div>
         <div className="rw-sub">{d.eloBefore.toLocaleString()} → {d.eloAfter.toLocaleString()} · Went {up ? 'up' : 'down'} {Math.abs(delta)} after this {d.won ? 'win' : 'loss'}</div>
       </div>
@@ -676,7 +852,7 @@ export default function GameOverRewards({
         <div key="playwell" className="rw-row rw-playwell" data-testid="rewards-playwell" style={{ animationDelay: `${i * 160}ms` }}>
           <div className="rw-icon">⭐</div>
           <div className="rw-body">
-            <div className="rw-top"><span>Playing well</span><b className="rw-num small">+{pw.xp} XP{pw.coins ? <> · +{pw.coins} <CoinIcon size={12} /></> : ''}</b></div>
+            <div className="rw-top"><span>Playing well</span><b className="rw-num small"><RollNum to={pw.xp} play={rowGate} reduced={reduced} delay={200 + i * 160} step={10} tone="smallGain" maxGrow={0.12} origin="100% 50%" format={(v) => `+${v.toLocaleString()} XP`} />{pw.coins ? <> · +{pw.coins} <CoinIcon size={12} /></> : ''}</b></div>
             <ul className="rw-playwell-lines">
               {pw.lines.map((l) => (
                 <li key={l.id}>
@@ -732,9 +908,13 @@ export default function GameOverRewards({
             <table className="cmp-table">
               <thead><tr><th></th><th>Final</th><th>Books</th><th>Nils made</th></tr></thead>
               <tbody>
-                {data.postgame.sides.map((s) => (
-                  <tr key={s.label}><th>{s.label}</th><td>{s.score}</td><td>{s.books}</td><td>{s.nilsMade}</td></tr>
-                ))}
+                {data.postgame.sides.map((s) => {
+                  const top = Math.max(...data.postgame!.sides.map((x) => x.score));
+                  const tone: RollTone = s.score < 0 ? 'scoreLoss' : s.score > 0 && s.score === top ? 'scoreWin' : 'scoreFlat';
+                  return (
+                    <tr key={s.label}><th>{s.label}</th><td><RollNum to={s.score} play={play} reduced={reduced} duration={1150} delay={250} step={50} tone={tone} origin="100% 50%" format={(v) => v.toLocaleString()} /></td><td>{s.books}</td><td>{s.nilsMade}</td></tr>
+                  );
+                })}
                 <tr><th>Your books</th><td colSpan={3}>{data.postgame.myBooks} books{data.postgame.myNilsMade > 0 ? ` · ${data.postgame.myNilsMade} nil${data.postgame.myNilsMade === 1 ? '' : 's'} made` : ''}</td></tr>
               </tbody>
             </table>
