@@ -14,9 +14,10 @@ import { dealHoldStale, openingFlight } from './dealFlight';
 import { retainFrontTexture } from './cardFace';
 import { restingFacing, trickFacingArrived } from './trickFacing';
 import { gatherPose } from './gather';
-import { playFlightPose, type FlightVariant } from './flightPose';
+import { playFlightPose, type FlightVariant, type PlayFlightOpts } from './flightPose';
 import { impactFraction } from '../landTiming';
 import { PILE_THUMP, slamThump } from './shake';
+import { pendingSweepDue, sweepMustWait, type PendingSweep } from './sweepGate';
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -193,6 +194,14 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     tp: new Vector3(), tq: new Quaternion(), ts: 1,
     started: false, firedStart: '' as string, firedLand: '' as string, landDone: false, land: undefined as string | undefined,
     faced: false,
+    // The running tween's own motion / arc / variant / duration, snapshotted at
+    // adoption. A collection retarget changes the live props the moment it is
+    // requested; the flight already in the air must keep flying on ITS OWN
+    // parameters until it rests (see sweepGate.ts).
+    motionSnap: 'flight' as string, arcSnap: 0.25, variantSnap: undefined as FlightVariant | undefined, durSnap: 0,
+    isSweep: false,
+    // A collection move held by the gate until this card's play flight rests.
+    pending: null as PendingSweep<Xform> | null,
   });
   useLayoutEffect(() => {
     const g = ref.current;
@@ -423,7 +432,21 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       s.key = xKey(target);
     }
     const key = finiteTarget ? xKey(target) : s.key;
-    if (finiteTarget && key !== s.key) {
+    // Collection gate (sweepGate.ts): a sweep requested while this card is still
+    // flying its play flight is HELD, not adopted — the card lands first, and the
+    // held sweep is adopted on the frame it rests (see the t >= 1 branch below).
+    // The held copy refreshes every render, so a newer sweep (the dealer
+    // collection after the pile gather) replaces an older held one.
+    const gated = finiteTarget && key !== s.key && sweepMustWait({
+      incomingSfxStart: sfx.current.sfxStart, currentKey: s.key, currentT: s.t, currentMotion: s.motionSnap, currentIsSweep: s.isSweep,
+    });
+    if (gated) {
+      s.pending = {
+        key, target, wait: restingFlightWait(open.delay, true) ?? 0, land: sfx.current.sfxLand,
+        motion, arc, variant, duration,
+      };
+    } else if (finiteTarget && key !== s.key) {
+      s.pending = null;
       // A new spot (the book pile) starts from the card, not from the flung offset.
       if (bl.current.on || bl.current.flung) {
         bl.current.on = false;
@@ -466,6 +489,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       s.tp.set(...target.p); s.tq.set(...target.q); s.ts = target.s;
       // Hand cards never inherit a table/flight scale from a reused mesh: they start exactly at fan scale.
       if (motion === 'slide' || blast === 'hand') s.ss = s.ts;
+      // Snapshot the adopted tween's own parameters: a later collection request
+      // changes the live props at once, but this flight keeps its own until it rests.
+      s.motionSnap = motion; s.arcSnap = arc; s.variantSnap = variant; s.durSnap = duration;
+      s.isSweep = sfx.current.sfxStart === 'sweep';
       s.started = false;
     }
     // Raise is translateY on its own wrapper (the CSS `will-change: transform` idea). The outer fan
@@ -505,13 +532,38 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (!s.faced && finiteTarget) {
         const q = restingFacing(
           [g.quaternion.x, g.quaternion.y, g.quaternion.z, g.quaternion.w],
-          target.q,
+          // A held sweep's live target is the pile, not this flight's rest:
+          // face against the tween's own target, never the collection's.
+          s.pending ? [s.tq.x, s.tq.y, s.tq.z, s.tq.w] : target.q,
           true,
         );
         g.quaternion.set(q[0], q[1], q[2], q[3]);
         s.faced = true;
       }
-      return;
+      const pend = s.pending;
+      if (!pend || !pendingSweepDue(pend, s.t)) return;
+      // The play flight has rested: the held collection starts now, from the
+      // rested pose, on this same frame clock (sweepGate.ts) — so a collection
+      // can never begin before the last card rests, at any frame rate.
+      s.pending = null;
+      if (bl.current.on || bl.current.flung) {
+        bl.current.on = false;
+        bl.current.flung = false;
+        const ig = inner.current;
+        if (ig) { ig.position.set(0, 0, 0); ig.quaternion.identity(); }
+      }
+      s.sp.copy(g.position); s.sq.copy(g.quaternion); s.ss = g.scale.x;
+      s.tp.set(...pend.target.p); s.tq.set(...pend.target.q); s.ts = pend.target.s;
+      s.key = pend.key;
+      s.faced = false;
+      s.landDone = false;
+      s.land = pend.land;
+      s.t = 0;
+      s.wait = pend.wait;
+      s.motionSnap = pend.motion; s.arcSnap = pend.arc; s.variantSnap = pend.variant; s.durSnap = pend.duration;
+      s.isSweep = true;
+      s.started = false;
+      // fall through: the held sweep's tween advances below, on this same frame
     }
     invalidate();
     if (s.wait > 0) { s.wait -= dt; invalidate(); return; }
@@ -531,10 +583,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const st = sfx.current.sfxStart;
       if (st && st !== s.firedStart) { s.firedStart = st; if (moving) sound.play(st, spatialSeat ? { seat: spatialSeat, playerCount: spatialN } : {}); }
     }
-    s.t = Math.min(1, s.t + dt / duration);
+    s.t = Math.min(1, s.t + dt / (s.durSnap || duration));
     const dist = s.sp.distanceTo(s.tp);
     const rw0 = window as unknown as { __bwmRestProbe?: boolean; __bwmScale?: Record<string, number[]> };
-    if (motion === 'gather') {
+    if (s.motionSnap === 'gather') {
       // Won-trick gather: same eased flip to the face-down pile, plus the
       // corner-clearance lift from gather.ts so no corner dips into the felt.
       const pose = gatherPose(
@@ -551,11 +603,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     // card before contact and keeps its lowest corner off the felt, so the card slides
     // into its spot instead of stabbing a corner through the table (owner 2026-10-29).
     // 'lift' is hand-internal and keeps its original single-ease path below.
-    const pose = motion === 'lift' ? null : playFlightPose(
+    const pose = s.motionSnap === 'lift' ? null : playFlightPose(
       { p: [s.sp.x, s.sp.y, s.sp.z], q: [s.sq.x, s.sq.y, s.sq.z, s.sq.w], s: s.ss },
       { p: [s.tp.x, s.tp.y, s.tp.z], q: [s.tq.x, s.tq.y, s.tq.z, s.tq.w], s: s.ts },
       s.t,
-      { motion, arc, variant },
+      { motion: s.motionSnap as PlayFlightOpts['motion'], arc: s.arcSnap, variant: s.variantSnap },
     );
     if (pose) {
       g.position.set(...pose.p);
@@ -583,7 +635,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     }
     // Landing sound + thump fire here, on the frame the card visually hits the felt (after its pose is applied):
     // glide cards touch down at t=0.35 and then slide, so waiting for t=1 played the sound ~0.3s late.
-    if (!s.landDone && s.t >= impactFraction(motion)) {
+    if (!s.landDone && s.t >= impactFraction(s.motionSnap)) {
       s.landDone = true;
       const land = s.land;
       if (land && moving) {

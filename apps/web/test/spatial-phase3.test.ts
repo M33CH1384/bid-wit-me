@@ -33,7 +33,7 @@ describe('spatial phase 3: event-driven gameplay SFX', () => {
     const card = readFileSync(new URL('../src/three/Card3D.tsx', import.meta.url), 'utf8');
     expect(card).toContain('sound.cardSmack(sl2.intensity, spatialSeat, spatialN)');
     expect(card).toContain("sound.play(st, spatialSeat ? { seat: spatialSeat, playerCount: spatialN } : {})");
-    expect(card).toContain('impactFraction(motion)'); // #169: sound still fires on the impact frame
+    expect(card).toContain('impactFraction(s.motionSnap)'); // #169: sound still fires on the impact frame — of the tween's OWN motion (sweepGate snapshot: a collection request may already have replaced the live prop)
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain('routeSfx'); expect(audio).toContain('spatialProbe'); expect(audio).toContain('pickVariant');
     const scene = readFileSync(new URL('../src/three/Scene.tsx', import.meta.url), 'utf8');
