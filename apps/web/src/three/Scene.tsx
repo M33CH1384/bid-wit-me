@@ -57,6 +57,7 @@ import CornerStreetRoom from './CornerStreetRoom';
 import SpeakeasyLoungeRoom from './SpeakeasyLoungeRoom';
 import PorchDeckRoom from './PorchDeckRoom';
 import PorchFigures from './PorchFigures';
+import PersonaFigures from './PersonaFigures';
 import SeatVideoLayer from './SeatVideo';
 import GrandmasKitchenRoom from './GrandmasKitchenRoom';
 import CookoutYardRoom from './CookoutYardRoom';
@@ -189,6 +190,13 @@ export interface SceneProps {
    *  the people framing while the pilot is active. Absent everywhere
    *  else — Low, non-story, other stops and co-op never see a figure. */
   porchFigureSeats?: readonly (string | null)[];
+  /** Per-seat persona figure keys (or null, by seat) for REGULAR
+   *  (non-story) tables: Table sets this for bot seats whose persona
+   *  has a shipped rigged figure (three/PersonaFigures.tsx). The
+   *  figures lazy-mount over the portrait treatment at High quality;
+   *  they are not part of the loader's asset gate. Absent at story
+   *  tables, where the cast system owns the seats. */
+  personaFigureSeats?: readonly (string | null)[];
   /** Per-seat live camera feeds (MediaStream or null, by local seat):
    *  a remote seated human's video renders on a plane at their chair
    *  (three/SeatVideo.tsx; owner directive 2026-10-30). Built only by
@@ -1848,6 +1856,10 @@ export default function Scene(props: SceneProps) {
   // Table says the solo Porch cast sits, at High, on the story seam —
   // the same conditions that mount PorchDeckRoom, plus the prop.
   const porchFiguresActive = grandma && props.storyStopId === 'porch' && hi && !!(props.porchFigureSeats?.some(Boolean));
+  // Persona figures (regular tables): bot seats at NON-story tables,
+  // High only. Story tables never mount them (their cast system owns
+  // the seats), whatever the prop carries.
+  const personaFiguresActive = !props.storyStopId && hi && !!(props.personaFigureSeats?.some(Boolean));
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -2013,6 +2025,18 @@ export default function Scene(props: SceneProps) {
           activeSeat={props.activeSeat ?? null}
           view={props.view ?? 'standing'}
           animate={props.crowdAnimate ?? false}
+        />
+      )}
+      {showTable && textured && personaFiguresActive && (
+        <PersonaFigures
+          seats={props.personaFigureSeats!}
+          positions={props.positions}
+          n={props.n}
+          handCounts={props.handCounts}
+          activeSeat={props.activeSeat ?? null}
+          view={props.view ?? 'standing'}
+          animate={props.crowdAnimate ?? false}
+          venue={def.id}
         />
       )}
       {showTable && (props.seatVideos?.some(Boolean) ?? false) && (
