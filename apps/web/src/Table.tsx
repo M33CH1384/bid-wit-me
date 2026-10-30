@@ -27,6 +27,7 @@ import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import PersonaFace from './PersonaFace';
+import { personaFigureKeyForName } from './personaFigureKey';
 import StoryFace from './story/StoryFace';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
@@ -2752,6 +2753,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const storyFigureSeats: (string | null)[] | undefined = story?.scene && story.scene.stop.id !== 'king' && storySeatIds
     ? Array.from({ length: n }, (_, seat) => (seat === 0 ? null : (storySeatIds[seat] ?? null)))
     : undefined;
+  // PERSONA FIGURES (regular tables, owner go 2026-10-29): at NON-story
+  // tables each bot seat whose persona has a shipped rigged figure gets
+  // the body in the scene (three/PersonaFigures.tsx), keyed by the same
+  // persona+gender key as its portrait plate — face and body can never
+  // disagree. Story tables are excluded on both paths (solo via the
+  // story prop, co-op via the binding's storyStopId): their seats are
+  // story characters, owned by the cast system. Human seats never get
+  // figures (isBotSeat), and personas without a shipped figure resolve
+  // null — the seat keeps the portrait treatment.
+  const personaFigureSeats: (string | null)[] | undefined = !story && !online?.storyStopId
+    ? Array.from({ length: n }, (_, seat) => (isBotSeat(seat) ? personaFigureKeyForName(names[seat] ?? '') : null))
+    : undefined;
   const figureSeats: (string | null)[] | undefined = storyFigureSeats ?? online?.figureSeats;
   // The crowd cue channel (three/kingRailLayout.ts): the table stamps
   // real match moments + speakers here; the 3D figures read it inside
@@ -2855,6 +2868,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           kingRailCast={kingRail}
           seatedFigures={seatedFiguresArr}
           figureSeats={figureSeats}
+          personaFigureSeats={personaFigureSeats}
           seatVideos={online?.seatVideos}
           crowdCue={crowdCue}
           crowdAnimate={!reduceFx && !fx.osReducedMotion}

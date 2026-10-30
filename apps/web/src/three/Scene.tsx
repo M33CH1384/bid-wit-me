@@ -57,6 +57,7 @@ import CornerStreetRoom from './CornerStreetRoom';
 import SpeakeasyLoungeRoom from './SpeakeasyLoungeRoom';
 import PorchDeckRoom from './PorchDeckRoom';
 import PorchFigures from './PorchFigures';
+import PersonaFigures from './PersonaFigures';
 import SeatVideoLayer from './SeatVideo';
 import { FIGURE_SEAT_CONFIGS } from './figureSeats';
 import GrandmasKitchenRoom from './GrandmasKitchenRoom';
@@ -193,6 +194,13 @@ export interface SceneProps {
    *  camera to the people framing while figures are active. Absent
    *  everywhere else — Low and non-story tables never see a figure. */
   figureSeats?: readonly (string | null)[];
+  /** Per-seat persona figure keys (or null, by seat) for REGULAR
+   *  (non-story) tables: Table sets this for bot seats whose persona
+   *  has a shipped rigged figure (three/PersonaFigures.tsx). The
+   *  figures lazy-mount over the portrait treatment at High quality;
+   *  they are not part of the loader's asset gate. Absent at story
+   *  tables, where the cast system owns the seats. */
+  personaFigureSeats?: readonly (string | null)[];
   /** Per-seat live camera feeds (MediaStream or null, by local seat):
    *  a remote seated human's video renders on a plane at their chair
    *  (three/SeatVideo.tsx; owner directive 2026-10-30). Built only by
@@ -1854,6 +1862,10 @@ export default function Scene(props: SceneProps) {
   // the King stop has none: its seated figures ride KingRail.
   const figureSeatConfig = props.storyStopId ? FIGURE_SEAT_CONFIGS[props.storyStopId] : undefined;
   const storyFiguresActive = hi && !!figureSeatConfig && !!(props.figureSeats?.some(Boolean));
+  // Persona figures (regular tables): bot seats at NON-story tables,
+  // High only. Story tables never mount them (their cast system owns
+  // the seats), whatever the prop carries.
+  const personaFiguresActive = !props.storyStopId && hi && !!(props.personaFigureSeats?.some(Boolean));
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -2020,6 +2032,18 @@ export default function Scene(props: SceneProps) {
           view={props.view ?? 'standing'}
           animate={props.crowdAnimate ?? false}
           seatConfig={figureSeatConfig}
+        />
+      )}
+      {showTable && textured && personaFiguresActive && (
+        <PersonaFigures
+          seats={props.personaFigureSeats!}
+          positions={props.positions}
+          n={props.n}
+          handCounts={props.handCounts}
+          activeSeat={props.activeSeat ?? null}
+          view={props.view ?? 'standing'}
+          animate={props.crowdAnimate ?? false}
+          venue={def.id}
         />
       )}
       {showTable && (props.seatVideos?.some(Boolean) ?? false) && (

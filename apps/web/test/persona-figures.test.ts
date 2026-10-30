@@ -95,7 +95,7 @@ describe('the seam wiring', () => {
     expect(scene).toContain('<PersonaFigures');
     expect(scene).toContain('venue={def.id}');
     // the story systems are untouched by the persona layer
-    expect(scene).toContain('{showTable && textured && porchFiguresActive && (');
+    expect(scene).toContain('{showTable && textured && storyFiguresActive && (');
     expect(scene).toContain('seated={props.seatedFigures ?? []}');
   });
 
