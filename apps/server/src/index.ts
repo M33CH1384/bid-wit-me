@@ -8,6 +8,7 @@
  *   GET  /api/ice                 → ICE servers for WebRTC (public STUN; TURN when configured)
  *   POST /api/feedback            → player feedback (+ up to 3 screenshots), see feedback.ts
  *   GET  /api/feedback/admin      → private listing (sign-in form → HttpOnly admin cookie; never a token in the URL)
+ *   POST /api/crashes             → client crash/error telemetry (D1), see crashes.ts; GET /api/crashes/list is the admin read
  *   /api/auth/*                   → accounts + sign-in (D1), see auth/routes.ts; served same-origin via the Pages proxy
  *   POST /api/stats/local         → signed-in offline game (rebuilt server-side, unrated)
  *   GET  /health
@@ -25,6 +26,7 @@ import { CODE_ALPHABET, CODE_LENGTH, GUEST_SESSION, type ServerMsg, isRoomCode, 
 import { Room, type RoomData, ROOM_DATA_VERSION, newRoomData } from './room';
 import { dispatchTableMessage } from './dispatch';
 import { FEEDBACK_LIMITS, type FeedbackRow, adminHtml, hashIp, notifyOwner, parseFeedback, rateOk, tokenOk } from './feedback';
+import { handleCrashes, pruneClientCrashes } from './crashes';
 import { ADMIN_COOKIE, ADMIN_TTL_MS, adminCookieOk, adminLoginHtml, makeAdminCookie, readCookie } from './admin';
 import { type Bucket, LIMITS, type LimitEnv, hit, limited } from './limits';
 import { type AuthEnv, handleAuth } from './auth/routes';
@@ -203,6 +205,12 @@ export default {
 
     if (parts[1] === 'feedback') return feedbackRoute(req, env, parts, url, origin);
 
+    if (parts[1] === 'crashes') {
+      const slow = await limited(req, env, 'info', origin);
+      if (slow) return slow;
+      return handleCrashes(req, env, url, parts, Date.now());
+    }
+
     if (parts[1] === 'auth') {
       // sign-in ceremonies + username checks are rate limited; reading /me and /config isn't
       // username checks run as you type, so they share the roomier lookup bucket
@@ -332,6 +340,9 @@ export default {
    *  plus story call-backs (open story tables summoning their players back). */
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     if (!env.DB) return;
+    // Crash telemetry retention (30 days) rides this hourly cron and runs
+    // even when push is unconfigured — housekeeping must not depend on VAPID.
+    try { await pruneClientCrashes(env.DB, Date.now()); } catch { /* prune is housekeeping only */ }
     const vapid = pushVapid(env);
     if (!vapid) return; // VAPID secrets not configured yet — nothing to send
     try {

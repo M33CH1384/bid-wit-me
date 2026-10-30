@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { isOnlinePath, isWatchPath, watchRoute } from './online/nav';
 import { importChunk } from './chunkLoad';
+import { installCrashTelemetry, noteCrumb, reportCrash } from './telemetry';
 import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
 import DailyBonusReceipt from './DailyBonusReceipt';
@@ -41,7 +42,13 @@ const RewardsPage = lazy(() => importChunk(() => import('./RewardsPage')));
 class RouteGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
   static getDerivedStateFromError(): { failed: boolean } { return { failed: true }; }
-  override componentDidCatch(err: unknown) { console.warn('[bwm] route chunk failed to load', err); }
+  override componentDidCatch(err: unknown) {
+    console.warn('[bwm] route chunk failed to load', err);
+    // Every catch here used to vanish into the console: a fatal in the table /
+    // Scene subtree looked exactly like a chunk failure and left no trace.
+    // Report it as what it is — the boundary is the bounce-to-menu path.
+    reportCrash('boundary', err, { route: location.pathname });
+  }
   override render() {
     if (!this.state.failed) return this.props.children;
     return (
@@ -65,6 +72,9 @@ function RouteLoading() {
 /** "/" = offline (vs bots) as before; "/online" and "/t/CODE" = online tables; "/profile" = Rep profile. */
 function Root() {
   const [path, setPath] = useState(location.pathname);
+  // Crash-telemetry breadcrumb: every route the session visits, so a report
+  // shows the road that led to the crash (table -> boundary -> menu).
+  useEffect(() => { noteCrumb('route', path); }, [path]);
   // Bumped when the first-sign-in preferences step finishes: the screens hold
   // their own Settings snapshots (read at mount), so a remount is how the
   // step's saved settings become the live ones everywhere at once.
@@ -174,6 +184,10 @@ function Root() {
     </>
   );
 }
+
+// Crash telemetry installs before the route tree renders, so the boot's own
+// failures (and the previous session's unclean-exit witness) are captured.
+installCrashTelemetry();
 
 initTheme();
 

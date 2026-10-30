@@ -11,6 +11,7 @@
  * who never closed the tab. A heal belongs to a build, not to a tab.
  */
 import { VERSION } from './version';
+import { reportCrash } from './telemetry';
 
 export const CHUNK_RELOAD_KEY = 'bwm.chunk-reload';
 
@@ -92,6 +93,11 @@ export async function importChunk<T>(load: () => Promise<T>, hooks: ChunkLoadHoo
         }
       }
     }
+    // The failure outlived the cache-bust retries: whether the guarded reload
+    // fires or its budget is already spent for this build, this is the moment
+    // the player bounces (boundary screen / reload to the menu). Report it
+    // before either happens — until 2026-10-30 this left no trace at all.
+    reportCrash('chunk', last, { url: url ?? '', build: buildId });
     try {
       if (storage.getItem(CHUNK_RELOAD_KEY) !== buildId) {
         storage.setItem(CHUNK_RELOAD_KEY, buildId);

@@ -31,6 +31,7 @@ import { backTexture, faceTexture, logoTexture, peekFaceTexture, refreshFacesGra
 import { loadTableImage, prefetchTableTextures, tableTextureUrls } from '../tableAssets';
 import { ClassicHall } from './hallEnv';
 import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
+import { noteCrumb, reportCrash, setCrashContext } from '../telemetry';
 import { importChunk } from '../chunkLoad';
 import { offerTableRenderer } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
@@ -1856,6 +1857,17 @@ export default function Scene(props: SceneProps) {
   const grandma = def.id === 'grandma';
   const mansion = def.id === 'mansion';
   const cubeRoom = barbershop || rooftop || yacht || beach || backyard || church || vegas || speakeasy || grandma || mansion;
+  // Crash telemetry: the Scene's mount/unmount brackets "at a table" for the
+  // unclean-exit witness, and the venue/quality/stop ride every report made
+  // while this table is up. Observation only — no behavior change.
+  useEffect(() => {
+    noteCrumb('scene-mount', `${def.id} ${props.quality}${props.storyStopId ? ` stop=${props.storyStopId}` : ''}`);
+    return () => { noteCrumb('scene-unmount', def.id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    setCrashContext({ venue: def.id, quality: props.quality, storyStop: props.storyStopId ?? null });
+  }, [def.id, props.quality, props.storyStopId]);
   // Seated figures (the Porch pilot, rolled out route-wide): the
   // figures seat only where Table says a story cast sits, at High,
   // and only at a stop with a seat config (three/figureSeats.ts) —
@@ -1897,6 +1909,19 @@ export default function Scene(props: SceneProps) {
       camera={{ fov: 50, near: 0.05, far: 60, position: [0, 4, 3.5] }}
       onCreated={({ gl, size }) => {
         quietShaderErrors(gl);
+        // WebGL context loss: memory pressure's canary, and until now
+        // completely unobserved — no listener existed anywhere, so a lost
+        // context surfaced only as a dead scene or a later boundary bounce.
+        // These listeners only REPORT (no preventDefault, no recovery
+        // change); a restore-handling fix is its own lane.
+        gl.domElement.addEventListener('webglcontextlost', () => {
+          noteCrumb('webgl', 'lost');
+          reportCrash('webgl-lost', new Error('WebGL context lost'), { venue: def.id, quality: props.quality });
+        });
+        gl.domElement.addEventListener('webglcontextrestored', () => {
+          noteCrumb('webgl', 'restored');
+          reportCrash('webgl-restored', new Error('WebGL context restored'), { venue: def.id, quality: props.quality });
+        });
         const w = window as unknown as { __bwmParallelShaders?: boolean };
         w.__bwmParallelShaders = gl.extensions.has('KHR_parallel_shader_compile');
         setAspect(size.width / size.height);

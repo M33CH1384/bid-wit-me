@@ -10,6 +10,7 @@ import { playSendBlocked } from './playGuard';
 import { wsUrl } from './config';
 import { guestSessionId, saveToken, tokenFor } from './identity';
 import { JOIN_TIMEOUT_MS, type JoinFaultKind, type JoinStage, joinFaultLog, joinFaultMessage } from './joinTimeout';
+import { noteCrumb, reportCrash } from '../telemetry';
 
 export type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'closed' | 'notFound';
 
@@ -97,7 +98,11 @@ export class TableConnection {
   }
 
   private set(p: Partial<ConnState>): void {
+    const prevStatus = this.state.status;
     this.state = { ...this.state, ...p };
+    // Crash-telemetry breadcrumb: the connection's state road, so a report
+    // from the table shows whether the socket was healthy or already dying.
+    if (p.status && p.status !== prevStatus) noteCrumb('conn', `${this.code} ${prevStatus}->${p.status}`);
     this.listeners.forEach((f) => f());
   }
 
@@ -353,6 +358,15 @@ export class TableConnection {
         return;
       }
       if (this.stopped || ev.code === 4000 || ev.code === 4003) {
+        // A terminal close (4000 replaced / 4003 kicked|spoken-for) ends a
+        // seated session with NO reconnect — one of the bounce-to-menu
+        // paths. Report it before the status flips, with the close code.
+        if (!this.stopped) {
+          reportCrash('conn-close', new Error(`table socket closed ${ev.code} ${ev.reason}`.trim()), {
+            code: ev.code, reason: ev.reason, table: this.code,
+            hadRoom: !!this.state.room, seated: this.state.seat !== null,
+          });
+        }
         this.set({ status: 'closed' });
         // 4003 is the kick screen. 4000 with no room (replaced before state) must not spin forever.
         if (!this.stopped && !this.state.room && ev.code === 4000) this.noteJoinFault('server');
