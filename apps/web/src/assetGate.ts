@@ -109,6 +109,14 @@ export const STORY_FIGURE_SEAMS: readonly StoryFigureSeam[] = [
     venue: 'mansion', stop: 'high-rise',
     figures: [figureGlb('dee', 'High-Rise Dee'), figureGlb('velvet', 'Velvet'), figureGlb('accountant', 'The Accountant')],
   },
+  {
+    venue: 'blockAfterDark', stop: 'the-pjs',
+    figures: [figureGlb('dee', "Pj's Dee"), figureGlb('captainBlock', 'Captain Block'), figureGlb('brick', 'Brick')],
+  },
+  {
+    venue: 'vegas', stop: 'legends',
+    figures: [figureGlb('dee', 'Legends Dee'), figureGlb('queenie', 'Queenie'), figureGlb('ace', 'Ace')],
+  },
 ];
 
 /** The figure GLBs a story table presents (empty at non-story tables). */

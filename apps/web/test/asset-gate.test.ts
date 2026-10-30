@@ -357,7 +357,12 @@ describe('story seam gate composition (owner 2026-10-28: Rec assets never arrivi
     // (the-pjs), open blockAfterDark tables and the Corner keep the sedan.
     expect(roomGlbUrls('blockAfterDark', 'high', 'king')).toEqual([]);
     expect(roomGlbUrls('blockAfterDark', 'low', 'king')).toEqual([]);
-    expect(roomGlbUrls('blockAfterDark', 'high', 'the-pjs')).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
+    expect(roomGlbUrls('blockAfterDark', 'high', 'the-pjs')).toEqual([
+      { label: expect.any(String), url: SEDAN_GLB_URL },
+      { label: expect.any(String), url: '/assets/figures/dee.glb' },
+      { label: expect.any(String), url: '/assets/figures/captainBlock.glb' },
+      { label: expect.any(String), url: '/assets/figures/brick.glb' },
+    ]);
     expect(roomGlbUrls('blockAfterDark', 'high', null)).toEqual([{ label: expect.any(String), url: SEDAN_GLB_URL }]);
     expect(roomGlbUrls('speakeasy', 'high', 'corner')).toEqual([
       { label: expect.any(String), url: SEDAN_GLB_URL },

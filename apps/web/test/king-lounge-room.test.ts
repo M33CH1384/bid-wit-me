@@ -70,11 +70,19 @@ describe("the King's Lounge — the Venue3D seam", () => {
     // kingActive's equality on 'king' is the whole scoping — the-pjs (Stop 9)
     // and null (non-story) both fall through to the shipped street branch.
     expect(venue3d).not.toContain("storyStopId === 'the-pjs'");
-    // The street's gate is untouched: the sedan still rides roomGlbUrls there.
+    // The street's gate: the sedan still rides roomGlbUrls there, and
+    // since rollout Batch 3 (2026-10-30) the stop's seated story
+    // figures ride it too (the null stop keeps the sedan alone — the
+    // figures are keyed to the stop id).
     expect(roomGlbUrls('blockAfterDark', 'high', 'the-pjs')).toEqual([
       { label: expect.any(String), url: '/assets/venues/blockAfterDark/sedan.glb' },
+      { label: expect.any(String), url: '/assets/figures/dee.glb' },
+      { label: expect.any(String), url: '/assets/figures/captainBlock.glb' },
+      { label: expect.any(String), url: '/assets/figures/brick.glb' },
     ]);
-    expect(roomGlbUrls('blockAfterDark', 'high', null)).toEqual(roomGlbUrls('blockAfterDark', 'high', 'the-pjs'));
+    expect(roomGlbUrls('blockAfterDark', 'high', null)).toEqual([
+      { label: expect.any(String), url: '/assets/venues/blockAfterDark/sedan.glb' },
+    ]);
   });
 
   it('the loader gate mirrors the lounge (follow-up to this batch): no sedan at the king, the studio set rides the classic ledger', () => {

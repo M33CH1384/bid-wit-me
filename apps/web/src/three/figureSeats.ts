@@ -69,6 +69,11 @@ export const FOLDING_SEAT_TOP = -0.408;
  *  the room documents at 0.45 local — FLOOR_Y + 0.45. */
 export const PENTHOUSE_SEAT_TOP = -0.45;
 
+/** The Legends' leather dining chairs (LegendsTableRoom): seat
+ *  cushion box(0.48, 0.055, 0.48) centred at local 0.475 in a group
+ *  at FLOOR_Y — top at FLOOR_Y + 0.5025. */
+export const LEGENDS_SEAT_TOP = -0.3975;
+
 export const FIGURE_SEAT_CONFIGS: Readonly<Record<string, FigureSeatConfig>> = {
   // The pilot's own row: classic anchors, the Porch seat top.
   porch: { seatTop: -0.41, spots: CLASSIC_SPOTS },
@@ -82,4 +87,13 @@ export const FIGURE_SEAT_CONFIGS: Readonly<Record<string, FigureSeatConfig>> = {
   'church-basement': { seatTop: KIT_SEAT_TOP, spots: KIT_SPOTS },
   rooftop: { seatTop: FOLDING_SEAT_TOP, spots: CLASSIC_SPOTS },
   'high-rise': { seatTop: PENTHOUSE_SEAT_TOP, spots: CLASSIC_SPOTS },
+  // Batch 3: the Pj's street room re-declares the classic anchors
+  // with the folding chair (seat box top at local 0.492 — the room's
+  // own note; same folding seat as the Corner/Rooftop); the Legends'
+  // leather dining chairs carry their own cushion top.
+  'the-pjs': { seatTop: FOLDING_SEAT_TOP, spots: CLASSIC_SPOTS },
+  legends: { seatTop: LEGENDS_SEAT_TOP, spots: CLASSIC_SPOTS },
+  // No 'king' row: the King's seated figures are the shipped
+  // KingRail portrait planes (a separate, finale-integrated system);
+  // this layer deliberately does not mount there.
 };

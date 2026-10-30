@@ -68,9 +68,16 @@ describe("the Legends' Table — code-first, no downloads", () => {
     expect(room).toContain('function makeVelvetTexture()');
   });
 
-  it('adds nothing to the loader asset gate (all-code room)', () => {
-    expect(roomGlbUrls('vegas', 'high', 'legends')).toEqual([]);
+  it('adds only its story figures to the loader asset gate (all-code room)', () => {
+    // The room itself stays all-code; the gate carries the stop's
+    // seated story figures (rollout Batch 3, 2026-10-30), High only.
+    expect(roomGlbUrls('vegas', 'high', 'legends')).toEqual([
+      { label: expect.any(String), url: '/assets/figures/dee.glb' },
+      { label: expect.any(String), url: '/assets/figures/queenie.glb' },
+      { label: expect.any(String), url: '/assets/figures/ace.glb' },
+    ]);
     expect(roomGlbUrls('vegas', 'low', 'legends')).toEqual([]);
+    expect(roomGlbUrls('vegas', 'high', null)).toEqual([]);
   });
 });
 

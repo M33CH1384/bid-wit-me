@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { STORY_FIGURE_SEAMS, SEDAN_GLB_URL, roomGlbUrls, storyFigureGlbs } from '../src/assetGate';
-import { FIGURE_SEAT_CONFIGS, FOLDING_SEAT_TOP, KIT_SEAT_TOP, PENTHOUSE_SEAT_TOP } from '../src/three/figureSeats';
+import { FIGURE_SEAT_CONFIGS, FOLDING_SEAT_TOP, KIT_SEAT_TOP, LEGENDS_SEAT_TOP, PENTHOUSE_SEAT_TOP } from '../src/three/figureSeats';
 
 const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
 const pub = (url: string) => join(process.cwd(), 'apps/web', 'public', url);
@@ -250,6 +250,104 @@ describe('the per-stop seat configs (Batch 2)', () => {
     expect(cfg.spots.top).toEqual({ x: 0, z: -2.45, ry: 0 });
     const text = src('src/three/HighRisePenthouseRoom.tsx');
     expect(text).toContain('box(0.56, 0.10, 0.52, 0, 0.40, 0.0)');
+    expect(text).toContain("import { CHAIR_SPOTS } from './classicStudioLayout'");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Batch 3: Stops 9-10 (the Pj's, Legends). The King (Stop 11) keeps  */
+/* its shipped KingRail seated portrait planes — no seam row, no      */
+/* seat config, no registers for king/ringer under this rollout.      */
+/* ------------------------------------------------------------------ */
+
+const BATCH3: Record<string, { venue: string; pair: [string, string]; total: number }> = {
+  'the-pjs': { venue: 'blockAfterDark', pair: ['captainBlock', 'brick'], total: 8734652 },
+  legends: { venue: 'vegas', pair: ['queenie', 'ace'], total: 11032772 },
+};
+
+describe('the gate figure rows (Batch 3 stops)', () => {
+  it('each batch-3 stop gates Dee + its pair, sized exactly, and nowhere else', () => {
+    for (const [stop, { venue, pair, total }] of Object.entries(BATCH3)) {
+      const rows = storyFigureGlbs(venue, stop);
+      expect(rows.map((f) => f.url)).toEqual([
+        '/assets/figures/dee.glb',
+        `/assets/figures/${pair[0]}.glb`,
+        `/assets/figures/${pair[1]}.glb`,
+      ]);
+      let sum = 0;
+      for (const f of rows) sum += statSync(pub(f.url)).size;
+      expect(sum).toBe(total);
+      expect(storyFigureGlbs(venue, null)).toEqual([]);
+      expect(storyFigureGlbs('classic', stop)).toEqual([]);
+    }
+  });
+
+  it("the Pj's figures ride behind the sedan; Legends carries no sedan", () => {
+    expect(roomGlbUrls('blockAfterDark', 'high', 'the-pjs').map((g) => g.url)).toEqual([
+      SEDAN_GLB_URL,
+      '/assets/figures/dee.glb',
+      '/assets/figures/captainBlock.glb',
+      '/assets/figures/brick.glb',
+    ]);
+    expect(roomGlbUrls('vegas', 'high', 'legends').map((g) => g.url)).toEqual([
+      '/assets/figures/dee.glb',
+      '/assets/figures/queenie.glb',
+      '/assets/figures/ace.glb',
+    ]);
+  });
+
+  it('the King stop has NO figure seam — its seated planes are the shipped system', () => {
+    expect(storyFigureGlbs('blockAfterDark', 'king')).toEqual([]);
+    expect(FIGURE_SEAT_CONFIGS.king).toBeUndefined();
+    const fig = src('src/three/PorchFigures.tsx');
+    expect(fig).not.toContain('king: {\n    stature');
+    expect(fig).not.toContain('ringer: {\n    stature');
+  });
+
+  it('batch-3 GLBs exist at honest sizes with q95 texture floors', () => {
+    const floors: Record<string, number> = {
+      captainBlock: 250000, brick: 200000, queenie: 300000, ace: 170000,
+    };
+    for (const [id, floor] of Object.entries(floors)) {
+      expect(statSync(pub(`/assets/figures/${id}.glb`)).size, id).toBeGreaterThan(1_000_000);
+      const buf = readFileSync(pub(`/assets/figures/${id}.glb`));
+      const jsonLen = buf.readUInt32LE(12);
+      const gltf = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'));
+      const largest = Math.max(...gltf.images.map((im: { bufferView: number }) => gltf.bufferViews[im.bufferView].byteLength));
+      expect(largest, `${id} body texture`).toBeGreaterThan(floor);
+    }
+  });
+
+  it('carries a register for every Batch 3 character, statures in the pilot band', () => {
+    const fig = src('src/three/PorchFigures.tsx');
+    const statures: Record<string, number> = {
+      captainBlock: 1.90, brick: 1.73, queenie: 1.72, ace: 1.81,
+    };
+    for (const [id, s] of Object.entries(statures)) {
+      expect(fig).toContain(`${id}: {\n    stature: ${s.toFixed(2)}`);
+    }
+  });
+});
+
+describe('the per-stop seat configs (Batch 3)', () => {
+  it("the Pj's: classic anchors, the folding-chair top from the room's own box", () => {
+    const cfg = FIGURE_SEAT_CONFIGS['the-pjs']!;
+    expect(cfg.seatTop).toBe(FOLDING_SEAT_TOP);
+    expect(cfg.spots.top).toEqual({ x: 0, z: -2.45, ry: 0 });
+    expect(cfg.spots.left).toEqual({ x: -2.3, z: 0, ry: Math.PI / 2 });
+    const text = src('src/three/PjsStreetRoom.tsx');
+    expect(text).toContain('box(0.43, 0.028, 0.40, 0, 0.478, 0), // seat — top at 0.492');
+    expect(text).toContain("import { CHAIR_SPOTS } from './classicStudioLayout'");
+  });
+
+  it('Legends: classic anchors, the leather cushion top from the room’s own box', () => {
+    expect(LEGENDS_SEAT_TOP).toBeCloseTo(-0.9 + 0.475 + 0.0275, 10);
+    const cfg = FIGURE_SEAT_CONFIGS.legends!;
+    expect(cfg.seatTop).toBe(LEGENDS_SEAT_TOP);
+    expect(cfg.spots.top).toEqual({ x: 0, z: -2.45, ry: 0 });
+    expect(cfg.spots.left).toEqual({ x: -2.3, z: 0, ry: Math.PI / 2 });
+    const text = src('src/three/LegendsTableRoom.tsx');
+    expect(text).toContain('box(0.48, 0.055, 0.48, 0, 0.475, 0)');
     expect(text).toContain("import { CHAIR_SPOTS } from './classicStudioLayout'");
   });
 });

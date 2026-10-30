@@ -213,6 +213,27 @@ const FIGURE_REGISTERS: Record<string, FigureRegister> = {
     breathPeriod: 5.2, breathAmp: 0.7, swayAmp: 0.6, gazeDwell: 4.2,
     gaze: ['trick', 'dee', 'velvet', 'fan', 'trick'],
   },
+  // Batch 3 (Stops 9-10): the Pj's pair and the Legends pair.
+  captainBlock: {
+    stature: 1.90, spine: [0.10, 0.06, 0.03],
+    breathPeriod: 5.9, breathAmp: 0.8, swayAmp: 0.5, gazeDwell: 3.4,
+    gaze: ['trick', 'brick', 'fan', 'dee', 'trick'],
+  },
+  brick: {
+    stature: 1.73, spine: [0.13, 0.09, 0.05],
+    breathPeriod: 4.4, breathAmp: 1.1, swayAmp: 1.1, gazeDwell: 2.4,
+    gaze: ['fan', 'captainBlock', 'trick', 'dee', 'fan'],
+  },
+  queenie: {
+    stature: 1.72, spine: [0.07, 0.05, 0.03],
+    breathPeriod: 5.6, breathAmp: 0.8, swayAmp: 0.7, gazeDwell: 3.8,
+    gaze: ['trick', 'ace', 'fan', 'dee', 'trick'],
+  },
+  ace: {
+    stature: 1.81, spine: [0.09, 0.06, 0.04],
+    breathPeriod: 5.0, breathAmp: 0.9, swayAmp: 0.8, gazeDwell: 2.9,
+    gaze: ['fan', 'queenie', 'trick', 'dee', 'fan'],
+  },
 };
 
 /* id -> GLB url: the union of every story seam's figure list (the
