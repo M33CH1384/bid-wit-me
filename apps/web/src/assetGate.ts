@@ -141,6 +141,27 @@ export function roomGlbUrls(
 }
 
 /**
+ * The Pj's recorded night-street bed (owner, 2026-10-30): the audio engine
+ * fetches this file at every street table, so at High the loader's promise
+ * covers it like the sedan — the street the player hears arrives with the
+ * room they see. Excluded at the king stop (the King's Lounge replaces the
+ * street room there; its gate folds the studio ledger instead) and at Low,
+ * where the bed streams in behind the loader as music always has. The bed's
+ * event one-shots (distant voices, car pass-bys) deliberately do NOT gate:
+ * they are optional life, loaded lazily by the engine after the bed starts.
+ */
+export const PJS_BED_URL = '/audio/ambience/pjs-night-street.mp3';
+export function roomAudioUrls(
+  venue: string,
+  quality: 'high' | 'low',
+  storyStopId: string | null,
+): { label: string; url: string }[] {
+  if (quality !== 'high') return [];
+  if (venue === 'blockAfterDark' && storyStopId !== 'king') return [{ label: 'ambience bed (Pj\'s night street)', url: PJS_BED_URL }];
+  return [];
+}
+
+/**
  * Story seams: at High quality a story table's venue room never mounts — the
  * Scene swaps in a bespoke story room for the stop (Scene.tsx's seam
  * branches; Venue3D carries one: at the king stop the King's Lounge

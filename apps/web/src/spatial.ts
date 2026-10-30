@@ -88,10 +88,12 @@ export function withVoiceMuted(muted: Record<string, true> | undefined, playerId
 export const SOUNDSCAPE_ROOMS: Exclude<VenueBed, 'none'>[] = ['cookout', 'basement', 'barbershop', 'casino', 'jazz', 'beach', 'kitchen', 'mansion', 'rooftop', 'yacht'];
 /** Ambient one-shot event sets a venue's bed can schedule (audio.ts buildBed gates on these). */
 export type VenueEvent = 'driveby' | 'headlights';
-/** A venue's music character: `pin` = this track file always (The Pj's); `lean` = signature
+/** A venue's music character: `pin` = the track file the venue is closed to — or, as a
+ *  list, the closed set the venue rotates at random with no immediate repeat, never
+ *  drawing from the general pool (The Pj's, owner 2026-10-30); `lean` = signature
  *  track files the shuffle opens with when the venue is applied (first pick only, then the
  *  global no-repeat shuffle resumes). Track files must exist in audio.ts TRACKS. */
-export interface RoomMusic { pin?: string; lean: readonly string[] }
+export interface RoomMusic { pin?: string | readonly string[]; lean: readonly string[] }
 /**
  * VENUE AUDIO IDENTITY — the single source of truth for how a venue SOUNDS (owner, 2026-10-21:
  * "each venue should have its own feel audibly … and should be consistent"). One entry per
@@ -117,7 +119,7 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'beach', name: 'Beach Cabana', bed: 'beach', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['sunset-drive', '2-hour-delay', 'pretty-little-lies'] }, events: [] },
   { venue: 'grandma', name: "Grandma's Kitchen", bed: 'kitchen', surface: 'laminate', reverb: 'tight', crowd: 'none', music: { lean: ['memories-of-spring', 'glad-to-be-stuck-inside', 'snow-drift'] }, events: [] },
   { venue: 'yacht', name: 'Yacht Deck', bed: 'yacht', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['slowly', 'sunset-drive', '2-hour-delay'] }, events: [] },
-  { venue: 'blockAfterDark', name: "The Pj's", bed: 'street', surface: 'felt', reverb: 'dry-outdoor', crowd: 'low', music: { pin: 'marty-gots-a-plan', lean: [] }, events: ['driveby', 'headlights'] },
+  { venue: 'blockAfterDark', name: "The Pj's", bed: 'street', surface: 'felt', reverb: 'dry-outdoor', crowd: 'low', music: { pin: ['soul-epic', 'overreach', 'no-quit', 'busted-jazz'], lean: [] }, events: ['driveby', 'headlights'] },
 ];
 export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
 
@@ -132,7 +134,7 @@ export function styleForVenue(venue: string): RoomStyle | undefined { return ROO
  * by design — the Rec Center plays in the Classic Studio (bed 'none'), so the stop supplies
  * the gym's 'rec' bed. Everywhere else the venue's own bed (upgraded in buildBed) carries the
  * place. In story context the mood outranks the venue's music character (the Pj's stop plays
- * the danger bed, not the venue's Marty pin — the pin still rules normal Pj's games), and the
+ * the danger bed, not the venue's pin — the pin still rules normal Pj's games), and the
  * King gets his own music, full stop.
  *
  * SOUND SAMPLE (2026-10-23): the Porch is the pilot for the film-mix design — it carries its

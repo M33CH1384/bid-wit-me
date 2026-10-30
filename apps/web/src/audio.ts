@@ -194,6 +194,15 @@ export const TRACKS: Track[] = [
   // from the same renderer. The film mix and its reactivity are unchanged.
   { file: 'porch-theme', title: 'Porch Party (Porch Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
   { file: 'menu-soul', title: 'Come On In (Menu Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', menuOnly: true },
+  // The Pj's rotation (owner, 2026-10-30): mid-to-late-90s rap instrumentals for the
+  // night-street venue — Ketsa's soul-chop boom bap (CC BY 4.0, via Free Music Archive)
+  // and HoliznaCC0's Busted Jazz (CC0). The venue pin in spatial.ts closes The Pj's to
+  // these four, played at random; appended last so every existing track index (the
+  // host-music stamps) keeps its meaning.
+  { file: 'soul-epic', title: 'Soul Epic', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/soul-epic/', credit: '"Soul Epic" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'overreach', title: 'Overreach', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/overreach/', credit: '"Overreach" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'no-quit', title: 'No Quit', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/no-quit/', credit: '"No Quit" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'busted-jazz', title: 'Busted Jazz', artist: 'HoliznaCC0', license: 'CC0', source: 'https://freemusicarchive.org/music/holiznacc0/lo-fi-and-chill/busted-jazz/' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -377,6 +386,43 @@ const AC: typeof AudioContext | undefined = typeof window !== 'undefined'
 
 interface Deck { el: HTMLAudioElement; gain: GainNode; track: number | null; ready: Promise<boolean> | null; url: string | null; loading?: boolean }
 
+/* ---------- The Pj's recorded night street (owner, 2026-10-30) ----------
+ * The street bed is a real recording now: a 64 s seamless loop of CC0 city
+ * recordings (SSE Library — CREDITS.md), with distant voices and car pass-bys
+ * from the same sessions as scheduled one-shot events over it. */
+const PJS_BED_URL = '/audio/ambience/pjs-night-street.mp3';
+const PJS_EVENT_URLS = {
+  voice: ['/audio/ambience/pjs-event-voice-1.mp3', '/audio/ambience/pjs-event-voice-2.mp3', '/audio/ambience/pjs-event-voice-3.mp3'],
+  car: ['/audio/ambience/pjs-event-car-1.mp3', '/audio/ambience/pjs-event-car-2.mp3', '/audio/ambience/pjs-event-car-3.mp3'],
+} as const;
+/** Car variant weights (far / CLOSE / medium-far): the close pass is the loud one —
+ *  the owner density has it at roughly one pick in four. */
+const PJS_CAR_WEIGHTS: readonly number[] = [0.375, 0.25, 0.375];
+/** Event staging gain: the bed file is the −16 LUFS master; the event clips keep
+ *  their premaster staging, so they play through this gain to hold the approved
+ *  demo balance (the loudnorm raised the bed +7.42 dB over its premaster — measured
+ *  RMS on the shipped files). The ratios inside the files (voices under the bed,
+ *  cars over it by variant) are the design; this only re-aligns the two masters. */
+const PJS_EVENT_GAIN = 2.35;
+/** The bed's MP3 loop trim, from the shipped file's own LAME offsets: 1105 samples
+ *  of encoder delay at 44.1 kHz ahead of exactly 64.000 s of content (47 samples of
+ *  end padding behind it). Applied in the time domain so it holds at any context
+ *  sample rate; trimming there reproduces the sample's measured seam (wrap step
+ *  0.043, below the material's own frame-step noise). */
+const PJS_BED_LEAD_S = 1105 / 44100;
+const PJS_BED_SECONDS = 64;
+/** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
+ *  → content only — so buffer looping is seamless. Returns the buffer untouched
+ *  when it is already the content length (a gapless-aware decoder) or too short. */
+function trimLoopBuffer(ctx: AudioContext, buf: AudioBuffer, leadS: number, seconds: number): AudioBuffer {
+  const start = Math.round(leadS * buf.sampleRate);
+  const len = Math.round(seconds * buf.sampleRate);
+  if (start <= 0 || buf.length < start + len) return buf;
+  const out = ctx.createBuffer(buf.numberOfChannels, len, buf.sampleRate);
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) out.copyToChannel(buf.getChannelData(ch).subarray(start, start + len), ch);
+  return out;
+}
+
 class Engine {
   settings: SoundSettings = load();
   private listeners = new Set<() => void>();
@@ -385,6 +431,13 @@ class Engine {
   private sfxBus: GainNode | null = null;
   private ambBus: GainNode | null = null;
   private buffers = new Map<string, AudioBuffer>();
+  /** Recorded-ambience decode cache (the Pj's street bed + its event one-shots),
+   *  keyed to the live context: a rebuild invalidates it — the files re-decode
+   *  from the HTTP cache — instead of float-copying a 64 s stereo bed through
+   *  the sfx buffer map's heal path. In-flight decodes are keyed by context
+   *  too, so a rebuild mid-decode never hands the new bed a dead promise. */
+  private ambCache: { ctx: Ctx; map: Map<string, AudioBuffer> } | null = null;
+  private ambLoading = new Map<string, { ctx: Ctx; p: Promise<AudioBuffer | null> }>();
   /** Live spray-transition hiss (looping source + its gain) while a cover runs. */
   private sprayNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   /** Noise the shot, sheet, and tornado build on first play. Keyed by duration in milliseconds. */
@@ -715,13 +768,23 @@ class Engine {
       }
     }
     // Venue audio identity (spatial.ts ROOM_STYLES — the one definition of how a venue
-    // sounds): a venue may PIN its music (Phase 4: The Pj's always plays "Marty Gots a
-    // Plan", Demetrius 2026-10-19 — the pin now lives in the identity, not a hardcoded
-    // venue check here).
+    // sounds): a venue may PIN its music — the pin lives in the identity, not a hardcoded
+    // venue check here. A single-file pin plays that track every pick (Phase 4: The Pj's
+    // always played "Marty Gots a Plan", Demetrius 2026-10-19). A pin LIST is a closed
+    // rotation: the picks stay inside the venue's own tracks, at random with no immediate
+    // repeat, and the general pool below is never reached (owner, 2026-10-30: The Pj's
+    // four tracks "play randomly in the venue" — the single-track eternity was the defect).
     const music = this.roomStyle?.music;
     if (music?.pin) {
-      const idx = TRACKS.findIndex((t) => t.file === music.pin);
-      if (idx >= 0) return idx;
+      const files = Array.isArray(music.pin) ? music.pin : [music.pin];
+      const idxs = files.map((f) => TRACKS.findIndex((t) => t.file === f)).filter((i) => i >= 0);
+      if (idxs.length) {
+        const fresh = idxs.filter((i) => i !== this.lastTrack);
+        const from = fresh.length ? fresh : idxs;
+        const pick = from[Math.floor(Math.random() * from.length)]!;
+        this.lastTrack = pick;
+        return pick;
+      }
     }
     // …or LEAN: the first pick after a venue is applied comes from its signature tracks,
     // so walking into a venue sounds like that venue; the global shuffle resumes after.
@@ -2761,6 +2824,114 @@ class Engine {
     const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + Math.min(0.01, dur / 3)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(f).connect(g).connect(dest ?? this.venueBus!); src.start(t); src.stop(t + dur + 0.05);
   }
+  /** Fetch + decode one recorded-ambience file into the ambience cache. A load that
+   *  outlives its context (a heal rebuilt it mid-flight) caches nothing and reports
+   *  null — the next bed build retries from the HTTP cache. */
+  private loadAmbience(key: string, url: string): Promise<AudioBuffer | null> {
+    const c = this.ctx;
+    if (!c) return Promise.resolve(null);
+    if (!this.ambCache || this.ambCache.ctx !== c) this.ambCache = { ctx: c, map: new Map() };
+    const cache = this.ambCache.map;
+    const hit = cache.get(key);
+    if (hit) return Promise.resolve(hit);
+    const pending = this.ambLoading.get(key);
+    if (pending && pending.ctx === c) return pending.p;
+    const entry: { ctx: Ctx; p: Promise<AudioBuffer | null> } = { ctx: c, p: Promise.resolve(null) };
+    entry.p = (async (): Promise<AudioBuffer | null> => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const buf = await decodeAudioBuffer(c, await res.arrayBuffer());
+        if (this.ctx !== c) return null;
+        cache.set(key, buf);
+        return buf;
+      } catch { return null; }
+      finally { if (this.ambLoading.get(key) === entry) this.ambLoading.delete(key); }
+    })();
+    this.ambLoading.set(key, entry);
+    return entry.p;
+  }
+
+  /** Start the recorded street bed for THIS bed build: decode (cached), trim the
+   *  MP3's encoder delay so the 64 s loop is sample-exact, and loop it through the
+   *  venue bus. The decode is async; if the bed was stopped or rebuilt meanwhile,
+   *  the captured venue-node sink no longer matches and nothing starts. The event
+   *  one-shots lazy-load alongside (they never gate the table) and the scheduler
+   *  starts now — it simply skips any variant whose buffer has not landed yet. */
+  private startStreetBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    void this.loadAmbience('pjs-bed', PJS_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, PJS_BED_LEAD_S, PJS_BED_SECONDS);
+      src.loop = true;
+      src.connect(this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...PJS_EVENT_URLS.voice, ...PJS_EVENT_URLS.car]) void this.loadAmbience(url, url);
+    this.scheduleStreetEvents();
+  }
+
+  /** Distant life over the recorded bed: two independent randomized timers —
+   *  voices every 30–60 s, car pass-bys every 25–60 s (owner densities,
+   *  2026-10-30) — sharing one busy gate, so an event never talks over another.
+   *  Variants rotate without immediate repeats; the close car pass is weighted
+   *  rarer (~1-in-4). The timers live in venueTimers, so leaving the venue
+   *  silences the street, and the first pass comes a half-interval in, once
+   *  the table has settled. */
+  private scheduleStreetEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the street
+    let lastVoice = -1;
+    let lastCar = -1;
+    const pickFresh = (count: number, last: number): number => {
+      if (last < 0 || count < 2) return Math.floor(Math.random() * count);
+      const v = Math.floor(Math.random() * (count - 1));
+      return v >= last ? v + 1 : v;
+    };
+    const pickCar = (): number => {
+      const cand = PJS_CAR_WEIGHTS.map((w, i) => ({ w, i })).filter((x) => x.i !== lastCar);
+      let roll = Math.random() * cand.reduce((s, x) => s + x.w, 0);
+      for (const x of cand) { roll -= x.w; if (roll <= 0) return x.i; }
+      return cand[cand.length - 1]!.i;
+    };
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = PJS_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: 'voice' | 'car', min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          if (kind === 'voice') {
+            lastVoice = pickFresh(PJS_EVENT_URLS.voice.length, lastVoice);
+            const d = play(PJS_EVENT_URLS.voice[lastVoice]!);
+            if (d) busyUntil = now + d + 1;
+          } else {
+            lastCar = pickCar();
+            const d = play(PJS_EVENT_URLS.car[lastCar]!);
+            if (d) busyUntil = now + d + 1;
+          }
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('voice', 30, 60, true);
+    arm('car', 25, 60, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -2906,10 +3077,16 @@ class Engine {
         // carries 'driveby' + 'headlights'. A bare bed start with no room applied keeps the
         // legacy set, so the street bed always sounds like The Pj's.
         const streetEvents: readonly VenueEvent[] = this.roomStyle?.bed === 'street' ? this.roomStyle.events : ['driveby', 'headlights'];
-        this.vNoise('lowpass', 140, 0.5, 0.05, 0.05, 0.3); // distant traffic rumble
+        // The recorded night street (owner, 2026-10-30 — the Pj's audio fix): a 64 s
+        // seamless loop of real city recordings (CC0 SSE Library — CREDITS.md) is the
+        // bed now. It retires the synth layers it replaces — the filtered-noise traffic
+        // rumble, the sine crickets, the toy two-tone "distant siren", and the synth
+        // bass-car thumps below: the recording carries the real street, and real
+        // pass-bys (a car rolls past slow with the bass up — the close variant) plus
+        // distant voices ride over it as scheduled events (startStreetBed). The grill
+        // sizzle stays: it is the table's own sound, not the street's.
         this.vNoise('highpass', 3500, 0.5, 0.006, 0.35, 0.5); // grill sizzle
-        this.vEvery(1.5, 4, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.07, 4600, 0.04, 'sine', 0.01, { dest: B }); }); // crickets
-        this.vEvery(18, 40, (t) => { this.tone(t, 660, 0.7, 'sine', 0.006, { glideTo: 880, dest: B }); this.tone(t + 0.8, 660, 0.7, 'sine', 0.006, { glideTo: 880, dest: B }); }); // distant siren
+        this.startStreetBed();
         // Cop drive-by: semi-auto gunfire barrage, then a siren wail fading as the cruiser passes (Demetrius 2026-10-19)
         // Variants rotate (never the same twice); gunfire is positioned in 3D, siren pans across.
         if (streetEvents.includes('driveby')) this.vEvery(180, 420, (t) => {
@@ -2949,20 +3126,6 @@ class Engine {
         });
         // Calm drive-by: headlights sweep the fence, no gunfire — rarer and softer than the barrage above
         if (streetEvents.includes('headlights')) this.vEvery(300, 620, (t) => this.headlightPass(t));
-        // Story Audio Pass: a car rolls past slow with the bass up — you feel it in the
-        // folding table before you hear it. Thumps sweep with the car, then it's gone.
-        this.vEvery(55, 130, (t) => {
-          const c = this.ctx!;
-          const pan = this.drivebyPanner(-50, 11);
-          if (pan) {
-            pan.connect(B);
-            pan.positionX.setValueAtTime(-11, t);
-            pan.positionX.linearRampToValueAtTime(11, t + 7);
-            window.setTimeout(() => { try { pan.disconnect(); } catch { /* already gone */ } }, (t - c.currentTime + 9) * 1000);
-          }
-          const out = pan ?? B;
-          for (let i = 0; i < 7; i++) { this.tone(t + 1 + i * 0.82, 56, 0.34, 'sine', 0.055, { dest: out }); this.tone(t + 1.4 + i * 0.82, 49, 0.3, 'sine', 0.04, { dest: out }); }
-        });
         break;
       }
       default:

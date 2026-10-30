@@ -16,7 +16,7 @@ import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './t
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
 import { type VenueId, VENUE_DEFS, AFTER_DARK_VENUE, fetchVenueUnlocks, venueAssetUrls, venueUnlocked } from './venues';
-import { assetSettled, createAssetGate, imageSettled, fetchSettled, gateLedgerFiles, gateLedgerVenue, loaderStillUp, roomGlbUrls } from './assetGate';
+import { assetSettled, createAssetGate, imageSettled, fetchSettled, gateLedgerFiles, gateLedgerVenue, loaderStillUp, roomAudioUrls, roomGlbUrls } from './assetGate';
 import { type FormEvent, Fragment, type ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -2613,6 +2613,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (urls.rail) gate.add(`venue rail ${urls.rail}`, imageSettled(urls.rail));
     if (urls.env) gate.add(`venue environment ${urls.env}`, fetchSettled(urls.env));
     for (const g of roomGlbUrls(venue, settings.quality, stopId)) gate.add(g.label, fetchSettled(g.url));
+    for (const a of roomAudioUrls(venue, settings.quality, stopId)) gate.add(a.label, fetchSettled(a.url));
     gate.addGroup(`deck art (${settings.deck})`, whenDeckArtSettled(settings.deck));
     gate.add(`card back (${settings.deck})`, whenDeckBackSettled(settings.deck));
     for (const seat of loadingSeats) {

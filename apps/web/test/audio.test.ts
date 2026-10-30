@@ -14,19 +14,19 @@ describe('music playlist', () => {
     for (let i = 1; i < seq.length; i++) expect(seq[i]).not.toBe(seq[i - 1]);
     for (let k = 0; k < 200; k++) expect(new Set(seq.slice(k * TRACKS.length, (k + 1) * TRACKS.length)).size).toBe(TRACKS.length);
   });
-  it('has the 18 approved tracks (5 originals first) and the exact CC-BY attribution', () => {
+  it('has the 22 approved tracks (5 originals first) and the exact CC-BY attribution', () => {
     expect(TRACKS.map((t) => t.title).slice(0, 5)).toEqual(['Windows Down', 'Coins', 'Final Level', '2 Hour Delay', 'Chillin Hard']);
-    expect(TRACKS.filter((t) => !t.storyOnly && !t.menuOnly).length).toBe(18);
+    expect(TRACKS.filter((t) => !t.storyOnly && !t.menuOnly).length).toBe(22);
     expect(CC_BY_LINE).toBe('"Chillin Hard" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/');
   });
   it('the story score rides along as original, story-only tracks — never in the general pool, never CC-BY', () => {
-    expect(TRACKS.length).toBe(24);
+    expect(TRACKS.length).toBe(28);
     const story = TRACKS.filter((t) => t.storyOnly);
     expect(story.map((t) => t.file)).toEqual(['story-theme', 'story-theme-sparse', 'story-danger', 'story-king', 'porch-theme']);
     for (const t of story) { expect(t.license).toBe('Original'); expect(t.credit).toBeUndefined(); }
-    expect(CC_BY_LINES.length).toBe(11);
+    expect(CC_BY_LINES.length).toBe(14);
     const pool = generalPool();
-    expect(pool.length).toBe(18);
+    expect(pool.length).toBe(22);
     for (const i of pool) { expect(TRACKS[i]!.storyOnly).toBeFalsy(); expect(TRACKS[i]!.menuOnly).toBeFalsy(); }
   });
 });

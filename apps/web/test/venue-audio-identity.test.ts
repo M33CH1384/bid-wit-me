@@ -38,10 +38,12 @@ describe('venue audio identity', () => {
     for (const v of VENUES) expect(VENUE_DEFS[v].bed, v).toBe(audioIdentityForVenue(v)!.bed);
   });
 
-  it("only The Pj's pins its music, and its track is real", () => {
+  it("only The Pj's pins its music, and its tracks are real", () => {
     for (const v of VENUES) {
       const id = audioIdentityForVenue(v)!;
-      if (v === 'blockAfterDark') expect(id.music.pin).toBe('marty-gots-a-plan');
+      // The Pj's pin is a closed rotation of four (owner, 2026-10-30): the venue
+      // plays these at random and never draws from the general pool.
+      if (v === 'blockAfterDark') expect(id.music.pin).toEqual(['soul-epic', 'overreach', 'no-quit', 'busted-jazz']);
       else expect(id.music.pin, v).toBeUndefined();
     }
   });
@@ -49,7 +51,8 @@ describe('venue audio identity', () => {
   it('every lean/pin track file exists in the playlist (no tracks added or removed)', () => {
     const files = new Set(TRACKS.map((t) => t.file));
     for (const r of ROOM_STYLES) {
-      if (r.music.pin) expect(files.has(r.music.pin), `${r.venue} pin`).toBe(true);
+      const pins = r.music.pin ? (Array.isArray(r.music.pin) ? r.music.pin : [r.music.pin]) : [];
+      for (const f of pins) expect(files.has(f), `${r.venue} pin ${f}`).toBe(true);
       for (const f of r.music.lean) expect(files.has(f), `${r.venue} lean ${f}`).toBe(true);
     }
   });

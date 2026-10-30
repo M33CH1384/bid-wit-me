@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, SEDAN_GLB_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
-  noteRoomAssets, notedRoomAssets, roomGlbUrls, storySeamMounts,
+  ASSET_GATE_CAP_MS, PJS_BED_URL, SEDAN_GLB_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
+  noteRoomAssets, notedRoomAssets, roomAudioUrls, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
 import { deckArtUrlsFor, whenDeckArtSettled, whenDeckBackSettled } from '../src/decks';
@@ -146,6 +146,24 @@ describe('room asset enumeration', () => {
     expect(roomGlbUrls('grandma', 'high', null)).toEqual([]);
     expect(roomGlbUrls('grandma', 'low', 'porch')).toEqual([]);
     expect(roomGlbUrls('classic', 'high', null)).toEqual([]);
+  });
+
+  it("the Pj's recorded bed rides the gate at High street tables — never the king stop, never Low", () => {
+    // Owner, 2026-10-30: the recorded night-street bed joins the Pj's loader gate
+    // (the gate gains one unit at the regular venue and at the the-pjs stop; the
+    // bed's event one-shots deliberately do not gate and are not listed here).
+    expect(roomAudioUrls('blockAfterDark', 'high', null)).toEqual([{ label: expect.any(String), url: PJS_BED_URL }]);
+    expect(roomAudioUrls('blockAfterDark', 'high', 'the-pjs')).toEqual([{ label: expect.any(String), url: PJS_BED_URL }]);
+    expect(roomAudioUrls('blockAfterDark', 'high', 'king')).toEqual([]);
+    expect(roomAudioUrls('blockAfterDark', 'low', null)).toEqual([]);
+    expect(roomAudioUrls('blockAfterDark', 'low', 'the-pjs')).toEqual([]);
+    expect(roomAudioUrls('speakeasy', 'high', null)).toEqual([]);
+    expect(roomAudioUrls('speakeasy', 'high', 'corner')).toEqual([]);
+    expect(existsSync(new URL('../public/audio/ambience/pjs-night-street.mp3', import.meta.url))).toBe(true);
+    // The engine fetches the same file the gate waits on (audio.ts carries its own
+    // copy of the URL — the two literals must never drift apart).
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain(`const PJS_BED_URL = '${PJS_BED_URL}'`);
   });
 
   it('the gate sedan URL is the very file PjsStreetRoom loads', () => {

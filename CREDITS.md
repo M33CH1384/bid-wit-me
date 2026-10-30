@@ -42,6 +42,8 @@ CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/ (no attribution requ
 | `siren.mp3` (RIP-sheet police wail) | "Whelen Wail" by Jefflix — https://freesound.org/people/Jefflix/sounds/157867/ — "Wail sound miked directly from the Whelen siren box" | CC0 1.0 |
 | `spray-shake.mp3` (spray-transition can shake) | "Spray Paint Can Shaking" by Beenjamone — https://freesound.org/people/Beenjamone/sounds/548623/ — a real spray paint can, shaken (the metal ball is audible), Blue Yeti | CC0 1.0 |
 | `spray-hiss.mp3` (spray-transition aerosol hiss) | "Spray Can Sound Effects (Shaking, Spraying)" by BorzSounds — https://freesound.org/people/BorzSounds/sounds/842753/ — a real spray can shaken and sprayed, Zoom H6 | CC0 1.0 |
+| `audio/ambience/pjs-night-street.mp3` (The Pj's night-street bed — 64 s seamless loop) | SSE Library (USC Standard Sound Effects library mirror) — https://archive.org/details/SSE_Library_AMBIENCE — layered recordings: distant traffic rumble, busy vintage traffic through a city window, busy French traffic ambience, night urban air | CC0 1.0 |
+| `audio/ambience/pjs-event-voice-1..3.mp3` / `pjs-event-car-1..3.mp3` (The Pj's street events) | SSE Library — https://archive.org/details/SSE_Library_CROWDS (crowd walla, low-passed and indistinct by design) and https://archive.org/details/SSE_Library_VEHICLES (real car pass-bys: medium, close, far) | CC0 1.0 |
 
 Kenney files were re-encoded from OGG to mono 64 kbps MP3 (plays on iOS Safari). `siren.mp3` is the same encoding: a 2.7 s slice of that Whelen wail (the rising sweep, from about 5.04 s), with a short fade-in and a half-sine fade-out over the last 0.65 s, peak-normalized to about −1.7 dBTP, mono 64 kbps MP3 at 44.1 kHz. CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/. The your-turn chime, cut/trump hit, spades-broken sting,
 whoosh, BID MADE / SET! / NIL! / BAG PENALTY stingers, win/lose jingles and the optional lounge ambience are
@@ -76,8 +78,13 @@ The spray-transition sounds are cuts of those two recordings, stereo 112 kbps MP
 | `story-king.mp3` | The King of the Block | Bid Wit Me — original score, composed & rendered for this game (no samples) | Original |
 | `porch-theme.mp3` | Porch Party (Porch Theme) | Bid Wit Me — original score, composed & rendered for this game (no samples); the Porch film-mix pilot (sound sample, 2026-10-23). Second take (2026-10-23): the sample's "Porchlight" was replaced at the owner's direction with an upbeat old-school R&B groove from the same renderer | Original |
 | `menu-soul.mp3` | Come On In (Menu Theme) | Bid Wit Me — original score, composed & rendered for this game (no samples); the menu theme (sound sample, 2026-10-23) | Original |
+| `soul-epic.mp3` | Soul Epic | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/soul-epic/ | CC BY 4.0 |
+| `overreach.mp3` | Overreach | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/overreach/ | CC BY 4.0 |
+| `no-quit.mp3` | No Quit | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/no-quit/ | CC BY 4.0 |
+| `busted-jazz.mp3` | Busted Jazz | HoliznaCC0 — https://freemusicarchive.org/music/holiznacc0/lo-fi-and-chill/busted-jazz/ | CC0 1.0 |
 
 Holizna tracks are CC0 (no credit required); courtesy credit: Music by Holizna.
+The four tracks appended on 2026-10-30 (Soul Epic / Overreach / No Quit by Ketsa, CC BY 4.0, and Busted Jazz by HoliznaCC0, CC0 1.0) are The Pj's venue rotation: the venue is pinned to them and plays them at random (owner, 2026-10-30). Busted Jazz needs no credit (CC0); courtesy credit: "Busted Jazz" by HoliznaCC0, via Free Music Archive.
 The four story tracks are the game's own music (Story Mode original score, 2026-10-21) — they are not Creative Commons material and carry no attribution requirement. The same holds for `porch-theme.mp3` and `menu-soul.mp3` (sound sample, 2026-10-23), rendered by the same in-house pipeline.
 
 Required attributions (also shown on the in-game Credits screen):
@@ -103,6 +110,12 @@ Lo-Fi Lounge Chill Hip Hop CITY by Alex-Productions | https://onsound.eu/ Music 
 Slow Grind by Ron Gelinas Chillout Lounge | https://soundcloud.com/atmospheric-music-portal Creative Commons Attribution 3.0 Unported License https://creativecommons.org/licenses/by/3.0/deed.en_US Music promoted by https://www.chosic.com/free-music/all/
 
 "Marty Gots a Plan" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/
+
+"Soul Epic" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.
+
+"Overreach" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.
+
+"No Quit" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.
 
 Changes: every track loudness-normalized to −16 LUFS (two-pass ffmpeg loudnorm, −1.5 dBTP, `scripts/normalize-music.sh`) and
 encoded to 128 kbps stereo MP3 (44.1 kHz), metadata/cover art stripped. At playback a gentle mid/side stereo widening
