@@ -225,6 +225,16 @@ export function filmTargets(phase: string): FilmTargets { return phase === 'bidd
 export const CC_BY_LINES = TRACKS.filter((t) => t.credit).map((t) => t.credit!);
 export const CC_BY_LINE = CC_BY_LINES[0]!;
 const XFADE = 4; // seconds of crossfade between tracks
+/** Dropout watchdog cadence: how often the engine verifies its stems are
+ *  actually sounding (see watchdogTick). */
+const WATCHDOG_MS = 2000;
+/** A deck fetch that never settles (a connection silently reaped while the
+ *  page was backgrounded) must fail like any other load error, not wedge the
+ *  crossfade state machine forever. Generous enough for a slow network. */
+const MUSIC_FETCH_TIMEOUT_MS = 20000;
+/** Analyser RMS below this while a deck verifiably plays = digital silence:
+ *  the graph is up, every flag says playing, and nothing is sounding. */
+const OUTPUT_SILENCE_EPS = 0.0005;
 
 /** Indices of the tracks the general shuffle may play — every track except the storyOnly score and the menuOnly menu theme. */
 export function generalPool(): number[] { return TRACKS.map((t, i) => i).filter((i) => !TRACKS[i]!.storyOnly && !TRACKS[i]!.menuOnly); }
@@ -357,13 +367,15 @@ const FILES: Record<string, string[]> = {
   // Same fetch/decode path, so warmEffects has both decoded before the first spray.
   'spray-shake': ['spray-shake'], 'spray-hiss': ['spray-hiss'],
 };
+/** Total one-shot SFX buffers a complete load() decodes (the watchdog's readiness bar). */
+const SFX_COUNT = Object.values(FILES).reduce((n, a) => n + a.length, 0);
 
 type Ctx = AudioContext;
 const AC: typeof AudioContext | undefined = typeof window !== 'undefined'
   ? (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
   : undefined;
 
-interface Deck { el: HTMLAudioElement; gain: GainNode; track: number | null; ready: Promise<boolean> | null; url: string | null }
+interface Deck { el: HTMLAudioElement; gain: GainNode; track: number | null; ready: Promise<boolean> | null; url: string | null; loading?: boolean }
 
 class Engine {
   settings: SoundSettings = load();
@@ -396,6 +408,20 @@ class Engine {
   private lastRecreateAt = 0;
   /** Self-heal retry timer: runs only while a restore is pending (see publishRestore). */
   private healTimer: number | null = null;
+  /** Dropout watchdog: verifies stems against ground truth while sound is
+   *  wanted (see watchdogTick). Runs for the life of the first unlock. */
+  private watchdogTimer: number | null = null;
+  /** Output meter on the master bus (master → analyser → compressor). The
+   *  only witness that can catch a graph that reads 'running' but is silent. */
+  private analyser: AnalyserNode | null = null;
+  /** One-shot post-wake silence verification (see armVerify). */
+  private verifyTimer: number | null = null;
+  private silenceTicks = 0;
+  private stemMissTicks = 0;
+  private deckStallTicks = 0;
+  private lastDeckPos = -1;
+  private lastSfxRetryAt = 0;
+  private lastErrorRetryAt = 0;
   private loadGen = 0;
   /** cue counter (exposed for automated checks) */
   played: Record<string, number> = {};
@@ -544,7 +570,7 @@ class Engine {
   /** One crossfade at a time: a second advance (an 'ended' racing the fade) would flip back and play two tracks. */
   private advancing = false;
   /** Test probe: decks actually audible right now (not paused, gain up). Must never exceed 2, and is 1 outside a crossfade. */
-  playingDeckCount(): number { return this.decks.filter((d) => d.url && !d.el.paused && d.gain.gain.value > 0.01).length; }
+  playingDeckCount(): number { return this.decks.filter((d) => d.url && !d.el.paused && d.gain.gain.value > 0.01 && !this.deckDead(d)).length; }
 
   /** Mono-compatible widening: M/S with the side (above 150 Hz) boosted and slowly "breathing". L+R is unchanged. */
   private buildMusicChain(): GainNode {
@@ -603,6 +629,11 @@ class Engine {
       el.addEventListener('timeupdate', () => this.onTime(deck));
       el.addEventListener('ended', () => { if (deck.url && this.decks[this.active] === deck && !this.fading) { this.fading = true; void this.advance(); } });
       el.addEventListener('playing', () => { if (deck.url && this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); this.applyTension(); } });
+      // A media error on the sounding deck (decode failure, resource torn
+      // down by the OS) used to be invisible: no listener, no reload, the
+      // status kept reading 'playing'. Reconcile — syncMusic reloads a dead
+      // deck instead of play()ing its corpse.
+      el.addEventListener('error', () => { if (this.decks[this.active] === deck && wantsMusic(this.settings)) this.syncMusic(); });
       this.decks.push(deck);
     }
   }
@@ -636,9 +667,19 @@ class Engine {
   private loadDeck(deckIdx: number, track: number): Promise<boolean> {
     const d = this.decks[deckIdx]!;
     d.track = track;
+    d.loading = true;
     d.ready = (async () => {
+      // The fetch is timeout-guarded: a connection silently reaped while the
+      // page was backgrounded can leave a fetch pending FOREVER, and an
+      // unsettled ready latches advance()'s advancing/fading flags — the
+      // playing track ends, its 'ended' is suppressed by the latched fade,
+      // and the music dies with every status still reading 'playing'
+      // (reproduced 2026-10-30). A timeout turns the hang into the ordinary
+      // load-failure path, which retries other tracks and recovers.
+      const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const killer = ctl ? window.setTimeout(() => ctl.abort(), MUSIC_FETCH_TIMEOUT_MS) : null;
       try {
-        const res = await fetch(`/audio/music/${TRACKS[track]!.file}.mp3`);
+        const res = await fetch(`/audio/music/${TRACKS[track]!.file}.mp3`, ctl ? { signal: ctl.signal } : undefined);
         if (!res.ok) throw new Error(String(res.status));
         const blob = await res.blob();
         if (d.track !== track) return false;
@@ -649,6 +690,9 @@ class Engine {
         return true;
       } catch {
         return false;
+      } finally {
+        if (killer !== null) window.clearTimeout(killer);
+        d.loading = false;
       }
     })();
     return d.ready;
@@ -761,6 +805,21 @@ class Engine {
     if (!this.decks.length || !this.musicBus) return;
     this.musicBus.gain.setTargetAtTime(this.settings.musicVolume ** 1.6 * 0.85, this.ctx.currentTime, 0.1);
     const cur = this.decks[this.active]!;
+    if (cur.track !== null && !this.deckLoading(cur) && (this.deckDead(cur) || !cur.url)) {
+      // The sounding deck lost its resource (OS media teardown, dead blob,
+      // decode error) or a previous start failed outright. play() on such an
+      // element flips paused=false with no data behind it — a phantom
+      // 'playing' that IS the dropout bug wearing a healthy status. Reload
+      // the track for real instead of re-asserting the lie.
+      void this.restartDeck(this.active);
+      return;
+    }
+    if (this.deckLoading(cur)) {
+      // A start / restart / crossfade load owns this deck right now; its
+      // completion plays it or reports the error. Syncing here could only
+      // play() an element with no source yet — the phantom again.
+      return;
+    }
     if (cur.track === null) {
       // first start happens inside the user's tap: prime both decks for iOS, then fetch + play
       this.primeDecks();
@@ -785,6 +844,44 @@ class Engine {
     } else {
       cur.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.3);
     }
+  }
+
+  /** A deck is DEAD when it holds a track and a fetched blob URL, but the
+   *  element's resource is gone: an error is latched, the src was stripped,
+   *  or the element reports it has no source. Ground truth from the element
+   *  itself — the flags (track, musicStatus) cannot see this state, which is
+   *  why the 2026-10-30 dropout survived every earlier heal: they all
+   *  reconciled flags, never elements. */
+  private deckDead(d: Deck): boolean {
+    if (d.track === null || !d.url) return false; // nothing loaded yet — not dead, just unready
+    if (d.el.error) return true;
+    if (!d.el.src) return true;
+    if (d.el.networkState === 3) return true; // NETWORK_NO_SOURCE
+    return false;
+  }
+
+  private deckLoading(d: Deck): boolean { return d.loading === true; }
+
+  /** Reload the active deck's track from scratch and play it. The recovery
+   *  for a dead deck, wherever the death is noticed (sync, watchdog, error
+   *  event). Never runs mid-crossfade: advance() owns the decks then, and
+   *  its own timeout-guarded loads settle the fade one way or the other. */
+  private async restartDeck(idx: number) {
+    if (this.advancing) return;
+    const d = this.decks[idx];
+    if (!d || d.track === null || this.deckLoading(d)) return;
+    this.musicStatus = 'loading'; this.emit();
+    let ok = await this.loadDeck(idx, d.track);
+    for (let tries = 0; !ok && tries < 3; tries++) ok = await this.loadDeck(idx, this.pickNext());
+    if (!this.ctx || !wantsMusic(this.settings) || this.active !== idx) return;
+    if (!ok) { this.musicStatus = 'error'; this.emit(); return; }
+    const t = this.ctx.currentTime;
+    d.gain.gain.cancelScheduledValues(t);
+    d.gain.gain.setValueAtTime(Math.max(0.0001, d.gain.gain.value), t);
+    d.gain.gain.linearRampToValueAtTime(1, t + 0.8);
+    d.el.currentTime = 0;
+    void d.el.play().catch(() => undefined);
+    this.musicStatus = 'playing'; this.emit(); this.applyTension();
   }
 
   /* ---------- unlock, and bring sound back after iOS interrupts it ---------- */
@@ -827,6 +924,13 @@ class Engine {
     // renegotiate the session while the game was down (prevention pass — the claim
     // lives in claimPlaybackSession, feature-detected, silent where unsupported).
     this.claimSession();
+    // Every wake also arms the outcome verification: the syncs below reconcile
+    // flags, and ~1s later armVerify checks the graph is actually SOUNDING —
+    // if a deck verifiably plays into digital silence, the wake escalates to
+    // a rebuild. This is what makes the speaker button a guaranteed recovery
+    // instead of a hopeful one (2026-10-30: "most times it never comes back").
+    this.startWatchdog();
+    this.armVerify();
     if (kind === 'show' && !this.unlocked) return;
     if (kind === 'gesture' && this.unlocked && this.liveState(this.ctx) === 'running') {
       if (this.needsRestore) this.publishRestore();
@@ -905,6 +1009,122 @@ class Engine {
     }
   }
 
+  /* ---------- the dropout watchdog: verify outcomes, not flags ----------
+   * Every earlier heal reconciled STATE: context state, playing flags, sync
+   * coverage. The 2026-10-30 recurrence lived entirely in the gap between
+   * state and outcome — elements paused or resource-dead under a 'playing'
+   * status, a crossfade latched on a fetch that would never settle, and a
+   * graph rendering into silence with the context reporting 'running'.
+   * None of those move ctx.state, so the restore heal never fired and the
+   * speaker tap (the same flag syncs) could not revive them. The watchdog
+   * checks ground truths on a slow tick while sound is wanted:
+   *   - a deck whose element lost its resource → reload it (restartDeck);
+   *   - music wanted, decks built, nothing verifiably playing → re-sync;
+   *   - a playing element whose position froze → reload it;
+   *   - a bed claiming to play with no live nodes → rebuild the beds;
+   *   - an incomplete SFX set → retry the loader (spaced);
+   *   - a verifiably playing deck heard as digital silence at the master
+   *     meter, three ticks running → rebuild the context (the only cure
+   *     for a dead output path, and the escalation the tap also uses).
+   */
+  private startWatchdog() {
+    if (typeof window === 'undefined' || this.watchdogTimer !== null) return;
+    this.watchdogTimer = window.setInterval(() => this.watchdogTick(), WATCHDOG_MS);
+  }
+
+  private outputRms(): number {
+    if (!this.analyser) return -1;
+    try {
+      const buf = new Float32Array(this.analyser.fftSize);
+      this.analyser.getFloatTimeDomainData(buf);
+      let acc = 0;
+      for (let i = 0; i < buf.length; i++) acc += buf[i]! * buf[i]!;
+      return Math.sqrt(acc / buf.length);
+    } catch { return -1; }
+  }
+
+  /** True when every witness says sound should be audible — context running,
+   *  master up, a deck verifiably playing — yet the master meter hears
+   *  digital silence. The signature of a dead output path (iOS interruption
+   *  residue, audio-route change), invisible to every state check. */
+  private outputDead(): boolean {
+    if (!this.analyser || !this.ctx || !this.unlocked) return false;
+    if (this.liveState(this.ctx) !== 'running') return false;
+    if (!this.master || this.master.gain.value <= 0.01) return false; // muted / film hold: silence is intended
+    if (this.advancing || this.fading) return false; // a crossfade owns the decks; its loads are timeout-guarded
+    if (!wantsMusic(this.settings) || this.playingDeckCount() === 0) return false;
+    const rms = this.outputRms();
+    return rms >= 0 && rms < OUTPUT_SILENCE_EPS;
+  }
+
+  /** Rebuild the context through the same rate limit as the interruption
+   *  paths, then re-publish restore state (a rebuild that lands suspended
+   *  hands over to the needs-tap + heal-timer machinery, honestly). */
+  private escalateGraph() {
+    if (this.recreating || !recreateDue(this.lastRecreateAt, performance.now())) return;
+    this.lastRecreateAt = performance.now();
+    this.recreating = true;
+    try { this.recreateContext(); } finally { this.recreating = false; }
+    this.publishRestore();
+  }
+
+  /** After a wake, verify the outcome once the syncs have had a moment to
+   *  land: two silence readings ~0.8s apart with a deck claiming output
+   *  escalate to a rebuild. Armed on every wake; the claim gates make it a
+   *  no-op whenever sound is off, muted, held for a film, or honestly loud. */
+  private armVerify() {
+    if (typeof window === 'undefined' || this.verifyTimer !== null) return;
+    this.verifyTimer = window.setTimeout(() => {
+      this.verifyTimer = null;
+      if (!this.outputDead()) return;
+      window.setTimeout(() => { if (this.outputDead()) this.escalateGraph(); }, 800);
+    }, 800);
+  }
+
+  private watchdogTick() {
+    if (!this.unlocked || !this.ctx) return;
+    if (this.liveState(this.ctx) !== 'running') { this.silenceTicks = 0; this.stemMissTicks = 0; this.deckStallTicks = 0; return; }
+    const now = performance.now();
+    // SFX readiness: a load that finished with holes gets a spaced retry.
+    if (this.buffers.size < SFX_COUNT && !this.loading && now - this.lastSfxRetryAt > 15000) {
+      this.lastSfxRetryAt = now;
+      this.load();
+    }
+    if (wantsMusic(this.settings) && this.decks.length) {
+      const cur = this.decks[this.active]!;
+      if (this.musicStatus === 'error' && now - this.lastErrorRetryAt > 10000) {
+        this.lastErrorRetryAt = now;
+        this.syncMusic();
+      } else if (this.deckDead(cur) && !this.deckLoading(cur)) {
+        void this.restartDeck(this.active);
+        this.stemMissTicks = 0;
+      } else if (!this.advancing && !this.fading && cur.track !== null && !this.deckLoading(cur) && this.playingDeckCount() === 0) {
+        // Wanted, built, loaded — and nothing is playing (the element was
+        // paused under us, or a play() was dropped). Two ticks of hysteresis
+        // so a crossfade gap never trips it.
+        if (++this.stemMissTicks >= 2) { this.stemMissTicks = 0; this.syncMusic(); }
+      } else this.stemMissTicks = 0;
+      // A playing element whose position froze mid-track is sounding
+      // nothing; reload it. (Near the end the crossfade owns the deck.)
+      if (!cur.el.paused && cur.url && Number.isFinite(cur.el.duration) && cur.el.currentTime < cur.el.duration - XFADE - 0.5) {
+        if (this.lastDeckPos === cur.el.currentTime) {
+          if (++this.deckStallTicks >= 2) { this.deckStallTicks = 0; void this.restartDeck(this.active); }
+        } else this.deckStallTicks = 0;
+        this.lastDeckPos = cur.el.currentTime;
+      } else { this.deckStallTicks = 0; this.lastDeckPos = -1; }
+      // The graph itself: claims are healthy, the meter hears nothing.
+      if (this.outputDead()) {
+        if (++this.silenceTicks >= 3) { this.silenceTicks = 0; this.escalateGraph(); }
+      } else this.silenceTicks = 0;
+    } else { this.stemMissTicks = 0; this.silenceTicks = 0; this.deckStallTicks = 0; this.lastDeckPos = -1; }
+    // Beds: a bed that claims to be playing must own live nodes.
+    if (this.venuePlaying !== 'none' && this.venueNodes.length === 0) {
+      this.stopBeds(); this.syncVenue(); this.syncAmbient();
+    } else if (this.ambTimer !== null && this.ambNodes.length === 0) {
+      this.stopBeds(); this.syncAmbient(); this.syncVenue();
+    }
+  }
+
   private watchContext(c: AudioContext) {
     c.onstatechange = () => {
       if (c !== this.ctx || !this.unlocked || this.recreating) return;
@@ -933,6 +1153,7 @@ class Engine {
     const old = this.ctx;
     this.ctx = null;
     this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
+    this.analyser = null; // ensure() builds the new context's meter
     this.loading = null;
     this.loadGen++;
     if (old && old.state !== 'closed') void settleAudio(old.close());
@@ -1265,7 +1486,14 @@ class Engine {
     this.master = c.createGain();
     const comp = c.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 4;
-    this.master.connect(comp).connect(c.destination);
+    // The output meter sits on the master bus: master → analyser → comp →
+    // destination. It changes nothing audible; it is the watchdog's witness
+    // for a graph that reports 'running' while outputting silence.
+    try {
+      this.analyser = c.createAnalyser();
+      this.analyser.fftSize = 2048;
+      this.master.connect(this.analyser).connect(comp).connect(c.destination);
+    } catch { this.analyser = null; this.master.connect(comp).connect(c.destination); }
     this.sfxBus = c.createGain(); this.sfxBus.gain.value = normalizeCategoryVolumes(this.settings.volumes).sfx; this.sfxDuck = c.createGain(); this.sfxBus.connect(this.sfxDuck).connect(this.master);
     this.nukeBus = c.createGain(); this.nukeBus.connect(this.master);
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0; this.ambBus.connect(this.master);
@@ -1315,7 +1543,7 @@ class Engine {
     // samples are skipped: a reload completes the set, it does not
     // re-download what survived (recreateContext relies on this).
     const names = Object.values(FILES).flat().filter((n) => !this.buffers.has(n));
-    this.loading = Promise.all(names.map(async (n) => {
+    const p = Promise.all(names.map(async (n) => {
       try {
         const res = await fetch(`/assets/sfx/${n}.mp3`);
         const data = await res.arrayBuffer();
@@ -1324,7 +1552,13 @@ class Engine {
         this.buffers.set(n, buf);
       } catch { /* missing sound is not fatal */ }
     })).then(() => undefined);
-    return this.loading;
+    this.loading = p;
+    // Clear the in-flight marker when the load settles: leaving it set made
+    // load() a once-per-context no-op, so one failed SFX fetch at first load
+    // silenced that effect for the whole session with no retry path. The
+    // watchdog's readiness check re-runs load() when the set is incomplete.
+    void p.then(() => { if (this.loading === p) this.loading = null; });
+    return p;
   }
 
   /* ---------- playback ---------- */
