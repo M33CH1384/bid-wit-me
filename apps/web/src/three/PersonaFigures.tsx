@@ -313,6 +313,46 @@ const FIGURE_REGISTERS: Record<string, FigureRegister> = {
     breathPeriod: 3.5, breathAmp: 1.2, swayAmp: 1.4, gazeDwell: 2.3,
     gaze: ['fan', 'human', 'trick', 'fan'],
   },
+  'hustler-f': {
+    stature: 1.68, spine: [0.09, 0.07, 0.05],
+    breathPeriod: 4.2, breathAmp: 0.9, swayAmp: 0.9, gazeDwell: 3.0,
+    gaze: ['trick', 'human', 'fan', 'trick'],
+  },
+  'silent-f': {
+    stature: 1.72, spine: [0.06, 0.05, 0.04],
+    breathPeriod: 5.7, breathAmp: 0.6, swayAmp: 0.5, gazeDwell: 4.9,
+    gaze: ['trick', 'trick', 'fan', 'human'],
+  },
+  'sorelose-f': {
+    stature: 1.66, spine: [0.10, 0.08, 0.06],
+    breathPeriod: 3.9, breathAmp: 1.1, swayAmp: 1.2, gazeDwell: 2.6,
+    gaze: ['human', 'trick', 'human', 'fan'],
+  },
+  'sorelose-m': {
+    stature: 1.79, spine: [0.10, 0.08, 0.06],
+    breathPeriod: 4.0, breathAmp: 1.1, swayAmp: 1.1, gazeDwell: 2.7,
+    gaze: ['human', 'fan', 'human', 'trick'],
+  },
+  'professor-f': {
+    stature: 1.65, spine: [0.07, 0.05, 0.04],
+    breathPeriod: 5.1, breathAmp: 0.7, swayAmp: 0.5, gazeDwell: 4.5,
+    gaze: ['trick', 'fan', 'trick', 'human'],
+  },
+  'hype-m': {
+    stature: 1.78, spine: [0.12, 0.10, 0.08],
+    breathPeriod: 3.3, breathAmp: 1.3, swayAmp: 1.5, gazeDwell: 2.2,
+    gaze: ['fan', 'trick', 'human', 'fan', 'trick'],
+  },
+  'gambler-f': {
+    stature: 1.70, spine: [0.08, 0.06, 0.05],
+    breathPeriod: 4.6, breathAmp: 0.9, swayAmp: 0.8, gazeDwell: 3.4,
+    gaze: ['trick', 'fan', 'trick', 'human'],
+  },
+  'comedian-m': {
+    stature: 1.80, spine: [0.10, 0.08, 0.07],
+    breathPeriod: 3.9, breathAmp: 1.2, swayAmp: 1.3, gazeDwell: 2.5,
+    gaze: ['human', 'fan', 'human', 'trick'],
+  },
 };
 
 const FIGURE_URLS: Record<string, string> = Object.fromEntries(

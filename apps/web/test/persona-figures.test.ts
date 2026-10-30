@@ -5,8 +5,9 @@
  * Regular (non-story) tables seat rigged 3D figures for bot personas
  * whose figure has shipped, High quality only. These tests pin: the
  * key resolution (the figure key IS the portrait key, so face and
- * body can never disagree), the shipped-set gating (unbuilt personas
- * resolve null and keep the portrait treatment), the seam wiring
+ * body can never disagree), the shipped-set completeness (Batch C
+ * closed the roster: all 38 persona x gender keys ship, so only an
+ * empty name resolves null), the seam wiring
  * through Table -> Scene -> PersonaFigures with story tables
  * excluded on both paths, the LAZY loader-gate decision (persona
  * GLBs are NOT in the asset gate — they stream in over the portrait
@@ -24,14 +25,16 @@ import { PERSONA_FIGURE_KEYS, personaFigureKeyForName } from '../src/personaFigu
 const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
 
 describe('figure-key resolution', () => {
-  it('Batches A+B ship exactly the thirty built personas', () => {
+  it('Batches A+B+C ship the complete 38-key roster', () => {
     expect([...PERSONA_FIGURE_KEYS].sort()).toEqual(
       ['barber-f', 'barber-m', 'coach-f', 'coach-m', 'comedian-f',
-       'conspiracy-f', 'conspiracy-m', 'deacon-f', 'deacon-m', 'gambler-m',
-       'hothead-f', 'hothead-m', 'hustler-m', 'hype-f', 'influencer-f',
-       'influencer-m', 'lilcuz-f', 'lilcuz-m', 'mama-f', 'mama-m', 'og-f',
-       'og-m', 'petty-f', 'petty-m', 'professor-m', 'silent-m', 'smooth-f',
-       'smooth-m', 'storyteller-f', 'storyteller-m'],
+       'comedian-m', 'conspiracy-f', 'conspiracy-m', 'deacon-f', 'deacon-m',
+       'gambler-f', 'gambler-m', 'hothead-f', 'hothead-m', 'hustler-f',
+       'hustler-m', 'hype-f', 'hype-m', 'influencer-f', 'influencer-m',
+       'lilcuz-f', 'lilcuz-m', 'mama-f', 'mama-m', 'og-f', 'og-m',
+       'petty-f', 'petty-m', 'professor-f', 'professor-m', 'silent-f',
+       'silent-m', 'smooth-f', 'smooth-m', 'sorelose-f', 'sorelose-m',
+       'storyteller-f', 'storyteller-m'],
     );
   });
 
@@ -55,12 +58,15 @@ describe('figure-key resolution', () => {
     expect(personaFigureKeyForName('Peaches')).toBe('barber-f');
     expect(personaFigureKeyForName('Anjali')).toBe('deacon-f');
     expect(personaFigureKeyForName('Priya')).toBe('hothead-f');
+    expect(personaFigureKeyForName('Boo')).toBe('hustler-f'); // Batch C
+    expect(personaFigureKeyForName('Jojo')).toBe('hustler-f'); // Batch C
+    expect(personaFigureKeyForName('Kiara')).toBe('silent-f'); // Batch C
+    expect(personaFigureKeyForName('Jasmine')).toBe('sorelose-f'); // Batch C
   });
 
-  it('unbuilt personas and empty names resolve null (portrait treatment stands)', () => {
-    expect(personaFigureKeyForName('Boo')).toBeNull(); // hustler-f: Batch C
-    expect(personaFigureKeyForName('Kiara')).toBeNull(); // silent-f: Batch C
-    expect(personaFigureKeyForName('Jasmine')).toBeNull(); // sorelose-f: Batch C
+  it('with the roster complete, only the empty name resolves null', () => {
+    // every persona x gender key ships a figure, so personaForName x
+    // voiceGender always lands in the shipped set for a real name
     expect(personaFigureKeyForName('')).toBeNull();
   });
 

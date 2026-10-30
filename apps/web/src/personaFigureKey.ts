@@ -14,8 +14,10 @@
  * comedian-f, conspiracy-f, conspiracy-m, deacon-f, deacon-m, gambler-m,
  * hothead-f, hothead-m, hustler-m, influencer-m, lilcuz-f, lilcuz-m,
  * mama-f, og-f, petty-f, petty-m, professor-m, silent-m, smooth-f,
- * storyteller-f, storyteller-m. Batch C extends this list as the
- * remaining figures ship.
+ * storyteller-f, storyteller-m. Batch C (2026-10-30) completes the
+ * roster: comedian-m, gambler-f, hustler-f, hype-m, professor-f,
+ * silent-f, sorelose-f, sorelose-m — all 38 persona x gender keys now
+ * ship a figure, so every non-empty bot name resolves.
  */
 import { personaForName, voiceGender } from '@spades/bots';
 
@@ -25,15 +27,19 @@ export const PERSONA_FIGURE_KEYS: readonly string[] = [
   'coach-f',
   'coach-m',
   'comedian-f',
+  'comedian-m',
   'conspiracy-f',
   'conspiracy-m',
   'deacon-f',
   'deacon-m',
+  'gambler-f',
   'gambler-m',
   'hothead-f',
   'hothead-m',
+  'hustler-f',
   'hustler-m',
   'hype-f',
+  'hype-m',
   'influencer-f',
   'influencer-m',
   'lilcuz-f',
@@ -44,18 +50,23 @@ export const PERSONA_FIGURE_KEYS: readonly string[] = [
   'og-m',
   'petty-f',
   'petty-m',
+  'professor-f',
   'professor-m',
+  'silent-f',
   'silent-m',
   'smooth-f',
   'smooth-m',
+  'sorelose-f',
+  'sorelose-m',
   'storyteller-f',
   'storyteller-m',
 ];
 
 const SHIPPED = new Set(PERSONA_FIGURE_KEYS);
 
-/** The shipped figure key for a bot's display name, or null when that
- *  persona has no figure yet (or the name is empty). */
+/** The shipped figure key for a bot's display name, or null when the
+ *  name is empty (with the roster complete, every persona x gender
+ *  key has a figure). */
 export function personaFigureKeyForName(name: string): string | null {
   if (!name) return null;
   const key = `${personaForName(name)}-${voiceGender(name)}`;
