@@ -165,13 +165,19 @@ export const NOVICE_BLUNDER_RATE = 0.3;
 
 /** A Novice mistake: wastes its highest winner (often a Joker / big trump) or just plays something random. Always legal. */
 function sloppy(k: Knowledge, legal: Card[], rng: Rng): Card {
+  // An empty pool must never reach rng.int (RangeError: bad range 0): fall back to the
+  // ordinary selection over the legal set derived from the hand itself.
+  if (!legal.length) return standardPlay(k, legalPlaysFor(k.r, k.hand, k.plays, k.v.spadesBroken), 'regular');
   const winners = k.plays.length ? legal.filter((c) => winsNow(k, c)) : [];
   if (winners.length && rng.float() < 0.7) return highest(k, winners);
   return legal[rng.int(legal.length)]!;
 }
 
 export function choosePlay(v: PlayerView, level: BotLevel, rng: Rng = createRng(`${v.seat}:${v.handNo}:${v.tricks.length}:${v.trick.plays.length}`)): Card {
-  const legal = v.legal;
+  // A view can arrive with an empty legal list while the seat still holds cards (a resumed /
+  // hand-built state — reproduced 2026-10-30 as a RangeError from the novice sloppy path).
+  // Recompute the candidates from the hand the engine way instead of playing from an empty set.
+  const legal = v.legal.length ? v.legal : legalPlaysFor(v.rules, v.hand ?? [], v.trick.plays, v.spadesBroken, v.rules.firstLead === 'twoOfClubs' && v.tricks.length === 0);
   if (legal.length === 1) return legal[0]!;
   const skill = skillOf(level);
   const k = know(v);
