@@ -48,6 +48,9 @@ CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/ (no attribution requ
 | `audio/ambience/pjs-event-voice-1..3.mp3` / `pjs-event-car-1..3.mp3` (The Pj's street events) | SSE Library — https://archive.org/details/SSE_Library_CROWDS (crowd walla, low-passed and indistinct by design) and https://archive.org/details/SSE_Library_VEHICLES (real car pass-bys: medium, close, far) | CC0 1.0 |
 | `audio/ambience/speakeasy-bed.mp3` (Speakeasy lounge bed — 64 s seamless loop) | SSE Library (USC Standard Sound Effects library mirror) — https://archive.org/details/SSE_Library_AMBIENCE (café/restaurant walla and dishes, interior room air), https://archive.org/details/SSE_Library_CROWDS (saloon crowd walla — the men's murmur is low-passed at 850 Hz so no words are intelligible, by design) and https://archive.org/details/SSE_Library_DOORS. One musical layer is NOT SSE: "George Street Shuffle" by Kevin MacLeod (incompetech.com), low-passed at 420 Hz and mixed ~19 dB down as the band heard through the wall — CC BY 4.0 (see Required Attributions) | CC0 1.0 (SSE layers) + CC BY 4.0 (MacLeod layer) |
 | `audio/ambience/speakeasy-event-glass.mp3` / `speakeasy-event-laugh.mp3` / `speakeasy-event-door.mp3` (Speakeasy lounge events) | SSE Library — glass clinks cut from the dishes recording (SSE_Library_AMBIENCE), a laugh swell from the saloon walla (https://archive.org/details/SSE_Library_CROWDS) and the wooden front door (https://archive.org/details/SSE_Library_DOORS) | CC0 1.0 |
+| `audio/ambience/barbershop-bed.mp3` (Barbershop bed — 64 s seamless loop) | freesfx.co.uk — "Electric Clippers Cutting Hair" (the signature layer: a real clipper buzz staged in breathing phrases) and a scissors whisper cut from "Cutting Hair with Scissors" — freesfx attribution EULA (see Required Attributions). SSE Library (USC Standard Sound Effects library mirror) — https://archive.org/details/SSE_Library_AMBIENCE (café/restaurant walla, low-passed at 800 Hz so no words are intelligible, by design; interior room air) and https://archive.org/details/SSE_Library_CROWDS (men playing dice, low-passed at 680 Hz — a low mutter under the walla) | freesfx EULA (clipper/scissors layers) + CC0 1.0 (SSE layers) |
+| `audio/ambience/barbershop-event-trimmer.mp3` / `barbershop-event-clippers-off.mp3` / `barbershop-event-scissors.mp3` / `barbershop-event-door-bell.mp3` / `barbershop-event-broom.mp3` / `barbershop-event-register.mp3` (Barbershop events) | freesfx.co.uk — "Electric Razor Start, Run, and Stop" (trimmer), the "Electric Clippers Cutting Hair" power-down tail, snips from "Cutting Hair with Scissors", "Shop Store Bell Ringing 4 Times" (door bell), "Sweeping Concrete Floor with Broom" and "Antique Cash Register with Drawer Open, Close and Bell" — freesfx attribution EULA (see Required Attributions) | freesfx EULA |
+| `audio/ambience/barbershop-event-laugh.mp3` (Barbershop laugh event) | SSE Library — a laugh swell from the saloon walla (https://archive.org/details/SSE_Library_CROWDS), low-passed at 1400 Hz | CC0 1.0 |
 
 Kenney files were re-encoded from OGG to mono 64 kbps MP3 (plays on iOS Safari). `siren.mp3` is the same encoding: a 2.7 s slice of that Whelen wail (the rising sweep, from about 5.04 s), with a short fade-in and a half-sine fade-out over the last 0.65 s, peak-normalized to about −1.7 dBTP, mono 64 kbps MP3 at 44.1 kHz. CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/. The your-turn chime, cut/trump hit, spades-broken sting,
 whoosh, BID MADE / SET! / NIL! / BAG PENALTY stingers, win/lose jingles and the optional lounge ambience are
@@ -90,10 +93,14 @@ The spray-transition sounds are cuts of those two recordings, stereo 112 kbps MP
 | `night-on-the-docks-sax.mp3` | Night on the Docks - Sax | Kevin MacLeod — https://incompetech.com/music/royalty-free/mp3-royaltyfree/Night%20on%20the%20Docks%20-%20Sax.mp3 | CC BY 4.0 |
 | `dances-and-dames.mp3` | Dances and Dames | Kevin MacLeod — https://incompetech.com/music/royalty-free/mp3-royaltyfree/Dances%20and%20Dames.mp3 | CC BY 4.0 |
 | `covert-affair.mp3` | Covert Affair | Kevin MacLeod — https://incompetech.com/music/royalty-free/mp3-royaltyfree/Covert%20Affair.mp3 | CC BY 4.0 |
+| `funk-trunk.mp3` | Funk Trunk | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/funk-trunk/ | CC BY 4.0 |
+| `soul-sync.mp3` | Soul Sync | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/soul-sync/ | CC BY 4.0 |
+| `c-funk.mp3` | C-Funk | Kevin MacLeod — https://incompetech.com/music/royalty-free/mp3-royaltyfree/C-Funk.mp3 | CC BY 4.0 |
 
 Holizna tracks are CC0 (no credit required); courtesy credit: Music by Holizna.
 The four tracks appended on 2026-10-30 (Soul Epic / Overreach / No Quit by Ketsa, CC BY 4.0, and Busted Jazz by HoliznaCC0, CC0 1.0) are The Pj's venue rotation: the venue is pinned to them and plays them at random (owner, 2026-10-30). Busted Jazz needs no credit (CC0); courtesy credit: "Busted Jazz" by HoliznaCC0, via Free Music Archive.
 The four tracks appended on 2026-10-30 (Spy Glass / Night on the Docks - Sax / Dances and Dames / Covert Affair, all by Kevin MacLeod, CC BY 4.0) are the Speakeasy Lounge venue rotation: the venue is pinned to them and plays them at random (owner, 2026-10-30). The same day the Speakeasy's synthesized bed was replaced by a recorded lounge bed (SSE Library layers, CC0 — see the ambience table) with Kevin MacLeod's "George Street Shuffle" (CC BY 4.0) baked in low-passed as the band through the wall; its attribution line follows below.
+The three tracks appended on 2026-10-30 (Funk Trunk / Soul Sync by Ketsa, CC BY 4.0, and C-Funk by Kevin MacLeod, CC BY 4.0) are the Barbershop venue rotation: the venue is pinned to them and plays them at random (owner, 2026-10-30). ("Soul Syrup" by Ketsa was auditioned as an optional fourth and not picked.) The same day the Barbershop's synthesized bed was replaced by a recorded shop bed — a real electric-clippers recording (freesfx.co.uk, attribution EULA — see the ambience table and Required Attributions) over SSE Library walla layers (CC0) — with seven recorded shop one-shots (trimmer, clippers power-down, scissors, laugh, door bell, broom, antique register) riding over it.
 The four story tracks are the game's own music (Story Mode original score, 2026-10-21) — they are not Creative Commons material and carry no attribution requirement. The same holds for `porch-theme.mp3` and `menu-soul.mp3` (sound sample, 2026-10-23), rendered by the same in-house pipeline.
 
 Required attributions (also shown on the in-game Credits screen):
@@ -135,6 +142,14 @@ Slow Grind by Ron Gelinas Chillout Lounge | https://soundcloud.com/atmospheric-m
 "Covert Affair" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/
 
 "George Street Shuffle" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/
+
+"Funk Trunk" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.
+
+"Soul Sync" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.
+
+"C-Funk" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/
+
+Sound effects from freesfx.co.uk (https://freesfx.co.uk)
 
 Changes: every track loudness-normalized to −16 LUFS (two-pass ffmpeg loudnorm, −1.5 dBTP, `scripts/normalize-music.sh`) and
 encoded to 128 kbps stereo MP3 (44.1 kHz), metadata/cover art stripped. At playback a gentle mid/side stereo widening

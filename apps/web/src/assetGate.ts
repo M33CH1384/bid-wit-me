@@ -186,6 +186,18 @@ export const PJS_BED_URL = '/audio/ambience/pjs-night-street.mp3';
  * NOT gate: optional life, loaded lazily by the engine after the bed starts.
  */
 export const SPK_BED_URL = '/audio/ambience/speakeasy-bed.mp3';
+/**
+ * The Barbershop's recorded shop bed (owner, 2026-10-30): gated exactly like
+ * the Speakeasy's bed — the engine fetches it at every Barbershop table
+ * (story Stop 2 plays the same 'barbershop' bed in the same room), so at
+ * High the loader's promise covers it; at Low it streams in behind the
+ * loader as music always has. There is no seam exception: Stop 2 mounts the
+ * Barbershop's own room and hears the same bed, so the unit applies at
+ * every story stop. The bed's event one-shots (trimmer, clippers, scissors,
+ * laugh, door bell, broom, register) deliberately do NOT gate: optional
+ * life, loaded lazily by the engine after the bed starts.
+ */
+export const BRB_BED_URL = '/audio/ambience/barbershop-bed.mp3';
 export function roomAudioUrls(
   venue: string,
   quality: 'high' | 'low',
@@ -194,6 +206,7 @@ export function roomAudioUrls(
   if (quality !== 'high') return [];
   if (venue === 'blockAfterDark' && storyStopId !== 'king') return [{ label: 'ambience bed (Pj\'s night street)', url: PJS_BED_URL }];
   if (venue === 'speakeasy') return [{ label: 'ambience bed (Speakeasy lounge)', url: SPK_BED_URL }];
+  if (venue === 'barbershop') return [{ label: 'ambience bed (Barbershop)', url: BRB_BED_URL }];
   return [];
 }
 

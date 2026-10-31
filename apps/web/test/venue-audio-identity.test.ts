@@ -38,13 +38,15 @@ describe('venue audio identity', () => {
     for (const v of VENUES) expect(VENUE_DEFS[v].bed, v).toBe(audioIdentityForVenue(v)!.bed);
   });
 
-  it("only The Pj's and the Speakeasy pin their music, and their tracks are real", () => {
+  it("only The Pj's, the Speakeasy and the Barbershop pin their music, and their tracks are real", () => {
     for (const v of VENUES) {
       const id = audioIdentityForVenue(v)!;
-      // Both pins are closed rotations of four (owner, 2026-10-30): the venue
-      // plays these at random and never draws from the general pool.
+      // The Pj's and Speakeasy pins are closed rotations of four; the
+      // Barbershop's is a closed rotation of three (owner, 2026-10-30): the
+      // venue plays these at random and never draws from the general pool.
       if (v === 'blockAfterDark') expect(id.music.pin).toEqual(['soul-epic', 'overreach', 'no-quit', 'busted-jazz']);
       else if (v === 'speakeasy') expect(id.music.pin).toEqual(['spy-glass', 'night-on-the-docks-sax', 'dances-and-dames', 'covert-affair']);
+      else if (v === 'barbershop') expect(id.music.pin).toEqual(['funk-trunk', 'soul-sync', 'c-funk']);
       else expect(id.music.pin, v).toBeUndefined();
     }
   });

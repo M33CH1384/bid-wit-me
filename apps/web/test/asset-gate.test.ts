@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, PJS_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, BRB_BED_URL, PJS_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomAudioUrls, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -184,6 +184,22 @@ describe('room asset enumeration', () => {
     expect(existsSync(new URL('../public/audio/ambience/speakeasy-bed.mp3', import.meta.url))).toBe(true);
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain(`const SPK_BED_URL = '${SPK_BED_URL}'`);
+  });
+
+  it("the Barbershop's recorded bed rides the gate at High shop tables — every story stop, never Low", () => {
+    // Owner, 2026-10-30: the recorded shop bed joins the Barbershop loader
+    // gate exactly like the Speakeasy's bed (the gate gains one unit at the
+    // regular venue, 5 → 6, and at story Stop 2, whose composition mirrors
+    // the regular table's; the bed's event one-shots deliberately do not
+    // gate and are not listed here). There is no seam exception: Stop 2
+    // hears the same 'barbershop' bed in the same room.
+    expect(roomAudioUrls('barbershop', 'high', null)).toEqual([{ label: expect.any(String), url: BRB_BED_URL }]);
+    expect(roomAudioUrls('barbershop', 'high', 'barbershop')).toEqual([{ label: expect.any(String), url: BRB_BED_URL }]);
+    expect(roomAudioUrls('barbershop', 'low', null)).toEqual([]);
+    expect(roomAudioUrls('barbershop', 'low', 'barbershop')).toEqual([]);
+    expect(existsSync(new URL('../public/audio/ambience/barbershop-bed.mp3', import.meta.url))).toBe(true);
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain(`const BRB_BED_URL = '${BRB_BED_URL}'`);
   });
 
   it('the gate sedan URL is the very file PjsStreetRoom loads', () => {

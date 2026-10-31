@@ -216,6 +216,14 @@ export const TRACKS: Track[] = [
   { file: 'night-on-the-docks-sax', title: 'Night on the Docks - Sax', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Night%20on%20the%20Docks%20-%20Sax.mp3', credit: '"Night on the Docks - Sax" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
   { file: 'dances-and-dames', title: 'Dances and Dames', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Dances%20and%20Dames.mp3', credit: '"Dances and Dames" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
   { file: 'covert-affair', title: 'Covert Affair', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Covert%20Affair.mp3', credit: '"Covert Affair" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  // Barbershop rotation (owner picks, 2026-10-30): two Ketsa soul/funk cuts
+  // (CC BY 4.0, via Free Music Archive) and one Kevin MacLeod funk track that
+  // play ONLY at the Barbershop (the venue pin is a closed list — see
+  // ROOM_STYLES in spatial.ts), exactly like the rotations above. "Soul Syrup"
+  // was auditioned as an optional fourth and not picked — it is not here.
+  { file: 'funk-trunk', title: 'Funk Trunk', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/funk-trunk/', credit: '"Funk Trunk" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'soul-sync', title: 'Soul Sync', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/soul-sync/', credit: '"Soul Sync" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'c-funk', title: 'C-Funk', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/C-Funk.mp3', credit: '"C-Funk" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -452,6 +460,35 @@ const SPK_EVENT_GAIN = 2.46;
  *  below the material's own frame-step noise (p99 0.0538). */
 const SPK_BED_LEAD_S = 1105 / 44100;
 const SPK_BED_SECONDS = 64;
+/** The Barbershop's recorded bed (owner sample pick, 2026-10-30): a 64.000 s
+ *  seamless loop built on a REAL electric-clippers recording (freesfx.co.uk,
+ *  attribution EULA — CREDITS.md) staged in breathing phrases over SSE Library
+ *  café walla and dice-crowd mutter, both low-passed so no words survive
+ *  (CREDITS.md). Seven recorded shop one-shots — a trimmer spinning up and
+ *  down, the clippers' own power-down, scissors, a laugh, the door bell, a
+ *  broom and the antique register — ride over it as scheduled events. */
+const BRB_BED_URL = '/audio/ambience/barbershop-bed.mp3';
+const BRB_EVENT_URLS = {
+  trimmer: ['/audio/ambience/barbershop-event-trimmer.mp3'],
+  clippersOff: ['/audio/ambience/barbershop-event-clippers-off.mp3'],
+  scissors: ['/audio/ambience/barbershop-event-scissors.mp3'],
+  laugh: ['/audio/ambience/barbershop-event-laugh.mp3'],
+  doorBell: ['/audio/ambience/barbershop-event-door-bell.mp3'],
+  broom: ['/audio/ambience/barbershop-event-broom.mp3'],
+  register: ['/audio/ambience/barbershop-event-register.mp3'],
+} as const;
+/** Event staging gain, same construction as SPK_EVENT_GAIN: the bed file is the
+ *  −16 LUFS master; the event clips keep their premaster staging, so they play
+ *  through this gain to hold the approved demo balance (the loudnorm raised the
+ *  bed +6.05 dB over its premaster — measured RMS on the shipped files). */
+const BRB_EVENT_GAIN = 2.01;
+/** The bed's MP3 loop trim, from the shipped file's own measured offsets: 1105
+ *  samples of encoder delay at 44.1 kHz ahead of exactly 64.000 s of content —
+ *  same encoder settings as The Pj's and Speakeasy beds (the shipped file's
+ *  measured seam step, 0.043, sits below the material's own step noise, p99
+ *  0.098). */
+const BRB_BED_LEAD_S = 1105 / 44100;
+const BRB_BED_SECONDS = 64;
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
  *  when it is already the content length (a gapless-aware decoder) or too short. */
@@ -3144,6 +3181,74 @@ class Engine {
     arm('door', 90, 180, true);
   }
 
+  private startBarbershopBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('brb-bed', BRB_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, BRB_BED_LEAD_S, BRB_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...BRB_EVENT_URLS.trimmer, ...BRB_EVENT_URLS.clippersOff, ...BRB_EVENT_URLS.scissors, ...BRB_EVENT_URLS.laugh, ...BRB_EVENT_URLS.doorBell, ...BRB_EVENT_URLS.broom, ...BRB_EVENT_URLS.register]) void this.loadAmbience(url, url);
+    this.scheduleBarbershopEvents();
+  }
+
+  /** Shop life over the recorded bed: seven independent randomized timers —
+   *  a trimmer every 30–60 s, the clippers powering down every 60–120 s,
+   *  scissors and a laugh every 45–90 s, the door bell every 90–180 s, and
+   *  the broom and antique register every 120–240 s (owner densities,
+   *  2026-10-30) — sharing one busy gate, so an event never talks over
+   *  another (the street pattern). Each kind has a single recording, so
+   *  there is no variant to rotate; the spacing itself is the variety. The
+   *  timers live in venueTimers, so leaving the venue silences the shop,
+   *  and the first fire comes a half-interval in, once the table settles. */
+  private scheduleBarbershopEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the shop
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = BRB_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof BRB_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(BRB_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('trimmer', 30, 60, true);
+    arm('clippersOff', 60, 120, true);
+    arm('scissors', 45, 90, true);
+    arm('laugh', 45, 90, true);
+    arm('doorBell', 90, 180, true);
+    arm('broom', 120, 240, true);
+    arm('register', 120, 240, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -3170,15 +3275,22 @@ class Engine {
         this.vEvery(13, 29, (t) => { for (let i = 0; i < 2; i++) this.vBurst(t + Math.random() * 0.22, 0.018, 'bandpass', 3600 + Math.random() * 800, 0.022); }); // ice in glasses
         this.vEvery(47, 95, (t) => { this.tone(t, 1318.5, 0.7, 'sine', 0.006, { dest: B }); this.tone(t + 0.28, 987.77, 0.9, 'sine', 0.005, { dest: B }); }); // elevator ding, two floors away
         break;
-      case 'barbershop':
-        murmur(0.7); this.vHum(120, 0.004);
-        this.vEvery(9, 18, (t) => this.tone(t, 118, 1.4, 'sawtooth', 0.01, { attack: 0.08, filter: 900, dest: B })); // clippers
-        // Story Audio Pass: the shop works around the game — scissors between cuts, the door
-        // bell when somebody comes in off the street, a razor strop's slow leather swipes.
-        this.vEvery(6, 15, (t) => { for (let i = 0; i < 2; i++) this.vBurst(t + i * 0.13, 0.016, 'highpass', 4200, 0.035); }); // scissors snip-snip
-        this.vEvery(41, 90, (t) => { this.tone(t, 1567.98, 0.32, 'triangle', 0.012, { dest: B }); this.tone(t + 0.16, 2093, 0.42, 'triangle', 0.01, { dest: B }); }); // door bell
-        this.vEvery(19, 40, (t) => { for (let i = 0; i < 3; i++) this.vBurst(t + i * 0.4, 0.3, 'bandpass', 700 + i * 130, 0.014); }); // strop swipes
+      case 'barbershop': {
+        // The Barbershop's bed is a RECORDING now (owner sample pick,
+        // 2026-10-30), replacing the synthesized stand-in (murmur wash, mains
+        // hum and a sawtooth fake-clippers buzz, with synth scissors / door
+        // bell / razor-strop one-shots): a seamless 64 s shop loop — a real
+        // electric-clippers recording breathing over low-passed café walla
+        // and dice-crowd mutter. The shop still works around the game, now
+        // in recordings: scissors between cuts, the door bell when somebody
+        // comes in off the street, a trimmer spinning up and settling, the
+        // clippers powering down, a laugh, the broom, the antique register
+        // — all riding over the bed as one-shot events on their own timers
+        // (startBarbershopBed). Story Stop 2 plays here: its clippers and
+        // low talk are in the recording.
+        this.startBarbershopBed();
         break;
+      }
       case 'basement':
         this.vHum(120, 0.006); murmur(0.6); room(0.6);
         this.vEvery(7, 14, (t) => { for (let i = 0; i < 5; i++) this.tone(t + i * 0.09, 220 + Math.random() * 120, 0.06, 'sine', 0.012, { dest: B }); }); // coffee percolator
