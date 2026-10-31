@@ -159,6 +159,69 @@ describe('targeted entry (the speaker lands on Sound & music)', () => {
   });
 });
 
+describe('the Music switch never lands clipped at the sheet fold (owner, 2026-10-31)', () => {
+  // Landscape phones give the sheet body a ~280–320px scrollport; the landed
+  // anchor pins the Sound & music group top to the scrollport top and the
+  // Music switch sits a fixed ~308px below it — exactly on the fold, where
+  // its visible sliver takes taps that land on the sheet instead. The reveal
+  // scrolls the body the minimum that puts the switch fully in view.
+  const rect = (top: number, bottom: number) => ({
+    left: 0, right: 0, width: 0, x: 0, y: top, top, bottom, height: bottom - top, toJSON: () => ({}),
+  }) as DOMRect;
+  function stubRects(swTop: number, swBottom: number) {
+    const proto = window.Element.prototype as { getBoundingClientRect: () => DOMRect };
+    const orig = proto.getBoundingClientRect;
+    proto.getBoundingClientRect = function (this: Element) {
+      if (this.classList?.contains('sheet-body')) return rect(100, 400);
+      if ((this as HTMLElement).dataset?.testid === 'music-switch') {
+        // live geometry moves with the scroll: the stub follows the body's
+        // scrollTop, so a second reveal pass sees the switch already in view
+        const st = (document.querySelector('.sheet-body') as HTMLElement | null)?.scrollTop ?? 0;
+        return rect(swTop - st, swBottom - st);
+      }
+      return rect(0, 0);
+    };
+    (window.HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView = vi.fn();
+    return () => { proto.getBoundingClientRect = orig; };
+  }
+
+  it('landing on Sound scrolls the body just enough to un-clip the Music switch', async () => {
+    const restore = stubRects(392, 420); // switch centre 406 sits past the fold at 400
+    try {
+      const { c } = await renderSheet({ initialSection: 'sound', anchorSeq: 1 });
+      const body = c.querySelector('.sheet-body') as HTMLElement;
+      expect(body.scrollTop).toBe(22); // 420 - 400 + 2 margin
+    } finally { restore(); }
+  });
+
+  it('a fully visible Music switch leaves the scroll alone', async () => {
+    const restore = stubRects(360, 388);
+    try {
+      const { c } = await renderSheet({ initialSection: 'sound', anchorSeq: 1 });
+      expect((c.querySelector('.sheet-body') as HTMLElement).scrollTop).toBe(0);
+    } finally { restore(); }
+  });
+
+  it('a Music switch already scrolled above the fold is left alone', async () => {
+    const restore = stubRects(40, 68);
+    try {
+      const { c } = await renderSheet({ initialSection: 'sound', anchorSeq: 1 });
+      expect((c.querySelector('.sheet-body') as HTMLElement).scrollTop).toBe(0);
+    } finally { restore(); }
+  });
+
+  it('the gear path gets the same reveal when the Sound & music tab is tapped', async () => {
+    const restore = stubRects(392, 420);
+    try {
+      const { c } = await renderSheet();
+      const body = c.querySelector('.sheet-body') as HTMLElement;
+      expect(body.scrollTop).toBe(0);
+      await click(c.querySelector('[data-testid="settings-tab-sound"]') as HTMLButtonElement);
+      expect(body.scrollTop).toBe(22);
+    } finally { restore(); }
+  });
+});
+
 describe('fold mechanics', () => {
   it('the fold animates on the grid-rows track and reduced motion makes it instant', () => {
     const tail = css.slice(css.indexOf('Collapsible Settings sections'));

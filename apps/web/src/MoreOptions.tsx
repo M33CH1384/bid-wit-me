@@ -116,12 +116,37 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
   const isJokerDeck = rules.deck === 'joker54';
   const esc = useEscapeClose(onClose);
   const soundGroupRef = useRef<HTMLElement>(null);
+  // The Music switch must never sit clipped at the sheet body's bottom fold.
+  // Owner report (2026-10-31): "Music settings button doesn't work when I'm in
+  // landscape." The landing below pins the group's top to the scrollport's top;
+  // the Music switch sits a fixed ~308px under the group top, and a landscape
+  // phone's scrollport is only ~280–320px tall, so the switch lands exactly on
+  // the fold — at 932×430 its centre is 1px past the clip (the visible sliver
+  // invites a tap that lands on the sheet itself), at 844×390 it falls below
+  // the viewport entirely. Portrait's tall scrollport never clips it. So after
+  // any landing on this group, if the switch's bottom is past the fold (and
+  // the switch itself is below the fold's top — a player who scrolled deeper
+  // is left alone), scroll the body the minimum that puts it fully in view.
+  const revealMusicSwitch = () => {
+    const el = soundGroupRef.current;
+    if (!el) return;
+    const body = el.closest('.sheet-body');
+    const sw = el.querySelector<HTMLElement>('[data-testid="music-switch"]');
+    if (!body || !sw) return;
+    const br = body.getBoundingClientRect();
+    const sr = sw.getBoundingClientRect();
+    if (sr.bottom > br.bottom && sr.top > br.top) body.scrollTop += sr.bottom - br.bottom + 2;
+  };
   // The speaker's landing: scroll the Sound & music group to the top of the sheet body.
   useEffect(() => {
     if (initialSection !== 'sound') return;
     const el = soundGroupRef.current;
     if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start' });
+    revealMusicSwitch();
   }, [initialSection, anchorSeq]);
+  // The same fold clip waits on the gear path: open Settings, tap the
+  // Sound & music rail tab in landscape — same reveal.
+  useEffect(() => { if (tab === 'sound') revealMusicSwitch(); }, [tab]);
   return (
     <>
     <div className="modal-backdrop sheet-backdrop" ref={esc} onClick={onClose}>
