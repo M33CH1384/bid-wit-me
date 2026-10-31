@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import {
-  BoxGeometry, CanvasTexture, ColorManagement, CylinderGeometry, DoubleSide, Fog,
-  MeshStandardMaterial, Quaternion, RepeatWrapping, SRGBColorSpace, SphereGeometry,
+  AdditiveBlending, BoxGeometry, CanvasTexture, ColorManagement, CylinderGeometry, DoubleSide, Fog,
+  MeshBasicMaterial, MeshStandardMaterial, Quaternion, RepeatWrapping, SRGBColorSpace, SphereGeometry,
   TorusGeometry, Vector3, type Group,
 } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -50,6 +50,12 @@ const FLOOR_Y = -0.9;
  *
  * Life (fxOn): the barber-pole stripes scroll slowly and the
  * wall-fan blades turn; fxOn off holds both static.
+ *
+ * Improvement pass (2026-10-30, the owner's venue pass): light
+ * only — mirror sheen washes, a raised/widened mirror-wall wash,
+ * under-shelf glow at the three stations, afternoon spill pools
+ * inside the storefront, and self-lit pole stripes with an accent
+ * point. Geometry, seats, and the aged-glass material are as built.
  */
 
 /* ------------------------------------------------------------------ */
@@ -268,6 +274,17 @@ function makeStripeTexture() {
   }, [1, 2]);
 }
 
+/** Soft radial glow for additive light decals (sheen / spill / wash). */
+function makeGlowTexture() {
+  return canvasTex(128, 128, (ctx, w, h) => {
+    const g = ctx.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+    g.addColorStop(0, 'rgba(255,255,255,0.9)');
+    g.addColorStop(0.45, 'rgba(255,255,255,0.38)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  });
+}
+
 function makeGlowSkyTexture() {
   return canvasTex(256, 256, (ctx, w, h) => {
     const grad = ctx.createLinearGradient(0, 0, 0, h);
@@ -294,12 +311,19 @@ type BarberAssets = {
   towel: MeshStandardMaterial; doorMat: MeshStandardMaterial; photoFrame: MeshStandardMaterial;
   sepia: MeshStandardMaterial; sepia2: MeshStandardMaterial; silhouette: MeshStandardMaterial;
   outsideGround: MeshStandardMaterial; glowSky: MeshStandardMaterial;
+  mirrorSheen: MeshBasicMaterial; floorGlow: MeshBasicMaterial;
+  shelfGlow: MeshBasicMaterial; shelfStrip: MeshStandardMaterial;
 };
 
 let ASSETS: BarberAssets | null = null;
 function assets(): BarberAssets {
   if (ASSETS) return ASSETS;
   ColorManagement.enabled = true;
+  const glowTex = makeGlowTexture();
+  const glowDecal = (color: string, opacity: number) => new MeshBasicMaterial({
+    map: glowTex, color, transparent: true, opacity,
+    blending: AdditiveBlending, depthWrite: false, fog: false,
+  });
   ASSETS = {
     floor: std({ map: makeFloorTexture(), roughness: 0.82, metalness: 0.02 }),
     teal: std({ map: makeTealTexture(), roughness: 0.94, metalness: 0 }),
@@ -330,6 +354,11 @@ function assets(): BarberAssets {
     silhouette: std({ color: '#3d2a1c', roughness: 1, metalness: 0 }),
     outsideGround: std({ color: '#6b5a48', roughness: 0.95, metalness: 0 }),
     glowSky: (() => { const t = makeGlowSkyTexture(); return new MeshStandardMaterial({ map: t, emissive: '#ffffff', emissiveMap: t, emissiveIntensity: 0.85, roughness: 1, metalness: 0, fog: false }); })(),
+    /* improvement pass (2026-10-30): additive light decals + the station glow strip */
+    mirrorSheen: glowDecal('#d7ecf5', 0.10),
+    floorGlow: glowDecal('#ffab54', 0.16),
+    shelfGlow: glowDecal('#ffb45e', 0.13),
+    shelfStrip: std({ color: '#2a1a0c', emissive: '#ffb45e', emissiveIntensity: 1.8, roughness: 0.6, metalness: 0 }),
   };
   return ASSETS;
 }
@@ -367,8 +396,12 @@ function BarberLights({ fxOn }: { fxOn: boolean }) {
       <pointLight position={[3.4, FLOOR_Y + 2.3, 0.3]} intensity={16} distance={13} decay={2} color="#ffb45e" />
       {/* soft warm fill over the table */}
       <pointLight position={[0, FLOOR_Y + 2.7, 0]} intensity={9} distance={10} decay={2} color="#ffdca8" />
-      {/* a wash along the mirror wall */}
-      <pointLight position={[0, FLOOR_Y + 2.0, -3.1]} intensity={5} distance={6.5} decay={2} color="#ffe9c9" />
+      {/* a wash along the mirror wall — raised + widened (improvement pass,
+          2026-10-30) so the far wall carries a visible warm pool behind the
+          partner and the mirror glass picks up a specular sheen */}
+      <pointLight position={[0, FLOOR_Y + 2.0, -3.1]} intensity={9} distance={8.5} decay={2} color="#ffe9c9" />
+      {/* barber-pole accent: a small warm point at the pole by the door */}
+      <pointLight position={[3.95, FLOOR_Y + 1.8, 2.55]} intensity={3} distance={3.2} decay={2} color="#ffd2a8" />
     </>
   );
 }
@@ -519,6 +552,18 @@ function Shell({ a }: { a: BarberAssets }) {
         <sphereGeometry args={[0.032, 10, 8]} />
       </mesh>
 
+      {/* afternoon spill: warm pools on the floor inside the storefront
+          (improvement pass, 2026-10-30) — additive decals riding +0.012
+          over the floor plane, one per window bay + one at the door/pole */}
+      {[-2.6, -0.6, 1.4].map((bz) => (
+        <mesh key={bz} rotation={[-Math.PI / 2, 0, 0]} position={[3.72, 0.012, bz]} material={a.floorGlow}>
+          <planeGeometry args={[1.7, 1.6]} />
+        </mesh>
+      ))}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[3.95, 0.012, 2.95]} material={a.floorGlow}>
+        <planeGeometry args={[1.2, 1.8]} />
+      </mesh>
+
       {/* outside: sidewalk, silhouettes, the afternoon glow */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[7.3, -0.005, -0.1]} material={a.outsideGround} receiveShadow>
         <planeGeometry args={[5.4, 11]} />
@@ -616,6 +661,21 @@ function MirrorStations({ a }: { a: BarberAssets }) {
           </mesh>
           <mesh position={[0, 1.675, -0.255]} material={a.mirror}>
             <planeGeometry args={[1.5, 1.25]} />
+          </mesh>
+          {/* sheen wash (improvement pass, 2026-10-30): an additive glow
+              12 mm proud of the aged glass so the mirror reads as a mirror
+              from across the table — the glass material itself is unchanged */}
+          <mesh position={[0, 1.675, -0.243]} material={a.mirrorSheen}>
+            <planeGeometry args={[1.5, 1.25]} />
+          </mesh>
+          {/* under-shelf glow (the Speakeasy trick): a warm strip under the
+              counter lip + its wash down the cabinet front, so each station
+              reads as a lit beat on the far wall */}
+          <mesh position={[0, 0.855, 0.306]} material={a.shelfStrip}>
+            <boxGeometry args={[1.9, 0.028, 0.02]} />
+          </mesh>
+          <mesh position={[0, 0.55, 0.298]} material={a.shelfGlow}>
+            <planeGeometry args={[1.9, 0.56]} />
           </mesh>
         </group>
       ))}
@@ -735,7 +795,7 @@ function BarberPole({ a, fxOn }: { a: BarberAssets; fxOn: boolean }) {
       </mesh>
       <mesh position={[0, 1.75, 0]}>
         <cylinderGeometry args={[0.085, 0.085, 0.70, 20]} />
-        <meshStandardMaterial map={stripeTex} roughness={0.25} metalness={0.05} />
+        <meshStandardMaterial map={stripeTex} emissive="#ffffff" emissiveMap={stripeTex} emissiveIntensity={0.38} roughness={0.25} metalness={0.05} />
       </mesh>
     </group>
   );
