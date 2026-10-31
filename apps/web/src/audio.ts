@@ -224,6 +224,9 @@ export const TRACKS: Track[] = [
   { file: 'funk-trunk', title: 'Funk Trunk', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/funk-trunk/', credit: '"Funk Trunk" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'soul-sync', title: 'Soul Sync', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/soul-sync/', credit: '"Soul Sync" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'c-funk', title: 'C-Funk', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/C-Funk.mp3', credit: '"C-Funk" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'that-feeling', title: 'That Feeling', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/that-feeling/', credit: '"That Feeling" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'a-little-faith', title: 'A Little Faith', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/a-little-faith/', credit: '"A Little Faith" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'will-make-you-happy', title: 'Will Make You Happy', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/will-make-you-happy/', credit: '"Will Make You Happy" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -489,6 +492,36 @@ const BRB_EVENT_GAIN = 2.01;
  *  0.098). */
 const BRB_BED_LEAD_S = 1105 / 44100;
 const BRB_BED_SECONDS = 64;
+/** Grandma's recorded bed (owner sample pick, 2026-10-31): a 64.000 s
+ *  seamless loop of kitchen recordings — a real refrigerator's body under
+ *  everything and a real mantle clock ticking at its measured natural
+ *  ~1.02 s period (freesfx.co.uk, attribution EULA — CREDITS.md), interior
+ *  air and family walla from the next room low-passed at 750 Hz so no words
+ *  survive (SSE Library, CC0), a pot boiling with a frying whisper and two
+ *  faint dish clinks. Five recorded house one-shots — dishes set down, the
+ *  screen door, grandma's rocking chair, a pot lid and a chair scraping on
+ *  the linoleum — ride over it as scheduled events. */
+const GMA_BED_URL = '/audio/ambience/grandmas-bed.mp3';
+const GMA_EVENT_URLS = {
+  dishes: ['/audio/ambience/grandmas-event-dishes.mp3'],
+  screenDoor: ['/audio/ambience/grandmas-event-screen-door.mp3'],
+  rockingChair: ['/audio/ambience/grandmas-event-rocking-chair.mp3'],
+  potLid: ['/audio/ambience/grandmas-event-pot-lid.mp3'],
+  chairScrape: ['/audio/ambience/grandmas-event-chair-scrape.mp3'],
+} as const;
+/** Event staging gain, same construction as BRB_EVENT_GAIN: the bed file is
+ *  the −16 LUFS master; the event clips keep their premaster staging, so
+ *  they play through this gain to hold the approved demo balance (the
+ *  loudnorm raised the bed +11.09 dB over its premaster — measured RMS on
+ *  the shipped files). */
+const GMA_EVENT_GAIN = 3.59;
+/** The bed's MP3 loop trim, from the shipped file's own measured offsets:
+ *  1105 samples of encoder delay at 44.1 kHz ahead of exactly 64.000 s of
+ *  content — same encoder settings as The Pj's, Speakeasy and Barbershop
+ *  beds (the shipped file's measured seam step, 0.023, sits far below the
+ *  material's own step noise, p99 0.071). */
+const GMA_BED_LEAD_S = 1105 / 44100;
+const GMA_BED_SECONDS = 64;
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
  *  when it is already the content length (a gapless-aware decoder) or too short. */
@@ -3249,6 +3282,72 @@ class Engine {
     arm('register', 120, 240, true);
   }
 
+  private startGrandmasBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('gma-bed', GMA_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, GMA_BED_LEAD_S, GMA_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...GMA_EVENT_URLS.dishes, ...GMA_EVENT_URLS.screenDoor, ...GMA_EVENT_URLS.rockingChair, ...GMA_EVENT_URLS.potLid, ...GMA_EVENT_URLS.chairScrape]) void this.loadAmbience(url, url);
+    this.scheduleGrandmasEvents();
+  }
+
+  /** House life over the recorded bed: five independent randomized timers —
+   *  dishes being set down every 45–90 s, grandma's rocking chair every
+   *  60–120 s, the screen door every 90–180 s, and a pot lid and a chair
+   *  scraping on the linoleum every 120–240 s (owner densities,
+   *  2026-10-31) — sharing one busy gate, so an event never talks over
+   *  another (the street pattern). Each kind has a single recording, so
+   *  there is no variant to rotate; the spacing itself is the variety. The
+   *  timers live in venueTimers, so leaving the venue silences the house,
+   *  and the first fire comes a half-interval in, once the table settles. */
+  private scheduleGrandmasEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the kitchen
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = GMA_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof GMA_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(GMA_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('dishes', 45, 90, true);
+    arm('rockingChair', 60, 120, true);
+    arm('screenDoor', 90, 180, true);
+    arm('potLid', 120, 240, true);
+    arm('chairScrape', 120, 240, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -3335,16 +3434,24 @@ class Engine {
         this.vEvery(12, 26, (t) => this.tone(t, 1700, 0.45, 'sine', 0.007, { glideTo: 1150, dest: B })); // gull
         crackle(0.8, 2.2, 0.5); // torches
         break;
-      case 'kitchen':
-        room(0.6); this.vHum(60, 0.006);
-        this.vEvery(1, 1, (t) => this.vBurst(t, 0.015, 'bandpass', 2600, 0.04)); // the clock
-        // Story Audio Pass (the Porch stop lives in Grandma's Kitchen): the house breathes —
-        // somebody's TV murmuring two rooms off, a dish set down, and the screen door to the
-        // porch, where the game actually is, working on its hinge.
-        this.vEvery(7, 16, (t) => { for (let i = 0; i < 2; i++) this.vBurst(t + Math.random() * 0.3, 0.02, 'bandpass', 2900 + Math.random() * 700, 0.024); }); // dishes / silverware
-        this.vEvery(29, 65, (t) => { this.tone(t, 280, 0.3, 'sine', 0.007, { glideTo: 560, dest: B }); this.vBurst(t + 0.32, 0.05, 'lowpass', 480, 0.045); }); // screen door creak + slap
-        this.vEvery(21, 47, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.07, 4400, 0.04, 'sine', 0.009, { dest: B }); }); // sparrows outside the window
+      case 'kitchen': {
+        // Grandma's bed is a RECORDING now (owner sample pick, 2026-10-31),
+        // replacing the synthesized stand-in (room tone, a mains hum and a
+        // 1 Hz burst "clock", with synth dish bursts, a screen-door tone and
+        // sparrow chirps): a seamless 64 s kitchen loop — a real fridge body
+        // under a real wall clock ticking at its own ~1 s pace, a pot on the
+        // stove, and family murmuring in the next room through a low-pass
+        // wall. The house still works around the game, now in recordings:
+        // dishes set down, the screen door to the porch working on its
+        // hinge, grandma's rocking chair, a pot lid, a chair scraping on
+        // the linoleum — all
+        // riding over the bed as one-shot events on their own timers
+        // (startGrandmasBed). The Porch stop does NOT play here: it
+        // overrides this venue's bed outright to its 'porch' film mix
+        // (STORY_STOP_AUDIO), which is untouched.
+        this.startGrandmasBed();
         break;
+      }
       case 'rec':
         // The Rec Center (Story stop 3) — a gym that never fully empties: ball on hardwood,
         // shoes on the court, a buzzer's ghost. Reached only via the story bed override

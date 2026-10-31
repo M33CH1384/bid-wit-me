@@ -198,6 +198,19 @@ export const SPK_BED_URL = '/audio/ambience/speakeasy-bed.mp3';
  * life, loaded lazily by the engine after the bed starts.
  */
 export const BRB_BED_URL = '/audio/ambience/barbershop-bed.mp3';
+/**
+ * Grandma's recorded kitchen bed (owner, 2026-10-31): gated exactly like
+ * the Barbershop's bed — the engine fetches it at every Grandma's Kitchen
+ * table, so at High the loader's promise covers it; at Low it streams in
+ * behind the loader as music always has. One seam exception, the Pj's
+ * king-stop shape: the Porch story table sits at this venue but overrides
+ * its bed outright to the 'porch' film mix (STORY_STOP_AUDIO in
+ * spatial.ts), so the kitchen bed is never fetched there and must not
+ * gate. The bed's event one-shots (dishes, screen door, rocking chair,
+ * pot lid, chair scrape) deliberately do NOT gate: optional life, loaded
+ * lazily by the engine after the bed starts.
+ */
+export const GMA_BED_URL = '/audio/ambience/grandmas-bed.mp3';
 export function roomAudioUrls(
   venue: string,
   quality: 'high' | 'low',
@@ -207,6 +220,7 @@ export function roomAudioUrls(
   if (venue === 'blockAfterDark' && storyStopId !== 'king') return [{ label: 'ambience bed (Pj\'s night street)', url: PJS_BED_URL }];
   if (venue === 'speakeasy') return [{ label: 'ambience bed (Speakeasy lounge)', url: SPK_BED_URL }];
   if (venue === 'barbershop') return [{ label: 'ambience bed (Barbershop)', url: BRB_BED_URL }];
+  if (venue === 'grandma' && storyStopId !== 'porch') return [{ label: 'ambience bed (Grandma\'s Kitchen)', url: GMA_BED_URL }];
   return [];
 }
 
