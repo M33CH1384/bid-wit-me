@@ -23,6 +23,27 @@ function sampleMin(from: Xform, to: Xform, motion: PlayFlightMotion, arc: number
 }
 
 /**
+ * Leading-edge pitch in degrees at a pose: how far the edge facing the
+ * direction of travel sits BELOW the trailing edge. Positive = the card is
+ * tipping into its landing (corner-first); ~0 = descending flat/parallel.
+ */
+function dipDeg(pose: Xform, from: Xform, to: Xform): number {
+  const dx = to.p[0] - from.p[0], dz = to.p[2] - from.p[2];
+  const hl = Math.hypot(dx, dz) || 1;
+  const ux = dx / hl, uz = dz / hl;
+  const q = new Quaternion(...pose.q);
+  let leadY = 0, trailY = 0, leadN = 0, trailN = 0, leadA = 0, trailA = 0;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    const c = new Vector3((sx * CW) / 2, (sy * CH) / 2, (sz * CT) / 2).multiplyScalar(pose.s).applyQuaternion(q);
+    const along = c.x * ux + c.z * uz;
+    if (along > 0.01) { leadY += pose.p[1] + c.y; leadA += along; leadN++; }
+    else if (along < -0.01) { trailY += pose.p[1] + c.y; trailA += along; trailN++; }
+  }
+  if (!leadN || !trailN) return 0;
+  return Math.atan2(trailY / trailN - leadY / leadN, leadA / leadN - trailA / trailN) * 180 / Math.PI;
+}
+
+/**
  * The pre-fix glide path, replicated from the old Card3D frame code: one shared glide
  * ease for centre + rotation, hop only until t = 0.35, no corner clearance. This is
  * the path that stabbed the corner through the felt on its "slide".
@@ -99,41 +120,70 @@ describe('played-card flight: the corner never stabs the felt (owner 2026-10-29)
     }
   });
 
-  it('glide: the card is FLAT and at rest height from touchdown (t=0.35) on, and still slides', () => {
+  it('glide: corner-first touchdown, a short flop, then rest — no flat skate (owner 2026-10-31)', () => {
     for (const seat of SEATS) {
       const from = launchFrom(seat);
       const to = trickSpot(seat, 4, 0, 0.3, undefined, { dx: 0.18, dz: 0.1, spin: 0.5 });
       const tq = new Quaternion(...to.q);
-      for (let i = 35; i <= 100; i++) {
+      // At touchdown the leading edge is pitched DOWN — the corner meets the
+      // pile first. (The 2026-10-29 design landed flat from t=0.35 and skated;
+      // the 2026-10-31 verdict called that slide fake.)
+      const at35 = playFlightPose(from, to, 0.35, { motion: 'glide', arc: 0.3 });
+      expect(dipDeg(at35, from, to), `${seat} dip at touchdown`).toBeGreaterThan(8);
+      // Only a bite of the trip is left at touchdown (~10%, not the old 46%).
+      const total = Math.hypot(to.p[0] - from.p[0], to.p[2] - from.p[2]);
+      const rest = Math.hypot(to.p[0] - at35.p[0], to.p[2] - at35.p[2]);
+      expect(rest / total, `${seat} bite share`).toBeLessThan(0.18);
+      // The bite is nearly spent halfway through the flop.
+      const at50 = playFlightPose(from, to, 0.5, { motion: 'glide', arc: 0.3 });
+      expect(Math.hypot(to.p[0] - at50.p[0], to.p[2] - at50.p[2]) / total, `${seat} bite left @0.5`).toBeLessThan(0.03);
+      // From the flop's end the card is exactly at rest: flat and at rest height.
+      for (let i = 58; i <= 100; i++) {
         const pose = playFlightPose(from, to, i / 100, { motion: 'glide', arc: 0.3 });
         expect(new Quaternion(...pose.q).angleTo(tq), `${seat} tilt @${i}`).toBeLessThan(0.01);
         expect(pose.p[1], `${seat} height @${i}`).toBeCloseTo(to.p[1], 6);
       }
-      // a real skid remains after touchdown: at least a fifth of the horizontal travel
-      const at35 = playFlightPose(from, to, 0.35, { motion: 'glide', arc: 0.3 });
-      const total = Math.hypot(to.p[0] - from.p[0], to.p[2] - from.p[2]);
-      const rest = Math.hypot(to.p[0] - at35.p[0], to.p[2] - at35.p[2]);
-      expect(rest / total, `${seat} slide share`).toBeGreaterThan(0.2);
     }
   });
 
-  it('flight: the card levels by t=0.8 and finishes flat while still travelling', () => {
+  it('flight: the card tips into its landing and slaps flat exactly at rest (owner 2026-10-31)', () => {
     for (const seat of SEATS) {
       const from = launchFrom(seat);
       const to = trickSpot(seat, 4, 2, -0.4);
       const tq = new Quaternion(...to.q);
-      for (let i = 80; i <= 100; i++) {
-        const pose = playFlightPose(from, to, i / 100, { motion: 'flight', arc: 0.35 });
-        expect(new Quaternion(...pose.q).angleTo(tq), `${seat} tilt @${i}`).toBeLessThan(0.01);
-      }
+      // Not a parallel descent: through the final approach the card is pitched
+      // into the landing (dip at t=0.9), and it is NOT flat yet at t=0.85.
+      const at90 = playFlightPose(from, to, 0.9, { motion: 'flight', arc: 0.35 });
+      expect(dipDeg(at90, from, to), `${seat} dip @0.9`).toBeGreaterThan(8);
       const at85 = playFlightPose(from, to, 0.85, { motion: 'flight', arc: 0.35 });
+      expect(new Quaternion(...at85.q).angleTo(tq), `${seat} tilt @0.85`).toBeGreaterThan(0.05);
+      // Almost all the trip is done by then — the slap, not a skid, finishes it.
       const total = Math.hypot(to.p[0] - from.p[0], to.p[2] - from.p[2]);
       const tail = Math.hypot(to.p[0] - at85.p[0], to.p[2] - at85.p[2]);
-      // the flat tail is short by design (1 - easeInOut(0.85) = 1.35% of travel,
-      // ~1-2 cm at table scale) but it is nonzero: the card is still travelling,
-      // already flat, as it arrives — the long skid is the glide's (46%).
-      expect(tail / total, `${seat} tail travel share`).toBeGreaterThan(0.01);
+      expect(tail / total, `${seat} tail travel share`).toBeLessThan(0.06);
+      // Flat exactly at t=1 (the endpoints suite pins the position exactly).
+      const at1 = playFlightPose(from, to, 1, { motion: 'flight', arc: 0.35 });
+      expect(new Quaternion(...at1.q).angleTo(tq), `${seat} tilt @1`).toBeLessThan(1e-6);
     }
+  });
+
+  it('the hop is ballistic: it rises faster than it falls (no sine levitation)', () => {
+    // A descending synthetic flight (a high hand down to a real spot) with the
+    // centre's descent curve factored back out isolates the hop itself. (A
+    // level synthetic would skim its own clearance floor and pollute the
+    // measurement with the corner lift.)
+    const spot = trickSpot('bottom', 4, 1, 0.2);
+    const to: Xform = { p: [...spot.p], q: spot.q, s: spot.s };
+    const from: Xform = { p: [spot.p[0], 0.55, spot.p[2] + 0.9], q: spot.q, s: spot.s };
+    const hop = (t: number) =>
+      playFlightPose(from, to, t, { motion: 'flight', arc: 0.35 }).p[1]
+      - (from.p[1] + (to.p[1] - from.p[1]) * (1 - (1 - t) * (1 - t)));
+    // Quarter in, the hop is already higher than it is three quarters in —
+    // a sine hop would be exactly symmetric and fail this.
+    expect(hop(0.25)).toBeGreaterThan(hop(0.75) + 0.02);
+    expect(hop(0.45)).toBeGreaterThan(hop(0.25)); // peak sits at ~45% of the flight
+    expect(hop(0)).toBeCloseTo(0, 9);
+    expect(hop(1)).toBeCloseTo(0, 9);
   });
 
   it('endpoints are exact: the flight leaves the fan pose and lands on the trick spot', () => {

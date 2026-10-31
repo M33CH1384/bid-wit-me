@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
 import { impactFraction } from '../landTiming';
-import { gatherClearanceLift } from './gather';
+import { GATHER_CLEARANCE, gatherClearanceLift, minCardCornerY } from './gather';
 import { liftEase } from './handLift';
 import type { Xform } from './layout';
 
@@ -18,16 +18,37 @@ import type { Xform } from './layout';
  * during the phase that is supposed to read as a flat slide. The reduced-motion slide
  * stabbed the same way (~33 mm) in its first quarter.
  *
- * The fix, in three parts, inside the same total duration:
- *  1. Corner clearance: every frame adds exactly the lift (the gather's proven
- *     formula) that keeps the card's lowest corner at or above the felt. Endpoints
- *     that already clear are unchanged, so fans and trick spots look as before.
- *  2. Level before contact: rotation completes early — by touchdown on a glide
- *     (t = 0.35) and by t = 0.8 on a flight — so the card meets the felt FLAT.
- *  3. A real slide at the end: the centre reaches rest height when the card levels
- *     (glide: at touchdown; flight: by t = 0.85) while horizontal travel is still
- *     finishing on its decelerating ease, so the last stretch is the card skidding
- *     flat on the felt into its spot.
+ * The 2026-10-29 fix kept the corner off the felt by levelling the card before contact
+ * and letting it SKID flat into its spot. That cured the stab — and then the owner
+ * (2026-10-31, on the toss-variation ship): "Now the way the cards slide doesn't look
+ * realistic at all." He was right about the mechanism: the glide touched down at
+ * t = 0.35 with ~46% of its trip still untravelled and then spent ~325 ms flat on
+ * the felt still travelling; the flick skated ~225 ms the same way; even the flight
+ * family levelled early and descended parallel on a symmetric sine hop, so cards
+ * hovered and pucked instead of being thrown.
+ *
+ * The current design is a TOSS, inside the same timing envelope (same durations,
+ * same touchdown fractions — landTiming is untouched — so holds, landing cues and
+ * the sweep/review anchors, which are all delay+duration arithmetic, never move):
+ *  1. Ballistic hop: the hop rises fast, flattens into its peak at ~45% and falls
+ *     accelerating, arriving at full speed — a thrown card, not a sine levitation.
+ *     Travel is front-loaded the same way: fastest out of the hand, firm stop.
+ *  2. Pitch travel: the card tips as it flies — its leading edge drops (the "dip",
+ *     a rotation about the horizontal axis across the direction of travel) — so it
+ *     meets the felt CORNER-FIRST, never whole-face. On the flight family the dip
+ *     peaks late (~t = 0.9) and unwinds in the last tenth: the slap down flat.
+ *  3. Touchdown + a SHORT bite: glide/flick cards arrive at their touchdown
+ *     fraction with ~90%+ of the trip already covered; the dip then unwinds over
+ *     a brief flop while the last few percent of travel bite in with hard
+ *     deceleration, and the card is fully at rest well before t = 1. A card that
+ *     lands and STOPS, not one that glides to its spot.
+ *  4. Corner clearance, as before: every frame adds exactly the lift that keeps
+ *     the card's lowest corner at or above its floor — computed from the final
+ *     quaternion (dip and spin folded in first), so the corner can GRAZE but
+ *     never crosses. Near the spot the floor itself rises from the felt to the
+ *     landing spot's own rest height, so a dipped corner rides onto the pile
+ *     instead of sinking into the cards already there. Endpoints that already
+ *     clear are unchanged: pose(0) is `from`, pose(1) is `to`, exactly.
  */
 
 export type PlayFlightMotion = 'flight' | 'glide' | 'slide' | 'flick';
@@ -43,9 +64,10 @@ export type PlayFlightMotion = 'flight' | 'glide' | 'slide' | 'flick';
  *  - `spin` adds an in-flight yaw (radians at the envelope peak) that unwinds
  *    to exactly zero at the landing, so the card still settles on its spot's
  *    own rotation.
- *  - `levelBy` / `settleBy` (flight chassis only) move when the card levels
- *    and when its centre reaches rest height — an earlier settle means a
- *    longer flat skid into the spot.
+ *  - `dip` is the pitch travel (radians): how far the leading edge drops as
+ *    the card flies, so it lands corner-first. Absent = the chassis default.
+ *  - `levelBy` (flight chassis only) moves when the base levelling slerp
+ *    completes; the dip carries the pitch story from there to the slap.
  * The corner-clearance lift is applied LAST, from the final quaternion and
  * scale, so every variant keeps the no-puncture guarantee by construction.
  * The reduced-motion 'slide' ignores variants entirely.
@@ -54,8 +76,8 @@ export interface FlightVariant {
   arcScale?: number;
   curve?: number;
   spin?: number;
+  dip?: number;
   levelBy?: number;
-  settleBy?: number;
 }
 
 export interface PlayFlightOpts {
@@ -69,11 +91,55 @@ export interface PlayFlightOpts {
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const glideEase = (t: number) => 1 - Math.pow(1 - Math.pow(t, 1.4), 3);
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const smoothstep = (u: number) => { const c = clamp01(u); return c * c * (3 - 2 * c); };
 
-/** A flight card is fully level by this fraction of the flight. */
+/** A flight card's base levelling completes by this fraction of the flight. */
 export const FLIGHT_LEVEL_BY = 0.8;
-/** A flight centre reaches rest height by this fraction; the rest is flat slide. */
-export const FLIGHT_SETTLE_BY = 0.85;
+
+/**
+ * Projectile hop over u in [0, 1]: a fast rise that flattens into the peak,
+ * then a fall that accelerates all the way to touchdown. A thrown card leaves
+ * the hand at its fastest and arrives at its fastest; the old sin(pi t) hop
+ * rose exactly as fast as it fell, which read as levitation.
+ */
+const HOP_PEAK = 0.45;
+function ballisticHop(u: number): number {
+  const c = clamp01(u);
+  if (c <= HOP_PEAK) { const r = 1 - c / HOP_PEAK; return 1 - r * r; }
+  const f = (c - HOP_PEAK) / (1 - HOP_PEAK);
+  return 1 - f * f;
+}
+
+/** Where a glide's flop finishes and the card is at rest (fraction of flight). */
+const GLIDE_REST_BY = 0.58;
+/** Where a flick's snap-down finishes and the card is at rest. */
+const FLICK_REST_BY = 0.78;
+/** A flick's centre has finished descending by this fraction. */
+const FLICK_SETTLE_BY = 0.62;
+
+/** Leading-edge dip (radians) when a variant doesn't carry its own. */
+const DIP_DEFAULT: Partial<Record<PlayFlightMotion, number>> = { flight: 0.3, glide: 0.34, flick: 0.38 };
+
+/**
+ * The dip's envelope over the flight. Flight family: builds through the
+ * descent, peaks at t = 0.9, unwinds in the last tenth (the slap). Glide and
+ * flick: builds across the toss, peaks exactly AT touchdown (impactFraction —
+ * the leading corner is what touches), unwinds over the flop while the bite
+ * finishes, and is zero from the rest fraction on.
+ */
+function dipEnvelope(motion: PlayFlightMotion, t: number): number {
+  if (motion === 'flight') {
+    if (t <= 0.55) return 0;
+    if (t <= 0.9) return smoothstep((t - 0.55) / 0.35);
+    return 1 - smoothstep((t - 0.9) / 0.1);
+  }
+  const toss = impactFraction(motion);
+  const restBy = motion === 'glide' ? GLIDE_REST_BY : FLICK_REST_BY;
+  if (t <= toss) return smoothstep(t / toss);
+  if (t >= restBy) return 0;
+  const u = (t - toss) / (restBy - toss);
+  return 1 - u * u;
+}
 
 const quatOf = (q: Xform['q']): Quaternion => new Quaternion(q[0], q[1], q[2], q[3]);
 
@@ -95,34 +161,43 @@ export function playFlightPose(from: Xform, to: Xform, t: number, opts: PlayFlig
   let eRot: number; // levelling
   let hop = 0;
   if (opts.motion === 'glide') {
-    // Toss until touchdown (the same fraction landTiming fires the landing sound at),
-    // then a flat slide: rotation and descent run on the toss window, horizontal
-    // travel keeps its whole-flight decelerating ease.
+    // Toss until touchdown (the same fraction landTiming fires the landing sound
+    // at), arriving with ~91% of the trip already covered; then the flop: the
+    // dip unwinds while the last bite of travel decelerates hard, and the card
+    // is at rest from GLIDE_REST_BY on. Travel and descent share one curve over
+    // the rest window so there is no seam at touchdown.
     const toss = impactFraction('glide');
-    const eToss = glideEase(clamp01(clamped / toss));
-    eXZ = glideEase(clamped);
-    eY = eToss;
-    eRot = eToss;
-    hop = clamped < toss ? Math.sin((Math.PI * clamped) / toss) * arc * Math.min(1, dist) : 0;
+    const v = clamp01(clamped / GLIDE_REST_BY);
+    eXZ = 1 - Math.pow(1 - v, 2.6);
+    eY = 1 - Math.pow(1 - v, 2);
+    eRot = glideEase(clamp01(clamped / toss));
+    hop = clamped < toss ? ballisticHop(clamped / toss) * arc * Math.min(1, dist) : 0;
   } else if (opts.motion === 'flick') {
-    // A flicked card (owner, 2026-10-30): quick, flat, skimming. Horizontal travel
-    // runs on the decelerating glide ease so most of the distance is covered early;
-    // descent and levelling complete inside the toss window (landTiming's flick
-    // fraction, where the landing sound fires); what remains is a flat skid into
-    // the spot. Same total duration as any other play — the speed is in the shape.
+    // A flicked card (owner, 2026-10-30): quick, flat, snapping down. Travel is
+    // front-loaded hardest of all — ~95% of the trip is done by touchdown
+    // (landTiming's flick fraction, where the landing sound fires) — then the
+    // dip unwinds over the snap-down while the small bite finishes; the card
+    // is at rest from FLICK_REST_BY on. Same total duration as any other play —
+    // the speed is in the shape.
     const toss = impactFraction('flick');
-    eXZ = glideEase(clamped);
-    eY = easeInOut(clamp01(clamped / toss));
+    const v = clamp01(clamped / FLICK_REST_BY);
+    eXZ = 1 - Math.pow(1 - v, 2.2);
+    const w = clamp01(clamped / FLICK_SETTLE_BY);
+    eY = 1 - Math.pow(1 - w, 2.2);
     eRot = easeInOut(clamp01(clamped / (toss * 0.92)));
-    hop = clamped < toss ? Math.sin((Math.PI * clamped) / toss) * arc * Math.min(1, dist) : 0;
+    hop = clamped < toss ? ballisticHop(clamped / toss) * arc * Math.min(1, dist) : 0;
   } else if (opts.motion === 'slide') {
     // Reduced motion: the old straight ease, unchanged except for corner clearance.
     eXZ = eY = eRot = liftEase(clamped);
   } else {
-    eXZ = easeInOut(clamped);
-    eY = easeInOut(clamp01(clamped / (variant?.settleBy ?? FLIGHT_SETTLE_BY)));
+    // The toss: travel leaves the hand fast and arrives firm (no symmetric
+    // easeInOut drift), the centre falls on an accelerating curve, and the hop
+    // is ballistic. Contact is at t = 1 (impactFraction): the dip's slap, not
+    // an early flat settle, is what brings the card down.
+    eXZ = 1 - Math.pow(1 - clamped, 1.9);
+    eY = 1 - Math.pow(1 - clamped, 2);
     eRot = easeInOut(clamp01(clamped / (variant?.levelBy ?? FLIGHT_LEVEL_BY)));
-    hop = Math.sin(Math.PI * clamped) * arc * Math.min(1, dist);
+    hop = ballisticHop(clamped) * arc * Math.min(1, dist);
   }
 
   const p = new Vector3(
@@ -132,13 +207,23 @@ export function playFlightPose(from: Xform, to: Xform, t: number, opts: PlayFlig
   );
   // Lateral curve: bend the path sideways, peaking mid-flight and returning to
   // the straight line at both ends, so the launch and landing poses stay exact.
+  // The bend lives in the AIRBORNE phase: a flight card is airborne throughout,
+  // but a glide/flick card is at rest from its rest fraction on — a bend that
+  // kept unwinding to t = 1 would drag the landed card sideways (a residual
+  // slide the traces caught), so there the envelope closes at the rest point
+  // and the flop carries the last of the bend home.
   const curve = variant?.curve ?? 0;
   if (curve !== 0) {
     const hx = tp.x - sp.x;
     const hz = tp.z - sp.z;
     const hl = Math.hypot(hx, hz);
     if (hl > 1e-6) {
-      const bend = curve * Math.sin(Math.PI * clamped) * Math.min(1, dist);
+      const bendEnv = opts.motion === 'glide'
+        ? Math.sin(Math.PI * clamp01(clamped / GLIDE_REST_BY))
+        : opts.motion === 'flick'
+          ? Math.sin(Math.PI * clamp01(clamped / FLICK_REST_BY))
+          : Math.sin(Math.PI * clamped);
+      const bend = curve * bendEnv * Math.min(1, dist);
       p.x += (-hz / hl) * bend;
       p.z += (hx / hl) * bend;
     }
@@ -154,16 +239,44 @@ export function playFlightPose(from: Xform, to: Xform, t: number, opts: PlayFlig
   const spin = variant?.spin ?? 0;
   if (spin !== 0) {
     // Glide and flick cards meet the felt at their touchdown fraction, so their
-    // spin unwinds inside the toss window and the skid is clean; a flight card
+    // spin unwinds inside the toss window and the settle is clean; a flight card
     // keeps unwinding across its whole arc and settles exactly on the spot.
     const env = opts.motion === 'glide' || opts.motion === 'flick'
       ? Math.sin(Math.PI * clamp01(clamped / impactFraction(opts.motion)))
       : Math.sin(Math.PI * clamped);
     if (env > 0) q = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), spin * env).multiply(q);
   }
+  // Pitch travel: the leading edge drops as the card flies (the dip), a
+  // rotation about the horizontal axis across the direction of travel, folded
+  // into q BEFORE the clearance lift like the spin — so the lift is computed
+  // from the true lowest corner of the dipped card, and the corner can graze
+  // the felt/pile but never cross it.
+  const dipAmp = opts.motion === 'slide' ? 0 : (variant?.dip ?? DIP_DEFAULT[opts.motion] ?? 0);
+  const dip = dipAmp * dipEnvelope(opts.motion, clamped);
+  const hx = tp.x - sp.x;
+  const hz = tp.z - sp.z;
+  const hl = Math.hypot(hx, hz);
+  if (dip > 0 && hl > 1e-6) {
+    const axis = new Vector3(hz / hl, 0, -hx / hl);
+    q = new Quaternion().setFromAxisAngle(axis, dip).multiply(q);
+  }
   const s = from.s + (to.s - from.s) * eXZ;
-  // No corner through the felt, whatever the tilt/scale at this frame.
-  p.y += gatherClearanceLift(p.y, q, s);
+  // No corner through the felt, whatever the tilt/scale at this frame. The
+  // floor rises from the bare felt to the landing spot's own rest height as
+  // the travel completes, so a dipped corner rides onto the pile at the spot
+  // instead of sinking into the cards already there; early in the flight (and
+  // everywhere for the reduced-motion slide) it is exactly the original law.
+  if (opts.motion === 'slide') {
+    p.y += gatherClearanceLift(p.y, q, s);
+  } else {
+    const restCornerY = minCardCornerY(tp.y, quatOf(to.q), to.s);
+    // The floor reaches the spot's rest height by the moment of touchdown
+    // (glide/flick travel shares) resp. just before the flight family's slap.
+    const blendEnd = opts.motion === 'glide' ? 0.91 : opts.motion === 'flick' ? 0.95 : 0.97;
+    const blend = smoothstep((eXZ - (blendEnd - 0.13)) / 0.13);
+    const floorY = Math.max(GATHER_CLEARANCE, restCornerY * blend);
+    p.y += gatherClearanceLift(p.y, q, s, floorY - GATHER_CLEARANCE);
+  }
   return { p: [p.x, p.y, p.z], q: [q.x, q.y, q.z, q.w], s };
 }
 
@@ -174,9 +287,9 @@ export const FLIGHT_VARIANT_IDS: readonly FlightVariantId[] = ['standard', 'lob'
 
 const variantFor = (id: FlightVariantId, sign: number): FlightVariant => {
   switch (id) {
-    case 'lob': return { arcScale: 1.5 };
-    case 'drive': return { arcScale: 0.55, levelBy: 0.68, settleBy: 0.76, spin: 0.3 * sign };
-    case 'curve': return { arcScale: 0.95, curve: 0.13 * sign, spin: -0.4 * sign };
+    case 'lob': return { arcScale: 1.5, dip: 0.18 };
+    case 'drive': return { arcScale: 0.55, levelBy: 0.68, dip: 0.44, spin: 0.3 * sign };
+    case 'curve': return { arcScale: 0.95, curve: 0.13 * sign, spin: -0.4 * sign, dip: 0.32 };
     case 'spinner': return { arcScale: 1.1, spin: 1.0 * sign };
     default: return {};
   }
@@ -207,11 +320,11 @@ const FLICK_FULL_SPEED = 2.5;
 
 /**
  * The flick toss for a drag play, shaped by the gesture itself: the faster the
- * release, the flatter the skim; the release's lateral direction bends and
- * spins the card the way the hand threw it. Returns null when the release was
- * a gentle place, not a flick (the caller then uses the seeded toss family).
- * Pure in the release vector, which rides the play record — every client
- * derives the same flick for the same play.
+ * release, the flatter the skim and the harder the snap-down; the release's
+ * lateral direction bends and spins the card the way the hand threw it.
+ * Returns null when the release was a gentle place, not a flick (the caller
+ * then uses the seeded toss family). Pure in the release vector, which rides
+ * the play record — every client derives the same flick for the same play.
  */
 export function flickFlightFor(rel: readonly [number, number] | undefined): FlightVariant | null {
   if (!rel) return null;
@@ -225,5 +338,6 @@ export function flickFlightFor(rel: readonly [number, number] | undefined): Flig
     arcScale: 0.34 - 0.14 * e,
     curve: lat * 0.17,
     spin: lat * (0.3 + 0.2 * e),
+    dip: 0.34 + 0.1 * e,
   };
 }

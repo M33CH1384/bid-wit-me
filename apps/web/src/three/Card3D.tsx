@@ -35,7 +35,7 @@ interface Props {
   duration?: number;
   /** 'lift' is the 200ms group rise. 'slide' closes a gap over 240ms (translate + rotate only, same curve).
    *  'flight' is the deal / table arc. */
-  /** glide: tossed, then slides along the felt and slows with friction (physics landing) */
+  /** glide: tossed, touches down corner-first and flops flat over a short bite (physics landing) */
   motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick';
   arc?: number;
   /** Toss character for a played card's flight (flightPose.ts): reshapes the path inside the same duration. */
@@ -662,9 +662,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       g.quaternion.set(...pose.q);
       g.scale.setScalar(pose.s);
     } else {
-    // Played-card flights (flight / glide / slide) follow playFlightPose: it levels the
-    // card before contact and keeps its lowest corner off the felt, so the card slides
-    // into its spot instead of stabbing a corner through the table (owner 2026-10-29).
+    // Played-card flights (flight / glide / slide) follow playFlightPose: a ballistic
+    // toss with pitch travel — the card tips in, meets the felt corner-first and
+    // lands flat, its lowest corner kept off the felt by the clearance lift, so it
+    // neither stabs a corner through the table (owner 2026-10-29) nor skates flat
+    // into its spot like a puck (owner 2026-10-31).
     // 'lift' is hand-internal and keeps its original single-ease path below.
     const pose = s.motionSnap === 'lift' ? null : playFlightPose(
       { p: [s.sp.x, s.sp.y, s.sp.z], q: [s.sq.x, s.sq.y, s.sq.z, s.sq.w], s: s.ss },
@@ -697,7 +699,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (sl && s.t > 0.75 && dist > 0.02) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
     }
     // Landing sound + thump fire here, on the frame the card visually hits the felt (after its pose is applied):
-    // glide cards touch down at t=0.35 and then slide, so waiting for t=1 played the sound ~0.3s late.
+    // glide cards touch down at t=0.35 and then flop flat, so waiting for t=1 played the sound ~0.3s late.
     if (!s.landDone && s.t >= impactFraction(s.motionSnap)) {
       s.landDone = true;
       const land = s.land;

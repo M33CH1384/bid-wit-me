@@ -138,7 +138,24 @@ describe('toss variation (owner 2026-10-30): every variant keeps the corner off 
   });
 });
 
-describe('the flick toss (owner 2026-10-30): quick, flat, skimming', () => {
+/** Leading-edge pitch in degrees at a pose (corner-first evidence). */
+function dipDeg(pose: Xform, from: Xform, to: Xform): number {
+  const dx = to.p[0] - from.p[0], dz = to.p[2] - from.p[2];
+  const hl = Math.hypot(dx, dz) || 1;
+  const ux = dx / hl, uz = dz / hl;
+  const q = new Quaternion(...pose.q);
+  let leadY = 0, trailY = 0, leadN = 0, trailN = 0, leadA = 0, trailA = 0;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    const c = new Vector3((sx * CW) / 2, (sy * CH) / 2, (sz * CT) / 2).multiplyScalar(pose.s).applyQuaternion(q);
+    const along = c.x * ux + c.z * uz;
+    if (along > 0.01) { leadY += pose.p[1] + c.y; leadA += along; leadN++; }
+    else if (along < -0.01) { trailY += pose.p[1] + c.y; trailA += along; trailN++; }
+  }
+  if (!leadN || !trailN) return 0;
+  return Math.atan2(trailY / trailN - leadY / leadN, leadA / leadN - trailA / trailN) * 180 / Math.PI;
+}
+
+describe('the flick toss (owner 2026-10-30): quick, flat, snapping down', () => {
   it('only a real flick release qualifies, and the gesture shapes it', () => {
     expect(flickFlightFor(undefined)).toBeNull();
     expect(flickFlightFor([0.3, 0.2])).toBeNull();
@@ -147,43 +164,57 @@ describe('the flick toss (owner 2026-10-30): quick, flat, skimming', () => {
     const hard = flickFlightFor([2.5, 0])!;
     expect(soft).not.toBeNull();
     expect(hard.arcScale!).toBeLessThan(soft.arcScale!); // faster release = flatter skim
+    expect(hard.dip!).toBeGreaterThan(soft.dip!); // ...and a harder snap-down
+    expect(soft.dip!).toBeGreaterThan(0.3);
+    expect(hard.dip!).toBeLessThan(0.45);
     expect(flickFlightFor([2.0, 0])!.curve!).toBeGreaterThan(0); // thrown right, bends right
     expect(flickFlightFor([-2.0, 0])!.curve!).toBeLessThan(0);
     expect(flickFlightFor([-2.0, 0])!.spin!).toBeLessThan(0);
     const capped = flickFlightFor([20, 0])!; // wild flick caps like a full slam
     expect(capped.arcScale).toBe(hard.arcScale);
+    expect(capped.dip).toBe(hard.dip);
     expect(Math.abs(capped.curve!)).toBeLessThanOrEqual(Math.abs(flickFlightFor([2.5, 0])!.curve!) + 1e-9);
   });
 
-  it('is flat and at rest height from touchdown (t=0.55) on, and still skids', () => {
+  it('is corner-first at touchdown, snaps down, and is at rest from t=0.78 — no skating (owner 2026-10-31)', () => {
     expect(impactFraction('flick')).toBe(0.55);
     const flick = flickFlightFor([1.8, -0.6])!;
     for (const seat of SEATS) {
       const from = launchFrom(seat);
       const to = trickSpot(seat, 4, 0, 0.3);
       const tq = new Quaternion(...to.q);
-      for (let i = 55; i <= 100; i++) {
+      // Corner-first: at touchdown the leading edge is pitched well down.
+      // (The 2026-10-30 flick landed flat at t=0.55 and skated 8-45% of the
+      // trip; the 2026-10-31 verdict called that slide fake.)
+      const at55 = playFlightPose(from, to, 0.55, { motion: 'flick', arc: 0.35, variant: flick });
+      expect(dipDeg(at55, from, to), `${seat} dip at touchdown`).toBeGreaterThan(10);
+      // Only a small bite of the trip remains at touchdown.
+      const total = Math.hypot(to.p[0] - from.p[0], to.p[2] - from.p[2]);
+      const rest = Math.hypot(to.p[0] - at55.p[0], to.p[2] - at55.p[2]);
+      expect(rest / total, `${seat} bite share`).toBeLessThan(0.18);
+      // From the snap-down's end the card is exactly at rest: flat, at rest
+      // height, and no residual travel (the curve bend closes there too).
+      for (let i = 78; i <= 100; i++) {
         const pose = playFlightPose(from, to, i / 100, { motion: 'flick', arc: 0.35, variant: flick });
         expect(new Quaternion(...pose.q).angleTo(tq), `${seat} tilt @${i}`).toBeLessThan(0.01);
         expect(pose.p[1], `${seat} height @${i}`).toBeCloseTo(to.p[1], 6);
+        expect(Math.hypot(to.p[0] - pose.p[0], to.p[2] - pose.p[2]) / total, `${seat} travel left @${i}`).toBeLessThan(0.005);
       }
-      const at55 = playFlightPose(from, to, 0.55, { motion: 'flick', arc: 0.35, variant: flick });
-      const total = Math.hypot(to.p[0] - from.p[0], to.p[2] - from.p[2]);
-      const rest = Math.hypot(to.p[0] - at55.p[0], to.p[2] - at55.p[2]);
-      expect(rest / total, `${seat} skid share`).toBeGreaterThan(0.08);
-      expect(rest / total, `${seat} skid share`).toBeLessThan(0.45);
       // covers ground fast: by touchdown most of the trip is done (a tap toss is nowhere near)
       const tapAt55 = playFlightPose(from, to, 0.55, { motion: 'flight', arc: 0.35 });
       const flickDone = 1 - rest / total;
       const tapDone = 1 - Math.hypot(to.p[0] - tapAt55.p[0], to.p[2] - tapAt55.p[2]) / total;
-      expect(flickDone).toBeGreaterThan(tapDone + 0.1);
-      // and it stays low: peak height never approaches the tap toss's hop
+      expect(flickDone).toBeGreaterThan(tapDone + 0.05);
+      // and it stays low: peak height never approaches the tap toss's hop.
+      // (At the bottom seat the hand sits high and both flights only descend,
+      // so there the pin is that the flick never balloons above its launch.)
       let flickPeak = 0, tapPeak = 0;
       for (let i = 0; i <= 100; i++) {
         flickPeak = Math.max(flickPeak, playFlightPose(from, to, i / 100, { motion: 'flick', arc: 0.35, variant: flick }).p[1]);
         tapPeak = Math.max(tapPeak, playFlightPose(from, to, i / 100, { motion: 'flight', arc: 0.35 }).p[1]);
       }
-      expect(flickPeak).toBeLessThan(tapPeak - 0.05);
+      if (seat === 'bottom') expect(flickPeak).toBeLessThanOrEqual(from.p[1] + 0.01);
+      else expect(flickPeak).toBeLessThan(tapPeak - 0.05);
     }
   });
 });
