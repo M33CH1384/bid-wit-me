@@ -797,7 +797,7 @@ function KitchenClock({ a, fxOn }: { a: KitchenAssets; fxOn: boolean }) {
     for (let i = 0; i < 12; i++) {
       const ang = (i / 12) * Math.PI * 2;
       const long = i % 3 === 0;
-      parts.push(box(0.014, long ? 0.045 : 0.028, 0.006, Math.sin(ang) * 0.175, Math.cos(ang) * 0.175, 0));
+      parts.push(box(0.014, long ? 0.045 : 0.028, 0.006, Math.sin(ang) * 0.175, Math.cos(ang) * 0.175, 0, 0, 0, -ang));
     }
     return merged(parts);
   }, []);
