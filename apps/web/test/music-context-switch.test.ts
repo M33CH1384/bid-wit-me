@@ -154,7 +154,7 @@ const nowFile = () => sound.nowPlaying?.track.file ?? null;
 const deckFile = (d: EngDeck) => (d.track === null ? null : TRACKS[d.track]!.file);
 const XFADE_MS = 4000; // XFADE in audio.ts
 
-const PJS = ['soul-epic', 'overreach', 'no-quit', 'busted-jazz'];
+const PJS = ['soul-epic', 'overreach', 'no-quit', 'busted-jazz', 'my-deal'];
 const CLASSIC_LEAN = ['windows-down', 'chillin-hard', 'glad-to-be-stuck-inside'];
 const inPool = (file: string | null) => file !== null && generalPool().some((i) => TRACKS[i]!.file === file);
 
