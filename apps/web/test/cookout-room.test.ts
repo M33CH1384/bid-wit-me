@@ -12,8 +12,10 @@ import { describe, expect, it } from 'vitest';
  * code-first rule) — no GLB loading anywhere — and it carries
  * the Batch 3b identity anchors: the two-storey siding house
  * behind the far seat, the H 1.80 plank fence on three sides,
- * the kettle grill at the south-west corner with smoke
- * drifting WEST away from the felt, camp chairs + empty
+ * the kettle grill on the back line at the north-east with
+ * smoke drifting north-north-west away from the felt (moved
+ * into the seated player's view 2026-11-01 — it sat unseen
+ * at the south-west corner before), camp chairs + empty
  * serving table + cooler as east dressing, and perimeter-only
  * string lights. Standing-camera discipline (2026-10-28 gate):
  * the room has NO ceiling and its string runs never cross
@@ -67,13 +69,13 @@ describe('the Cookout — code-first, no downloads', () => {
 });
 
 describe('the Cookout — identity anchors', () => {
-  it('builds the two-storey house, the H 1.80 fence, and the grill corner', () => {
+  it('builds the two-storey house, the H 1.80 fence, and the back-line grill', () => {
     expect(room).toContain('function House(');
     expect(room).toContain('args={[7.4, 6.4, 0.3]}'); // two-storey wall
     expect(room).toContain('function FenceRun(');
     expect(room).toContain('parts.push(box(len, 1.8, 0.055, len / 2, 0.9, 0))'); // H 1.80 planks
     expect(room).toContain('function KettleGrill(');
-    expect(room).toContain("position={[-3.6, FLOOR_Y, 1.5]}"); // south-west corner
+    expect(room).toContain("position={[1.7, FLOOR_Y, -3.0]}"); // north-east back line, in the seated view
   });
 
   it('carries the east dressing cluster: camp chairs, serving table, cooler', () => {
@@ -82,8 +84,9 @@ describe('the Cookout — identity anchors', () => {
     expect(room).toContain('function Cooler(');
   });
 
-  it("drifts the grill smoke WEST, away from the felt (mirrored group)", () => {
+  it("drifts the grill smoke north-north-west, away from the felt (mirrored + yawed group)", () => {
     expect(room).toContain('scale={[-1, 1, 1]}');
+    expect(room).toContain('rotation={[0, -1.05, 0]}');
     expect(room).toContain('function SpriteSmoke(');
   });
 });

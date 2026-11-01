@@ -25,9 +25,13 @@ const FLOOR_Y = -0.9;
  * siding house with warm lit windows behind the far seat, a
  * weathered plank fence (H 1.80) enclosing the yard, string
  * lights at the perimeter, the kettle grill with its lid open
- * at the south-west corner (smoke drifting west, AWAY from the
- * felt), two camp chairs + the empty serving table + the blue
- * cooler as east-side dressing.
+ * on the back line at the north-east, beside the serving
+ * cluster and in the seated player's forward view (smoke
+ * drifting north-north-west, AWAY from the felt — the grill
+ * sat at the south-west corner, behind the player's shoulder
+ * and invisible from every seat camera, until the owner
+ * asked for it moved on 2026-11-01), two camp chairs + the
+ * empty serving table + the blue cooler as east-side dressing.
  *
  * Route per the owner's 2026-10-28 decision: ALL CODE, zero
  * Forge mixes — a kettle grill is lathe-and-tube work, camp
@@ -362,7 +366,7 @@ function CookoutLights({ fxOn }: { fxOn: boolean }) {
       {/* house warmth spilling from the door side */}
       <pointLight position={[0.9, 1.5, -4.2]} intensity={6.5} distance={7} decay={2} color="#ff9e45" />
       {/* grill ember glow */}
-      <pointLight position={[-3.6, FLOOR_Y + 1.0, 1.5]} intensity={2.6} distance={3.5} decay={2} color="#ff6a22" />
+      <pointLight position={[1.7, FLOOR_Y + 1.0, -3.0]} intensity={2.6} distance={3.5} decay={2} color="#ff6a22" />
     </>
   );
 }
@@ -453,8 +457,8 @@ function StringLights({ a, b, sag, bulbs, a2 }: {
 }
 
 /* ------------------------------------------------------------------ */
-/* grill smoke — soft sprites on the room clock, drift mirrored WEST   */
-/* (away from the felt) by the caller's group scale. fxOn off holds a  */
+/* grill smoke — soft sprites on the room clock; the caller's group   */
+/* aims the drift (mirror + yaw) AWAY from the felt. fxOn off holds a  */
 /* static mid-rise pose.                                               */
 /* ------------------------------------------------------------------ */
 
@@ -759,11 +763,21 @@ export default function CookoutYardRoom({ fxOn }: { fxOn: boolean }) {
       <FenceRun from={[-5.4, -5.1]} to={[-5.4, 3.6]} a={a} />
       <FenceRun from={[5.4, -5.1]} to={[5.4, 3.6]} a={a} />
       <FenceRun from={[-5.4, 3.6]} to={[5.4, 3.6]} a={a} />
-      {/* the grill at the south-west corner, lid open away from
-          the table; its smoke drifts WEST, away from the felt */}
-      <KettleGrill position={[-3.6, FLOOR_Y, 1.5]} ry={0.5} a={a} />
-      <group position={[-3.6, FLOOR_Y, 1.5]} scale={[-1, 1, 1]}>
-        <SpriteSmoke a={a} fxOn={fxOn} />
+      {/* the grill on the back line at the north-east, beside the
+          serving cluster, lid open away from the table; its smoke
+          drifts NORTH-NORTH-WEST, away from the felt (mirror + yaw:
+          local +x drift lands at (−0.19, −0.33) in world x/z). It
+          sat at the south-west corner until 2026-11-01 — behind
+          the player's shoulder, invisible from every seat camera —
+          and moved into the forward view at the owner's word. */}
+      <KettleGrill position={[1.7, FLOOR_Y, -3.0]} ry={-0.5} a={a} />
+      <group position={[1.7, FLOOR_Y, -3.0]} rotation={[0, -1.05, 0]} scale={[-1, 1, 1]}>
+        {/* rise 1.15, not the 1.5 default: at this depth the sitting
+            landscape frame tops out at ≈0.57 abs, so the default
+            plume's mass exited the frame top / scorebug band; the
+            compressed plume keeps its whole column in both seated
+            framings while still clearing the lid. */}
+        <SpriteSmoke a={a} fxOn={fxOn} rise={1.15} />
       </group>
       {/* the east-side dressing cluster */}
       <CampChair position={[3.1, FLOOR_Y, 0.7]} ry={-0.85} a={a} />
