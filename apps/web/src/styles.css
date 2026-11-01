@@ -3715,7 +3715,7 @@ html[data-theme="neon"] .table-screen :is(.glass, .panel, .modal, .sheet, .decis
    read, nothing to relearn). If the art can't sit as pure decoration,
    it doesn't sit at all. */
 html[data-theme="neon"] .wiz-home { position: relative; }
-html[data-theme="neon"] .wiz-home > * { position: relative; z-index: 1; }
+html[data-theme="neon"] .wiz-home > *:not(.home-streak-fire) { position: relative; z-index: 1; }
 /* Backdrop coverage (2026-10-26, owner screenshot): the emblem used to be
    boxed into a 252px medallion at the hero — when the stage grid (d3523e95)
    distributed the home's air, the distributed breath between the tagline

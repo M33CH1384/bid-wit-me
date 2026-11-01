@@ -348,3 +348,26 @@ describe('tier params scale monotonically', () => {
     });
   }
 });
+
+describe('home band positioning — the Neon blanket lift must never swallow the band', () => {
+  // Owner report 2026-11-01: in Neon portrait the streak fire rendered as a
+  // wide horizontal band across the emblem. Cause: styles.css's blanket
+  // `html[data-theme="neon"] .wiz-home > *` lift (specificity 0,2,1) beat
+  // fire.css's `.home-streak-fire` (0,1,0), stripping its position:fixed so
+  // the band became an in-flow grid item above the splash. The band is a
+  // fixed bottom-edge decoration by design (fire.css); the lift exists for
+  // real content children only.
+  const styles = () => readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  const fireCss = () => readFileSync(new URL('../src/fire/fire.css', import.meta.url), 'utf8');
+
+  it('the Neon wiz-home lift excludes .home-streak-fire by name', () => {
+    expect(styles()).toContain('.wiz-home > *:not(.home-streak-fire)');
+    expect(styles()).not.toContain('html[data-theme="neon"] .wiz-home > * {');
+  });
+
+  it('fire.css keeps the band fixed to the bottom edge at z-0', () => {
+    const css = fireCss();
+    expect(css).toContain('.home-streak-fire');
+    expect(css).toContain('position: fixed; left: 0; right: 0; bottom: 0;');
+  });
+});
