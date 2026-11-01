@@ -90,6 +90,32 @@ describe('ticker lines: real payloads only', () => {
     expect(buildTickerLines({ kind: 'cutthroat', top: [], online: [], mine: null })).toEqual([]);
     expect(buildTickerLines({ kind: 'cutthroat', top: [], online: [], mine })).toEqual([]);
   });
+  it('streak + Win % lines ride the boards, after Top rated, top 3 only (owner, 2026-11-01)', () => {
+    const lines = buildTickerLines({
+      kind: 'team', top, online: [], mine: null,
+      streaks: [
+        { name: 'Alpha', value: 9 }, { name: 'Bravo', value: 7 },
+        { name: 'Charlie', value: 7 }, { name: 'Delta', value: 5 },
+      ],
+      winPct: [
+        { name: 'Bravo', value: 68 }, { name: 'Alpha', value: 64 },
+        { name: 'Charlie', value: 61 }, { name: 'Delta', value: 59 },
+      ],
+    });
+    expect(lines.map((l) => l.text)).toEqual([
+      'Top rated · Partnership — Alpha 1500 · Bravo 1420 · Charlie 1390',
+      'Longest win streak · Partnership — Alpha 9 in a row · Bravo 7 in a row · Charlie 7 in a row',
+      'Win % · Partnership — Bravo 68% · Alpha 64% · Charlie 61%',
+    ]);
+    // the kind label follows the ticker's kind, like the rating line
+    const cut = buildTickerLines({ kind: 'cutthroat', top: [], online: [], mine: null, streaks: [{ name: 'Alpha', value: 4 }], winPct: [{ name: 'Alpha', value: 55 }] });
+    expect(cut.map((l) => l.text)).toEqual([
+      'Longest win streak · Cutthroat — Alpha 4 in a row',
+      'Win % · Cutthroat — Alpha 55%',
+    ]);
+    // an empty board adds no line
+    expect(buildTickerLines({ kind: 'team', top: [], online: [], mine: null, streaks: [], winPct: [] })).toEqual([]);
+  });
 });
 
 describe('results feed lines (league data wave, item 1)', () => {
@@ -195,6 +221,26 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
     expect(bug!.getAttribute('src')).toBe('/assets/bwm-wordmark-white.svg');
     expect(el.textContent).toContain('Top rated · Partnership — Alpha 1500 · Bravo 1420');
     for (const n of DIVISION_NAMES) expect(el.textContent ?? '').not.toContain(n);
+  });
+  it('the streak + Win % polls land in the bar alongside the rating line', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true, status: 200,
+      json: async () => {
+        const u = String(url);
+        if (u.includes('board=rating')) return { rows: [{ rank: 1, id: 'u:a', name: 'Alpha', value: 1500, games: 40 }] };
+        if (u.includes('board=streak')) return { rows: [{ rank: 1, id: 'u:b', name: 'Bravo', value: 8, games: 21 }, { rank: 2, id: 'u:a', name: 'Alpha', value: 6, games: 40 }] };
+        if (u.includes('board=winpct')) return { rows: [{ rank: 1, id: 'u:a', name: 'Alpha', value: 64, games: 40, extra: '26–14' }] };
+        return {};
+      },
+    })));
+    el = document.createElement('div');
+    document.body.appendChild(el);
+    root = createRoot(el);
+    await act(async () => { root!.render(createElement(LeagueTicker, { variant: 'panel' })); });
+    for (let i = 0; i < 4; i++) await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
+    expect(el.textContent).toContain('Longest win streak · Partnership — Bravo 8 in a row · Alpha 6 in a row');
+    expect(el.textContent).toContain('Win % · Partnership — Alpha 64%');
+    expect(el.textContent).toContain('Top rated · Partnership — Alpha 1500');
   });
   it('the bug is the full wordmark lockup: opaque block, gold BETA tag, marquee clipped after it (owner spec, item 5)', () => {
     // gold BETA chip in the lockup

@@ -31,8 +31,9 @@
  * The bug is the full BWM wordmark lockup on an opaque block (item 5) and
  * the marquee runs ~25% faster than the original loop (owner tweak).
  * Lines are built strictly from real payloads — recent results, live
- * highlights, the rating board, power top, presence, the viewer's own
- * stats — never fabricated; with nothing real to say the bar is absent.
+ * highlights, the rating board, the longest-win-streak and Win % boards,
+ * power top, presence, the viewer's own stats — never fabricated; with
+ * nothing real to say the bar is absent.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { statusLabel } from '@spades/protocol';
@@ -92,12 +93,19 @@ export interface TickerLine { text: string; live?: boolean }
  *  - the recent-results feed (GET /api/social/results — finished online
  *    matches the server recorded; empty until real games finish),
  *  - the all-time Rating board for the current kind (top 3, with numbers),
+ *  - the Longest win streak board for the current kind (top 3; the server
+ *    replays the stored game history with personalStats' counting rules —
+ *    the number is a best-ever run of consecutive wins, never a counter
+ *    that could drift from the record),
+ *  - the Win % board for the current kind (top 3, the board's own 10-game
+ *    minimum already applied server-side),
  *  - the live presence list (who's online / at a table right now),
  *  - the signed-in viewer's own stat line (/api/social/me/stats).
  */
 export function buildTickerLines(o: {
   kind: TickerKind; top: TickerTopRow[]; online: TickerOnline[]; mine: TickerMine | null;
   power?: { name: string; power: number }[]; results?: RecentResult[]; highlights?: LiveHighlight[];
+  streaks?: TickerTopRow[]; winPct?: TickerTopRow[];
 }): TickerLine[] {
   const lines: TickerLine[] = [];
   for (const h of (o.highlights ?? []).slice(0, 3)) lines.push({ text: `LIVE — ${h.text}`, live: true });
@@ -108,6 +116,12 @@ export function buildTickerLines(o: {
   const kindLabel = o.kind === 'team' ? 'Partnership' : 'Cutthroat';
   if (o.top.length) {
     lines.push({ text: `Top rated · ${kindLabel} — ${o.top.slice(0, 3).map((r) => `${r.name} ${r.value}`).join(' · ')}` });
+  }
+  if (o.streaks?.length) {
+    lines.push({ text: `Longest win streak · ${kindLabel} — ${o.streaks.slice(0, 3).map((r) => `${r.name} ${r.value} in a row`).join(' · ')}` });
+  }
+  if (o.winPct?.length) {
+    lines.push({ text: `Win % · ${kindLabel} — ${o.winPct.slice(0, 3).map((r) => `${r.name} ${r.value}%`).join(' · ')}` });
   }
   if (o.power?.length) {
     lines.push({ text: `Power Rankings — ${o.power.slice(0, 3).map((r, i) => `#${i + 1} ${r.name} (${r.power})`).join(' · ')}` });
@@ -166,6 +180,8 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
   const [osReduced, setOsReduced] = useState<boolean>(() => fx.osReducedMotion);
   const [kind, setKind] = useState<TickerKind>('team');
   const [top, setTop] = useState<TickerTopRow[]>([]);
+  const [streakTop, setStreakTop] = useState<TickerTopRow[]>([]);
+  const [winPctTop, setWinPctTop] = useState<TickerTopRow[]>([]);
   const [powerTop, setPowerTop] = useState<{ name: string; power: number }[]>([]);
   const [results, setResults] = useState<RecentResult[]>([]);
   const [highlights, setHighlights] = useState<LiveHighlight[]>([]);
@@ -181,6 +197,12 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
       get(`/api/social/leaderboard?board=rating&kind=${kind}&scope=global&period=all`)
         .then((j) => { if (!stop) setTop((j.rows ?? []) as TickerTopRow[]); })
         .catch(() => { /* ticker is garnish — a failed poll just keeps the last lines */ });
+      get(`/api/social/leaderboard?board=streak&kind=${kind}&scope=global&period=all`)
+        .then((j) => { if (!stop) setStreakTop((j.rows ?? []) as TickerTopRow[]); })
+        .catch(() => { /* same */ });
+      get(`/api/social/leaderboard?board=winpct&kind=${kind}&scope=global&period=all`)
+        .then((j) => { if (!stop) setWinPctTop((j.rows ?? []) as TickerTopRow[]); })
+        .catch(() => { /* same */ });
       get(`/api/social/power?kind=${kind}`)
         .then((j) => { if (!stop) setPowerTop(((j.rows ?? []) as { name: string; power: number }[]).map((r) => ({ name: r.name, power: r.power }))); })
         .catch(() => { /* same */ });
@@ -216,7 +238,7 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
     .filter((u) => !u.guest)
     .map((u) => ({ name: u.name, detail: statusLabel(u.status) }))
     .sort((a, b) => Number(a.detail === 'Online') - Number(b.detail === 'Online') || a.name.localeCompare(b.name)), [s.users]);
-  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine, power: powerTop, results, highlights }), [kind, top, online, mine, powerTop, results, highlights]);
+  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine, power: powerTop, results, highlights, streaks: streakTop, winPct: winPctTop }), [kind, top, online, mine, powerTop, results, highlights, streakTop, winPctTop]);
   const reduced = reduceFx || osReduced;
 
   useEffect(() => {

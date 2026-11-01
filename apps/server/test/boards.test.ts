@@ -204,3 +204,98 @@ describe('extra metric boards (league data wave, item 2)', () => {
     expect(body.rows[0]).toMatchObject({ name: 'E', value: 75 });
   });
 });
+
+describe('streak board (owner 2026-11-01: highest win streaks for the ticker)', () => {
+  /** One player's row in one game, with the full games row under test control. */
+  async function rawGame(id: string, at: number, uid: string, won: number, opts?: { family?: string; endReason?: string; rated?: number; leaver?: string; kind?: 'team' | 'cutthroat' }) {
+    const kind = opts?.kind ?? 'team';
+    await db.prepare('INSERT INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, end_reason, leaver_id, family) VALUES (?, ?, ?, ?, ?, 8, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, 'R', kind === 'cutthroat' ? 'cutthroat' : 'joker', kind, at, '[]', '[]', '[]', FOUR, opts?.rated ?? 1, opts?.endReason ?? 'finished', opts?.leaver ?? null, opts?.family ?? null).run();
+    await db.prepare('INSERT INTO game_players (game_id, user_id, kind, seat, side, won, partner_id, ended_at, stats, elo_before, elo_after) VALUES (?, ?, ?, 0, 0, ?, NULL, ?, ?, 1200, 1200)')
+      .bind(id, uid, kind, won, at, st({})).run();
+  }
+  /** A user's counted sequence, oldest first (1 = win, 0 = loss). */
+  async function seq(uid: string, pattern: number[], base: number, opts?: { kind?: 'team' | 'cutthroat' }) {
+    for (let i = 0; i < pattern.length; i++) await rawGame(`${uid}-${opts?.kind ?? 'team'}-${i}`, base + i * 1000, uid, pattern[i]!, opts);
+  }
+  beforeEach(async () => {
+    for (const u of ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'w1', 'f1']) {
+      await db.prepare('INSERT INTO users (id, username, username_key, created_at) VALUES (?, ?, ?, 1)').bind(u, u.toUpperCase(), u).run();
+    }
+    const T = NOW - 60_000;
+    await seq('p1', [0, 1, 1, 1, 1, 0, 1, 1], T);            // best 4, 8 games, current 2
+    await seq('p2', [1, 1, 1, 1, 1, 1], T);                  // best 6, 6 games
+    await seq('p3', [1, 1, 1, 0, 1], T);                     // best 3, 5 games — both minimums exactly met
+    await seq('p4', [1, 1, 1, 1], T);                        // best 4 but only 4 games — under the 5-game minimum
+    await seq('p5', [1, 0, 1, 0, 1, 0, 1, 0, 1], T);         // 9 games, best 1 — not a streak
+    await seq('p6', [1, 1, 1, 1, 0, 1, 0], T);               // best 4, 7 games (tie with p1/p7 on value)
+    await seq('p7', [1, 1, 0, 1, 1, 1, 1, 0], T);            // best 4, 8 games (ties p1 on value AND games — name decides)
+    await seq('p2', [1, 1, 0, 1, 1], T, { kind: 'cutthroat' }); // cutthroat best 2 — must not leak into the team walk
+    await seq('w1', [1, 1, 1, 1, 1, 1], NOW - 10 * 86400_000);  // best 6, all 10 days old
+    // f1: the counting rules — an unrated abandoned save of a deal is invisible,
+    // its finished twin (same family) counts once; a rated leaver's abandon
+    // counts as a loss and breaks the run.
+    await rawGame('f1-g1', T, 'f1', 1);
+    await rawGame('f1-g2', T + 1000, 'f1', 1);
+    await rawGame('f1-g3a', T + 2000, 'f1', 0, { family: 'FAM1', endReason: 'abandoned', rated: 0 });
+    await rawGame('f1-g3b', T + 3000, 'f1', 1, { family: 'FAM1' });
+    await rawGame('f1-g4', T + 4000, 'f1', 0, { endReason: 'abandoned', rated: 1, leaver: 'f1' });
+    await rawGame('f1-g5', T + 5000, 'f1', 1);
+    await rawGame('f1-g6', T + 6000, 'f1', 1);
+    // f1 counted walk: W W W(family, once) L(rated abandon) W W → best 3, 6 games, current 2
+  });
+
+  const board = (o?: Partial<Parameters<typeof leaderboard>[1]>) => leaderboard(db, { board: 'streak', kind: 'team', period: 'all', region: null, now: NOW, ...o });
+
+  it('longest win streaks, minimums applied, deterministic tie-breaks', async () => {
+    const rows = await board();
+    expect(rows.map((r) => [r.name, r.value, r.games])).toEqual([
+      ['P2', 6, 6],
+      ['W1', 6, 6],
+      ['P1', 4, 8],
+      ['P7', 4, 8],
+      ['P6', 4, 7],
+      ['F1', 3, 6],
+      ['P3', 3, 5],
+    ]);
+    const names = rows.map((r) => r.name);
+    expect(names).not.toContain('P4'); // 4 counted games < 5
+    expect(names).not.toContain('P5'); // best run 1 < 3
+    expect(names).not.toContain('B');  // base fixture: best 3 but only 3 games
+  });
+
+  it('agrees with personalStats bestStreak/games for every boarded player — the walk is the record', async () => {
+    for (const r of await board()) {
+      const ps = await personalStats(db, r.id.replace(/^u:/, ''), 'team');
+      expect([r.value, r.games]).toEqual([ps.bestStreak, ps.games]);
+    }
+    // and the reference walk sees the same f1 story the board does
+    expect(await personalStats(db, 'f1', 'team')).toMatchObject({ games: 6, bestStreak: 3, streak: 2 });
+  });
+
+  it('respects kind: cutthroat walks its own history', async () => {
+    expect(await board({ kind: 'cutthroat' })).toEqual([]); // p2's cutthroat best is 2 < 3
+    await seq('p3', [1, 1, 1, 1, 1], NOW - 50_000, { kind: 'cutthroat' });
+    const rows = await board({ kind: 'cutthroat' });
+    expect(rows.map((r) => [r.name, r.value, r.games])).toEqual([['P3', 5, 5]]);
+  });
+
+  it('period boards count only games inside the window', async () => {
+    const week = await board({ period: 'week' });
+    expect(week.map((r) => r.name)).toContain('P2');
+    expect(week.map((r) => r.name)).not.toContain('W1'); // all six wins are 10 days old
+    const month = await board({ period: 'month' });
+    expect(month.map((r) => r.name)).toContain('W1');
+  });
+
+  it('region paths run (shared filters) and route through /api/social/leaderboard', async () => {
+    expect(await board({ region: 'US-GA' })).toEqual([]); // p-users declared no location; a–d never qualify
+    expect(await board({ declaredRegion: 'US-GA' })).toEqual([]);
+    const ORIGIN = 'https://bid-wit-me.pages.dev';
+    const url = new URL('/api/social/leaderboard?board=streak&kind=team&scope=global&period=all', ORIGIN);
+    const res = await handleSocialHttp(new Request(url), { DB: db, PUBLIC_ORIGIN: ORIGIN }, url, ['api', 'social', 'leaderboard'], NOW);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { rows: { name: string; value: number; games: number }[] };
+    expect(body.rows[0]).toMatchObject({ name: 'P2', value: 6, games: 6 });
+  });
+});

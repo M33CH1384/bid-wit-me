@@ -1,5 +1,5 @@
 /** Release 9b: leaderboards, server stats, personal stat lines (D1 aggregates over game_players). */
-export type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils';
+export type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils' | 'streak';
 export type Period = 'all' | 'month' | 'week';
 export interface BoardRow { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number }
 
@@ -52,6 +52,46 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
         SUM(x.won) || '–' || (COUNT(*) - SUM(x.won)) AS extra
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
       WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING COUNT(*) >= 10 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+  } else if (o.board === 'streak') {
+    // Longest win streak (owner, 2026-11-01: highest win streaks on the
+    // ticker). The value is the player's LONGEST run of consecutive wins in
+    // the counted-game walk personalStats does — no streak counter is
+    // stored anywhere, so the board replays the same stored history with
+    // the same counting rules: one record per rematch family (a finished
+    // row wins over an abandoned save of the same deal), unrated/unfinished
+    // abandons invisible, a rated leaver's abandon counts as a game and
+    // breaks the run. Expressed as gaps-and-islands over game_players; a
+    // period board counts only games inside the period (the other boards'
+    // convention). Minimums follow the rate boards: 5 counted games
+    // (books/nils precedent) and a streak of 3+ (the app's own "on fire"
+    // threshold — a 1–2 game run is not a streak worth printing). Ties:
+    // more counted games first (winpct's tie-break), then name, so the
+    // order never depends on scan order.
+    rows = (await db.prepare(`WITH picked AS (
+        SELECT x.user_id AS uid, x.won AS won, x.ended_at AS ended_at, g.id AS gid,
+          COALESCE(g.end_reason, 'finished') AS er, g.rated AS rated, g.leaver_id AS leaver,
+          ROW_NUMBER() OVER (PARTITION BY x.user_id, COALESCE(g.family, g.id)
+            ORDER BY CASE WHEN COALESCE(g.end_reason, 'finished') = 'abandoned' THEN 1 ELSE 0 END, x.ended_at ASC, g.id ASC) AS pick
+        FROM game_players x JOIN games g ON g.id = x.game_id
+        WHERE x.kind = ? AND x.ended_at >= ? ${loc}
+      ),
+      counted AS (
+        SELECT uid, CASE WHEN er = 'abandoned' THEN 0 ELSE won END AS won, ended_at, gid FROM picked
+        WHERE pick = 1 AND (er != 'abandoned' OR (rated = 1 AND leaver = uid))
+      ),
+      seq AS (
+        SELECT uid, won,
+          ROW_NUMBER() OVER (PARTITION BY uid ORDER BY ended_at ASC, gid ASC) AS rn,
+          ROW_NUMBER() OVER (PARTITION BY uid, won ORDER BY ended_at ASC, gid ASC) AS rnw
+        FROM counted
+      ),
+      runs AS (SELECT uid, COUNT(*) AS len FROM seq WHERE won = 1 GROUP BY uid, rn - rnw),
+      totals AS (SELECT uid, COUNT(*) AS games FROM counted GROUP BY uid),
+      best AS (SELECT uid, MAX(len) AS value FROM runs GROUP BY uid)
+      SELECT b.uid AS id, u.username AS name, b.value AS value, t.games AS games
+      FROM best b JOIN totals t ON t.uid = b.uid JOIN users u ON u.id = b.uid
+      WHERE b.value >= 3 AND t.games >= 5 ${decl}
+      ORDER BY b.value DESC, t.games DESC, u.username ASC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'books') {
     // Books per hand from the stored per-game books/hands counters. A
     // 5-game minimum keeps one hot night off a rate board.
