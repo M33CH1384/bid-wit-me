@@ -248,6 +248,14 @@ export const TRACKS: Track[] = [
   // church." It joins the blockAfterDark pin in spatial.ts; appended last so
   // every existing track index keeps its meaning, exactly like the sets above.
   { file: 'my-deal', title: 'My Deal', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/my-deal/', credit: '"My Deal" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  // The Cookout rotation grows to four (owner, 2026-11-01): Ketsa's "Saviour
+  // Above" (CC BY 4.0, via Free Music Archive) was auditioned for the Church
+  // Basement's second round and the owner redirected it — "this would be
+  // great for the cookout." It joins the backyard pin in spatial.ts; appended
+  // last so every existing track index keeps its meaning, exactly like the
+  // sets above. "Off Days" stays out — auditioned as an optional fourth and
+  // never picked; this is the fourth track the owner actually named.
+  { file: 'saviour-above', title: 'Saviour Above', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/saviour-above/', credit: '"Saviour Above" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };

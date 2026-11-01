@@ -51,7 +51,7 @@ describe('venue audio identity', () => {
       else if (v === 'speakeasy') expect(id.music.pin).toEqual(['spy-glass', 'night-on-the-docks-sax', 'dances-and-dames', 'covert-affair']);
       else if (v === 'barbershop') expect(id.music.pin).toEqual(['funk-trunk', 'soul-sync', 'c-funk']);
       else if (v === 'grandma') expect(id.music.pin).toEqual(['that-feeling', 'a-little-faith', 'will-make-you-happy']);
-      else if (v === 'backyard') expect(id.music.pin).toEqual(['make-funk', 'take-it-out', 'breath']);
+      else if (v === 'backyard') expect(id.music.pin).toEqual(['make-funk', 'take-it-out', 'breath', 'saviour-above']);
       else expect(id.music.pin, v).toBeUndefined();
     }
   });
