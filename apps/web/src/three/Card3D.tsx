@@ -19,7 +19,7 @@ import { impactFraction } from '../landTiming';
 import { PILE_THUMP, slamThump } from './shake';
 import { PLAY_FLIGHT_MOTIONS, pendingSweepDue, sweepMustWait, type PendingSweep } from './sweepGate';
 import { CUT_FACE_ANGLE, deuceFxElapsed, deuceImpactsAfter, deuceSeed, lastDeuceImpactId, pushDeuceImpact } from './deuceImpact';
-import { runSlamPose } from './runSlamPose';
+import { RUN_SLAM_IMPACT_T, runSlamPose } from './runSlamPose';
 import { DISTURBANCE_MS, disturbanceFor, disturbanceOffsetAt, lastSlamDisturbanceId, pushSlamDisturbance, slamDisturbancesAfter, type DisturbanceParams } from './slamDisturbance';
 import { cutColorFor } from '../deuceFx';
 import type { Card } from '@spades/rules';
@@ -957,7 +957,15 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         const o = new Vector3(0, 0, 0).project(cam); v.x -= o.x; v.y -= o.y;
       ((w.__bwmFly ??= {})[cardId] ??= []).push({ now: performance.now(), t: s.t, x: ((v.x + 1) / 2) * viewSize.width + 0, y: ((1 - v.y) / 2) * viewSize.height });
     }
-    if (sl && s.t > 0.75 && dist > 0.02) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
+    if (sl && dist > 0.02) {
+      if (s.motionSnap === 'runslam') {
+        // Run It strike (retune 2026-11-01 — "come down fast and HARD"): NO
+        // rebound before the slap, so the fall stays clean, then ONE tight
+        // hop off the felt that peaks at once and dies inside the settle —
+        // not the generic double-wobble below, which starts mid-fall.
+        if (s.t > RUN_SLAM_IMPACT_T) { const u = (s.t - RUN_SLAM_IMPACT_T) / (1 - RUN_SLAM_IMPACT_T); g.position.y += sl.bounce * 2.0 * Math.sin(Math.PI * Math.pow(u, 0.7)) * Math.pow(1 - u, 2); }
+      } else if (s.t > 0.75) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
+    }
     }
     // Landing sound + thump fire here, on the frame the card visually hits the felt (after its pose is applied):
     // glide cards touch down at t=0.35 and then flop flat, so waiting for t=1 played the sound ~0.3s late.

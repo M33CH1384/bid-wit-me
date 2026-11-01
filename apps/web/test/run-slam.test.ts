@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { impactFraction } from '../src/landTiming';
-import { RUN_MEGA_TORNADO_AFTER_MS, RUN_TORNADO_AFTER_MS } from '../src/runIt';
+import { RUN_MEGA_DETONATE_MS, RUN_MEGA_TORNADO_AFTER_MS, RUN_TORNADO_AFTER_MS } from '../src/runIt';
 import { playSeed, runScatter } from '../src/three/landing';
 import { CH, CT, CW, flatRest, handFan, opponentFan, type Xform } from '../src/three/layout';
 import {
@@ -58,6 +58,11 @@ describe("'Run it!' slam flight (runSlamPose)", () => {
   });
 
   it('beat 1 is a slow RAISE: the card climbs out of the hand, barely travelling', () => {
+    // the retune split (owner 2026-11-01): the raise takes ~2/3 of the flight —
+    // at least 0.6 s of the 0.9 s — so the lift reads deliberate
+    expect(RUN_SLAM_RAISE_END).toBeGreaterThanOrEqual(0.65);
+    expect(RUN_SLAM_RAISE_END).toBeLessThanOrEqual(0.70);
+    expect(RUN_SLAM_RAISE_END * RUN_SLAM_FLIGHT_SEC).toBeGreaterThanOrEqual(0.6);
     for (const { from, to } of slamPairs().pairs) {
       const y = (t: number) => runSlamPose(from, to, t, { arc: 0.55 }).p[1];
       // monotone climb through the raise beat, ending well above both ends
@@ -81,9 +86,11 @@ describe("'Run it!' slam flight (runSlamPose)", () => {
   it('beat 2 falls ACCELERATING, strikes flat at the impact fraction, then rests', () => {
     for (const { from, to } of slamPairs().pairs) {
       const y = (t: number) => runSlamPose(from, to, t, { arc: 0.55 }).p[1];
-      // descent per step grows as the strike approaches (gravity, not a glide)
-      const d1 = y(0.65) - y(0.75);
-      const d2 = y(0.75) - y(0.85);
+      // descent per step grows as the strike approaches (gravity, not a glide) —
+      // sampled inside the compressed fall (raise end → strike) by fall share w
+      const tAt = (w: number) => RUN_SLAM_RAISE_END + w * (RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END);
+      const d1 = y(tAt(0.4)) - y(tAt(0.65));
+      const d2 = y(tAt(0.65)) - y(tAt(0.9));
       expect(d2).toBeGreaterThan(d1);
       // the strike: exactly on the rest height at the impact fraction
       close(y(RUN_SLAM_IMPACT_T), to.p[1]);
@@ -96,6 +103,30 @@ describe("'Run it!' slam flight (runSlamPose)", () => {
       const struck = new Quaternion(...runSlamPose(from, to, RUN_SLAM_IMPACT_T, { arc: 0.55 }).q);
       expect(falling.angleTo(qTo)).toBeGreaterThan(0.1);
       expect(struck.angleTo(qTo)).toBeLessThan(0.02);
+    }
+  });
+
+  it('retune shape: the fall is compressed into the last ~quarter and drops HARD', () => {
+    // fall window (raise end → strike) is at most a quarter of the flight
+    expect(RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END).toBeLessThanOrEqual(0.25);
+    for (const { from, to } of slamPairs().pairs) {
+      const y = (t: number) => runSlamPose(from, to, t, { arc: 0.55 }).p[1];
+      const tAt = (w: number) => RUN_SLAM_RAISE_END + w * (RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END);
+      // the drop hangs, then plummets: the fall's last fifth covers ≥45% of the height
+      const total = y(RUN_SLAM_RAISE_END) - y(RUN_SLAM_IMPACT_T);
+      const late = y(tAt(0.8)) - y(RUN_SLAM_IMPACT_T);
+      expect(late).toBeGreaterThan(0.45 * total);
+      // peak descent speed is a multiple of the fall's mean speed — a drop, not a glide
+      let peak = 0;
+      const N = 200;
+      for (let i = 1; i <= N; i++) {
+        const t0 = RUN_SLAM_RAISE_END + ((i - 1) / N) * (RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END);
+        const t1 = RUN_SLAM_RAISE_END + (i / N) * (RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END);
+        peak = Math.max(peak, (y(t0) - y(t1)) / ((t1 - t0) * RUN_SLAM_FLIGHT_SEC));
+      }
+      const mean = total / ((RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END) * RUN_SLAM_FLIGHT_SEC);
+      expect(peak).toBeGreaterThan(2.5 * mean);
+      expect(peak).toBeGreaterThan(6); // world units/s at show scale
     }
   });
 
@@ -137,6 +168,12 @@ describe("'Run it!' slam schedule (runSlamSchedule)", () => {
     expect(lastStrike + DISTURBANCE_MS / 1000).toBeLessThan(RUN_MEGA_TORNADO_AFTER_MS / 1000);
     // the flight itself also completes inside the pre-tornado window
     expect(0.02 + RUN_SLAM_MAX_STAGGER_SEC + RUN_SLAM_FLIGHT_SEC).toBeLessThan(RUN_TORNADO_AFTER_MS / 1000);
+    // the strike did not move in the retune, so the mega detonation
+    // (RUN_MEGA_DETONATE_MS, unmoved) still opens on the cluster's leading
+    // edge: the first strike lands just after it, the cluster ends by 0.95 s
+    const firstStrike = 0.02 + RUN_SLAM_FLIGHT_SEC * RUN_SLAM_IMPACT_T;
+    expect(firstStrike).toBeGreaterThanOrEqual(RUN_MEGA_DETONATE_MS / 1000);
+    expect(lastStrike).toBeLessThanOrEqual(0.95 + 1e-9);
   });
 });
 
@@ -215,6 +252,11 @@ describe("'Run it!' slam wiring (source pins)", () => {
   it('the disturbance fires only from the full-show striking card, on its landing frame', () => {
     expect(card3d).toMatch(/land\.includes\('runSlam'\) && s\.motionSnap === 'runslam'/);
     expect(card3d).toMatch(/pushSlamDisturbance/);
+  });
+
+  it('the strike rebound starts AT the strike for the slam — nothing lifts the fall', () => {
+    expect(card3d).toMatch(/import \{ RUN_SLAM_IMPACT_T, runSlamPose \}/);
+    expect(card3d).toMatch(/s\.t > RUN_SLAM_IMPACT_T/);
   });
 
   it('the tornado phase is untouched: same trigger offset, same reduced mapping', () => {
