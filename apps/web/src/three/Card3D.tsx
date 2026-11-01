@@ -2,6 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { BufferAttribute, Color, ExtrudeGeometry, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, PlaneGeometry, Quaternion, Shape, ShapeGeometry, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
+import { createBackCardMaterial } from './cardBack';
 import { cardFaceOutlinePoints, cardGeometry, cardOutlineGeometry } from './geometry';
 import { raiseSeconds, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
 import { CH, CT, CW, FACE_CAP_GAP, type Xform } from './layout';
@@ -199,7 +200,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     return m;
   }, [frontTex, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => {
-    const m = lit ? createLitCardMaterial(back, quality, false) : new MeshBasicMaterial({ map: back });
+    // Backs are matte print (cardBack.ts) — the face's glossy stock mirrors the
+    // table lights into a white slab off the tilted opponent fans (2026-11-01 glare).
+    const m = lit ? createBackCardMaterial(back, quality) : new MeshBasicMaterial({ map: back });
     // The face bias pulls toward the camera. The same bias on the back plane drew a second
     // copy of the pips just behind the card (the ghost queen behind the queen of spades).
     m.polygonOffset = false;

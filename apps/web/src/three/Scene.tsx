@@ -5,6 +5,7 @@ import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEff
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
+import { createBackCardMaterial } from './cardBack';
 import DeuceFxLayer from './DeuceFxLayer';
 import { CUT_FACE_ANGLE, setDeuceCutPose } from './deuceImpact';
 import type { DeuceFxInfo } from '../deuceFx';
@@ -1814,7 +1815,7 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
     const card = createLitCardMaterial(white, quality, true);
     const cardDim = createLitCardMaterial(white, quality, true);
     if (cardDim instanceof MeshPhysicalMaterial) { cardDim.clearcoat = 0.05; cardDim.sheen = 0; }
-    const cardBack = createLitCardMaterial(white, quality, false);
+    const cardBack = createBackCardMaterial(white, quality);
     const basics: Material[] = [
       new MeshBasicMaterial({ name: 'basic-color', color: def.felt }),
       new MeshBasicMaterial({ name: 'basic-stripe', color: '#d9b04a', transparent: true, opacity: 0.35, depthWrite: false }),
