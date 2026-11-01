@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { cardDisplayName, rankGlyph } from './cardRank';
 import { PlayerCard } from './profile/PlayerCard';
 import type { RewardsData } from './GameOverRewards';
@@ -18,17 +18,22 @@ import type { RewardsData } from './GameOverRewards';
  * tapping returns to the report, where the panel stays as the permanent
  * record. Transform/opacity only — no per-frame canvas painting.
  *
- * Firing discipline: exactly once per grant. The key derives from the
- * grant itself (the post-grant level + rank step + progress), the same
- * values the panel's NEW CARD decision reads, and is marked celebrated in
- * sessionStorage the moment the takeover shows — so a refresh of the
- * /rewards stash (which replays the same breakdown) never re-fires it,
- * and neither does a remount. Reduced motion / Reduce-effects never see
- * it at all: the parent gates on the reveal hook's `reduced`, and the
- * static panel is the whole presentation there.
+ * Firing discipline (reworked, owner 2026-11-01): DISMISSAL is the only
+ * retirement. The key derives from the grant itself (the post-grant
+ * level + rank step + progress), the same values the panel's NEW CARD
+ * decision reads, and is marked DISMISSED in sessionStorage only when
+ * the player taps it away. A refresh or remount while it is still
+ * pending brings it back WITH its entrance — showing it spends nothing.
+ * (The 2026-10-29 discipline marked the grant celebrated the moment the
+ * takeover showed: a refreshed /rewards page lost the celebration
+ * entirely, and when the entrance itself was spent unseen — below — the
+ * player was left staring at a static card with no way back to the
+ * show.) Reduced motion / Reduce-effects never see it at all: the
+ * parent gates on the reveal hook's `reduced`, and the static panel is
+ * the whole presentation there.
  */
 
-export const CARD_TAKEOVER_CELEBRATED_KEY = 'bwm.cardup.celebrated.v1';
+export const CARD_TAKEOVER_DISMISSED_KEY = 'bwm.cardup.dismissed.v1';
 
 /**
  * The beat after the reveal gate opens: the XP tween lands (~1.2s) and
@@ -47,20 +52,59 @@ export function cardTakeoverKey(d: RewardsData): string | null {
   return `v1:${d.levelAfter}:${d.rankAfter.step}:${d.xpIntoLevel}`;
 }
 
-export function takeoverCelebrated(key: string): boolean {
+export function takeoverDismissed(key: string): boolean {
   try {
-    return sessionStorage.getItem(CARD_TAKEOVER_CELEBRATED_KEY) === key;
+    return sessionStorage.getItem(CARD_TAKEOVER_DISMISSED_KEY) === key;
   } catch {
-    return false; // storage blocked: this mount still shows it once (state-held)
+    return false; // storage blocked: dismissal is still state-held for this mount
   }
 }
 
-export function markTakeoverCelebrated(key: string): void {
+export function markTakeoverDismissed(key: string): void {
   try {
-    sessionStorage.setItem(CARD_TAKEOVER_CELEBRATED_KEY, key);
+    sessionStorage.setItem(CARD_TAKEOVER_DISMISSED_KEY, key);
   } catch {
-    /* best-effort — see takeoverCelebrated */
+    /* best-effort — see takeoverDismissed */
   }
+}
+
+/**
+ * The entrance gate (owner, 2026-11-01: "I never saw this animation it
+ * just appeared like this"). The entrance is CSS keyframes, and a
+ * keyframe timeline runs on the wall clock from the moment the element
+ * is inserted — the parent's arming is a bare 1900 ms timer lit off the
+ * report's reveal, so any span in which the webview paints no frames of
+ * THIS surface (the app switched away mid-sequence, the surface covered)
+ * burned the whole ~2.3 s show unseen and left the end state sitting
+ * there. The stylesheet holds every takeover animation paused at its
+ * first frame until this hook flips `rw-tko-play` — after the takeover
+ * itself has painted two frames while the document is visible, the
+ * same discipline the rewards reveal gate (useRewardsReveal) applies
+ * to the page, applied here at the takeover level. If the document is
+ * hidden when the takeover mounts, the flip waits for visibility; the
+ * paused keyframes cannot advance in the meantime.
+ */
+function useTakeoverPlay(): boolean {
+  const [play, setPlay] = useState(false);
+  useEffect(() => {
+    let raf1 = 0;
+    let raf2 = 0;
+    let offVis: (() => void) | null = null;
+    const arm = () => {
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setPlay(true));
+      });
+    };
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      const onVis = () => { if (document.visibilityState === 'visible') arm(); };
+      document.addEventListener('visibilitychange', onVis);
+      offVis = () => document.removeEventListener('visibilitychange', onVis);
+    } else {
+      arm();
+    }
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); offVis?.(); };
+  }, []);
+  return play;
 }
 
 const SPARKS: { x: string; y: string; delay: string; size: string }[] = [
@@ -77,6 +121,7 @@ export function CardTakeover({ d, leaving, onDismiss }: {
   leaving: boolean;
   onDismiss: () => void;
 }) {
+  const play = useTakeoverPlay();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onDismiss();
@@ -90,7 +135,7 @@ export function CardTakeover({ d, leaving, onDismiss }: {
   const to = d.rankAfter;
   return (
     <div
-      className={`rw-takeover${leaving ? ' leaving' : ''}`}
+      className={`rw-takeover${play ? ' rw-tko-play' : ''}${leaving ? ' leaving' : ''}`}
       data-testid="card-takeover"
       role="dialog"
       aria-modal="true"

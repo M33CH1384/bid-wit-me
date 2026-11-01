@@ -38,4 +38,14 @@ describe('card takeover CSS contract', () => {
   it('motion is transform/opacity only — no canvas, no layout animation', () => {
     expect(block).not.toMatch(/animation:[^;]*(width|height|top|left)/);
   });
+
+  it('the entrance holds paused until the takeover has painted (.rw-tko-play)', () => {
+    // Owner, 2026-11-01: the keyframes run on the wall clock from
+    // insertion, so an unpainted span burned the show unseen. Until the
+    // component flips .rw-tko-play (two painted frames while visible),
+    // every takeover animation is held at its first frame; the exit
+    // (.leaving) is explicitly never held.
+    expect(block).toMatch(/\.rw-takeover:not\(\.rw-tko-play\):not\(\.leaving\)[^{]*\{[^}]*animation-play-state: paused/);
+    expect(block).toMatch(/\.rw-takeover-stage \{[^}]*animation: rw-tko-in/);
+  });
 });

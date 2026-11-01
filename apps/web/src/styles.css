@@ -4258,6 +4258,24 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   background: radial-gradient(115% 85% at 50% 38%, rgba(12, 8, 26, .72), rgba(4, 3, 10, .9));
   animation: rw-tko-fadein .35s ease both; }
 @keyframes rw-tko-fadein { from { opacity: 0; } }
+/* Entrance gate (owner, 2026-11-01: "I never saw this animation it just
+   appeared like this"): a keyframe timeline runs on the wall clock from
+   insertion, so any span where the webview paints no frames of this
+   surface burned the whole entrance unseen. Until the component has
+   painted two frames while visible it carries no .rw-tko-play, and
+   every takeover animation holds PAUSED at its first frame — the
+   paused clock cannot advance, delays included. The exit is never
+   held: .leaving dismissals must always be able to leave. */
+.rw-takeover:not(.rw-tko-play):not(.leaving)::before,
+.rw-takeover:not(.rw-tko-play):not(.leaving) .rw-takeover-rays,
+.rw-takeover:not(.rw-tko-play):not(.leaving) .rw-takeover-spark,
+.rw-takeover:not(.rw-tko-play):not(.leaving) .rw-takeover-head,
+.rw-takeover:not(.rw-tko-play):not(.leaving) .rw-takeover-flow,
+.rw-takeover:not(.rw-tko-play):not(.leaving) .rw-takeover-stage,
+.rw-takeover:not(.rw-tko-play):not(.leaving) .rw-takeover-stage::before,
+.rw-takeover:not(.rw-tko-play):not(.leaving) .rw-takeover-card,
+.rw-takeover:not(.rw-tko-play):not(.leaving) .rw-takeover-shine::before,
+.rw-takeover:not(.rw-tko-play):not(.leaving) .rw-takeover-hint { animation-play-state: paused; }
 .rw-takeover-rays { position: absolute; left: 50%; top: 46%; width: 165vmin; height: 165vmin;
   transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
   background: repeating-conic-gradient(from 0deg, rgba(var(--gold-rgb), .07) 0deg 7deg, transparent 7deg 15deg);

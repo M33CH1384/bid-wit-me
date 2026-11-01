@@ -7,10 +7,18 @@
  * animation to go with it").
  *
  * These pins cover the firing discipline and the dismissal contract:
- *  - the takeover fires ONCE per grant, keyed to the grant itself, after
- *    the reveal sequence lands — never on a replay of the same report
- *    (a refreshed /rewards stash, a remount), because the grant is marked
- *    celebrated in sessionStorage when it shows;
+ *  - the takeover fires per grant, keyed to the grant itself, after the
+ *    reveal sequence lands; SHOWING it retires nothing — dismissal is
+ *    the only retirement (owner, 2026-11-01: "if you refresh that page
+ *    the animation plays again"), so a refresh/remount while it is
+ *    still pending brings it back, and only a tap-dismissed grant
+ *    stays quiet on a remount;
+ *  - the entrance is gated on the takeover's own painted frames: the
+ *    root carries .rw-tko-play only after two frames while visible,
+ *    and a takeover mounted while the document is hidden stays
+ *    unplayed until visibility returns (the stylesheet holds every
+ *    animation paused until then — the 2026-11-01 "it just appeared
+ *    like this" report);
  *  - a multi-card jump celebrates the FINAL card;
  *  - the Big Joker step (same level, step 51) gets its own banner;
  *  - tapping dismisses back to the untouched NEW CARD panel;
@@ -25,7 +33,7 @@ import { act, createElement, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import GameOverRewards, { computeRewards, type RewardsData, type RewardsProfile } from '../src/GameOverRewards';
-import { CARD_TAKEOVER_CELEBRATED_KEY, CARD_TAKEOVER_DELAY_MS, CARD_TAKEOVER_EXIT_MS } from '../src/CardTakeover';
+import { CARD_TAKEOVER_DISMISSED_KEY, CARD_TAKEOVER_DELAY_MS, CARD_TAKEOVER_EXIT_MS } from '../src/CardTakeover';
 import type { CardRankData, PlayerCardData } from '../src/profile/PlayerCard';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -166,9 +174,20 @@ function openGate() {
 const takeover = () => container.querySelector('[data-testid="card-takeover"]');
 const panel = () => container.querySelector('[data-testid="rewards-cardup"]');
 
+/* document.visibilityState, stubbed per test: the takeover's entrance
+ * gate reads it at mount, so a test can mount the takeover "while the
+ * app is switched away" and bring it back. */
+let visState = 'visible';
+function setVisibility(v: 'visible' | 'hidden') {
+  visState = v;
+  act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+}
+
 beforeEach(() => {
   rafQ = [];
   rafSeq = 0;
+  visState = 'visible';
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visState });
   sessionStorage.clear();
   vi.useFakeTimers();
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -181,6 +200,7 @@ beforeEach(() => {
 
 afterEach(() => {
   unmount();
+  delete (document as { visibilityState?: string }).visibilityState;
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -201,8 +221,8 @@ describe('level-up card takeover', () => {
     expect(t!.textContent).toContain('Eight of Clubs');
     // the hero is the panel's own PlayerCard, presented a second time
     expect(t!.querySelector('[data-testid="player-card"]')).not.toBeNull();
-    // …and the grant is now marked celebrated
-    expect(sessionStorage.getItem(CARD_TAKEOVER_CELEBRATED_KEY)).toContain('19:19:12');
+    // …and SHOWING it retires nothing: no dismissed mark is written
+    expect(sessionStorage.getItem(CARD_TAKEOVER_DISMISSED_KEY)).toBeNull();
   });
 
   it('survives the StrictMode mount cycle the app shell wraps it in', () => {
@@ -218,18 +238,81 @@ describe('level-up card takeover', () => {
     expect(takeover()!.textContent).toContain('Eight of Clubs');
   });
 
-  it('never re-fires for the same grant: a remount (the refreshed stash) stays quiet', () => {
+  it('a refresh while it is still pending brings it back — entrance re-armed, nothing retired', () => {
+    // Owner, 2026-11-01: "if you refresh that page the animation plays
+    // again." Showing the takeover spends nothing: only a tap retires
+    // the grant, so the refreshed stash replays the whole celebration.
     mount(cardUpData());
     openGate();
     advance(CARD_TAKEOVER_DELAY_MS);
     expect(takeover()).not.toBeNull();
+    expect(sessionStorage.getItem(CARD_TAKEOVER_DISMISSED_KEY)).toBeNull();
     unmount();
     // same session, same breakdown — the /rewards refresh case
+    mount(cardUpData());
+    openGate();
+    advance(CARD_TAKEOVER_DELAY_MS);
+    const t = takeover();
+    expect(t).not.toBeNull();
+    // the entrance is re-armed too: not yet playing until its own
+    // painted frames land, then the play class flips
+    expect(t!.classList.contains('rw-tko-play')).toBe(false);
+    pumpFrame(0);
+    pumpFrame(16);
+    expect(takeover()!.classList.contains('rw-tko-play')).toBe(true);
+    expect(panel()).not.toBeNull();
+  });
+
+  it('dismissal is the only retirement: after a tap, a remount (refresh) stays quiet', () => {
+    mount(cardUpData());
+    openGate();
+    advance(CARD_TAKEOVER_DELAY_MS);
+    const t = takeover()!;
+    act(() => { t.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    // the tap writes the dismissed mark for THIS grant
+    expect(sessionStorage.getItem(CARD_TAKEOVER_DISMISSED_KEY)).toContain('19:19:12');
+    advance(CARD_TAKEOVER_EXIT_MS);
+    expect(takeover()).toBeNull();
+    unmount();
     mount(cardUpData());
     openGate();
     advance(CARD_TAKEOVER_DELAY_MS + 5000);
     expect(takeover()).toBeNull();
     expect(panel()).not.toBeNull();
+  });
+
+  it('the entrance waits for the takeover’s own painted frames, not the arming timer', () => {
+    // The stacked path (owner, 2026-11-01: "it just appeared like
+    // this"): the takeover mounts over the already-playing report; its
+    // keyframes must not start on insertion — the play class flips only
+    // after the takeover itself has painted two frames.
+    mount(cardUpData());
+    openGate();
+    advance(CARD_TAKEOVER_DELAY_MS);
+    const t = takeover()!;
+    expect(t.classList.contains('rw-tko-play')).toBe(false);
+    pumpFrame(0);
+    expect(takeover()!.classList.contains('rw-tko-play')).toBe(false);
+    pumpFrame(16);
+    expect(takeover()!.classList.contains('rw-tko-play')).toBe(true);
+  });
+
+  it('a takeover mounted while the document is hidden stays unplayed until visible', () => {
+    mount(cardUpData());
+    openGate();
+    setVisibility('hidden');
+    advance(CARD_TAKEOVER_DELAY_MS);
+    const t = takeover()!;
+    expect(t).not.toBeNull();
+    // frames pump, but the document is hidden: no play flip
+    pumpFrame(0);
+    pumpFrame(16);
+    expect(takeover()!.classList.contains('rw-tko-play')).toBe(false);
+    // the player comes back: visibility returns, frames paint, it plays
+    setVisibility('visible');
+    pumpFrame(0);
+    pumpFrame(16);
+    expect(takeover()!.classList.contains('rw-tko-play')).toBe(true);
   });
 
   it('tap dismisses back to the untouched panel', () => {
@@ -287,6 +370,6 @@ describe('level-up card takeover', () => {
     advance(CARD_TAKEOVER_DELAY_MS + 5000);
     expect(takeover()).toBeNull();
     expect(panel()).not.toBeNull();
-    expect(sessionStorage.getItem(CARD_TAKEOVER_CELEBRATED_KEY)).toBeNull();
+    expect(sessionStorage.getItem(CARD_TAKEOVER_DISMISSED_KEY)).toBeNull();
   });
 });

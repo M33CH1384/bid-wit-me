@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { CoinIcon } from './RepBlock';
-import { CardTakeover, CARD_TAKEOVER_DELAY_MS, CARD_TAKEOVER_EXIT_MS, cardTakeoverKey, markTakeoverCelebrated, takeoverCelebrated } from './CardTakeover';
+import { CardTakeover, CARD_TAKEOVER_DELAY_MS, CARD_TAKEOVER_EXIT_MS, cardTakeoverKey, markTakeoverDismissed, takeoverDismissed } from './CardTakeover';
 import { VictoryConfetti } from './RecapFx';
 import { cardDisplayName, rankGlyph } from './cardRank';
 import { fx, useReduceEffects } from './fx';
@@ -827,22 +827,26 @@ export default function GameOverRewards({
   // Level-up CARD TAKEOVER (owner, 2026-10-29): when this report grants a
   // new rank card, the card itself takes the screen (see CardTakeover.tsx).
   // Armed off the ROWS' gate — the XP count and the level bar run on it —
-  // and delayed so it rises as the bar settles into the new level. Fires
-  // once per grant: the celebrated key is written when the takeover shows,
-  // so a refreshed /rewards stash or a remount never replays it. Reduced
-  // motion never arms it; the static panel is the whole show there.
+  // and delayed so it rises as the bar settles into the new level.
+  // Retirement (reworked, owner 2026-11-01): DISMISSAL is the only thing
+  // that retires a grant — the dismissed key is written when the player
+  // taps the takeover away, never when it shows. A refresh or remount
+  // while it is still pending brings it back with its entrance (which is
+  // itself visibility-gated inside CardTakeover, so the show can no
+  // longer burn unseen). Reduced motion never arms it; the static panel
+  // is the whole show there.
   const tKey = cardTakeoverKey(data);
   const [takeover, setTakeover] = useState<{ key: string; leaving: boolean } | null>(null);
   useEffect(() => {
     if (!rowGate || reduced || !tKey) return;
-    if (takeoverCelebrated(tKey)) return;
+    if (takeoverDismissed(tKey)) return;
     // No "armed" latch: the cleanup clears the timer on ANY effect re-run
     // (a remount-in-place, a gate flicker), so a latch would silently eat
-    // the celebration — the re-run must be free to arm again. Once per
-    // grant is guaranteed by the cleanup discipline (one live timer per
-    // instance) plus the celebrated mark written when the takeover shows.
+    // the celebration — the re-run must be free to arm again. Exactly-one
+    // live presentation per mount is guaranteed by the cleanup discipline
+    // (one live timer per instance); across mounts, only the dismissed
+    // mark retires the grant.
     const t = window.setTimeout(() => {
-      markTakeoverCelebrated(tKey);
       setTakeover({ key: tKey, leaving: false });
     }, CARD_TAKEOVER_DELAY_MS);
     return () => window.clearTimeout(t);
@@ -852,7 +856,13 @@ export default function GameOverRewards({
     const t = window.setTimeout(() => setTakeover(null), CARD_TAKEOVER_EXIT_MS);
     return () => window.clearTimeout(t);
   }, [takeover?.leaving]);
-  const dismissTakeover = () => setTakeover((s) => (s && !s.leaving ? { ...s, leaving: true } : s));
+  const dismissTakeover = () => {
+    // Retire the grant that is actually on screen (its key rides the
+    // takeover state — the data could have swapped under it, e.g. a
+    // guest claim landing mid-show).
+    if (takeover && !takeover.leaving) markTakeoverDismissed(takeover.key);
+    setTakeover((s) => (s && !s.leaving ? { ...s, leaving: true } : s));
+  };
   let row = 0;
   const rows: React.ReactNode[] = [];
   if (data.signedIn) {
