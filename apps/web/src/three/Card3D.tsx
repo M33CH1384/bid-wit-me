@@ -1,10 +1,10 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
-import { Color, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, Quaternion, type Texture, Vector3, type WebGLRenderer } from 'three';
+import { BufferAttribute, Color, ExtrudeGeometry, type Group, type Material, type Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, PlaneGeometry, Quaternion, Shape, ShapeGeometry, type Texture, Vector3, type WebGLRenderer } from 'three';
 import { cardFaceFragment } from './cardSat';
-import { cardGeometry, cardOutlineGeometry } from './geometry';
+import { cardFaceOutlinePoints, cardGeometry, cardOutlineGeometry } from './geometry';
 import { raiseSeconds, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
-import { type Xform } from './layout';
+import { CH, CT, CW, FACE_CAP_GAP, type Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { blastPose } from './blastSweep';
 import { releaseTornadoCard, sweepParamsFor, sweepPoseAt, type SweepCardParams } from './tornadoSweep';
@@ -18,7 +18,8 @@ import { playFlightPose, type FlightVariant, type PlayFlightOpts } from './fligh
 import { impactFraction } from '../landTiming';
 import { PILE_THUMP, slamThump } from './shake';
 import { PLAY_FLIGHT_MOTIONS, pendingSweepDue, sweepMustWait, type PendingSweep } from './sweepGate';
-import { deuceFxElapsed, deuceImpactsAfter, deuceSeed, lastDeuceImpactId, pushDeuceImpact } from './deuceImpact';
+import { CUT_FACE_ANGLE, deuceFxElapsed, deuceImpactsAfter, deuceSeed, lastDeuceImpactId, pushDeuceImpact } from './deuceImpact';
+import { cutColorFor } from '../deuceFx';
 import type { Card } from '@spades/rules';
 
 interface Props {
@@ -110,6 +111,62 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
+type Pt = { x: number; y: number };
+/** Sutherland–Hodgman clip of the face outline by one side of the cut line. */
+function clipHalf(pts: Pt[], nx: number, ny: number, side: 1 | -1): Pt[] {
+  const out: Pt[] = [];
+  if (!pts.length) return out;
+  const d = (p: Pt) => (p.x * nx + p.y * ny) * side;
+  for (let i = 0; i < pts.length; i++) {
+    const cur = pts[i]!; const prev = pts[(i + pts.length - 1) % pts.length]!;
+    const dc = d(cur); const dp = d(prev);
+    const curIn = dc >= -1e-9; const prevIn = dp >= -1e-9;
+    if (curIn !== prevIn) {
+      const t = dp / (dp - dc);
+      out.push({ x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t });
+    }
+    if (curIn) out.push(cur);
+  }
+  // Drop a duplicated closing point if present.
+  if (out.length > 1) {
+    const a = out[0]!; const b = out[out.length - 1]!;
+    if (Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9) out.pop();
+  }
+  return out;
+}
+function shapeFrom(pts: Pt[]): Shape {
+  const s = new Shape();
+  if (!pts.length) return s;
+  s.moveTo(pts[0]!.x, pts[0]!.y);
+  for (let i = 1; i < pts.length; i++) s.lineTo(pts[i]!.x, pts[i]!.y);
+  s.closePath();
+  return s;
+}
+function remapFaceUV(g: ShapeGeometry): void {
+  const pos = g.getAttribute('position');
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    uv[i * 2] = (pos.getX(i) + CW / 2) / CW;
+    uv[i * 2 + 1] = (pos.getY(i) + CH / 2) / CH;
+  }
+  g.setAttribute('uv', new BufferAttribute(uv, 2));
+}
+/** Build the two half-card geometries (face + extruded core) clipped along CUT_FACE_ANGLE. */
+function buildCutHalves(): { face: ShapeGeometry; core: ExtrudeGeometry }[] {
+  const outline = cardFaceOutlinePoints(5);
+  const nx = -Math.sin(CUT_FACE_ANGLE); const ny = Math.cos(CUT_FACE_ANGLE);
+  return ([1, -1] as const).map((side) => {
+    const pts = clipHalf(outline, nx, ny, side);
+    const shape = shapeFrom(pts);
+    const face = new ShapeGeometry(shape, 4);
+    remapFaceUV(face);
+    face.translate(0, 0, CT / 2 + FACE_CAP_GAP + 0.0006);
+    const core = new ExtrudeGeometry(shape, { depth: CT, bevelEnabled: false, curveSegments: 4 });
+    core.translate(0, 0, -CT / 2);
+    return { face, core };
+  });
+}
+
 function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, variant, raise = 0, roll = 0, order = 0, dim, glow, armed, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, impactFx, knock, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
   const slamNow = useRef(slam);
   const postLand = useRef(0);
@@ -157,6 +214,33 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // Armed nuke outline: hot red/orange, opacity pulsed every frame while armed (see useFrame).
   const armedMat = useMemo(() => new MeshBasicMaterial({ color: '#ff7a1a', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }), []);
   const edge = useMemo(() => edgeMat.clone(), []);
+  // Cut wound + hero beat meshes (imperative, inside the inner group).
+  const bodyMesh = useRef<Mesh>(null);
+  const frontMesh = useRef<Mesh>(null);
+  const backMesh = useRef<Mesh>(null);
+  const glowMesh = useRef<Mesh>(null);
+  const armedMesh = useRef<Mesh>(null);
+  const halfGroups = useRef<(Group | null)[]>([null, null]);
+  const gashMesh = useRef<Mesh>(null);
+  const glowNow = useRef({ glow: !!glow, armed: !!armed });
+  glowNow.current = { glow: !!glow, armed: !!armed };
+  const cutHalves = useMemo(() => {
+    const geos = buildCutHalves();
+    const mkFace = () => {
+      const map = frontTex ?? back;
+      const m = lit ? createLitCardMaterial(map, quality, true) : new MeshBasicMaterial({ map });
+      (m as unknown as { userData: Record<string, unknown> }).userData.cutHalf = true;
+      applyFaceDepthBias(m as MeshBasicMaterial);
+      return m;
+    };
+    return geos.map((g) => ({ faceGeo: g.face, coreGeo: g.core, faceMat: mkFace(), coreMat: edgeMat.clone() }));
+  }, [frontTex, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
+  const gashGeo = useMemo(() => {
+    const g = new PlaneGeometry(0.43, 0.014);
+    g.translate(0, 0, CT / 2 + FACE_CAP_GAP + 0.0008);
+    return g;
+  }, []);
+  const gashMat = useMemo(() => new MeshBasicMaterial({ color: '#140d08', transparent: true, opacity: 0.92, depthWrite: false }), []);
   // The root group keeps `order` for taps. Child groups reset Three.js groupOrder, so each mesh
   // carries its own: body at `order`, face and back half a step later, the gold ring after
   // every peer face. A selected card's face stays above those rings.
@@ -174,7 +258,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (!mesh.isMesh) return;
       const mat = mesh.material as Material | Material[] | undefined;
       const list = mat ? (Array.isArray(mat) ? mat : [mat]) : [];
-      const onFace = list.includes(frontMat);
+      const onFace = list.includes(frontMat) || list.some((m) => (m as Material & { userData?: { cutHalf?: boolean } }).userData?.cutHalf);
       const onBack = list.includes(backMat);
       const onGlow = list.includes(glowMat) || list.includes(armedMat);
       const paint = cardMeshPaint(order, onGlow ? 'glow' : onFace ? 'face' : onBack ? 'back' : 'edge');
@@ -253,6 +337,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const dk = useRef({
     impact: null as { kind: 'drop' | 'cut'; victim: Card | null } | null,
     dipAt: 0, dipDepth: 0, knockAt: 0, knockDir: { x: 0, z: 1 }, innerActive: false,
+    cutAt: 0, heroAt: 0, heroAxis: new Vector3(1, 0, 0), splitShown: false,
     seen: lastDeuceImpactId(), q: new Quaternion(), w: new Vector3(), axis: new Vector3(), dimCol: new Color(),
   });
   const raiseNow = useRef(raise);
@@ -295,6 +380,74 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (hideUntilStart.current) { hideUntilStart.current = false; g.visible = true; }
     invalidate();
   }, [motion, poseKey, raise, roll, invalidate, target]);
+
+  /** Restore the whole card (undo a split / gash) — respects the glow/armed props. */
+  const restoreWholeCard = () => {
+    const dkS = dk.current;
+    if (!dkS.splitShown) return;
+    dkS.splitShown = false;
+    if (bodyMesh.current) bodyMesh.current.visible = true;
+    if (frontMesh.current) frontMesh.current.visible = true;
+    if (backMesh.current) backMesh.current.visible = true;
+    if (glowMesh.current) glowMesh.current.visible = glowNow.current.glow && !glowNow.current.armed;
+    if (armedMesh.current) armedMesh.current.visible = glowNow.current.armed;
+    for (const hg of halfGroups.current) if (hg) hg.visible = false;
+    if (gashMesh.current) gashMesh.current.visible = false;
+  };
+  const showSplit = (reduced: boolean) => {
+    const dkS = dk.current;
+    if (dkS.splitShown) return;
+    dkS.splitShown = true;
+    if (reduced) {
+      if (gashMesh.current) gashMesh.current.visible = true;
+      return;
+    }
+    if (bodyMesh.current) bodyMesh.current.visible = false;
+    if (frontMesh.current) frontMesh.current.visible = false;
+    if (backMesh.current) backMesh.current.visible = false;
+    if (glowMesh.current) glowMesh.current.visible = false;
+    if (armedMesh.current) armedMesh.current.visible = false;
+    for (const hg of halfGroups.current) if (hg) hg.visible = true;
+  };
+
+  /** Compose dip + knock + hero on the inner group (world offset → local).
+   *  Called both before the resting-card early return (a beaten trump is
+   *  already at rest when the Cut lands — its shove must still run) and at
+   *  the frame's end for flying cards. Blast/tornado own the group while
+   *  they run and are never fought. */
+  const composeDeuceInner = (g: Group, dipEnv: number, knockEnv: number, heroEnv: number) => {
+    const dkS = dk.current;
+    const ig = inner.current;
+    if (!ig) return;
+    const owned = bl.current.on || bl.current.flung || tn.current.on || tn.current.gone;
+    if (owned) return;
+    if (dipEnv > 0 || knockEnv > 0 || heroEnv > 0) {
+      const calm = fx.reduced;
+      const kx = calm ? 0 : dkS.knockDir.x * 0.055 * knockEnv;
+      const kz = calm ? 0 : dkS.knockDir.z * 0.055 * knockEnv;
+      const heroLift = calm ? 0 : 0.085 * heroEnv;
+      const w = dkS.w.set(kx, -dkS.dipDepth * dipEnv + heroLift, kz);
+      dkS.q.copy(g.quaternion).invert();
+      w.applyQuaternion(dkS.q).divideScalar(g.scale.x || 1);
+      ig.position.copy(w);
+      if (!calm && knockEnv > 0) {
+        dkS.axis.set(dkS.knockDir.z, 0, -dkS.knockDir.x).normalize().applyQuaternion(dkS.q);
+        ig.quaternion.setFromAxisAngle(dkS.axis, 0.3 * knockEnv);
+      } else if (!calm && heroEnv > 0) {
+        dkS.axis.copy(dkS.heroAxis).normalize().applyQuaternion(dkS.q);
+        ig.quaternion.setFromAxisAngle(dkS.axis, 0.34 * heroEnv);
+      } else ig.quaternion.identity();
+      ig.scale.setScalar(calm ? 1 : 1 + 0.15 * heroEnv);
+      dkS.innerActive = true;
+      invalidate();
+    } else if (dkS.innerActive) {
+      ig.position.set(0, 0, 0);
+      ig.quaternion.identity();
+      ig.scale.setScalar(1);
+      dkS.innerActive = false;
+      invalidate();
+    }
+  };
 
   /** Nuke blast. Table cards sweep off the felt and stay there. Hand cards kick and spring home. */
   const applyBlast = (g: Group) => {
@@ -429,6 +582,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
           if (e.kind === 'cut' && e.victim && e.victim === cardId && fxNow.current.knock
             && s0.t >= 1 && !s0.isSweep && PLAY_FLIGHT_MOTIONS.has(s0.motionSnap) && g.position.y < 0.35) {
             dkS.knockAt = e.at;
+            dkS.cutAt = e.at;
             dkS.knockDir.x = fxNow.current.knock.dirX;
             dkS.knockDir.z = fxNow.current.knock.dirZ;
           }
@@ -438,6 +592,35 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const knockU = dkS.knockAt ? deuceFxElapsed(performance.now() - dkS.knockAt) / 450 : 1;
     const knockEnv = knockU < 1 ? Math.pow(Math.sin(Math.PI * Math.min(1, Math.max(0, knockU))), 1.4) : 0;
     if (knockU >= 1) dkS.knockAt = 0;
+    // The wound: 620 ms split envelope, set with the knock. The halves ease
+    // apart over the first 45%, hold, then close as the envelope ends and
+    // the whole card restores — all inside the trick hold.
+    const cutU = dkS.cutAt ? deuceFxElapsed(performance.now() - dkS.cutAt) / 620 : 1;
+    if (dkS.cutAt && cutU < 1) {
+      showSplit(fx.reduced);
+      const sepT = Math.min(1, cutU / 0.45);
+      const sep = 1 - Math.pow(1 - sepT, 3);
+      const holdFade = cutU > 0.82 ? Math.max(0, 1 - (cutU - 0.82) / 0.18) : 1;
+      const gap = 0.10 * CW * sep * holdFade;
+      const nx = -Math.sin(CUT_FACE_ANGLE); const ny = Math.cos(CUT_FACE_ANGLE);
+      halfGroups.current.forEach((hg, idx) => {
+        if (!hg) return;
+        const side = idx === 0 ? 1 : -1;
+        hg.position.set(nx * gap * side, ny * gap * side, 0);
+        hg.rotation.set(0, 0, side * 0.07 * sep * holdFade);
+      });
+      invalidate();
+    } else {
+      if (dkS.cutAt) dkS.cutAt = 0;
+      if (dkS.splitShown) { restoreWholeCard(); invalidate(); }
+    }
+    // The hero beat: 600 ms envelope for the stealer (set at its landing).
+    const heroU = dkS.heroAt ? deuceFxElapsed(performance.now() - dkS.heroAt) / 600 : 1;
+    const heroEnv = heroU < 1 ? Math.sin(Math.PI * Math.min(1, Math.max(0, heroU))) : 0;
+    if (heroU >= 1 && dkS.heroAt) {
+      dkS.heroAt = 0;
+      if ('emissive' in frontMat) (frontMat as MeshStandardMaterial).emissiveIntensity = 0;
+    }
     // colour easing (~150 ms), also capped so a long frame does not snap it
     const L = look.current, k = Math.min(1, dt / 0.15);
     const c = frontMat.color;
@@ -447,6 +630,33 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (Math.abs(c.r - tgt.r) + Math.abs(c.g - tgt.g) + Math.abs(c.b - tgt.b) > 0.004) { c.lerp(tgt, k); invalidate(); } else c.copy(tgt);
     const sat = frontMat.userData.sat as { value: number } | undefined;
     if (sat && Math.abs(sat.value - L.sat) > 0.01) { sat.value += (L.sat - sat.value) * k; invalidate(); } else if (sat) sat.value = L.sat;
+    // The split halves wear the same dim/saturation as the whole face.
+    for (const h of cutHalves) {
+      const hm = h.faceMat as MeshStandardMaterial;
+      if (hm.color) hm.color.copy(c);
+      const hs = (hm as unknown as { userData?: { sat?: { value: number } } }).userData?.sat;
+      if (hs) hs.value = L.sat;
+    }
+    // Hero caught light: the winner's colour on the stealer's face.
+    if (heroEnv > 0 && cardId && 'emissive' in frontMat) {
+      const pal = cutColorFor(cardId as Card);
+      if (pal) {
+        const fm = frontMat as MeshStandardMaterial;
+        fm.emissive.set(pal.glow);
+        fm.emissiveIntensity = (fx.reduced ? 0.35 : 0.55) * heroEnv;
+      }
+    } else if (dkS.heroAt === 0 && 'emissive' in frontMat) {
+      (frontMat as MeshStandardMaterial).emissiveIntensity = 0;
+    }
+    if (heroEnv > 0) invalidate();
+    // Early compose: a resting card returns before the frame-end block
+    // below, so its knock/hero must be applied here as well.
+    {
+      const dipUE = dkS.dipAt ? deuceFxElapsed(performance.now() - dkS.dipAt) / 300 : 1;
+      const dipEnvE = dipUE < 1 ? Math.sin(Math.PI * Math.pow(Math.min(1, Math.max(0, dipUE)), 0.8)) : 0;
+      if (dipUE >= 1) dkS.dipAt = 0;
+      composeDeuceInner(g, dipEnvE, knockEnv, heroEnv);
+    }
     if (!applyTornado(g)) applyBlast(g);
     const s = tw.current;
     const poseOk = (x: Xform) => x.p.every(Number.isFinite) && x.q.every(Number.isFinite) && Number.isFinite(x.s);
@@ -515,6 +725,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       // flight also ends any knock/dip the previous pose was still playing.
       dk.current.impact = fxNow.current.impactFx ? { kind: fxNow.current.impactFx.kind, victim: fxNow.current.impactFx.victim ?? null } : null;
       dk.current.knockAt = 0;
+      dk.current.cutAt = 0;
+      dk.current.heroAt = 0;
+      restoreWholeCard();
       dk.current.dipAt = 0;
       s.t = 0;
       // last-trick auto-play retargets a card that is already on screen (your last card keeps its hand key).
@@ -620,6 +833,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       s.land = pend.land;
       dk.current.impact = null;
       dk.current.knockAt = 0;
+      dk.current.cutAt = 0;
+      dk.current.heroAt = 0;
+      restoreWholeCard();
       dk.current.dipAt = 0;
       s.t = 0;
       s.wait = pend.wait;
@@ -723,48 +939,35 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         // the sounds; the shake and the dip stay home.
         if (dkS.impact) {
           const impact = dkS.impact;
-          pushDeuceImpact({ at: performance.now(), kind: impact.kind, x: g.position.x, y: g.position.y, z: g.position.z, victim: impact.victim, seed: deuceSeed(`${cardId ?? ''}|${s.key}`) });
+          pushDeuceImpact({ at: performance.now(), kind: impact.kind, x: g.position.x, y: g.position.y, z: g.position.z, victim: impact.victim, winner: impact.kind === 'cut' ? (cardId as Card | null) : null, seed: deuceSeed(`${cardId ?? ''}|${s.key}`) });
           if (!fx.reduced && !fx.osReducedMotion) {
             fx.shake = impact.kind === 'cut'
-              ? { start: performance.now(), dur: 0.2, amp: 0.035, thump: true }
+              ? { start: performance.now(), dur: 0.32, amp: 0.115, thump: true }
               : { start: performance.now(), dur: 0.5, amp: 0.085, thump: true };
           }
-          if (!fx.reduced) { dkS.dipAt = performance.now(); dkS.dipDepth = impact.kind === 'cut' ? 0.008 : 0.014; }
+          if (impact.kind === 'cut') {
+            // The hero beat replaces the cut's small settle dip.
+            dkS.heroAt = performance.now();
+            const e = cam.matrixWorld.elements;
+            const rx = e[0] ?? 1; const rz = e[2] ?? 0;
+            const len = Math.hypot(rx, rz) || 1;
+            dkS.heroAxis.set(rx / len, 0, rz / len);
+            if (cardId && 'emissive' in frontMat) {
+              const pal = cutColorFor(cardId as Card);
+              if (pal) (frontMat as MeshStandardMaterial).emissive.set(pal.glow);
+            }
+          } else if (!fx.reduced) { dkS.dipAt = performance.now(); dkS.dipDepth = 0.014; }
         }
         const lw = window as unknown as { __bwmLandProbe?: boolean; __bwmLandFx?: { card: string; at: number; t: number }[] };
         if (lw.__bwmLandProbe && cardId) (lw.__bwmLandFx ??= []).push({ card: cardId, at: performance.now(), t: s.t });
       }
     }
-    // Deuce settle dip + Cut knock on the inner group (world offset → local,
-    // the applyBlast conversion). The blast and the tornado own this group
-    // while they run — never fight them; both shows start at or after trick
-    // completion, long after these half-second envelopes end.
+    // Deuce settle dip + Cut knock + hero on the inner group.
     {
       const dipU = dkS.dipAt ? deuceFxElapsed(performance.now() - dkS.dipAt) / 300 : 1;
       const dipEnv = dipU < 1 ? Math.sin(Math.PI * Math.pow(Math.min(1, Math.max(0, dipU)), 0.8)) : 0;
       if (dipU >= 1) dkS.dipAt = 0;
-      const ig = inner.current;
-      const owned = bl.current.on || bl.current.flung || tn.current.on || tn.current.gone;
-      if (ig && !owned && (dipEnv > 0 || knockEnv > 0)) {
-        const calm = fx.reduced; // reduced: the victim dims (above) but is never shoved
-        const kx = calm ? 0 : dkS.knockDir.x * 0.055 * knockEnv;
-        const kz = calm ? 0 : dkS.knockDir.z * 0.055 * knockEnv;
-        const w = dkS.w.set(kx, -dkS.dipDepth * dipEnv, kz);
-        dkS.q.copy(g.quaternion).invert();
-        w.applyQuaternion(dkS.q).divideScalar(g.scale.x || 1);
-        ig.position.copy(w);
-        if (!calm && knockEnv > 0) {
-          dkS.axis.set(dkS.knockDir.z, 0, -dkS.knockDir.x).normalize().applyQuaternion(dkS.q);
-          ig.quaternion.setFromAxisAngle(dkS.axis, 0.3 * knockEnv);
-        } else ig.quaternion.identity();
-        dkS.innerActive = true;
-        invalidate();
-      } else if (ig && !owned && dkS.innerActive) {
-        ig.position.set(0, 0, 0);
-        ig.quaternion.identity();
-        dkS.innerActive = false;
-        invalidate();
-      }
+      composeDeuceInner(g, dipEnv, knockEnv, heroEnv);
     }
     if (rw0.__bwmRestProbe && cardId && slamNow.current) ((rw0.__bwmScale ??= {})[cardId] ??= []).push(g.scale.x);
     if (finiteTarget && trickFacingArrived(s.t, g.position.distanceTo(s.tp))) {
@@ -795,11 +998,18 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     >
       <group ref={lift} name={name}>
       <group ref={inner}>
-        <mesh geometry={geo.body} material={edge} castShadow={castShadow} />
-        <mesh geometry={geo.front} material={frontMat} />
-        <mesh geometry={geo.back} material={backMat} />
-        {frontTex && <mesh geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow && !armed} renderOrder={-1} />}
-        {frontTex && <mesh geometry={cardOutlineGeometry()} material={armedMat} visible={!!armed} renderOrder={-1} />}
+        <mesh ref={bodyMesh} geometry={geo.body} material={edge} castShadow={castShadow} />
+        <mesh ref={frontMesh} geometry={geo.front} material={frontMat} />
+        <mesh ref={backMesh} geometry={geo.back} material={backMat} />
+        {frontTex && <mesh ref={glowMesh} geometry={cardOutlineGeometry()} material={glowMat} visible={!!glow && !armed} renderOrder={-1} />}
+        {frontTex && <mesh ref={armedMesh} geometry={cardOutlineGeometry()} material={armedMat} visible={!!armed} renderOrder={-1} />}
+        {cutHalves.map((h, i) => (
+          <group key={i} ref={(el) => { halfGroups.current[i] = el; }} visible={false}>
+            <mesh geometry={h.coreGeo} material={h.coreMat} castShadow={castShadow} />
+            <mesh geometry={h.faceGeo} material={h.faceMat} />
+          </group>
+        ))}
+        <mesh ref={gashMesh} geometry={gashGeo} material={gashMat} rotation={[0, 0, CUT_FACE_ANGLE]} visible={false} />
       </group>
       </group>
     </group>

@@ -73,6 +73,17 @@ export function cardGeometry() {
   return cardGeo;
 }
 
+/**
+ * The card face outline as a point loop (same rounded rect the face is
+ * drawn from). The Cut's split halves (Card3D) clip this loop by the cut
+ * line to build the two pieces of a beaten trump.
+ */
+export function cardFaceOutlinePoints(divisions = 5): { x: number; y: number }[] {
+  const shape = new Shape();
+  rr(shape, CW, CH, CR);
+  return shape.getPoints(divisions).map((p) => ({ x: p.x, y: p.y }));
+}
+
 let outlineGeo: BufferGeometry | null = null;
 /**
  * A ring on the card's own rounded rectangle. The hole is the face, tucked a fraction under it

@@ -25,9 +25,22 @@ export interface DeuceImpact {
   z: number;
   /** The beaten trump's card id for a Cut (its Card3D knocks); null for a Drop. */
   victim: Card | null;
+  /** The winning card of a Cut (the stealer — it takes the hero beat and
+   *  keys the strike's colour); null for a Drop. */
+  winner: Card | null;
   /** Deterministic per play (seeded from card + target) — spark jitter agrees across clients. */
   seed: number;
 }
+
+/**
+ * The cut line across a beaten trump's face, in the card's own face space:
+ * the direction (cos, sin) the blade travels and the two halves part
+ * along. One constant for every Cut — the victim's Card3D builds its
+ * split from it locally, and Scene rotates it by the victim's resting
+ * quaternion to publish the world angle the fx layer strikes along, so
+ * the blade, the afterglow and the split always share one line.
+ */
+export const CUT_FACE_ANGLE = -0.62;
 
 const MAX_KEPT = 12;
 let seq = 0;
@@ -53,7 +66,7 @@ export const lastDeuceImpactId = (): number => seq;
  * id — unique within a hand; overwritten on the render that introduces
  * each steal, before its flight can land.
  */
-export interface DeuceCutPose { x: number; y: number; z: number; dirX: number; dirZ: number }
+export interface DeuceCutPose { x: number; y: number; z: number; dirX: number; dirZ: number; /** World angle (atan2 in the felt XZ plane) of the cut line across the victim's face. */ ang: number }
 const cutPoses = new Map<Card, DeuceCutPose>();
 export const setDeuceCutPose = (victim: Card, pose: DeuceCutPose): void => { cutPoses.set(victim, pose); };
 export const deuceCutPose = (victim: Card): DeuceCutPose | undefined => cutPoses.get(victim);

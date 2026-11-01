@@ -19,9 +19,15 @@ import { cutLevel, landCueFor } from './landCue';
  * - CUT: a marquee trump (a Joker, or a trump deuce) lands BEATING the
  *   trump that is currently winning the trick, and takes the lead for its
  *   own side — 2♦ over 2♠, a Joker over a deuce, Little over a deuce,
- *   Big over Little. The steal clashes at the landing: a metallic cut
- *   sound over the thump, a spark/slash burst, and the beaten trump is
- *   knocked (shoved, tilted, dimmed, a crack of light across it).
+ *   Big over Little. The steal is a duelist's strike at the landing
+ *   (escalated 2026-11-01 — "like the nuke stands out, this needs to
+ *   stand out", still inside the same play beat, no added time): a
+ *   blade streak sweeps the beaten trump in the winner's colour, the
+ *   beaten card is cut in two and its halves shear apart as it knocks
+ *   and dims, a coloured shockwave + shard burst + light burst go off
+ *   at the clash point, the winning card rears up and catches the light
+ *   over the pile, and the layered strike sound (shing → whoosh →
+ *   sword hit, the thump under it) lands with the cards.
  *   A deuce that does NOT beat the standing trump gets only the Drop;
  *   beating your own partner's trump never Cuts (your side already holds
  *   the trick — it still Drops if it is a deuce). In a standard 52 deck
@@ -54,6 +60,24 @@ const NO_FX: DeuceFxInfo = { drop: false, cut: null, wasOvercut: false };
 /** A deuce the engine counts as trump (its power sits in the trump order). */
 export const isTrumpDeuce = (card: Card, r: GameState['rules']): boolean => rankOf(card) === '2' && isTrump(card, r);
 
+/**
+ * The Cut's colour key, by the WINNING trump (the stealer — never the
+ * victim): a diamond cuts red, a spade cuts steel, and the Jokers each
+ * take their own heraldry — gold for the Big, violet for the Little.
+ * `core` is the near-white heart of the blade streak; `glow` is the
+ * saturated colour the trail, ring, shards, light burst and the hero
+ * card's caught light all wear. Non-marquee cards key nothing.
+ */
+export function cutColorFor(card: Card): { core: string; glow: string } | null {
+  switch (card) {
+    case 'BJ': return { core: '#fff3c4', glow: '#ffb52e' };
+    case 'LJ': return { core: '#f2e6ff', glow: '#a678ff' };
+    case '2D': return { core: '#ffe9e4', glow: '#ff4438' };
+    case '2S': return { core: '#ffffff', glow: '#9fc2ff' };
+    default: return null;
+  }
+}
+
 /** Cards that can make a Cut: Jokers and trump deuces. */
 const isMarquee = (card: Card, r: GameState['rules']): boolean => isJoker(card) || isTrumpDeuce(card, r);
 
@@ -80,8 +104,10 @@ export function classifyDeuceFx(st: GameState, card: Card): DeuceFxInfo {
  * The landing cue for a played card: landCueFor's string, with the deuce
  * treatment composed in. A Cut strips any generic over-cut segment (the
  * clash replaces the popup/slam/hold — see the header), then the recorded
- * thump (trump deuces) and the metallic cut layer in, in that order, so
- * fireCue plays card-smack → thump → metal on the landing beat.
+ * thump and the metallic cut layer in, in that order, so fireCue plays
+ * card-smack → thump → metal on the landing beat. The thump sits under
+ * EVERY Cut (it is the strike's low end — a Joker steal lands on it too,
+ * not just a deuce steal) as well as under every trump-deuce Drop.
  * Non-marquee plays return landCueFor's string byte-for-byte.
  */
 export function deuceLandCue(st: GameState, card: Card): string {
@@ -95,7 +121,7 @@ export function deuceLandCue(st: GameState, card: Card): string {
     // both yield to the clash. Joker rumbles and 'broken' stay.
     cue = cue.replace(/,overcut.*$/, '').replace(/,cut(?=,|$)/, '');
   }
-  if (info.drop) cue += ',deuceThump';
+  if (info.drop || info.cut) cue += ',deuceThump';
   if (info.cut) cue += ',trumpCut';
   return cue;
 }

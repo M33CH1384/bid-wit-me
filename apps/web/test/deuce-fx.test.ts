@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Card, type GameState, type TableRules, makeRules, newGame } from '@spades/rules';
-import { classifyDeuceFx, deuceLandCue } from '../src/deuceFx';
+import { classifyDeuceFx, cutColorFor, deuceLandCue } from '../src/deuceFx';
 import { landCueFor } from '../src/landCue';
 
 /**
@@ -67,13 +67,13 @@ describe('the Cut: a marquee trump crosses the standing trump for its side', () 
   it('Joker over a deuce: the rumble stays, the metal layers on', () => {
     const st = state(joker, ['2D', 'BJ']);
     expect(classifyDeuceFx(st, 'BJ')).toEqual({ drop: false, cut: { victim: '2D', victimSeat: 0 }, wasOvercut: false });
-    expect(deuceLandCue(st, 'BJ')).toBe('play,jokerBig,trumpCut');
+    expect(deuceLandCue(st, 'BJ')).toBe('play,jokerBig,deuceThump,trumpCut');
   });
   it('Little Joker over a deuce; Big over Little', () => {
     expect(classifyDeuceFx(state(joker, ['2S', 'LJ']), 'LJ').cut).toEqual({ victim: '2S', victimSeat: 0 });
-    expect(deuceLandCue(state(joker, ['2S', 'LJ']), 'LJ')).toBe('play,jokerLittle,trumpCut');
+    expect(deuceLandCue(state(joker, ['2S', 'LJ']), 'LJ')).toBe('play,jokerLittle,deuceThump,trumpCut');
     expect(classifyDeuceFx(state(joker, ['LJ', 'BJ']), 'BJ').cut).toEqual({ victim: 'LJ', victimSeat: 0 });
-    expect(deuceLandCue(state(joker, ['LJ', 'BJ']), 'BJ')).toBe('play,jokerBig,trumpCut');
+    expect(deuceLandCue(state(joker, ['LJ', 'BJ']), 'BJ')).toBe('play,jokerBig,deuceThump,trumpCut');
   });
   it('a Joker that does not cross gets its normal treatment, byte for byte', () => {
     const st = state(joker, ['BJ', 'LJ']);
@@ -129,7 +129,7 @@ describe('the Cut replaces the generic over-cut treatment — for marquee steals
   it('wasOvercut pins the preserved flight: jokers never had the over-cut flight', () => {
     const st = state(joker, ['KH', 'AS', 'BJ']);
     expect(classifyDeuceFx(st, 'BJ')).toEqual({ drop: false, cut: { victim: 'AS', victimSeat: 1 }, wasOvercut: false });
-    expect(deuceLandCue(st, 'BJ')).toBe('play,jokerBig,trumpCut');
+    expect(deuceLandCue(st, 'BJ')).toBe('play,jokerBig,deuceThump,trumpCut');
   });
   it('a non-marquee over-cut (Q♠ over 9♠) keeps the generic treatment byte for byte', () => {
     const st = state(standard, ['KH', '9S', 'QS']);
@@ -164,5 +164,23 @@ describe('non-marquee plays: the composed cue is landCueFor, byte for byte', () 
     const st = state(classic, ['AS', '2S']);
     expect(classifyDeuceFx(st, '2S')).toEqual({ drop: true, cut: null, wasOvercut: false });
     expect(deuceLandCue(st, '2S')).toBe('play,deuceThump');
+  });
+});
+
+describe('cutColorFor: the strike colour keys off the WINNING trump only', () => {
+  it('each marquee winner has its own heraldry, all distinct', () => {
+    const bj = cutColorFor('BJ'); const lj = cutColorFor('LJ');
+    const d = cutColorFor('2D'); const s = cutColorFor('2S');
+    expect(bj?.glow).toBe('#ffb52e');
+    expect(lj?.glow).toBe('#a678ff');
+    expect(d?.glow).toBe('#ff4438');
+    expect(s?.glow).toBe('#9fc2ff');
+    expect(new Set([bj?.glow, lj?.glow, d?.glow, s?.glow]).size).toBe(4);
+    expect(bj?.core).not.toBe(bj?.glow);
+  });
+  it('non-marquee cards key nothing — a victim never colours the strike', () => {
+    expect(cutColorFor('AS')).toBeNull();
+    expect(cutColorFor('KH')).toBeNull();
+    expect(cutColorFor('3S')).toBeNull();
   });
 });

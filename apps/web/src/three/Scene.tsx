@@ -6,7 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial } from './Card3D';
 import DeuceFxLayer from './DeuceFxLayer';
-import { setDeuceCutPose } from './deuceImpact';
+import { CUT_FACE_ANGLE, setDeuceCutPose } from './deuceImpact';
 import type { DeuceFxInfo } from '../deuceFx';
 import KingGun from './KingGun';
 import KingRail from './KingRail';
@@ -1223,7 +1223,13 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
           const dirX = dx / len;
           const dirZ = dz / len;
           victim.knock = { dirX, dirZ };
-          setDeuceCutPose(dfx.cut.victim, { x: victim.target.p[0], y: victim.target.p[1], z: victim.target.p[2], dirX, dirZ });
+          // The cut line across the victim's face: CUT_FACE_ANGLE lives in
+          // the card's face space (its Card3D splits along it); rotate it
+          // by the victim's resting quaternion so the fx layer's blade
+          // strikes along the very line the split opens on.
+          const cd = new Vector3(Math.cos(CUT_FACE_ANGLE), Math.sin(CUT_FACE_ANGLE), 0)
+            .applyQuaternion(new Quaternion(...victim.target.q));
+          setDeuceCutPose(dfx.cut.victim, { x: victim.target.p[0], y: victim.target.p[1], z: victim.target.p[2], dirX, dirZ, ang: Math.atan2(cd.z, cd.x) });
         }
       }
     }
