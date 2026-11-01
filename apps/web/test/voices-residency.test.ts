@@ -21,6 +21,20 @@
  *    now capped at VOICE_RESIDENCY_BUDGET_BYTES with LRU eviction; an
  *    evicted voice refetches (HTTP-cached) and re-decodes on its next
  *    line, and a line already playing is never cut by an eviction.
+ *
+ * 3. TABLE-CHANGE EVICTION + A DERIVED BUDGET (crash-2 lane, 2026-11-01 —
+ *    the owner was STILL crashing to the menu after the cap shipped,
+ *    because the cap alone let up to its full value of past casts linger
+ *    across tables). The budget is now 896 MiB, derived from the shipped
+ *    manifests: Dee's lilcuz-f sprite alone is 402.8 MiB (a 256 MiB cap
+ *    is impossible), the largest story seated set (High-Rise: Dee +
+ *    Velvet + the Accountant) is 728.8 MiB, the largest regular seated
+ *    set is 770.8 MiB — 896 MiB is that ceiling plus ~one median sprite
+ *    of headroom. And at every table change the incoming cast becomes
+ *    the seated set (setSeatedVoiceKeys): every non-seated sprite is
+ *    evicted on the spot, and seated sprites are exempt from budget
+ *    eviction while they hold their seats — a seated bot's line never
+ *    waits on a re-decode of its own sprite.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -45,6 +59,7 @@ import {
   playClip,
   residentVoiceBytes,
   residentVoiceKeys,
+  setSeatedVoiceKeys,
 } from '../src/voices/voices';
 
 const CLIP = 'line one';
@@ -111,8 +126,9 @@ describe('sprite decode rate', () => {
 
 describe('decoded-sprite residency', () => {
   it('caps decoded voice PCM at the budget, evicting least-recently-used sprites', async () => {
-    // Three 400 MB sprites against a 1 GiB budget: the third decode
-    // must evict the first (LRU), never the one that just landed.
+    // Three 400 MB sprites against the 896 MiB budget: two fit (800 MB),
+    // the third decode must evict the first (LRU), never the one that
+    // just landed.
     await playClip('deacon', 'Ford', CLIP, 1);
     await playClip('smooth', 'Vic', CLIP, 1);
     expect(residentVoiceBytes()).toBe(2 * SPRITE_BYTES);
@@ -149,5 +165,69 @@ describe('decoded-sprite residency', () => {
     expect(keys.some((k) => k.startsWith('conspiracy-'))).toBe(true);
     expect(keys.some((k) => k.startsWith('sorelose-'))).toBe(false);
     expect(keys.some((k) => k.startsWith('hothead-'))).toBe(true);
+  });
+});
+
+describe('the derived budget', () => {
+  it('is 896 MiB: above the largest seated set (770.8 MiB measured), below the old 1 GiB', () => {
+    expect(VOICE_RESIDENCY_BUDGET_BYTES).toBe(896 * 1024 * 1024);
+    expect(VOICE_RESIDENCY_BUDGET_BYTES).toBeGreaterThan(770.8 * 1024 * 1024);
+    expect(VOICE_RESIDENCY_BUDGET_BYTES).toBeLessThan(1024 * 1024 * 1024);
+  });
+});
+
+describe('table-change eviction (the seated set)', () => {
+  afterEach(() => { setSeatedVoiceKeys([]); });
+
+  const keyOf = (prefix: string) => residentVoiceKeys().find((k) => k.startsWith(prefix))!;
+
+  it('evicts every non-seated sprite when the cast changes; the seated cast stays', async () => {
+    await playClip('og', 'Unc', CLIP, 1);
+    await playClip('mama', 'Queenie', CLIP, 1);
+    const ogKey = keyOf('og-');
+    const mamaKey = keyOf('mama-');
+    expect(residentVoiceBytes()).toBe(2 * SPRITE_BYTES);
+    // A new table seats only Queenie's sprite: Unc's is evicted on the spot.
+    setSeatedVoiceKeys([mamaKey]);
+    expect(residentVoiceKeys()).toEqual([mamaKey]);
+    expect(residentVoiceBytes()).toBe(SPRITE_BYTES);
+    // The evicted voice refetches and re-decodes on its next line.
+    const before = manifestFetches.get(ogKey) ?? 0;
+    await expect(playClip('og', 'Unc', CLIP, 1)).resolves.toBe(true);
+    expect(manifestFetches.get(ogKey)).toBe(before + 1);
+    expect(residentVoiceKeys()).toContain(ogKey);
+  });
+
+  it('seated sprites are exempt from budget eviction; the non-seated tail takes the cut', async () => {
+    await playClip('og', 'Unc', CLIP, 1);
+    await playClip('mama', 'Queenie', CLIP, 1);
+    const ogKey = keyOf('og-');
+    const mamaKey = keyOf('mama-');
+    setSeatedVoiceKeys([ogKey, mamaKey]); // both hold seats now
+    await playClip('coach', 'Mae', CLIP, 1); // a non-seated voice loads (over budget: nobody movable but itself)
+    expect(residentVoiceKeys()).toContain(ogKey);
+    expect(residentVoiceKeys()).toContain(mamaKey);
+    const coachKey = keyOf('coach-');
+    expect(residentVoiceKeys()).toContain(coachKey);
+    await playClip('influencer', 'Zee', CLIP, 1); // pressure again: the non-seated coach sprite is the one that goes
+    expect(residentVoiceKeys()).toContain(ogKey);
+    expect(residentVoiceKeys()).toContain(mamaKey);
+    expect(residentVoiceKeys()).not.toContain(coachKey);
+  });
+
+  it('a load in flight across a table change plays for its caller but is not retained', async () => {
+    let release: ((b: unknown) => void) | null = null;
+    h.decode.mockImplementationOnce(() => new Promise((res) => { release = res; }));
+    const p = playClip('storyteller', 'Gramps', CLIP, 1);
+    await flush(); await flush(); // fetches landed; the decode is the hanging one
+    expect(release).not.toBeNull();
+    setSeatedVoiceKeys([]); // the table changed while Gramps was still decoding
+    release!(fakeBuffer());
+    await expect(p).resolves.toBe(true); // the waiting line still plays
+    const stKey = [...manifestFetches.keys()].find((k) => k.startsWith('storyteller-'))!;
+    expect(residentVoiceKeys()).not.toContain(stKey); // …but nothing was retained
+    await expect(playClip('storyteller', 'Gramps', CLIP, 1)).resolves.toBe(true);
+    expect(manifestFetches.get(stKey)).toBe(2); // a fresh load, retained this time
+    expect(residentVoiceKeys()).toContain(stKey);
   });
 });

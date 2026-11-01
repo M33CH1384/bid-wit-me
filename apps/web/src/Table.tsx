@@ -128,7 +128,7 @@ import { MISDEAL_DEAL_SPEED, MISDEAL_REVEAL_DWELL_MS, heldHandForThrowIn, misdea
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
 import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, buzzMomentFor, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, personaPortraitFor, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, storyPortraitFor, tableExchangeFor } from '@spades/bots';
-import { preloadVoice } from './voices/voices';
+import { preloadVoice, setSeatedVoiceKeys, spriteKeyFor } from './voices/voices';
 import { signalTableReady } from './transitions';
 const Scene = lazy(loadScene);
 
@@ -2439,6 +2439,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const botKey = names.map((nm, i) => (isBotSeat(i) ? nm : '')).join('|');
   useEffect(() => {
     if (!talkPrefs.voices) return;
+    // A cast change is a table change for voice residency (crash-2 lane,
+    // 2026-11-01): the incoming cast becomes the seated set — its sprites
+    // stay resident while it holds the seats — and every other decoded
+    // sprite (the last table's cast, earlier stops' scene and rail
+    // voices) is evicted here instead of lingering in the LRU tail all
+    // session. At a story table Dee is family either way: seated beside
+    // you solo, guiding in co-op — her sprite stays resident across stop
+    // hops, the common story case.
+    const seated: string[] = [];
+    names.forEach((nm, i) => { if (isBotSeat(i)) seated.push(spriteKeyFor(personaForName(nm), nm)); });
+    if (storyStopId) seated.push(spriteKeyFor(personaForName('Dee'), 'Dee'));
+    setSeatedVoiceKeys(seated);
     names.forEach((nm, i) => { if (isBotSeat(i)) preloadVoice(personaForName(nm), nm); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const notice = onNoticeSides(sb);

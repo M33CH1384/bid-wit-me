@@ -29,6 +29,12 @@ function keyFor(persona: PersonaId, name: string): string {
     : voiceFor(persona, name).key;
 }
 
+/** The sprite key a speaker resolves to (the keyFor above, for callers
+ *  that manage residency — Table.tsx seats the cast through it). */
+export function spriteKeyFor(persona: PersonaId, name: string): string {
+  return keyFor(persona, name);
+}
+
 let ext: 'webm' | 'm4a' | null = null;
 function format(): 'webm' | 'm4a' {
   if (ext) return ext;
@@ -97,8 +103,22 @@ export const VOICE_DECODE_RATE = 24000;
  * Eviction drops only the cache's reference: a line already playing
  * holds its own and finishes, and an evicted voice simply refetches
  * (HTTP-cached) and re-decodes on its next line.
+ *
+ * Budget re-derived 2026-11-01 (crash-2 lane, owner still crashing to the
+ * menu; the residual shape is iOS process death under session memory):
+ * 1 GiB let a whole session's worth of casts linger. Measured from the
+ * shipped manifests (duration × 24 kHz × 4 B): Dee's lilcuz-f alone is
+ * 402.8 MiB — a phone-shaped 256 MiB cap is impossible, her sprite busts
+ * it by herself. The largest realistic SEATED sets: a story table at the
+ * High-Rise (Dee 402.8 + Velvet 156.4 + the Accountant 169.6) = 728.8 MiB;
+ * a regular table's three largest distinct bot sprites = 770.8 MiB. This
+ * budget is that ceiling plus ~125 MiB of headroom — about one median
+ * sprite (116 MiB) of incidental within-table load (a railbird chiming
+ * in, a scene voice) before the cap has to touch anything. The bigger
+ * reduction is the table-change eviction below (setSeatedVoiceKeys):
+ * non-seated sprites no longer linger across hops at all.
  */
-export const VOICE_RESIDENCY_BUDGET_BYTES = 1024 * 1024 * 1024;
+export const VOICE_RESIDENCY_BUDGET_BYTES = 896 * 1024 * 1024;
 
 /** Decoded size of a buffer: Float32 samples are the Web Audio currency. */
 export function voiceBufferBytes(buf: AudioBuffer): number {
@@ -130,17 +150,59 @@ export function residentVoiceKeys(): string[] {
   return [...residency.keys()];
 }
 
+/**
+ * The current table's seated cast, as sprite keys (set at every table
+ * change by setSeatedVoiceKeys). Seated sprites are NEVER evicted — by
+ * the budget or by a table change — while they hold the seat: a seated
+ * bot's line must never wait on a re-decode of its own sprite. (Eviction
+ * at a table change is what ENDS a seat: the old cast's keys leave the
+ * set exactly when the new cast's keys enter it.)
+ */
+const seatedKeys = new Set<string>();
+/** Per-key load generation: an eviction bumps it, so a load that was in
+ *  flight across the eviction resolves for its waiting caller (the line
+ *  still plays) but is not retained as resident. */
+const loadGen = new Map<string, number>();
+
+function evictSprite(key: string): void {
+  residency.delete(key);
+  cache.delete(key);
+  loadRetries.delete(key); // an evicted voice starts over clean, not mid-budget
+  loadGen.set(key, (loadGen.get(key) ?? 0) + 1);
+}
+
+/**
+ * A table change (Table.tsx, whenever the seated bot cast changes —
+ * new game, venue hop, story stop, a bot filling a seat): the incoming
+ * cast becomes the seated set, and every OTHER sprite — last table's
+ * cast, railbirds and scene voices from earlier stops — is evicted on
+ * the spot instead of lingering in the LRU tail for the whole session
+ * (crash-2 lane, 2026-11-01: across successive tables up to the full
+ * budget of decoded PCM could linger, on top of the current table's own
+ * ~350–770 MiB — the session-accumulation half of the iOS jetsam stack).
+ * Eviction drops only cache references: a line already playing holds
+ * its buffer and finishes, and an evicted voice refetches (HTTP-cached)
+ * and re-decodes on its next line.
+ */
+export function setSeatedVoiceKeys(keys: readonly string[]): void {
+  seatedKeys.clear();
+  for (const k of keys) seatedKeys.add(k);
+  for (const k of [...residency.keys()]) if (!seatedKeys.has(k)) evictSprite(k);
+  // Cached entries with no resident buffer (in-flight or failed loads)
+  // get the same treatment: an in-flight load for a departed voice must
+  // not re-enter residency when it lands (the generation guard in load).
+  for (const k of [...cache.keys()]) if (!seatedKeys.has(k) && !residency.has(k)) evictSprite(k);
+}
+
 function enforceResidencyBudget(keepKey: string): void {
   let total = residentVoiceBytes();
   if (total <= VOICE_RESIDENCY_BUDGET_BYTES) return;
   const lru = [...residency.entries()]
-    .filter(([k]) => k !== keepKey)
+    .filter(([k]) => k !== keepKey && !seatedKeys.has(k))
     .sort((a, b) => a[1].used - b[1].used);
   for (const [k, r] of lru) {
     if (total <= VOICE_RESIDENCY_BUDGET_BYTES) break;
-    residency.delete(k);
-    cache.delete(k);
-    loadRetries.delete(k); // an evicted voice starts over clean, not mid-budget
+    evictSprite(k);
     total -= r.bytes;
   }
 }
@@ -176,6 +238,7 @@ const loadRetries = new Map<string, number>();
 function load(key: string): Promise<Sprite | null> {
   let p = cache.get(key);
   if (!p) {
+    const gen = loadGen.get(key) ?? 0;
     p = (async () => {
       try {
         const meta = await fetch(voiceUrl(`${key}.json`));
@@ -185,7 +248,17 @@ function load(key: string): Promise<Sprite | null> {
         if (!res.ok) return { clips, buf: null };
         const data = await res.arrayBuffer();
         const buf = await decodeSprite(data);
-        if (buf) { noteResident(key, buf); enforceResidencyBudget(key); }
+        if (buf) {
+          if ((loadGen.get(key) ?? 0) !== gen && !seatedKeys.has(key)) {
+            // Evicted (a table change) while this load was in flight:
+            // the sprite still returns for its waiting caller — the line
+            // plays — but it is NOT retained, and the cache entry goes
+            // so the next line starts a fresh, retainable load.
+            if (cache.get(key) === p) cache.delete(key);
+          } else {
+            noteResident(key, buf); enforceResidencyBudget(key);
+          }
+        }
         return { clips, buf };
       } catch { return null; }
     })();
