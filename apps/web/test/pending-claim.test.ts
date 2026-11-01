@@ -8,8 +8,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
-  CLAIM_TTL_MS, claimDeferredToRewards, holdIfGuest, loadClaimResult, loadPendingClaim,
-  peekPendingClaim, savePendingClaim, shouldHoldClaim, submitPendingClaim,
+  CLAIM_TTL_MS, claimDeferredToVictory, holdIfGuest, loadClaimResult, loadPendingClaim,
+  peekPendingClaim, savePendingClaim, setClaimSurfaceGameId, shouldHoldClaim, submitPendingClaim,
 } from '../src/pendingClaim';
 import { loadAccount, signOut } from '../src/account/api';
 import type { LocalGamePost } from '../src/localStats';
@@ -237,19 +237,16 @@ describe('rewards claim panel', () => {
   });
 });
 
-describe('rewards-screen deferral', () => {
-  it('defers only while /rewards shows the same game unsigned', () => {
+describe('victory-surface deferral', () => {
+  it('defers only while a victory surface displays the same game unsigned', () => {
     const s: Store = fakeStore();
     savePendingClaim(item('game-a'), NOW, s);
-    expect(claimDeferredToRewards(s)).toBe(false); // not on /rewards
-    window.history.pushState({}, '', '/rewards');
-    sessionStorage.setItem('bwm.rewards.v1', JSON.stringify({ gameId: 'game-a', data: { signedIn: false } }));
-    expect(claimDeferredToRewards(s)).toBe(true);
-    sessionStorage.setItem('bwm.rewards.v1', JSON.stringify({ gameId: 'game-other', data: { signedIn: false } }));
-    expect(claimDeferredToRewards(s)).toBe(false);
-    sessionStorage.setItem('bwm.rewards.v1', JSON.stringify({ gameId: 'game-a', data: { signedIn: true } }));
-    expect(claimDeferredToRewards(s)).toBe(false);
-    sessionStorage.removeItem('bwm.rewards.v1');
-    window.history.pushState({}, '', '/');
+    expect(claimDeferredToVictory(s)).toBe(false); // no surface registered
+    setClaimSurfaceGameId('game-a');
+    expect(claimDeferredToVictory(s)).toBe(true);
+    setClaimSurfaceGameId('game-other');
+    expect(claimDeferredToVictory(s)).toBe(false);
+    setClaimSurfaceGameId(null);
+    expect(claimDeferredToVictory(s)).toBe(false);
   });
 });

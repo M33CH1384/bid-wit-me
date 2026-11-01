@@ -80,7 +80,7 @@ export function holdIfGuest(item: LocalGamePost, now: number = Date.now(), stora
 /* ------------------------------------------------------------ claim result */
 
 /** The before/after profiles of the most recent successful claim, so the
- *  /rewards screen can still render the credited breakdown when the claim
+ *  victory report can still render the credited breakdown when the claim
  *  was submitted somewhere else (sign-in landing, relaunch) first. */
 export interface ClaimResult { clientGameId: string; at: number; before: RewardsProfile | null; after: RewardsProfile | null }
 
@@ -163,19 +163,23 @@ export async function submitPendingClaim(opts: {
 /* --------------------------------------------------------- auto-claim watch */
 
 /**
- * When /rewards is on screen showing THIS game's unsigned breakdown, the
- * rewards screen owns the claim (it needs the pre-claim profile snapshot to
- * render the delta). Anywhere else, the watcher claims on sign-in / load.
+ * When the victory report surface (the merged in-table screen, or the
+ * standalone recovery after a reload) is on screen showing THIS game's
+ * unsigned breakdown, that surface owns the claim (it needs the pre-claim
+ * profile snapshot to render the delta). The surface registers the game id
+ * it is displaying while it is mounted; anywhere else, the watcher claims
+ * on sign-in / load. (Before the 2026-11-01 consolidation this keyed off
+ * the /rewards pathname + stash; the report no longer has a route of its
+ * own, so the surface itself registers.)
  */
-export function claimDeferredToRewards(storage: Store = localStorage): boolean {
+let claimSurfaceGameId: string | null = null;
+export function setClaimSurfaceGameId(id: string | null): void { claimSurfaceGameId = id; }
+
+export function claimDeferredToVictory(storage: Store = localStorage): boolean {
   try {
-    if (typeof location === 'undefined' || location.pathname !== '/rewards') return false;
-    const raw = sessionStorage.getItem('bwm.rewards.v1'); // RewardsPage's stash key
-    if (!raw) return false;
-    const p = JSON.parse(raw) as { gameId?: string; data?: { signedIn?: boolean } } | null;
-    if (!p?.gameId || p.data?.signedIn) return false;
+    if (!claimSurfaceGameId) return false;
     const peek = peekPendingClaim(Date.now(), storage);
-    return peek.state === 'held' && peek.claim.item.clientGameId === p.gameId;
+    return peek.state === 'held' && peek.claim.item.clientGameId === claimSurfaceGameId;
   } catch { return false; }
 }
 
@@ -185,7 +189,7 @@ export function watchPendingClaim(): void {
   watching = true;
   const kick = () => {
     const a = account.get();
-    if (!a.user?.id || claimDeferredToRewards()) return;
+    if (!a.user?.id || claimDeferredToVictory()) return;
     void submitPendingClaim();
   };
   window.addEventListener('online', kick);

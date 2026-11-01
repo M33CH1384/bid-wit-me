@@ -5,7 +5,8 @@
  * hangs off, so neither can drift silently:
  *
  *  - Table stashes the finished match's story stop into the rewards
- *    payload, and RewardsPage routes Rematch through rematchPathFor.
+ *    payload, and the victory recovery surface routes Rematch through
+ *    rematchPathFor.
  *  - Table fires the story result callback exactly once per game; the
  *    single post site in StoryHome keys it by the per-seed gameId.
  *  - A finished story match leaves the game-over modal only through the
@@ -21,7 +22,7 @@ import { describe, expect, it } from 'vitest';
 
 const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
 const storyHome = readFileSync(new URL('../src/story/StoryHome.tsx', import.meta.url), 'utf8');
-const rewardsPage = readFileSync(new URL('../src/RewardsPage.tsx', import.meta.url), 'utf8');
+const victoryRecovery = readFileSync(new URL('../src/VictoryRecovery.tsx', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 
 
@@ -29,11 +30,12 @@ const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 
 describe('rematch + story-win wiring', () => {
   it('Table stashes the finished match’s story stop into the rewards payload', () => {
-    expect(table).toContain('storyStopId: story?.scene?.stop.id');
+    expect(table).toContain('const storyStopId = story?.scene?.stop.id;');
+    expect(table).toContain('storyStopId, gameId: online ? undefined : localGameId(matchSeed)');
   });
 
-  it('RewardsPage sends Rematch through rematchPathFor', () => {
-    expect(rewardsPage).toContain('location.href = rematchPathFor(payload)');
+  it('the recovery surface sends Rematch through rematchPathFor', () => {
+    expect(victoryRecovery).toContain('location.href = rematchPathFor(payload)');
   });
 
   it('the generic autostart still builds from the saved settings (normal games unchanged)', () => {
@@ -65,9 +67,9 @@ describe('story game-over modal exits', () => {
     expect(table).toContain('const storyWon = storyGame && !!st.result && st.result.winners.includes(mySide);');
   });
 
-  it('every story exit routes through the host exit (leave), never openRewards', () => {
-    // the modal ✕: story games leave via the host, non-story via rewards
-    expect(table).toContain("onClick={() => (storyGame ? leave() : openRewards('home'))}");
+  it('every story exit routes through the host exit (leave), never the generic exit', () => {
+    // the modal ✕: story games leave via the host, non-story via the merged exit
+    expect(table).toContain("onClick={() => (storyGame ? leave() : exitFinished())}");
     // "To the map" (the outro route) is offered on both story outcomes:
     // the win's primary action and the loss's secondary action
     expect(table.match(/data-testid="story-to-map" onClick=\{\(\) => leave\(\)\}>To the map<\/button>/g)).toHaveLength(2);
@@ -76,7 +78,7 @@ describe('story game-over modal exits', () => {
 
   it('the win demotes Rematch; the loss keeps it; non-story games keep every stock exit', () => {
     expect(table).toContain('Play again — Rematch');
-    expect(table).toContain("onClick={() => openRewards('leave')}>Change mode</button>");
+    expect(table).toContain("onClick={() => exitFinished()}>Change mode</button>");
     expect(table).toContain('data-testid="main-menu"');
   });
 

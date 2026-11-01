@@ -36,7 +36,17 @@ const OnlineApp = lazy(() => importChunk(() => import('./online/OnlineApp')));
 const WatchApp = lazy(() => importChunk(() => import('./online/WatchApp')));
 const ProfilePage = lazy(() => importChunk(() => import('./profile/ProfilePage')));
 const StoryHome = lazy(() => importChunk(() => import('./story/StoryHome')));
-const RewardsPage = lazy(() => importChunk(() => import('./RewardsPage')));
+const VictoryRecovery = lazy(() => importChunk(() => import('./VictoryRecovery')));
+
+/** The /rewards postgame route retired in the victory consolidation
+ *  (2026-11-01): the report lives at the table now, so a stale tab or an
+ *  old bookmark on /rewards lands home instead. A breakdown stranded by
+ *  that tab's reload is not lost — VictoryRecovery re-presents whatever
+ *  is still owed (an undismissed level-up takeover, a held guest claim). */
+function RewardsRetired() {
+  useEffect(() => { location.replace('/'); }, []);
+  return <RouteLoading />;
+}
 
 /** Last line of defence for a failed route chunk: a visible way back, never a blank page. */
 class RouteGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -128,8 +138,9 @@ function Root() {
     return () => window.removeEventListener('popstate', on);
   }, []);
   // A guest game's held rewards claim submits itself on the next signed-in
-  // app load, whichever screen the sign-in lands on (/rewards defers to its
-  // own in-place claim so the breakdown can render the delta).
+  // app load, whichever screen the sign-in lands on (a victory report
+  // surface showing that game defers the watcher to its own in-place claim
+  // so the breakdown can render the delta).
   useEffect(() => { watchPendingClaim(); }, []);
   // Spray-transition sound (spraySound.ts): the can's shake + hiss follow
   // the spray controller's phase events; a suppressed spray stays silent.
@@ -140,7 +151,7 @@ function Root() {
   return (
     <>
       <RouteGuard key={`${path}:${settingsEpoch}`}>
-        {path === '/rewards' ? <Suspense fallback={<RouteLoading />}><RewardsPage /></Suspense>
+        {path === '/rewards' ? <RewardsRetired />
           : path === '/story' ? <Suspense fallback={<RouteLoading />}><StoryHome /></Suspense>
           : path === '/profile' ? <Suspense fallback={<RouteLoading />}><ProfilePage /></Suspense>
           : isWatchPath(path) ? <Suspense fallback={<RouteLoading />}><WatchApp path={path} /></Suspense>
@@ -149,10 +160,10 @@ function Root() {
       <InkLayer />
       <ReactiveGlow />
       {/* The floating speaker parks on a designed slot (home top bar, table scorebug).
-          The full-screen /profile and /rewards routes have no slot, so the dock fell
+          The full-screen /profile route has no slot, so the dock fell
           back to its fixed corner position and sat ON the page header (it covered the
-          profile's season label — owner, 2026-10-20): no floating dock on those routes. */}
-      {path !== '/profile' && path !== '/rewards' && !isWatchPath(path) && <SoundDock />}
+          profile's season label — owner, 2026-10-20): no floating dock on that route. */}
+      {path !== '/profile' && !isWatchPath(path) && <SoundDock />}
       {/* Watch surfaces carry no app chrome of their own: the in-app watch view
           is a viewing surface, and the broadcast frame must show nothing but
           the table, the bug and its own in-frame ticker (an OBS source loads
@@ -162,6 +173,12 @@ function Root() {
       {/* Daily-bonus receipt (2026-10-23): the one-time "+N coins — you now
           have M" card raised when the day's grant lands (see dailyBonus.ts). */}
       {!isWatchPath(path) && <DailyBonusReceipt />}
+      {/* Victory reload-recovery (2026-11-01): presents ONLY when the
+          finished-match stash still owes the player something across a
+          reload — an undismissed level-up card takeover, or a held guest
+          claim on an unsigned breakdown. Renders nothing otherwise; it is
+          not a destination and no flow routes to it. */}
+      {!isWatchPath(path) && <Suspense fallback={null}><VictoryRecovery /></Suspense>}
       {/* The BottomLine, app-wide (league data wave 6a): a fixed bottom bar
           on the main surfaces with its height reserved via bwm-ticker-on.
           It hides itself at a live table, while the Social panel is

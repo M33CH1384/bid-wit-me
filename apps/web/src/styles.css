@@ -3973,6 +3973,27 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .rewards-page.rw-reduced .rw-actions { animation: none; opacity: 1; transform: none; }
 .rewards-page.rw-reduced .rw-trophy,
 .rewards-page.rw-reduced .rw-levelup { animation: none; opacity: 1; transform: none; }
+/* The merged in-table victory report (2026-11-01) runs the SAME gates on
+   its own scope class — VictoryReport carries .rw-armed/.rw-play/
+   .rw-rows-play exactly as the page did, and the rows + level-up strip it
+   renders wait for the same presented + in-view discipline inside the
+   victory screen's scroll region. (No .rw-card/.rw-actions/.rw-trophy
+   inside the scope: the table surface owns those.) */
+.rw-scope.rw-armed:not(.rw-rows-play) .rw-row { animation: none; }
+.rw-scope.rw-armed:not(.rw-play) .rw-levelup { animation: none; opacity: 0; }
+.rw-scope.rw-reduced .rw-row { animation: none; opacity: 1; transform: none; }
+.rw-scope.rw-reduced .rw-levelup { animation: none; opacity: 1; transform: none; }
+/* the report's quiet Profile / Open Tables links under the rows */
+.rw-links { display: flex; gap: 10px; margin-top: 10px; }
+.rw-links .ghost-btn { flex: 1; }
+/* Reload-recovery shell: the standalone rewards composition presented as
+   a fixed overlay over whatever screen the reload landed on. The page
+   inside keeps its own layout (min-height 100dvh); the shell only fixes
+   it to the viewport and scrolls it. z-index sits above app modals
+   (1000) and below the card takeover (1200), which renders inside it. */
+.recovery-shell { position: fixed; inset: 0; z-index: 1100; overflow-y: auto; }
+.recovery-shell .rewards-page { min-height: 100%; }
+.recovery-x { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); z-index: 1101; }
 /* level-bar legs: .instant snaps (the level-up reset to empty), .fast shortens
    the fill so a level-up's two legs stay inside the reveal's rhythm */
 .rw-levelbar-fill.instant { transition: none; }

@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { CoinIcon } from './RepBlock';
 import { CardTakeover, CARD_TAKEOVER_DELAY_MS, CARD_TAKEOVER_EXIT_MS, cardTakeoverKey, markTakeoverDismissed, takeoverDismissed } from './CardTakeover';
 import { VictoryConfetti } from './RecapFx';
 import { cardDisplayName, rankGlyph } from './cardRank';
 import { fx, useReduceEffects } from './fx';
 import { PlayerCard, type CardRankData, type PlayerCardData } from './profile/PlayerCard';
+import { loadAccount, useAccount } from './account/api';
+import { SignInSheet, UsernamePicker } from './account/AccountUI';
+import { clearPendingClaim, loadClaimResult, peekPendingClaim, setClaimSurfaceGameId, submitPendingClaim } from './pendingClaim';
 
 /** Minimal profile shape (mirrors /api/profile/me) for reward deltas. */
 export interface RewardsProfile {
@@ -797,33 +800,141 @@ export interface GuestClaimUi {
   onSignIn: () => void;
 }
 
-export default function GameOverRewards({
-  data,
-  onHome,
-  onRematch,
-  onProfile,
-  onOpenTables,
-  guestClaim,
-}: {
-  data: RewardsData;
-  onHome: () => void;
-  onRematch: () => void;
-  onProfile: () => void;
-  onOpenTables: () => void;
+
+/* ------------------------------------------------------- guest-claim owner */
+
+/** The opts a credited breakdown is re-diffed under after a claim lands:
+ *  the finished match's own framing (win/loss, headline, kind), never the
+ *  claim's. Moved verbatim from the retired /rewards page. */
+function rewardOpts(d: RewardsData): { won: boolean; headline: string; sub: string; kind: 'team' | 'cutthroat' } {
+  return { won: d.won, headline: d.headline, sub: d.sub, kind: d.eloKindLabel === 'Partnership' ? 'team' : 'cutthroat' };
+}
+
+type ClaimUi = 'none' | 'held' | 'claiming' | 'claimed';
+
+/**
+ * The guest-claim lifecycle, owned by whichever victory surface is showing
+ * the unsigned breakdown (the merged in-table report, or the standalone
+ * recovery after a reload stranded it). Transplanted from the retired
+ * /rewards page (2026-11-01 consolidation), behavior unchanged:
+ *
+ *  - A match already claimed elsewhere swaps its credited breakdown in
+ *    from the stored claim result; a held claim shows the held panel.
+ *  - While this surface displays the unsigned breakdown it REGISTERS its
+ *    game id, so the auto-claim watcher defers (pendingClaim.ts) and this
+ *    surface can render the delta itself.
+ *  - On sign-in it fetches the pre-claim profile BEFORE posting (the same
+ *    pinning discipline as a live game), submits, and swaps the credited
+ *    breakdown in place via onSwap. The username gate asks once; the claim
+ *    stays held until the name lands.
+ */
+function useVictoryClaim({ gameId, data, onSwap }: { gameId?: string; data: RewardsData; onSwap?: (d: RewardsData) => void }): { guestClaim?: GuestClaimUi; sheets: ReactNode } {
+  const [claimUi, setClaimUi] = useState<ClaimUi>('none');
+  const [sheet, setSheet] = useState<null | 'signin' | 'passkey-new' | 'username'>(null);
+  const a = useAccount();
+  const claimRun = useRef(false);
+  const nameAsked = useRef(false);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const swapRef = useRef(onSwap);
+  swapRef.current = onSwap;
+
+  // The account store drives the claim: an OAuth return lands back on this
+  // surface with ?signin=…, which loadAccount folds into the store.
+  useEffect(() => { if (gameId) void loadAccount(); }, [gameId]);
+
+  // While this surface shows the unsigned breakdown, it owns the claim.
+  useEffect(() => {
+    if (!gameId || data.signedIn) return;
+    setClaimSurfaceGameId(gameId);
+    return () => setClaimSurfaceGameId(null);
+  }, [gameId, data.signedIn]);
+
+  // Mount: this unsigned match may already have been claimed elsewhere
+  // (sign-in landed on another screen first — the claim result is stored),
+  // or its claim may be held here waiting for sign-in.
+  useEffect(() => {
+    if (!gameId || dataRef.current.signedIn) return;
+    const result = loadClaimResult(gameId);
+    if (result) {
+      const d = computeRewards(result.before, result.after, rewardOpts(dataRef.current));
+      d.postgame = dataRef.current.postgame;
+      swapRef.current?.(d);
+      setClaimUi('claimed');
+      return;
+    }
+    const peek = peekPendingClaim(Date.now());
+    if (peek.state === 'held' && peek.claim.item.clientGameId === gameId) setClaimUi('held');
+    else if (peek.state === 'expired') clearPendingClaim();
+    // mount-only per game: the held claim at first paint is this match's
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId]);
+
+  // Signed in with a claim held: submit it and swap the sign-in panel for
+  // the credited breakdown.
+  useEffect(() => {
+    if (claimUi !== 'held' || !a.user || !gameId || !data) return;
+    if (a.user.needsUsername) {
+      // the server credits by username-bearing accounts only; ask once,
+      // the claim stays held until the name lands
+      if (!nameAsked.current) { nameAsked.current = true; setSheet('username'); }
+      return;
+    }
+    if (claimRun.current) return;
+    claimRun.current = true;
+    setClaimUi('claiming');
+    void (async () => {
+      const before = await fetchRewardsProfile().catch(() => null);
+      const res = await submitPendingClaim({ before });
+      const pair = res.after ? { before: res.before, after: res.after } : loadClaimResult(gameId);
+      if ((res.status === 'claimed' || res.status === 'duplicate') && pair?.after) {
+        const d = computeRewards(pair.before, pair.after, rewardOpts(dataRef.current));
+        d.postgame = dataRef.current.postgame;
+        swapRef.current?.(d);
+        setClaimUi('claimed');
+      } else if (res.status === 'error' || res.status === 'signed-out' || res.status === 'busy') {
+        claimRun.current = false; // still held — a later account change retries
+        setClaimUi('held');
+      } else {
+        setClaimUi('none'); // rejected / claimed by another account / expired: nothing left to claim
+      }
+    })();
+  }, [claimUi, a.user, gameId, data]);
+
+  const onSignIn = () => { setSheet(a.user?.needsUsername ? 'username' : 'signin'); };
+  const sheets = (
+    <>
+      {sheet === 'signin' && <SignInSheet returnTo={typeof location !== 'undefined' ? location.pathname : '/'} onClose={() => setSheet(null)} onPasskeyNew={() => setSheet('passkey-new')} />}
+      {sheet === 'passkey-new' && <UsernamePicker mode="passkey-new" initial="" onDone={() => setSheet(null)} onClose={() => setSheet('signin')} />}
+      {sheet === 'username' && a.user && <UsernamePicker mode="first" initial={a.user.suggestion ?? ''} onDone={() => setSheet(null)} onClose={() => setSheet(null)} />}
+    </>
+  );
+  return {
+    guestClaim: !data.signedIn ? { held: claimUi === 'held', claiming: claimUi === 'claiming', onSignIn } : undefined,
+    sheets,
+  };
+}
+
+/* ------------------------------------------------------------ report body */
+
+/**
+ * The report itself — Postgame Report + the reward rows + the level-up
+ * takeover — shared by the two surfaces that can present it: the standalone
+ * page composition (GameOverRewards, now the reload-recovery surface) and
+ * the merged in-table victory report (VictoryReport). One implementation:
+ * the gates arrive as props from the owning surface (presented + rows in
+ * view), the count-ups and the takeover arming ride them exactly as they
+ * did when this was only ever the /rewards page's body.
+ */
+function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef }: {
+  d: RewardsData;
+  play: boolean;
+  rowsPlay: boolean;
+  reduced: boolean;
   guestClaim?: GuestClaimUi;
+  rowsRef: RefObject<HTMLDivElement | null>;
 }) {
-  const { play, reduced } = useRewardsReveal();
-  // The rows wait for their own gate: presented AND in view (in
-  // landscape they start below the fold — see useRowsInView).
-  const rowsRef = useRef<HTMLDivElement>(null);
-  const rowsPlay = useRowsInView(rowsRef, play, reduced);
   const rowGate = play && rowsPlay;
-  // The victory celebration on THIS screen (owner, 2026-10-28): the
-  // seeded confetti rain, fired by the reveal gate (presented — two
-  // painted frames, document visible), never at mount; a tap anywhere
-  // on the page clears it early. Wins only; reduced motion collapses
-  // it to the still pose like every other surface.
-  const [fxOff, setFxOff] = useState(false);
   // Level-up CARD TAKEOVER (owner, 2026-10-29): when this report grants a
   // new rank card, the card itself takes the screen (see CardTakeover.tsx).
   // Armed off the ROWS' gate — the XP count and the level bar run on it —
@@ -835,7 +946,7 @@ export default function GameOverRewards({
   // itself visibility-gated inside CardTakeover, so the show can no
   // longer burn unseen). Reduced motion never arms it; the static panel
   // is the whole show there.
-  const tKey = cardTakeoverKey(data);
+  const tKey = cardTakeoverKey(d);
   const [takeover, setTakeover] = useState<{ key: string; leaving: boolean } | null>(null);
   useEffect(() => {
     if (!rowGate || reduced || !tKey) return;
@@ -865,13 +976,13 @@ export default function GameOverRewards({
   };
   let row = 0;
   const rows: React.ReactNode[] = [];
-  if (data.signedIn) {
-    rows.push(<XpRow key="xp" d={data} index={row++} play={rowGate} reduced={reduced} />);
-    if (data.cardUp) rows.push(<CardUpRow key="cardup" d={data} index={row++} />);
-    if (data.coinsGained > 0) rows.push(<CoinsRow key="coins" d={data} index={row++} play={rowGate} reduced={reduced} />);
-    rows.push(<EloRow key="elo" d={data} index={row++} play={rowGate} reduced={reduced} />);
-    if (data.playWell && data.playWell.lines.length > 0) {
-      const pw = data.playWell;
+  if (d.signedIn) {
+    rows.push(<XpRow key="xp" d={d} index={row++} play={rowGate} reduced={reduced} />);
+    if (d.cardUp) rows.push(<CardUpRow key="cardup" d={d} index={row++} />);
+    if (d.coinsGained > 0) rows.push(<CoinsRow key="coins" d={d} index={row++} play={rowGate} reduced={reduced} />);
+    rows.push(<EloRow key="elo" d={d} index={row++} play={rowGate} reduced={reduced} />);
+    if (d.playWell && d.playWell.lines.length > 0) {
+      const pw = d.playWell;
       const i = row++;
       rows.push(
         <div key="playwell" className="rw-row rw-playwell" data-testid="rewards-playwell" style={{ animationDelay: `${i * 160}ms` }}>
@@ -890,7 +1001,7 @@ export default function GameOverRewards({
         </div>,
       );
     }
-    for (const a of data.achievements) {
+    for (const a of d.achievements) {
       const i = row++;
       rows.push(
         <div key={`a-${a.id}`} className="rw-row" style={{ animationDelay: `${i * 160}ms` }}>
@@ -901,7 +1012,7 @@ export default function GameOverRewards({
         </div>,
       );
     }
-    for (const c of data.challenges) {
+    for (const c of d.challenges) {
       const i = row++;
       rows.push(
         <div key={`c-${c.id}`} className="rw-row" style={{ animationDelay: `${i * 160}ms` }}>
@@ -914,76 +1025,192 @@ export default function GameOverRewards({
     }
   }
   return (
-    <div
-      className={`rewards-page rw-armed${play ? ' rw-play' : ''}${rowsPlay ? ' rw-rows-play' : ''}${reduced ? ' rw-reduced' : ''}`}
-      aria-label="Match rewards"
-      data-testid="rewards"
-      onPointerDown={() => setFxOff(true)}
-    >
-      {data.won && play && !fxOff && <VictoryConfetti seed={data.sub || null} still={reduced} />}
-      <div className="rw-card">
-        <div className="rw-head" style={{ animationDelay: '0ms' }}>
-          <div className="rw-trophy">{data.won ? '🏆' : '♠'}</div>
-          <h2 className={data.won ? 'win' : 'lose'}>{data.headline}</h2>
-          <p className="rw-sub0">{data.sub}</p>
-        </div>
-        {data.postgame && (
-          <div className="rw-postgame" data-testid="postgame-report">
-            <h3 className="rw-pg-title">Postgame Report</h3>
-            <table className="cmp-table">
-              <thead><tr><th></th><th>Final</th><th>Books</th><th>Nils made</th></tr></thead>
-              <tbody>
-                {data.postgame.sides.map((s) => {
-                  const top = Math.max(...data.postgame!.sides.map((x) => x.score));
-                  const tone: RollTone = s.score < 0 ? 'scoreLoss' : s.score > 0 && s.score === top ? 'scoreWin' : 'scoreFlat';
-                  return (
-                    <tr key={s.label}><th>{s.label}</th><td><RollNum to={s.score} play={play} reduced={reduced} duration={1150} delay={250} step={50} tone={tone} origin="100% 50%" format={(v) => v.toLocaleString()} /></td><td>{s.books}</td><td>{s.nilsMade}</td></tr>
-                  );
-                })}
-                <tr><th>Your books</th><td colSpan={3}>{data.postgame.myBooks} books{data.postgame.myNilsMade > 0 ? ` · ${data.postgame.myNilsMade} nil${data.postgame.myNilsMade === 1 ? '' : 's'} made` : ''}</td></tr>
-              </tbody>
-            </table>
-            {data.postgame.moments.length > 0 && (
-              <ul className="rw-moments">
-                {data.postgame.moments.map((m) => <li key={m}>{m}</li>)}
-              </ul>
-            )}
-          </div>
-        )}
-        <div className="rw-rows" ref={rowsRef}>
-          {data.signedIn ? rows : guestClaim && (guestClaim.held || guestClaim.claiming) ? (
-            <div className="rw-row" style={{ animationDelay: '160ms' }} aria-busy={guestClaim.claiming || undefined}>
-              <div className="rw-icon">👤</div>
-              <div className="rw-body">
-                <div className="rw-top"><span>{guestClaim.claiming ? 'Claiming your rewards…' : 'This game’s rewards are held for you'}</span></div>
-                <div className="rw-sub">{guestClaim.claiming ? 'Putting this match on your account.' : 'Sign in to claim the XP, coins, and achievements from this match.'}</div>
-                {!guestClaim.claiming && (
-                  <button type="button" className="primary rw-claim-btn" data-testid="rewards-claim-signin" onClick={guestClaim.onSignIn}>Sign in &amp; claim</button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="rw-row" style={{ animationDelay: '160ms' }}>
-              <div className="rw-icon">👤</div>
-              <div className="rw-body">
-                <div className="rw-top"><span>Sign in to earn Rep rewards</span></div>
-                <div className="rw-sub">XP, coins, and achievements are tracked on your account</div>
-              </div>
-            </div>
+    <>
+      {d.postgame && (
+        <div className="rw-postgame" data-testid="postgame-report">
+          <h3 className="rw-pg-title">Postgame Report</h3>
+          <table className="cmp-table">
+            <thead><tr><th></th><th>Final</th><th>Books</th><th>Nils made</th></tr></thead>
+            <tbody>
+              {d.postgame.sides.map((s) => {
+                const top = Math.max(...d.postgame!.sides.map((x) => x.score));
+                const tone: RollTone = s.score < 0 ? 'scoreLoss' : s.score > 0 && s.score === top ? 'scoreWin' : 'scoreFlat';
+                return (
+                  <tr key={s.label}><th>{s.label}</th><td><RollNum to={s.score} play={play} reduced={reduced} duration={1150} delay={250} step={50} tone={tone} origin="100% 50%" format={(v) => v.toLocaleString()} /></td><td>{s.books}</td><td>{s.nilsMade}</td></tr>
+                );
+              })}
+              <tr><th>Your books</th><td colSpan={3}>{d.postgame.myBooks} books{d.postgame.myNilsMade > 0 ? ` · ${d.postgame.myNilsMade} nil${d.postgame.myNilsMade === 1 ? '' : 's'} made` : ''}</td></tr>
+            </tbody>
+          </table>
+          {d.postgame.moments.length > 0 && (
+            <ul className="rw-moments">
+              {d.postgame.moments.map((m) => <li key={m}>{m}</li>)}
+            </ul>
           )}
         </div>
-        <div className="rw-actions" style={{ animationDelay: `${(row + 1) * 160}ms` }}>
-          <button type="button" className="primary big" data-testid="rewards-home" onClick={onHome}>Home</button>
-          <button type="button" className="ghost-btn rw-rematch-btn" data-testid="rewards-rematch" onClick={onRematch}>Rematch</button>
-          <div className="rw-actions-row">
-            <button type="button" className="ghost-btn" data-testid="rewards-profile" onClick={onProfile}>Profile</button>
-            <button type="button" className="ghost-btn" data-testid="rewards-tables" onClick={onOpenTables}>Open Tables</button>
+      )}
+      <div className="rw-rows" ref={rowsRef}>
+        {d.signedIn ? rows : guestClaim && (guestClaim.held || guestClaim.claiming) ? (
+          <div className="rw-row" style={{ animationDelay: '160ms' }} aria-busy={guestClaim.claiming || undefined}>
+            <div className="rw-icon">👤</div>
+            <div className="rw-body">
+              <div className="rw-top"><span>{guestClaim.claiming ? 'Claiming your rewards…' : 'This game’s rewards are held for you'}</span></div>
+              <div className="rw-sub">{guestClaim.claiming ? 'Putting this match on your account.' : 'Sign in to claim the XP, coins, and achievements from this match.'}</div>
+              {!guestClaim.claiming && (
+                <button type="button" className="primary rw-claim-btn" data-testid="rewards-claim-signin" onClick={guestClaim.onSignIn}>Sign in &amp; claim</button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="rw-row" style={{ animationDelay: '160ms' }}>
+            <div className="rw-icon">👤</div>
+            <div className="rw-body">
+              <div className="rw-top"><span>Sign in to earn Rep rewards</span></div>
+              <div className="rw-sub">XP, coins, and achievements are tracked on your account</div>
+            </div>
+          </div>
+        )}
+      </div>
+      {takeover && d.cardUp && d.cardAfter && d.rankAfter && (
+        <CardTakeover d={d} leaving={takeover.leaving} onDismiss={dismissTakeover} />
+      )}
+    </>
+  );
+}
+
+/* -------------------------------------------------- standalone composition */
+
+/**
+ * The standalone page composition: headline + ReportBody + the page's own
+ * action row, under the full-page reveal gates. This was the /rewards
+ * screen; since the 2026-11-01 consolidation it is no longer a navigation
+ * destination — the merged in-table VictoryReport is the one postgame
+ * surface — and it survives as the RELOAD-RECOVERY composition
+ * (VictoryRecovery): when a refresh or an OAuth round-trip strands the
+ * merged screen mid-show, this presents the same report full-screen so an
+ * undismissed takeover grant and a held guest claim still land.
+ *
+ * `claimGameId` makes this surface the guest-claim owner for that match
+ * (the lifecycle runs here and credited breakdowns swap in through
+ * onClaimSwap); without it, a caller-driven `guestClaim` prop is used.
+ */
+export default function GameOverRewards({
+  data,
+  onHome,
+  onRematch,
+  onProfile,
+  onOpenTables,
+  guestClaim,
+  claimGameId,
+  onClaimSwap,
+}: {
+  data: RewardsData;
+  onHome: () => void;
+  onRematch: () => void;
+  onProfile: () => void;
+  onOpenTables: () => void;
+  guestClaim?: GuestClaimUi;
+  claimGameId?: string;
+  onClaimSwap?: (d: RewardsData) => void;
+}) {
+  const { play, reduced } = useRewardsReveal();
+  // The rows wait for their own gate: presented AND in view (in
+  // landscape they start below the fold — see useRowsInView).
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const rowsPlay = useRowsInView(rowsRef, play, reduced);
+  // The victory celebration on THIS screen (owner, 2026-10-28): the
+  // seeded confetti rain, fired by the reveal gate (presented — two
+  // painted frames, document visible), never at mount; a tap anywhere
+  // on the page clears it early. Wins only; reduced motion collapses
+  // it to the still pose like every other surface.
+  const [fxOff, setFxOff] = useState(false);
+  const claim = useVictoryClaim({ gameId: claimGameId, data, onSwap: onClaimSwap });
+  const gc = claimGameId ? claim.guestClaim : guestClaim;
+  // The actions' entrance delay rides the row count, as it did when the
+  // rows were assembled here: count what the body will render.
+  let rowCount = 0;
+  if (data.signedIn) {
+    rowCount = 1 + (data.cardUp ? 1 : 0) + (data.coinsGained > 0 ? 1 : 0) + 1
+      + (data.playWell && data.playWell.lines.length > 0 ? 1 : 0)
+      + data.achievements.length + data.challenges.length;
+  }
+  return (
+    <>
+      <div
+        className={`rewards-page rw-armed${play ? ' rw-play' : ''}${rowsPlay ? ' rw-rows-play' : ''}${reduced ? ' rw-reduced' : ''}`}
+        aria-label="Match rewards"
+        data-testid="rewards"
+        onPointerDown={() => setFxOff(true)}
+      >
+        {data.won && play && !fxOff && <VictoryConfetti seed={data.sub || null} still={reduced} />}
+        <div className="rw-card">
+          <div className="rw-head" style={{ animationDelay: '0ms' }}>
+            <div className="rw-trophy">{data.won ? '🏆' : '♠'}</div>
+            <h2 className={data.won ? 'win' : 'lose'}>{data.headline}</h2>
+            <p className="rw-sub0">{data.sub}</p>
+          </div>
+          <ReportBody d={data} play={play} rowsPlay={rowsPlay} reduced={reduced} guestClaim={gc} rowsRef={rowsRef} />
+          <div className="rw-actions" style={{ animationDelay: `${(rowCount + 1) * 160}ms` }}>
+            <button type="button" className="primary big" data-testid="rewards-home" onClick={onHome}>Home</button>
+            <button type="button" className="ghost-btn rw-rematch-btn" data-testid="rewards-rematch" onClick={onRematch}>Rematch</button>
+            <div className="rw-actions-row">
+              <button type="button" className="ghost-btn" data-testid="rewards-profile" onClick={onProfile}>Profile</button>
+              <button type="button" className="ghost-btn" data-testid="rewards-tables" onClick={onOpenTables}>Open Tables</button>
+            </div>
           </div>
         </div>
       </div>
-      {takeover && data.cardUp && data.cardAfter && data.rankAfter && (
-        <CardTakeover d={data} leaving={takeover.leaving} onDismiss={dismissTakeover} />
+      {claimGameId ? claim.sheets : null}
+    </>
+  );
+}
+
+/* ------------------------------------------------------- in-table report */
+
+/**
+ * THE merged victory report (owner, 2026-11-01: "we basically have 2
+ * victory screens we should reevaluate and reduce to one" — the in-table
+ * screen survives and absorbs the Postgame Report). Table renders this
+ * inside the victory screen's scroll region, after the box score: the
+ * Postgame Report (final/books/nils, your books, best hand), then the
+ * reward rows (XP count-up + rank bar, Playing well itemized, the rating
+ * line) — the whole story once, at the table, under the same reveal gates
+ * (presented + in view) the report has always run on. The surface owns
+ * its gates via .rw-scope (styles.css mirrors the .rewards-page gate
+ * rules for it), owns the guest claim for its match while mounted, and
+ * holds the data state a claim swap replaces.
+ */
+export function VictoryReport({ data: initial, gameId, onDataSwap, links }: {
+  data: RewardsData;
+  /** the finished offline match's client game id — ties an unsigned
+   *  breakdown to its pending rewards claim. Absent online. */
+  gameId?: string;
+  /** the owner of the stash copy (Table) mirrors claim swaps into it */
+  onDataSwap?: (d: RewardsData) => void;
+  /** Profile / Open Tables as quiet links under the report — the actions
+   *  the old second screen carried that the table's own row lacks */
+  links?: boolean;
+}) {
+  const [d, setD] = useState(initial);
+  useEffect(() => { setD(initial); }, [initial]);
+  const swap = (nd: RewardsData) => { setD(nd); onDataSwap?.(nd); };
+  const { play, reduced } = useRewardsReveal();
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const rowsPlay = useRowsInView(rowsRef, play, reduced);
+  const claim = useVictoryClaim({ gameId, data: d, onSwap: swap });
+  return (
+    <div
+      className={`rw-scope rw-armed${play ? ' rw-play' : ''}${rowsPlay ? ' rw-rows-play' : ''}${reduced ? ' rw-reduced' : ''}`}
+      data-testid="victory-report"
+    >
+      <ReportBody d={d} play={play} rowsPlay={rowsPlay} reduced={reduced} guestClaim={claim.guestClaim} rowsRef={rowsRef} />
+      {links && (
+        <div className="rw-links">
+          <button type="button" className="ghost-btn" data-testid="victory-profile" onClick={() => { location.href = '/profile'; }}>Profile</button>
+          <button type="button" className="ghost-btn" data-testid="victory-tables" onClick={() => { location.href = '/online'; }}>Open Tables</button>
+        </div>
       )}
+      {claim.sheets}
     </div>
   );
 }

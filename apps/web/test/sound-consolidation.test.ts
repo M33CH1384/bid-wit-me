@@ -163,10 +163,12 @@ describe('the sound landing scrolls the group into view', () => {
 });
 
 describe('the floating dock stays off the full-screen routes', () => {
-  it('main.tsx does not render the dock on /profile or /rewards', () => {
+  it('main.tsx does not render the dock on /profile (the /rewards route is retired)', () => {
     const main = read('../src/main.tsx');
     expect(main).toContain("path !== '/profile'");
-    expect(main).toContain("path !== '/rewards'");
     expect(main).toContain('<SoundDock />');
+    // the victory consolidation (2026-11-01) retired the /rewards route —
+    // it no longer needs (or has) a dock exclusion
+    expect(main).not.toContain("path !== '/rewards'");
   });
 });

@@ -3,6 +3,13 @@
  * morning report): "The landscape view made it so that you have to
  * scroll to see it but once you do it's already happened."
  *
+ * Since the 2026-11-01 victory consolidation this composition is the
+ * standalone RECOVERY surface (VictoryRecovery presents GameOverRewards
+ * full-screen when a reload strands the merged in-table report) — the
+ * same .rewards-page/.rw-card markup and the same landscape discipline
+ * pinned here; the in-table merged screen composes under the game-over
+ * sheet's own fit rules instead.
+ *
  * The defect's placement half: on /rewards the card ran ~755px tall in
  * a 390-430px landscape viewport. The confetti was already
  * viewport-anchored (probe-verified), but the reward ROWS — the

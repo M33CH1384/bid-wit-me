@@ -902,8 +902,8 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
       // them — in landscape the flow then moved to /rewards, which had
       // no celebration at all. Both now live on the presenting surfaces
       // (Intermission's decided recap, Table's game-over modal and
-      // online victory screen, the /rewards screen), gated on those
-      // surfaces' own presented states. The UPSET / PAYBACK stamps
+      // online victory screen, the standalone report composition),
+      // gated on those surfaces' own presented states. The UPSET / PAYBACK stamps
       // below share the disease and the cure: they queue through
       // stampOrQueue and fire on the presented edge.
       const nm = namesRef.current;

@@ -54,10 +54,11 @@ type Screen =
   | { k: 'outro'; stop: StoryStop; won: boolean };
 
 /**
- * The rewards screen's Rematch button lands a finished story match back
- * here with ?rematch=<stopId> (Table stashes the stop's identity in the
- * rewards payload — see RewardsPage.rematchPathFor). Parse + validate the
- * directive: an id that names no stop is not a directive, just the map.
+ * The victory recovery surface's Rematch button lands a finished story
+ * match back here with ?rematch=<stopId> (Table stashes the stop's
+ * identity in the rewards payload — see rewardsStash.rematchPathFor).
+ * Parse + validate the directive: an id that names no stop is not a
+ * directive, just the map.
  */
 /** How long a story sub-screen gets to settle before its top position is
  *  re-asserted once (see the settle effect in StoryHome). Long enough for

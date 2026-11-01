@@ -5,7 +5,7 @@
  *
  *  - LeagueTickerRoot mounts it at the app root as a fixed bottom bar on
  *    the main surfaces: home/wizard, the online entry + lobby screens,
- *    /profile and /rewards. While it shows lines, <html> carries
+ *    /profile. While it shows lines, <html> carries
  *    `bwm-ticker-on` and each surface gives the bar's height back out of
  *    its own box (extra bottom padding inside its full-height frame —
  *    see social.css), so no document grows and the bar never covers

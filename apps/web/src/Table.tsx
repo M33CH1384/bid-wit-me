@@ -81,8 +81,8 @@ import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading, type LoadingSeat } from './TableLoading';
 import { VersusIntro, markVersusShown, versusDismissReady, versusEligible, type VersusMember, type VersusModel } from './VersusIntro';
-import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, RollNum, tallyTone, type RewardsProfile } from './GameOverRewards';
-import { stashRewards } from './RewardsPage';
+import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, VictoryReport, type RewardsData, RollNum, tallyTone, type RewardsProfile } from './GameOverRewards';
+import { stashRewards, type RewardsPayload } from './rewardsStash';
 import { flushLocalGames, localGameId } from './localStats';
 import { warmTableEffects } from './effects/warm';
 import { THIRD_SET_HEADLINE, endReasonText, onNoticeSides, shotChatLines, shotOutBannerFor, stickyNoticeSides } from './shotOut';
@@ -2051,9 +2051,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     if (leaveChoice(!!online, st.phase) === 'leave') leave();
     else setConfirmLeave(true);
   };
-  // Game-over rewards page (Demetrius 2026-10-19): after the player chooses to leave a
-  // finished match, compute the XP/coins/Elo/achievement breakdown, stash it, and ROUTE to
-  // the dedicated opaque /rewards screen — no modal overlay (it kept rendering blurry on iOS).
+  // Game-over rewards (Demetrius 2026-10-19; merged into the in-table victory
+  // screen 2026-11-01): the XP/coins/Elo/achievement breakdown for the finished
+  // match, computed from the pinned "before" snapshot when the screen presents.
   const profileBefore = useRef<RewardsProfile | null>(null);
   const gameStartAt = useRef<number>(Date.now());
   // Capture the "before" snapshot ONCE per match, pinned by the game seed: a
@@ -2066,46 +2066,6 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     void resolveBeforeSnapshot(matchSeed).then((p) => { if (live) profileBefore.current = p; });
     return () => { live = false; };
   }, [matchSeed]);
-  const [rewardsBusy, setRewardsBusy] = useState(false);
-  const openRewards = useCallback((where: 'home' | 'leave') => {
-    if (rewardsBusy) return;
-    setRewardsBusy(true);
-    (async () => {
-      try { await flushLocalGames(); } catch { /* best-effort */ }
-      const won = !!st.result?.winners.includes(mySide);
-      const head = won
-        ? (st.result!.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!')
-        : winHeadline(st.result!.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase();
-      // Online credits land asynchronously server-side: if the first "after"
-      // snapshot still diffs to zero, retry briefly (~2s) before believing it.
-      const data = await computeRewardsSettled(profileBefore.current, {
-        won,
-        headline: head,
-        sub: `${st.history.length} hand${st.history.length === 1 ? '' : 's'} played`,
-        kind: r.partnerships ? 'team' : 'cutthroat',
-      }, { online: !!online });
-      // Postgame Report (league P-D): your line vs the other sides + best
-      // moments, from the finished game's hand history.
-      if (st.result) {
-        data.postgame = buildPostgame({
-          history: st.history,
-          finalScores: st.result.finalScores,
-          sideLabels: st.result.finalScores.map((_, side) => sideName(r, side, names)),
-          seatLabels: names,
-          mySeat: HUMAN,
-          mySide,
-        });
-      }
-      clearPinnedBefore(); // the pinned "before" is consumed — the next match captures fresh
-      if (!online) quitGame();
-      // A story match carries its stop identity into the rewards stash, so
-      // the rewards screen's Rematch returns to the same stop (story-scoped)
-      // instead of a generic autostart game from the saved settings.
-      stashRewards({ data, online: !!online, homePath: online && where === 'leave' ? '/online' : '/', storyStopId: story?.scene?.stop.id, gameId: online ? undefined : localGameId(matchSeed) });
-      clearTableChatOpen(); // the match is over: the next table must not inherit this chat state
-      location.href = '/rewards';
-    })().finally(() => setRewardsBusy(false));
-  }, [rewardsBusy, st.result, st.history.length, mySide, r, names, online, story]);
   const isBooks = booksHand(st);
   // "First hand: books bid themselves" — announce it once the deal lands
   const booksAnnounced = useRef<string | null>(null);
@@ -2348,8 +2308,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   const shotOutRecap = st.phase === 'gameOver' && (st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !shotRecapAck;
   const showRecap = !pause && !collecting && talkOpen && (st.phase === 'handOver' || shotOutRecap);
   const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
-  // Story Mode: a finished story match NEVER takes the generic /rewards
-  // detour — every exit from this modal routes through the host's exit
+  // Story Mode: a finished story match NEVER takes the generic rewards
+  // report — every exit from this modal routes through the host's exit
   // into StoryHome's outro (win: reward line, deck/set-anim unlock
   // notices, badge strip, outro-win scene → map; loss: outro-lose +
   // Retry). A story WIN also demotes Play again — Rematch: you don't
@@ -2357,6 +2317,92 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // action is the onward one and replay lives on the map card. A story
   // LOSS keeps its rematch (same stop, story-scoped via the host).
   const storyGame = !!story;
+  // MERGED VICTORY SCREEN (owner, 2026-11-01: "we basically have 2 victory
+  // screens we should reevaluate and reduce to one" — the in-table screen
+  // survives and absorbs the Postgame Report). The breakdown is computed
+  // when the victory screen PRESENTS and renders inside it (VictoryReport),
+  // so the player reads the result once, at the table. The /rewards detour
+  // is retired: leaving a finished match is a plain table exit again. The
+  // computed payload is still stashed — a reload that strands the screen
+  // mid-show (refresh, an OAuth round-trip) re-presents it through
+  // VictoryRecovery, because an undismissed level-up takeover and a held
+  // guest claim ride the stash. Story matches never compute this: their
+  // exits run through the story outro, as before.
+  const [mergedRewards, setMergedRewards] = useState<RewardsData | null>(null);
+  const mergedFor = useRef<string | null>(null);
+  const mergedPayload = useRef<RewardsPayload | null>(null);
+  // (the stash payload below reuses the component-scope storyStopId —
+  // the soundscape's const at the top of this section: inside the effect
+  // the story guard narrows the prop to never. Story matches never
+  // compute a report; the id rides along only so the payload shape stays
+  // the one the recovery understands.)
+  useEffect(() => {
+    if (!showResults || !st.result || story || spectating) return;
+    if (mergedFor.current === matchSeed) return;
+    mergedFor.current = matchSeed;
+    let live = true;
+    (async () => {
+      try { await flushLocalGames(); } catch { /* best-effort */ }
+      const won = !!st.result?.winners.includes(mySide);
+      const head = won
+        ? (st.result!.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!')
+        : winHeadline(st.result!.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase();
+      // Online credits land asynchronously server-side: if the first "after"
+      // snapshot still diffs to zero, retry briefly (~2s) before believing it.
+      const data = await computeRewardsSettled(profileBefore.current, {
+        won,
+        headline: head,
+        sub: `${st.history.length} hand${st.history.length === 1 ? '' : 's'} played`,
+        kind: r.partnerships ? 'team' : 'cutthroat',
+      }, { online: !!online });
+      // Postgame Report (league P-D): your line vs the other sides + best
+      // moments, from the finished game's hand history.
+      if (st.result) {
+        data.postgame = buildPostgame({
+          history: st.history,
+          finalScores: st.result.finalScores,
+          sideLabels: st.result.finalScores.map((_, side) => sideName(r, side, names)),
+          seatLabels: names,
+          mySeat: HUMAN,
+          mySide,
+        });
+      }
+      clearPinnedBefore(); // the pinned "before" is consumed — the next match captures fresh
+      if (!live) return;
+      // A story match would carry its stop identity into the stash, so a
+      // recovery Rematch returns to the same stop (story-scoped) instead of
+      // a generic autostart game — kept for payload compatibility even
+      // though story matches never compute a merged report.
+      const payload: RewardsPayload = { data, online: !!online, homePath: '/', storyStopId, gameId: online ? undefined : localGameId(matchSeed) };
+      mergedPayload.current = payload;
+      stashRewards(payload);
+      setMergedRewards(data);
+    })();
+    return () => { live = false; };
+    // once per finished match (mergedFor guards); the inputs are the
+    // finished game's own frozen state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showResults, st.result, matchSeed]);
+  // A guest claim landing on the merged screen swaps the credited
+  // breakdown in: mirror it into the stash so a later reload's recovery
+  // presents the credited version too.
+  const onMergedSwap = (nd: RewardsData) => {
+    setMergedRewards(nd);
+    if (mergedPayload.current) {
+      const p2 = { ...mergedPayload.current, data: nd };
+      mergedPayload.current = p2;
+      stashRewards(p2);
+    }
+  };
+  // Leaving a finished match from the merged screen: the report has
+  // already been presented at the table, so this is just the exit —
+  // offline leave() quits the game, online it goes to the main menu
+  // (the old flow's Back to home / Change mode both landed there too,
+  // via the retired /rewards page's Home button).
+  const exitFinished = () => {
+    clearTableChatOpen(); // the match is over: the next table must not inherit this chat state
+    leave();
+  };
   const storyWon = storyGame && !!st.result && st.result.winners.includes(mySide);
   const modalOpen = (st.phase === 'handOver' && !pause && !collecting && talkOpen) || confirmLeave || showPad || (st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result) || !!profileTarget;
 
@@ -3272,7 +3318,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               const winners = new Set(res.winners);
               return <PhotoFinishTape winnerScore={Math.max(...fs.filter((_, i) => winners.has(i)))} loserScore={Math.max(...fs.filter((_, i) => !winners.has(i)))} margin={winMargin(res) ?? 0} />;
             })()}
-            <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={() => openRewards('home')}>✕</button>
+            <button type="button" className="modal-x" aria-label="Close and go to the main menu" data-testid="gameover-x" onClick={() => exitFinished()}>✕</button>
             <h2 className="vic-head">{iWon ? (res.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : 'GAME OVER'}<small>{iWon ? '🏆' : '♠'}</small></h2>
             {(() => {
               // the players' names under the team name (skipped when the team has no name of its own: it'd repeat the title)
@@ -3296,11 +3342,14 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} roll reduced={reduceFx} />
                 {seriesChip()}
                 <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
+                {/* the merged report (2026-11-01): Postgame Report + reward
+                    rows inside this same scroll — the whole story, once */}
+                {mergedRewards && <VictoryReport data={mergedRewards} gameId={online ? undefined : localGameId(matchSeed)} onDataSwap={onMergedSwap} links />}
               </div>
               <div className="confirm-actions">
                 <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
                 {!spectating && <button type="button" className="primary big" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>}
-                <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => openRewards('home')}>Back to home</button>
+                <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => exitFinished()}>Back to home</button>
               </div>
             </div>
           </div>
@@ -3309,7 +3358,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       {showResults && st.result && !online?.victory && (
         <div className="modal-backdrop" onPointerDown={() => setGoFxOff(true)}>
           <div className="modal glass slant gameover espn" role="dialog" aria-label="Game over">
-            <button type="button" className="modal-x" aria-label={storyGame ? 'Close and continue to the story map' : 'Close and go to the main menu'} data-testid="gameover-x" onClick={() => (storyGame ? leave() : openRewards('home'))}>✕</button>
+            <button type="button" className="modal-x" aria-label={storyGame ? 'Close and continue to the story map' : 'Close and go to the main menu'} data-testid="gameover-x" onClick={() => (storyGame ? leave() : exitFinished())}>✕</button>
             <div className="trophy">{st.result.winners.includes(mySide) ? '🏆' : '♠'}</div>
             <h2>{st.result.winners.includes(mySide) ? (st.result.winners.length > 1 ? 'YOU TIED FOR FIRST!' : 'VICTORY!') : winHeadline(st.result.winners.map((w) => sideName(r, w, names)), r.partnerships).toUpperCase()}</h2>
             {seriesChip()}
@@ -3340,6 +3389,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             </ol>
             <div className="scroll go-scroll" data-testid="gameover-scroll">
               <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} roll reduced={reduceFx} />
+              {/* the merged report (2026-11-01): Postgame Report + reward
+                  rows join the box score in the scroll region — standings
+                  stay fixed above, actions pinned below, as before. Story
+                  games never render it (their outro carries their rewards). */}
+              {!storyGame && mergedRewards && <VictoryReport data={mergedRewards} gameId={localGameId(matchSeed)} onDataSwap={onMergedSwap} links />}
               {tipNudge && (
                 <p className="tip-nudge" data-testid="tip-nudge">
                   Enjoying BWM? <button type="button" className="link" onClick={openTip}>Tip the devs ♥</button> <small>(a donation, not a prize)</small>
@@ -3361,9 +3415,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               ) : (
                 <>
                   <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>
-                  <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => openRewards('home')}>Back to home</button>
+                  <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => exitFinished()}>Back to home</button>
                   <div className="exit-divider" aria-hidden="true" />
-                  <button type="button" className="leave-red" onClick={() => openRewards('leave')}>Change mode</button>
+                  <button type="button" className="leave-red" onClick={() => exitFinished()}>Change mode</button>
                 </>
               )}
             </div>

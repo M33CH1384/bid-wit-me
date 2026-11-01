@@ -8,7 +8,7 @@
  *     table stashed NO story identity, so its Rematch button fell back to
  *     '/?autostart=1' — a generic game built from the player's SAVED
  *     settings (his venue there is not the stop's). The chain is now:
- *     Table stashes storyStopId → RewardsPage routes a story Rematch to
+ *     Table stashes storyStopId → the recovery surface routes a story Rematch to
  *     /story?rematch=<stopId> → StoryHome consumes it once and starts that
  *     stop from the story snapshot (storySettingsFor: the stop's venue,
  *     twist, house deck, team names, fresh attempt context).
@@ -34,7 +34,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORY_STOPS, storyStopById } from '@spades/bots';
 import { newGame } from '@spades/rules';
 import { computeRewards } from '../src/GameOverRewards';
-import { loadRewards, rematchPathFor, stashRewards, type RewardsPayload } from '../src/RewardsPage';
+import { loadRewards, rematchPathFor, stashRewards, type RewardsPayload } from '../src/rewardsStash';
 import { deckForStop } from '../src/decks';
 import { DEFAULT_SETTINGS } from '../src/settings';
 import { storyRulesFor } from '../src/story/storySettings';

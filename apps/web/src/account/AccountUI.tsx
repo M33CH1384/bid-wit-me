@@ -51,8 +51,9 @@ function SheetFrame({ title, label, onClose, children, testId }: { title: string
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 /* ------------------------------------------------------------------ sign in */
-/** Exported for the /rewards claim panel: its sign-in returns to /rewards
- *  (returnTo) so the held game's rewards can be claimed and shown in place. */
+/** Exported for the victory report's claim panel: its sign-in returns to
+ *  the presenting surface (returnTo) so the held game's rewards can be
+ *  claimed and shown in place. */
 export function SignInSheet({ onClose, onPasskeyNew, returnTo }: { onClose: () => void; onPasskeyNew: () => void; returnTo?: string }) {
   const a = useAccount();
   const [err, setErr] = useState('');
