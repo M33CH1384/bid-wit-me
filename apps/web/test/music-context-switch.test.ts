@@ -15,7 +15,7 @@
  * look-ahead parked on the standby deck (in menu context, a second copy of
  * the menu theme) played after it. The same lag ran in every direction:
  * venue tracks rode into the menus, and a foreign look-ahead could play
- * inside The Pj's closed four-track rotation.
+ * inside The Pj's closed five-track rotation.
  *
  * The fix is a shared reconciliation (queueContextRetarget →
  * retargetToContext in audio.ts): identity mutations coalesce on a
@@ -254,10 +254,10 @@ describe('music context switches', () => {
     expect(eng().advancing).toBe(true);
     await settleFade();
     expect(PJS).toContain(nowFile());
-    // The look-ahead inside the closed rotation is one of the four — no
+    // The look-ahead inside the closed rotation is one of the five — no
     // foreign track is parked to play next.
     expect(PJS.includes(deckFile(standbyDeck()) ?? '') || deckFile(standbyDeck()) === null).toBe(true);
-    // Play the rotation forward: the next track is also one of the four,
+    // Play the rotation forward: the next track is also one of the five,
     // and never an immediate repeat.
     const first = nowFile();
     activeDeck().el.currentTime = activeDeck().el.duration - 1;
