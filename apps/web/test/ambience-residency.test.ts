@@ -5,8 +5,8 @@
  * still crashing to the menu after the Oct-30 hardening; every provable
  * code path passed, leaving iOS process death under SESSION memory
  * accumulation). The recorded-ambience decode cache (ambCache) never
- * evicted: five recorded 64 s beds (~23–25 MB decoded each) plus ~25
- * event one-shots piled up to ~135–150 MB across a hop-heavy session —
+ * evicted: six recorded 64 s beds (~23–25 MB decoded each) plus ~30
+ * event one-shots piled up to ~150–175 MB across a hop-heavy session —
  * the same order as the entire figure-texture budget. The cache is now
  * bound to the CURRENT venue: a venue switch evicts the previous venue's
  * decoded bed + events, returning re-decodes behind the loader gate on
@@ -175,7 +175,7 @@ describe('the ambience cache is bound to the current venue', () => {
     expect(keys().some((k) => k.includes('pjs'))).toBe(false);
   });
 
-  it('barbershop, kitchen and cookout each hold only their own set', async () => {
+  it('barbershop, kitchen, cookout and the church basement each hold only their own set', async () => {
     sound.setVenueBed('barbershop');
     await settle();
     expect(keys()).toContain('brb-bed');
@@ -188,6 +188,10 @@ describe('the ambience cache is bound to the current venue', () => {
     await settle();
     expect(keys()).toContain('ctt-bed');
     expect(keys().every((k) => k === 'ctt-bed' || k.includes('cookout-'))).toBe(true);
+    sound.setVenueBed('basement');
+    await settle();
+    expect(keys()).toContain('chu-bed');
+    expect(keys().every((k) => k === 'chu-bed' || k.includes('church-'))).toBe(true);
   });
 
   it('returning to The Pj\'s re-fetches and re-decodes its bed, which starts', async () => {

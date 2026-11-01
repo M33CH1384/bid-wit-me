@@ -223,6 +223,19 @@ export const GMA_BED_URL = '/audio/ambience/grandmas-bed.mp3';
  * life, loaded lazily by the engine after the bed starts.
  */
 export const CTT_BED_URL = '/audio/ambience/cookout-bed.mp3';
+/**
+ * The Church Basement's recorded fellowship-hall bed (owner, 2026-11-01):
+ * gated exactly like the Cookout's bed — the engine fetches it at every
+ * Church Basement table (story Stop 6 plays the same 'basement' bed in
+ * the same room), so at High the loader's promise covers it; at Low it
+ * streams in behind the loader as music always has. There is no seam
+ * exception: Stop 6 mounts the Church Basement's own room and hears the
+ * same bed, so the unit applies at every story stop. The bed's event
+ * one-shots (percolator, door, cup pour, chair scrape, folding chair,
+ * spoon against a cup) deliberately do NOT gate: optional life, loaded
+ * lazily by the engine after the bed starts.
+ */
+export const CHU_BED_URL = '/audio/ambience/church-bed.mp3';
 export function roomAudioUrls(
   venue: string,
   quality: 'high' | 'low',
@@ -234,6 +247,7 @@ export function roomAudioUrls(
   if (venue === 'barbershop') return [{ label: 'ambience bed (Barbershop)', url: BRB_BED_URL }];
   if (venue === 'grandma' && storyStopId !== 'porch') return [{ label: 'ambience bed (Grandma\'s Kitchen)', url: GMA_BED_URL }];
   if (venue === 'backyard') return [{ label: 'ambience bed (Backyard Cookout)', url: CTT_BED_URL }];
+  if (venue === 'church') return [{ label: 'ambience bed (Church Basement)', url: CHU_BED_URL }];
   return [];
 }
 

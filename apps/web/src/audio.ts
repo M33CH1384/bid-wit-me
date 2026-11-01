@@ -242,6 +242,18 @@ export const TRACKS: Track[] = [
   { file: 'make-funk', title: 'Make Funk', artist: 'HoliznaCC0', license: 'CC0', source: 'https://freemusicarchive.org/music/holiznacc0/bassic/make-funk/' },
   { file: 'take-it-out', title: 'Take It Out', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/take-it-out/', credit: '"Take It Out" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'breath', title: 'Breath', artist: 'HoliznaCC0', license: 'CC0', source: 'https://freemusicarchive.org/music/holiznacc0/bassic/breath-1/' },
+  // The Church Basement rotation (owner ear picks, 2026-11-01): round 1
+  // took the hymn itself in the foreground and a downtempo Ketsa cut;
+  // round 2 — the owner's "Church needs more like amazing grace" — added
+  // three more MacLeod hymn-side cuts, his ear overruling Thaxted's
+  // round-1 measurements bench. ("Always Faithful" was auditioned and not
+  // picked; "My Deal" was redirected by the owner to The Pj's and
+  // "Saviour Above" went to Cookout — neither is here.)
+  { file: 'amazing-grace', title: 'Amazing Grace 2011', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Amazing%20Grace%202011.mp3', credit: '"Amazing Grace 2011" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'still-dreams', title: 'Still Dreams', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/still-dreams/', credit: '"Still Dreams" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'with-regards', title: 'With Regards', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100822', credit: '"With Regards" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'jesu-joy-of-mans-desiring', title: "Jesu, Joy of Man's Desiring", artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100189', credit: '"Jesu, Joy of Man\'s Desiring" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'thaxted', title: 'Thaxted', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100051', credit: '"Thaxted" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
   // The Pj's rotation grows to five (owner, 2026-11-01): Ketsa's "My Deal"
   // (CC BY 4.0, via Free Music Archive) was auditioned for the Church Basement
   // and the owner redirected it — "Like this for the PJs, not necessarily the
@@ -584,14 +596,51 @@ const CTT_EVENT_GAIN = 2.95;
  *  below the material's own step noise, p99 0.097). */
 const CTT_BED_LEAD_S = 1105 / 44100;
 const CTT_BED_SECONDS = 64;
+/** The Church Basement's recorded bed (owner sample pick, 2026-11-01): a
+ *  64.000 s seamless loop of fellowship-hall recordings — interior room
+ *  air (SSE Library, CC0), a mains-hum body under the fluorescent panels
+ *  (a refrigerator's body standing in for the ballast hum — disclosed
+ *  staging, freesfx.co.uk, attribution EULA — CREDITS.md), a polite
+ *  fellowship murmur low-passed at 700 Hz so no words survive (SSE
+ *  Library, CC0), a coffee urn breathing at the kitchen hatch
+ *  (freesfx.co.uk) and the venue's signature: "Amazing Grace 2011"
+ *  (Kevin MacLeod, CC BY 4.0) band-kept to 55–620 Hz — a hymn through
+ *  the wall from the sanctuary upstairs, its body present and not one
+ *  word intelligible. Six recorded basement one-shots — the percolator
+ *  cycling at the hatch, the door, a cup poured, a chair scraping on
+ *  the tile, a folding chair and a spoon against a cup — ride over it
+ *  as scheduled events, at the sparsest densities in the program: this
+ *  is the route's slow room. */
+const CHU_BED_URL = '/audio/ambience/church-bed.mp3';
+const CHU_EVENT_URLS = {
+  percolator: ['/audio/ambience/church-event-percolator.mp3'],
+  door: ['/audio/ambience/church-event-door.mp3'],
+  cupPour: ['/audio/ambience/church-event-cup-pour.mp3'],
+  chairScrape: ['/audio/ambience/church-event-chair-scrape.mp3'],
+  foldChair: ['/audio/ambience/church-event-fold-chair.mp3'],
+  spoonCup: ['/audio/ambience/church-event-spoon-cup.mp3'],
+} as const;
+/** Event staging gain, same construction as CTT_EVENT_GAIN: the bed file
+ *  is the −16 LUFS master; the event clips keep their premaster staging,
+ *  so they play through this gain to hold the approved demo balance (the
+ *  loudnorm raised the bed +13.49 dB over its premaster — measured RMS
+ *  on the shipped files). */
+const CHU_EVENT_GAIN = 4.73;
+/** The bed's MP3 loop trim, from the shipped file's own measured offsets:
+ *  1105 samples of encoder delay at 44.1 kHz ahead of exactly 64.000 s of
+ *  content — same encoder settings as The Pj's, Speakeasy, Barbershop,
+ *  Grandma's and Cookout beds (the shipped file's measured seam step,
+ *  0.003, sits far below the material's own step noise, p99 0.063). */
+const CHU_BED_LEAD_S = 1105 / 44100;
+const CHU_BED_SECONDS = 64;
 /** Every recorded venue's ambience-cache footprint: the bed's cache key
  *  plus every event URL the venue lazy-loads. The engine binds its decode
  *  cache to the CURRENT venue (bindAmbienceToVenue, crash-2 lane
- *  2026-11-01): five recorded 64 s beds decode to ~23–25 MB each and the
+ *  2026-11-01): six recorded 64 s beds decode to ~23–25 MB each and the
  *  event one-shots add ~15–25 MB across venues, and the cache used to
- *  keep ALL of it for the life of the context — up to ~135–150 MB of
+ *  keep ALL of it for the life of the context — up to ~150–175 MB of
  *  decoded audio accumulating in exactly the table-hopping pattern that
- *  feeds iOS process death. Synthesized beds (mansion, basement, rooftop,
+ *  feeds iOS process death. Synthesized beds (mansion, rooftop,
  *  casino, beach, yacht, rec, porch) decode nothing and map to no entry:
  *  switching to one evicts every recorded buffer. */
 const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readonly string[] }>> = {
@@ -600,6 +649,7 @@ const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readon
   barbershop: { bedKey: 'brb-bed', urls: [BRB_BED_URL, ...Object.values(BRB_EVENT_URLS).flat()] },
   kitchen: { bedKey: 'gma-bed', urls: [GMA_BED_URL, ...Object.values(GMA_EVENT_URLS).flat()] },
   cookout: { bedKey: 'ctt-bed', urls: [CTT_BED_URL, ...Object.values(CTT_EVENT_URLS).flat()] },
+  basement: { bedKey: 'chu-bed', urls: [CHU_BED_URL, ...Object.values(CHU_EVENT_URLS).flat()] },
 };
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
@@ -3536,6 +3586,77 @@ class Engine {
     arm('grillFlare', 120, 240, true);
   }
 
+  private startChurchBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('chu-bed', CHU_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, CHU_BED_LEAD_S, CHU_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...CHU_EVENT_URLS.percolator, ...CHU_EVENT_URLS.door, ...CHU_EVENT_URLS.cupPour, ...CHU_EVENT_URLS.chairScrape, ...CHU_EVENT_URLS.foldChair, ...CHU_EVENT_URLS.spoonCup]) void this.loadAmbience(url, url);
+    this.scheduleChurchEvents();
+  }
+
+  /** Basement life over the recorded bed: six independent randomized
+   *  timers — the percolator cycling at the hatch every 90–180 s, the
+   *  door, a cup poured and a chair scraping on the tile every
+   *  120–240 s, a folding chair every 150–300 s and a spoon against a
+   *  cup every 180–300 s (samples-lane densities, 2026-11-01) — sharing
+   *  one busy gate, so an event never talks over another (the street
+   *  pattern). These are the sparsest densities in the program: the
+   *  Church Basement is a deliberate slow room, and its life should be
+   *  felt more than heard. Each kind has a single recording, so there
+   *  is no variant to rotate; the spacing itself is the variety. The
+   *  timers live in venueTimers, so leaving the venue silences the
+   *  basement, and the first fire comes a half-interval in, once the
+   *  table settles. */
+  private scheduleChurchEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the basement
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = CHU_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof CHU_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(CHU_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('percolator', 90, 180, true);
+    arm('door', 120, 240, true);
+    arm('cupPour', 120, 240, true);
+    arm('chairScrape', 120, 240, true);
+    arm('foldChair', 150, 300, true);
+    arm('spoonCup', 180, 300, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -3585,14 +3706,29 @@ class Engine {
         this.startBarbershopBed();
         break;
       }
-      case 'basement':
-        this.vHum(120, 0.006); murmur(0.6); room(0.6);
-        this.vEvery(7, 14, (t) => { for (let i = 0; i < 5; i++) this.tone(t + i * 0.09, 220 + Math.random() * 120, 0.06, 'sine', 0.012, { dest: B }); }); // coffee percolator
-        // Story Audio Pass: a hymn through the wall from the sanctuary upstairs — slow organ
-        // chords, felt more than heard — and folding chairs shifting on the linoleum.
-        this.vEvery(13, 21, (t) => { const hymn = [[174.61, 220, 261.63], [146.83, 220, 293.66], [130.81, 196, 261.63], [164.81, 220, 329.63]]; const ch = hymn[Math.floor(Math.random() * hymn.length)]!; ch.forEach((f) => { this.tone(t, f, 5.2, 'sine', 0.009, { attack: 1.1, dest: B }); this.tone(t, f * 2, 5.2, 'sine', 0.003, { attack: 1.1, dest: B }); }); });
-        this.vEvery(17, 36, (t) => this.vBurst(t, 0.22, 'lowpass', 420, 0.028)); // a chair scrape
+      case 'basement': {
+        // The Church Basement's bed is a RECORDING now (owner sample pick,
+        // 2026-11-01), replacing the synthesized stand-in (a mains hum,
+        // murmur wash and room tone, with tone-burst "percolator" hits,
+        // sine-chord hymns and noise-burst chair scrapes): a seamless
+        // 64 s fellowship-hall loop — real room air, a real mains-hum body
+        // under the fluorescent panels, fellowship murmuring somewhere
+        // else in the building through a low-pass wall, the coffee urn
+        // breathing at the hatch, and a hymn through the wall from the
+        // sanctuary upstairs — a real hymn this time ("Amazing Grace
+        // 2011"), band-kept so only its body survives the wall. The
+        // basement's life rides over it as one-shot events on their own
+        // timers (startChurchBed): the percolator cycling at the hatch,
+        // the door on the stairs, a cup poured, a chair scraping on the
+        // tile, a folding chair settling, a spoon against a cup — the
+        // sparsest event pool in the program, because this is the route's
+        // slow room. Story Stop 6 plays here: its bed and basement life
+        // are in the recording (its music stays the sparse story score —
+        // the stop's mood outranks the venue pin in story context, as at
+        // the Barbershop).
+        this.startChurchBed();
         break;
+      }
       case 'rooftop':
         this.vNoise('lowpass', 520, 0.6, 0.06, 0.07, 0.7); // wind
         this.vNoise('lowpass', 140, 0.5, 0.06, 0.05, 0.3); // traffic rumble

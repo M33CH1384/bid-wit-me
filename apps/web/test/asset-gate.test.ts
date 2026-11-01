@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, BRB_BED_URL, CTT_BED_URL, GMA_BED_URL, PJS_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, PJS_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomAudioUrls, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -233,6 +233,22 @@ describe('room asset enumeration', () => {
     expect(existsSync(new URL('../public/audio/ambience/cookout-bed.mp3', import.meta.url))).toBe(true);
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain(`const CTT_BED_URL = '${CTT_BED_URL}'`);
+  });
+
+  it("the Church Basement's recorded bed rides the gate at High church tables — every story stop, never Low", () => {
+    // Owner, 2026-11-01: the recorded fellowship-hall bed joins the Church
+    // Basement loader gate exactly like the Cookout's bed (the gate gains
+    // one unit at the regular venue and at story Stop 6, whose composition
+    // mirrors the regular table's; the bed's event one-shots deliberately
+    // do not gate and are not listed here). There is no seam exception:
+    // Stop 6 hears the same 'basement' bed in the same room.
+    expect(roomAudioUrls('church', 'high', null)).toEqual([{ label: expect.any(String), url: CHU_BED_URL }]);
+    expect(roomAudioUrls('church', 'high', 'church-basement')).toEqual([{ label: expect.any(String), url: CHU_BED_URL }]);
+    expect(roomAudioUrls('church', 'low', null)).toEqual([]);
+    expect(roomAudioUrls('church', 'low', 'church-basement')).toEqual([]);
+    expect(existsSync(new URL('../public/audio/ambience/church-bed.mp3', import.meta.url))).toBe(true);
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain(`const CHU_BED_URL = '${CHU_BED_URL}'`);
   });
 
   it('the gate sedan URL is the very file PjsStreetRoom loads', () => {

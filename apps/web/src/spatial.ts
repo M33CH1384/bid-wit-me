@@ -112,7 +112,7 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'backyard', name: 'Backyard Cookout', bed: 'cookout', surface: 'wood', reverb: 'dry-outdoor', crowd: 'party', music: { pin: ['make-funk', 'take-it-out', 'breath', 'saviour-above'], lean: [] }, events: [] },
   { venue: 'mansion', name: 'Mansion', bed: 'mansion', surface: 'glass', reverb: 'hall', crowd: 'low', music: { lean: ['slowly', 'memories-of-spring', 'chillin-hard'] }, events: [] },
   { venue: 'barbershop', name: 'Barbershop', bed: 'barbershop', surface: 'wood', reverb: 'lively', crowd: 'low', music: { pin: ['funk-trunk', 'soul-sync', 'c-funk'], lean: [] }, events: [] },
-  { venue: 'church', name: 'Basement Spades Night', bed: 'basement', surface: 'laminate', reverb: 'tight', crowd: 'low', music: { lean: ['glad-to-be-stuck-inside', 'slowly', 'snow-drift'] }, events: [] },
+  { venue: 'church', name: 'Basement Spades Night', bed: 'basement', surface: 'laminate', reverb: 'tight', crowd: 'low', music: { pin: ['amazing-grace', 'still-dreams', 'with-regards', 'jesu-joy-of-mans-desiring', 'thaxted'], lean: [] }, events: [] },
   { venue: 'rooftop', name: 'Rooftop', bed: 'rooftop', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['nighttime-stroll', 'late-at-night', 'city'] }, events: [] },
   { venue: 'speakeasy', name: 'Speakeasy Lounge', bed: 'jazz', surface: 'felt', reverb: 'lively', crowd: 'low', music: { pin: ['spy-glass', 'night-on-the-docks-sax', 'dances-and-dames', 'covert-affair'], lean: [] }, events: [] },
   { venue: 'vegas', name: 'Vegas High Roller', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena', music: { lean: ['coins', 'final-level', 'pyro-flow'] }, events: [] },
