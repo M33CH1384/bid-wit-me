@@ -42,6 +42,21 @@
  *    behind the plate and never paints over name, avatar, or stats.
  *  - SMOLDER is the same shader with the flame body switched off by
  *    its params (streakFire.ts SMOLDER_PARAMS): embers + low glow only.
+ *  - EXTINGUISH (owner, 2026-11-01): when another seat breaks a
+ *    rendered streak, the plate's fire is PUT OUT, not just removed —
+ *    extinguish(strength, flamePx) starts a one-shot puff on this
+ *    same canvas: a white steam flash rolling into a gray smoke cloud
+ *    that rises, expands and dissipates over EXTINGUISH_MS, volume
+ *    scaled by the tier that died. The puff is a layer of THIS engine
+ *    on both renderer paths (a billow field in the shader; seeded
+ *    gradient blobs in the 2D fallback), composited like the smoke —
+ *    it does not glow — and clipped out of the plate rect by the same
+ *    block that clips the flames. Its vertical scale is the DIED
+ *    fire's own flame height, passed in explicitly: by the time the
+ *    puff runs, the live params are already the tier-0 row (whose
+ *    flame height is 0), so the burst cannot derive its scale from
+ *    them. Calm mode never puffs: the static frame is the whole story,
+ *    exactly as before the moment existed.
  *
  * Fallback: if a WebGL context or shader compile is unavailable, a
  * canvas-2D renderer draws the same composition procedurally — an
@@ -64,7 +79,7 @@
  * anywhere in the file.
  */
 import {
-  blendFireParams, homeBreatheFactor, TIER_CROSSFADE_MS,
+  blendFireParams, EXTINGUISH_MS, homeBreatheFactor, TIER_CROSSFADE_MS,
   type FireTierParams,
 } from '../streakFire';
 
@@ -187,6 +202,19 @@ interface Renderer {
   destroy: () => void;
 }
 
+/** A live extinguish puff, read by the renderers each frame (the
+ *  effect owns the clock; age is seconds since the streak died). */
+export interface PuffState {
+  age: number;
+  /** burst volume 0..1 — streakFire.extinguishStrengthForTier */
+  strength: number;
+  /** the died fire's flame height in CSS px (the burst's vertical scale) */
+  flamePx: number;
+}
+
+/** The puff's full life in seconds (streakFire.EXTINGUISH_MS). */
+export const PUFF_DURATION_S = EXTINGUISH_MS / 1000;
+
 export class FireEffect {
   private canvas: HTMLCanvasElement;
   private opts: FireOptions;
@@ -200,6 +228,8 @@ export class FireEffect {
   private raf = 0;
   private last = 0;
   private elapsed = 0;
+  /** the live extinguish puff: elapsed-clock start + its volume/scale */
+  private puff: { start: number; strength: number; flamePx: number } | null = null;
   private ro: ResizeObserver | null = null;
   private destroyed = false;
 
@@ -220,8 +250,30 @@ export class FireEffect {
   }
 
   private buildRenderer(): Renderer | null {
-    return createGlRenderer(this.canvas, () => this.opts, () => this.rebuildRenderer())
-      ?? create2dRenderer(this.canvas, () => this.opts);
+    return createGlRenderer(this.canvas, () => this.opts, () => this.rebuildRenderer(), () => this.puffState())
+      ?? create2dRenderer(this.canvas, () => this.opts, () => this.puffState());
+  }
+
+  /**
+   * EXTINGUISH: start the put-out puff on this canvas. Called on the
+   * streak-death edge while the canvas is still mounted (the layer
+   * swaps the live params to the tier-0 row in the same commit, so
+   * the flames cross-fade down under the burst). No-op under calm —
+   * a static frame cannot carry a burst, and calm keeps the old
+   * silent death exactly.
+   */
+  extinguish(strength: number, flamePx: number) {
+    if (this.destroyed || this.opts.calm || !this.renderer) return;
+    this.puff = { start: this.elapsed, strength: clamp01(strength), flamePx: Math.max(1, flamePx) };
+    if (!this.raf) this.start();
+  }
+
+  /** The puff as the renderers read it this frame; self-clears when spent. */
+  private puffState(): PuffState | null {
+    if (!this.puff) return null;
+    const age = this.elapsed - this.puff.start;
+    if (age > PUFF_DURATION_S) { this.puff = null; return null; }
+    return { age: Math.max(0, age), strength: this.puff.strength, flamePx: this.puff.flamePx };
   }
 
   setParams(params: FireTierParams, opts?: Partial<FireOptions>) {
@@ -354,6 +406,9 @@ uniform float u_smoke;
 uniform float u_flick;
 uniform float u_ceil;
 uniform float u_shimmer;
+uniform float u_puff;
+uniform float u_puffAge;
+uniform float u_puffPx;
 
 float hash21(vec2 p) {
   p = fract(p * vec2(234.34, 435.345));
@@ -481,6 +536,36 @@ void main() {
     alpha = smokeA + alpha * (1.0 - smokeA);
   }
 
+  /* ---- extinguish puff: steam flash rolling into gray smoke ------
+   * One-shot (u_puffAge = seconds since the streak died, -1 = none).
+   * The field is sampled in a frame that RISES (by the died fire's own
+   * flame height) and EXPANDS as the burst ages, domain-warped so the
+   * cloud billows instead of sliding. White steam early — with a hot
+   * flash in the first ~0.2 s — gray smoke after; it never glows, so
+   * it is composited over, like the smoke above. The plate clip below
+   * cuts it out of the plate rect exactly like the flames. */
+  if (u_puff > 0.001 && u_puffAge >= 0.0) {
+    float pk = clamp(u_puffAge / 1.6, 0.0, 1.0);
+    float puffPx = max(u_puffPx, 1.0);
+    float ph = relY / puffPx;
+    float spanW = max(spanHW * (1.15 + 0.45 * u_puff), 1.0);
+    float puffSpan = smoothstep(1.3, 0.55, abs(tp.x - spanC) / spanW);
+    float rise = u_puffAge * puffPx * 1.15;
+    float grow = 0.72 + 0.55 * pk;
+    vec2 pp = vec2(tp.x * 0.016, (tp.y + rise) * 0.016) / grow + vec2(u_seed * 3.1, -u_puffAge * 0.30);
+    float billow = fbm(pp * 1.7 + vec2(0.0, -u_puffAge * 0.22));
+    float pf = fbm(pp + (billow - 0.5) * 1.4);
+    float top = min(mix(0.95, 2.5, pk) * (0.8 + 0.35 * u_puff), (u_baseY / puffPx) * 0.98);
+    float vmask = smoothstep(-0.18, 0.22, ph) * (1.0 - smoothstep(top * 0.5, top, ph));
+    float dens = smoothstep(0.40, 0.74, pf + (billow - 0.5) * 0.25);
+    float env = smoothstep(0.0, 0.07, u_puffAge) * pow(1.0 - pk, 1.35);
+    float puffA = u_puff * env * dens * vmask * puffSpan * 0.58;
+    vec3 puffCol = mix(vec3(0.96, 0.97, 0.98), vec3(0.52, 0.52, 0.55), smoothstep(0.05, 0.45, u_puffAge));
+    puffCol *= 1.0 + exp(-u_puffAge * 8.0) * 0.55;
+    col = puffCol * puffA + col * (1.0 - puffA);
+    alpha = puffA + alpha * (1.0 - puffA);
+  }
+
   /* ---- plate clip: NOTHING paints inside the plate rect (+2 px) -- */
   if (u_plate > 0.5) {
     vec2 q = tp - u_mask.xy;
@@ -506,6 +591,7 @@ function createGlRenderer(
   canvas: HTMLCanvasElement,
   getOpts: () => FireOptions,
   onRestore: () => void,
+  getPuff: () => PuffState | null,
 ): Renderer | null {
   let gl: WebGLRenderingContext | null = null;
   try {
@@ -550,7 +636,7 @@ function createGlRenderer(
     mask: U('u_mask'), plate: U('u_plate'), baseY: U('u_baseY'), flamePx: U('u_flamePx'),
     glow: U('u_glow'), dens: U('u_dens'), flameOn: U('u_flameOn'), ember: U('u_ember'),
     spark: U('u_spark'), smoke: U('u_smoke'), flick: U('u_flick'), ceil: U('u_ceil'),
-    shimmer: U('u_shimmer'),
+    shimmer: U('u_shimmer'), puff: U('u_puff'), puffAge: U('u_puffAge'), puffPx: U('u_puffPx'),
   };
 
   let bw = 0, bh = 0;
@@ -595,6 +681,10 @@ function createGlRenderer(
       g.uniform1f(u.flick, opts.mode === 'band' ? homeBreatheFactor(t * 1000) : 1);
       g.uniform1f(u.ceil, uni.ceil);
       g.uniform1f(u.shimmer, uni.shimmer);
+      const puff = getPuff();
+      g.uniform1f(u.puff, puff ? puff.strength : 0);
+      g.uniform1f(u.puffAge, puff ? puff.age : -1);
+      g.uniform1f(u.puffPx, puff ? puff.flamePx : 1);
       g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
     },
     destroy() {
@@ -615,7 +705,7 @@ function createGlRenderer(
  * as a vertical gradient, the base glow, hash-seeded ember points, and
  * the evenodd plate clip. No sprites, no atlas.
  */
-function create2dRenderer(canvas: HTMLCanvasElement, getOpts: () => FireOptions): Renderer | null {
+function create2dRenderer(canvas: HTMLCanvasElement, getOpts: () => FireOptions, getPuff: () => PuffState | null): Renderer | null {
   let ctx: CanvasRenderingContext2D | null = null;
   try { ctx = canvas.getContext('2d'); } catch { ctx = null; }
   if (!ctx) return null;
@@ -711,6 +801,34 @@ function create2dRenderer(canvas: HTMLCanvasElement, getOpts: () => FireOptions)
           c.fill();
         }
         c.globalAlpha = 1;
+        // extinguish puff: hash-seeded soft blobs that rise, swell and
+        // thin out over the burst's life — steam white early, gray
+        // after; source-over (smoke doesn't glow), inside the same
+        // evenodd plate clip as every other layer
+        const puff = getPuff();
+        if (puff && puff.strength > 0) {
+          const k = Math.min(1, Math.max(0, puff.age / PUFF_DURATION_S));
+          const env = Math.min(1, puff.age / 0.07) * Math.pow(1 - k, 1.35);
+          const cx = mask ? mask.x + mask.w / 2 : w / 2;
+          const spanW = (mask ? mask.w : w) * (0.62 + 0.38 * puff.strength) * (1 + 0.45 * k);
+          const ink = puff.age < 0.3 ? '238,242,244' : '148,150,156';
+          for (let i = 0; i < 14; i++) {
+            const s1 = hash2(i * 7 + 3, i * 13 + 1, seed + 31);
+            const s2 = hash2(i * 3 + 5, i * 17 + 2, seed + 47);
+            const bx = cx + (s1 - 0.5) * spanW;
+            const by = base - (0.12 + k * (0.85 + s2 * 0.75)) * puff.flamePx * 1.55;
+            const br = (9 + s2 * 17) * (0.45 + k * 1.5) * (0.65 + puff.strength * 0.5);
+            const a = puff.strength * env * (0.10 + s1 * 0.10);
+            if (a <= 0.003 || br <= 0) continue;
+            const gr = c.createRadialGradient(bx, by, 0, bx, by, br);
+            gr.addColorStop(0, `rgba(${ink},${a.toFixed(3)})`);
+            gr.addColorStop(1, `rgba(${ink},0)`);
+            c.fillStyle = gr;
+            c.beginPath();
+            c.arc(bx, by, br, 0, Math.PI * 2);
+            c.fill();
+          }
+        }
       } finally {
         c.restore();
       }

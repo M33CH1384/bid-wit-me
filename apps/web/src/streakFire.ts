@@ -238,6 +238,42 @@ export function trickFire(count: number): TrickFire {
   return { kind: 'fire', tier: 4, count: n };
 }
 
+/* ------------------------------------------------------- extinguish ---
+ * EXTINGUISH (owner, 2026-11-01): when a seat's rendered fire (T1+) is
+ * broken by another seat's trick win, the fire doesn't just vanish —
+ * it gets PUT OUT: a steam flash rolling into a gray smoke burst at
+ * the plate (fire/fireEngine.ts's puff layer) plus a recorded steam
+ * hiss (audio.ts 'fireOut'). Detection lives with the other animfx
+ * predicates (animfx/detect.ts `streakDeath`); the numbers live here
+ * with the rest of the fire's auditable rows.
+ *  - SMOLDER deaths stay silent: embers were never a fire to put out.
+ *  - Hand-end deaths stay silent: nobody extinguished anything, the
+ *    hand just ended (the detector only fires on an in-hand trick win).
+ *  - Calm / Reduce effects: no burst, no hiss — the fire dies exactly
+ *    as it did before this moment existed. */
+
+/** How long the put-out burst runs, ms (the engine's puff envelope is
+ *  fully spent by this mark; the layer holds the canvas a beat past it
+ *  so the unmount never clips a visible wisp). */
+export const EXTINGUISH_MS = 1600;
+
+/**
+ * Burst volume for the tier that died, 0..1: a T1 lick takes a small
+ * puff; a T4 wall earns the full put-out. Scales the burst's alpha,
+ * span and rise in the engine, on both renderer paths. Monotonic in
+ * tier by construction; tier 0 / smolder never reach here (the
+ * detector returns null for them) and read 0.
+ */
+export function extinguishStrengthForTier(tier: FireTier): number {
+  switch (tier) {
+    case 1: return 0.5;
+    case 2: return 0.68;
+    case 3: return 0.85;
+    case 4: return 1;
+    default: return 0;
+  }
+}
+
 /** The plate marker line: pre-fire reads as heating up, fire as ON FIRE. */
 export function trickFireLabel(count: number): string | null {
   const f = trickFire(count);

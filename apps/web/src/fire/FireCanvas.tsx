@@ -19,10 +19,15 @@
  * read as stamped, repeating tongues and is retired. This shell is
  * unchanged by the swap — same props, same DOM — so the Setup.tsx
  * home band and the AnimFxLayer.tsx plate mounts needed no edits.
+ *
+ * Extinguish (owner, 2026-11-01): the optional `puff` prop drives the
+ * engine's one-shot put-out burst (steam → smoke) on the death edge;
+ * the shell stays a shell — it only translates the prop into the
+ * engine call with the died fire's own measurements.
  */
 import { useEffect, useRef, type CSSProperties } from 'react';
-import type { FireTierParams } from '../streakFire';
-import { FireEffect, type FireRect } from './fireEngine';
+import { extinguishStrengthForTier, type FireTier, type FireTierParams } from '../streakFire';
+import { FireEffect, shaderUniformsFor, type FireRect } from './fireEngine';
 import './fire.css';
 
 export interface FireCanvasProps {
@@ -40,9 +45,16 @@ export interface FireCanvasProps {
   /** where the chip sits inside the box (plate anchors position it
    *  against the plate's corner; the band leaves it centered) */
   chipStyle?: CSSProperties;
+  /** EXTINGUISH (owner, 2026-11-01): a one-shot put-out burst on this
+   *  canvas — set (with a fresh nonce) on the commit where the streak
+   *  died, while `params` swaps to the tier-0 row so the flames
+   *  cross-fade down under the steam. Carries the DIED fire's tier
+   *  (burst volume) and its params (the burst's vertical scale is the
+   *  died flame's height — the live tier-0 row has none). */
+  puff?: { tier: FireTier; diedParams: FireTierParams; nonce: number } | null;
 }
 
-export default function FireCanvas({ params, mode, mask, calm, className, testId, label, labelTestId, chipStyle }: FireCanvasProps) {
+export default function FireCanvas({ params, mode, mask, calm, className, testId, label, labelTestId, chipStyle, puff }: FireCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fxRef = useRef<FireEffect | null>(null);
@@ -61,6 +73,19 @@ export default function FireCanvas({ params, mode, mask, calm, className, testId
   useEffect(() => {
     fxRef.current?.setParams(params, optsRef.current);
   }, [params, mode, mask, calm]);
+
+  // the extinguish edge: fire the burst once per nonce, on the engine
+  // instance the mount effect built (declared after it, so on a
+  // mount-with-puff commit the effect already exists)
+  const puffNonce = puff?.nonce ?? 0;
+  useEffect(() => {
+    if (!puff || puffNonce <= 0) return;
+    const host = hostRef.current;
+    const cssH = host?.clientHeight ?? 0;
+    const flamePx = shaderUniformsFor(puff.diedParams, optsRef.current.mode, cssH, optsRef.current.mask?.h ?? 0).flamePx;
+    fxRef.current?.extinguish(extinguishStrengthForTier(puff.tier), flamePx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [puffNonce]);
 
   return (
     <div ref={hostRef} className={`streak-fire ${mode}${calm ? ' calm' : ''}${className ? ` ${className}` : ''}`} data-testid={testId} aria-hidden="true">

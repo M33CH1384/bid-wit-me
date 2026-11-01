@@ -18,7 +18,10 @@
  *    stay, because they ARE the information;
  *  - sounds are left to the systems that already own them (joker rumble,
  *    cut cues, bag toast cue, collection sweeps, tornado) — this layer is
- *    silent except the ambience scheduler's own headlight pass (audio.ts).
+ *    silent except the ambience scheduler's own headlight pass (audio.ts)
+ *    and the streak-fire EXTINGUISH hiss (owner, 2026-11-01), which is
+ *    this layer's own moment: its smoke renders here too, on the fire's
+ *    own canvas, so the sound fires from the same edge that starts it.
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type Bid, type GameResult, type HandRecord, type Phase, type TableRules, type Trick } from '@spades/rules';
@@ -49,7 +52,7 @@ import {
   UPSET_GAP, bagBrinkSides, bagPenaltySides, bigJokerSeat, blindNilSeats, bostonSides,
   comebackSides, contractDeadSides, doubleMoonSides, heatSides, matchPointSides,
   mirrorBidSides, newlyEliminated, nineLivesSides, paybackColdPairs, shushSides,
-  silentAssassinSeats, textbookSides, trickStreak,
+  silentAssassinSeats, streakDeath, textbookSides, trickStreak,
   nilBustedSeats, nilLiveSeats, ratingGap, runClaimerSeat, saveInTrick,
   sealedNilSeats, seatsOfSide, setSides, sideIndexOf, spadePlayed, syncSides,
   trickWasCut, wheelsSides, wireSides,
@@ -63,7 +66,9 @@ import {
  * graph stays clean. */
 import { WireOverlay } from '../RecapFx';
 import FireCanvas from '../fire/FireCanvas';
-import { SMOLDER_PARAMS, TRICK_FIRE_TIERS, trickFire, trickFireLabel } from '../streakFire';
+import { shaderUniformsFor } from '../fire/fireEngine';
+import { EXTINGUISH_MS, SMOLDER_PARAMS, TRICK_FIRE_TIERS, trickFire, trickFireLabel, type FireTier } from '../streakFire';
+import { sound } from '../audio';
 import { TORNADO_LEVEL_NAMES, TornadoLadderTracker } from '../three/tornadoLevel';
 import './animfx.css';
 
@@ -335,6 +340,20 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
    * seat's plate (fire/FireCanvas), fed by the SAME detector the rim
    * used (trickStreak over the current hand's completed tricks). */
   const [fireFx, setFireFx] = useState<{ seat: number; count: number; spot: SeatSpot } | null>(null);
+  /* EXTINGUISH (owner, 2026-11-01): the put-out moment for a streak fire
+   * broken by another seat's trick win — while it runs, the dead seat's
+   * plate-fire canvas stays mounted at the tier-0 row (flames fading
+   * under the engine's steam/smoke burst) and the hiss has fired. */
+  const [puffFx, setPuffFx] = useState<{ seat: number; count: number; tier: FireTier; spot: SeatSpot; nonce: number } | null>(null);
+  const puffNonceRef = useRef(0);
+  /* the previous layout pass's trick snapshot, for the streak-death
+   * edge — re-based on EVERY pass, so a hand change, a phase exit or a
+   * resync silently re-arms it and only a live in-hand trick win can
+   * ever trip it */
+  const prevFxRunRef = useRef<{ hand: number; tricks: Trick[] } | null>(null);
+  /* deaths already celebrated, by hand:tricksLength:seat — repeat
+   * renders (resizes, ticks) re-run the pass but never re-fire one */
+  const deathKeyRef = useRef<string | null>(null);
   const [cells, setCells] = useState<CellFx[]>([]);
   /* wave B §C state: the persistent NIL seal marks (Nil, Sealed leaves a
    * small seal at the plate for the rest of the hand), the Mirror Bids
@@ -1069,6 +1088,42 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
       ? (measure([ts.seat]).map((spot) => ({ seat: ts.seat, count: ts.count, spot })))[0] ?? null
       : null;
     setFireFx((prev) => (JSON.stringify(prev) === JSON.stringify(nf) ? prev : nf));
+    /* EXTINGUISH (owner, 2026-11-01): the put-out moment, evaluated
+     * HERE — in the same pass that retires the fire — so the puff state
+     * lands in the same commit and the plate-fire canvas never
+     * unmounts between the last flame frame and the first steam frame
+     * (the render below keeps the div alive on fireFx OR puffFx, keyed
+     * by seat: one canvas, params swapped to the tier-0 row, flames
+     * cross-fading down under the burst). The pure detector
+     * (detect.streakDeath) only ever sees consecutive same-hand,
+     * still-playing snapshot pairs from prevFxRunRef: a fire that dies
+     * because the hand ENDED gets no moment (the hand-end flow owns
+     * that beat — nobody extinguished anything), and neither does a
+     * SMOLDER (embers were never a fire to put out). Calm keeps the
+     * old silent death — no burst, no hiss. */
+    const prevFxRun = prevFxRunRef.current;
+    if (prevFxRun && prevFxRun.hand === st.handNo && st.phase === 'playing' && !reduced) {
+      const death = streakDeath(prevFxRun.tricks, st.tricks);
+      if (death) {
+        const key = `${st.handNo}:${prevFxRun.tricks.length}:${death.seat}`;
+        if (deathKeyRef.current !== key) {
+          deathKeyRef.current = key;
+          const spot = (fireFx && fireFx.seat === death.seat ? fireFx.spot : null) ?? measure([death.seat])[0] ?? null;
+          if (spot) {
+            const nonce = ++puffNonceRef.current;
+            setPuffFx({ seat: death.seat, count: death.count, tier: death.tier, spot, nonce });
+            sound.play('fireOut');
+            later(() => setPuffFx((cur) => (cur && cur.nonce === nonce ? null : cur)), EXTINGUISH_MS + 120);
+          }
+        }
+      }
+    }
+    prevFxRunRef.current = { hand: st.handNo, tricks: st.tricks };
+    // a running puff stays glued to its plate across resizes/rotations
+    if (puffFx) {
+      const m = measure([puffFx.seat])[0];
+      if (m) setPuffFx((cur) => (cur && JSON.stringify(cur.spot) === JSON.stringify(m) ? cur : cur ? { ...cur, spot: m } : cur));
+    }
     const heat = heatSides(st.history);
     const brink = st.result ? [] : bagBrinkSides(st.bags);
     const nc: CellFx[] = [...new Set([...heat, ...brink])].flatMap((side) => {
@@ -1388,9 +1443,14 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
             {s.sx !== null && <div className="animfx-moonedge" style={{ left: s.sx - 34, top: (s.sy ?? 0) - 48, width: 68, height: 96 }} />}
           </div>
         ))}
-        {fireFx && (() => {
-          const f = trickFire(fireFx.count);
-          const s = fireFx.spot;
+        {(fireFx || puffFx) && (() => {
+          // a live fire supersedes a running puff at any seat (the
+          // single-canvas cap); real trick cadence makes that a
+          // state-jump corner only — a new fire needs 2+ fresh tricks
+          const live = fireFx;
+          const disp = live ?? puffFx!;
+          const f = trickFire(disp.count);
+          const s = disp.spot;
           const padX = 12;
           const padB = 12;
           // Step-up (2026-10-30): the procedural fire CASTS light past
@@ -1402,18 +1462,26 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
           // the plate: mask.x absorbs the extra left margin.
           const glowPadX = 18;
           const glowPadB = 16;
-          const rise = f.kind === 'smolder' ? 22 : 38 + f.tier * 12;
+          // a puff gets extra headroom: its cloud climbs ~2.5x the died
+          // flame's height, well past the flame's own rise — the plate
+          // mask stays pinned to the plate by the position math below
+          // (mask.y absorbs the taller rise), only the canvas grows
+          const puffHeadroom = !live && puffFx
+            ? Math.round(shaderUniformsFor(TRICK_FIRE_TIERS[puffFx.tier], 'plate', 0, s.h).flamePx * 0.75)
+            : 0;
+          const rise = (f.kind === 'smolder' ? 22 : 38 + f.tier * 12) + puffHeadroom;
           return (
             <div key={`fr${s.seat}`} className="animfx-platefire" style={{ left: s.x - s.w / 2 - padX - glowPadX, top: s.y - s.h / 2 - rise, width: s.w + (padX + glowPadX) * 2, height: s.h + rise + padB + glowPadB }}>
               <FireCanvas
                 mode="plate"
-                testId={f.kind === 'fire' ? 'animfx-firering' : 'animfx-smolder'}
-                params={f.kind === 'smolder' ? SMOLDER_PARAMS : TRICK_FIRE_TIERS[f.tier]}
+                testId={live ? (f.kind === 'fire' ? 'animfx-firering' : 'animfx-smolder') : 'animfx-extinguish'}
+                params={live ? (f.kind === 'smolder' ? SMOLDER_PARAMS : TRICK_FIRE_TIERS[f.tier]) : TRICK_FIRE_TIERS[0]}
                 mask={{ x: padX + glowPadX, y: rise, w: s.w, h: s.h }}
                 calm={reduced}
-                label={trickFireLabel(fireFx.count)}
+                label={live ? trickFireLabel(disp.count) : null}
                 labelTestId="animfx-firelabel"
                 chipStyle={{ top: rise - 9, right: padX + glowPadX - 6 }}
+                puff={!live && puffFx ? { tier: puffFx.tier, diedParams: TRICK_FIRE_TIERS[puffFx.tier], nonce: puffFx.nonce } : null}
               />
             </div>
           );

@@ -20,13 +20,13 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { trickStreak } from '../src/animfx/detect';
 import {
-  HOME_BREATHE_PERIOD_MS, HOME_FIRE_TIERS, SMOLDER_PARAMS, TRICK_FIRE_TIERS,
+  EXTINGUISH_MS, HOME_BREATHE_PERIOD_MS, HOME_FIRE_TIERS, SMOLDER_PARAMS, TRICK_FIRE_TIERS,
   TIER_CROSSFADE_MS,
-  blendFireParams,
+  blendFireParams, extinguishStrengthForTier,
   homeBreatheFactor, homeFireLabel, homeFireTier, homeStreakFromProfile, homeStreakFromTotals,
   trickFire, trickFireLabel, type FireTier, type FireTierParams,
 } from '../src/streakFire';
-import { fireSeed, fireStartPhase, shaderUniformsFor } from '../src/fire/fireEngine';
+import { fireSeed, fireStartPhase, PUFF_DURATION_S, shaderUniformsFor } from '../src/fire/fireEngine';
 
 const wt = (winner: number | null) => ({ leader: 0, plays: [], winner }) as never;
 const run = (winners: (number | null)[]) => trickStreak(winners.map(wt));
@@ -280,6 +280,55 @@ describe('procedural shader renderer (2026-10-30 step-up)', () => {
     }
     expect(homeBreatheFactor(1000)).toBeCloseTo(1.0, 9); // crest
     expect(homeBreatheFactor(3000)).toBeCloseTo(0.92, 9); // trough
+  });
+});
+
+describe('extinguish — the put-out moment (owner, 2026-11-01)', () => {
+  it('burst volume scales with the tier that died, monotonic, T4 the full put-out', () => {
+    expect(extinguishStrengthForTier(0)).toBe(0);
+    let prev = 0;
+    for (const t of [1, 2, 3, 4] as FireTier[]) {
+      const s = extinguishStrengthForTier(t);
+      expect(s).toBeGreaterThan(prev);
+      expect(s).toBeGreaterThan(0);
+      expect(s).toBeLessThanOrEqual(1);
+      prev = s;
+    }
+    expect(extinguishStrengthForTier(4)).toBe(1);
+  });
+
+  it('the burst life is one shared constant: logic (ms) and engine (s) agree', () => {
+    expect(PUFF_DURATION_S).toBe(EXTINGUISH_MS / 1000);
+    expect(EXTINGUISH_MS).toBeGreaterThanOrEqual(1200);
+    expect(EXTINGUISH_MS).toBeLessThanOrEqual(1800);
+  });
+
+  it('the puff is a layer of the fire engine itself — both renderer paths, plate-clipped', () => {
+    const src = readFileSync(new URL('../src/fire/fireEngine.ts', import.meta.url), 'utf8');
+    expect(src).toContain('extinguish('); // FireEffect's one-shot entry
+    expect(src).toContain('u_puff'); // GL uniforms: strength
+    expect(src).toContain('u_puffAge'); // …age
+    expect(src).toContain('u_puffPx'); // …the died flame's own height
+    // the puff block sits BEFORE the plate clip in the shader, so the
+    // clip cuts the smoke out of the plate rect exactly like the flames
+    expect(src.indexOf('extinguish puff')).toBeGreaterThan(-1);
+    expect(src.indexOf('extinguish puff')).toBeLessThan(src.indexOf('plate clip'));
+    // the 2D fallback draws its blobs inside the evenodd clip too
+    expect(src).toContain('hash2(i * 7 + 3, i * 13 + 1, seed + 31)');
+    // calm never puffs: the entry is gated on the calm flag
+    expect(src).toContain('this.opts.calm');
+  });
+
+  it('the hiss is a registered recorded one-shot, staged in the event-SFX family', () => {
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain("'fireOut'");
+    expect(audio).toContain("fireOut: ['fire-out']"); // FILES registry → SFX_COUNT derives
+    expect(audio).toContain("case 'fireOut': return this.sample('fireOut'");
+    expect(existsSync(new URL('../public/assets/sfx/fire-out.mp3', import.meta.url))).toBe(true);
+    const credits = readFileSync(new URL('../../../CREDITS.md', import.meta.url), 'utf8');
+    expect(credits).toContain('fire-out.mp3');
+    expect(credits).toContain('SSE_Library_WATER');
+    expect(credits).toContain('SSE_Library_AIR');
   });
 });
 

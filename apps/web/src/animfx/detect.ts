@@ -12,6 +12,7 @@ import {
   trickWinner, tricksStillRemaining,
 } from '@spades/rules';
 import { wheelsMade } from '../landCue';
+import { trickFire, type FireTier } from '../streakFire';
 
 /* ------------------------------------------------------------ thresholds */
 
@@ -296,6 +297,36 @@ export function trickStreak(tricks: readonly Trick[]): { seat: number; count: nu
 export function fireSeat(st: Pick<GameState, 'tricks'>): number | null {
   const s = trickStreak(st.tricks);
   return s !== null && s.count >= FIRE_STREAK ? s.seat : null;
+}
+
+/* --------------------------------------------------------------------------
+ * 5b. EXTINGUISHED — a seat's rendered streak fire (T1+) BROKEN by another
+ * seat's trick win (owner, 2026-11-01: the put-out moment — steam, smoke,
+ * hiss). Compares the trailing runs of two consecutive in-hand snapshots:
+ * the previous run must have been real flames (trickFire kind 'fire' —
+ * a SMOLDER guttering out is not a fire being put out), the tricks array
+ * must have GROWN (a trick actually completed between the snapshots —
+ * state corrections and rewinds are not deaths), and the trailing run
+ * must no longer belong to that seat at its old count or better.
+ * Hand-end deaths never reach here as a pair: the layer only feeds
+ * same-hand, still-playing transitions, so a fire that dies because the
+ * hand ended (or the view resynced) produces no moment — the hand-end
+ * flow owns that beat, and nobody extinguished anything.
+ * ------------------------------------------------------------------------ */
+export interface StreakDeath { seat: number; tier: FireTier; count: number }
+
+export function streakDeath(
+  prevTricks: readonly Trick[],
+  nextTricks: readonly Trick[],
+): StreakDeath | null {
+  if (nextTricks.length <= prevTricks.length) return null;
+  const prev = trickStreak(prevTricks);
+  if (!prev) return null;
+  const fire = trickFire(prev.count);
+  if (fire.kind !== 'fire') return null;
+  const next = trickStreak(nextTricks);
+  if (next && next.seat === prev.seat && next.count >= prev.count) return null;
+  return { seat: prev.seat, tier: fire.tier, count: prev.count };
 }
 
 /* --------------------------------------------------------------------------

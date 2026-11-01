@@ -56,11 +56,15 @@ export type Sfx =
   // CREDITS.md), never synthesized: a deep body-fall-on-wood thump under a trump
   // deuce's landing, and a metallic sword strike layered over a trump steal.
   | 'deuceThump' | 'trumpCut'
+  // Extinguish (owner 2026-11-01): a RECORDED steam put-out (SSE Library, CC0 —
+  // CREDITS.md) — an extinguisher-blast snap over a large steam burst — played
+  // once when another seat breaks a rendered streak fire (animfx streakDeath).
+  | 'fireOut'
   // the white sheet unrolling over a scorecard: soft fabric rustle (synthesized, no sample)
   | 'cloth';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, mega: 4400, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, trumpCut: 700, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, mega: 4400, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, trumpCut: 700, fireOut: 900, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean;
   /** Chat notification sounds (DM chime / global-chat blip). Absent = on. */ chatSounds?: boolean;
@@ -413,6 +417,10 @@ const FILES: Record<string, string[]> = {
   // Deuce Drop / Cut one-shots (SSE Library recordings, CREDITS.md): the deuce's
   // deep thump and the steal's metallic strike. Same fetch/decode path.
   deuceThump: ['deuce-thump'], trumpCut: ['trump-cut'],
+  // Extinguish one-shot (SSE Library recordings, CREDITS.md): the steam
+  // put-out hiss. Same fetch/decode path, so SFX_COUNT (the watchdog's
+  // readiness bar, derived from this map) counts it automatically.
+  fireOut: ['fire-out'],
 };
 /** Total one-shot SFX buffers a complete load() decodes (the watchdog's readiness bar). */
 const SFX_COUNT = Object.values(FILES).reduce((n, a) => n + a.length, 0);
@@ -562,23 +570,6 @@ const CTT_EVENT_GAIN = 2.95;
  *  below the material's own step noise, p99 0.097). */
 const CTT_BED_LEAD_S = 1105 / 44100;
 const CTT_BED_SECONDS = 64;
-/** Every recorded venue's ambience-cache footprint: the bed's cache key
- *  plus every event URL the venue lazy-loads. The engine binds its decode
- *  cache to the CURRENT venue (bindAmbienceToVenue, crash-2 lane
- *  2026-11-01): five recorded 64 s beds decode to ~23–25 MB each and the
- *  event one-shots add ~15–25 MB across venues, and the cache used to
- *  keep ALL of it for the life of the context — up to ~135–150 MB of
- *  decoded audio accumulating in exactly the table-hopping pattern that
- *  feeds iOS process death. Synthesized beds (mansion, basement, rooftop,
- *  casino, beach, yacht, rec, porch) decode nothing and map to no entry:
- *  switching to one evicts every recorded buffer. */
-const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readonly string[] }>> = {
-  street: { bedKey: 'pjs-bed', urls: [PJS_BED_URL, ...Object.values(PJS_EVENT_URLS).flat()] },
-  jazz: { bedKey: 'spk-bed', urls: [SPK_BED_URL, ...Object.values(SPK_EVENT_URLS).flat()] },
-  barbershop: { bedKey: 'brb-bed', urls: [BRB_BED_URL, ...Object.values(BRB_EVENT_URLS).flat()] },
-  kitchen: { bedKey: 'gma-bed', urls: [GMA_BED_URL, ...Object.values(GMA_EVENT_URLS).flat()] },
-  cookout: { bedKey: 'ctt-bed', urls: [CTT_BED_URL, ...Object.values(CTT_EVENT_URLS).flat()] },
-};
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
  *  when it is already the content length (a gapless-aware decoder) or too short. */
@@ -606,10 +597,6 @@ class Engine {
    *  too, so a rebuild mid-decode never hands the new bed a dead promise. */
   private ambCache: { ctx: Ctx; map: Map<string, AudioBuffer> } | null = null;
   private ambLoading = new Map<string, { ctx: Ctx; p: Promise<AudioBuffer | null> }>();
-  /** The venue bed the ambience cache is currently bound to (see
-   *  bindAmbienceToVenue): only that venue's decoded bed + events are
-   *  retained; a venue switch evicts the previous venue's buffers. */
-  private ambVenue: VenueBed | null = null;
   /** Live spray-transition hiss (looping source + its gain) while a cover runs. */
   private sprayNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   /** Noise the shot, sheet, and tornado build on first play. Keyed by duration in milliseconds. */
@@ -1936,6 +1923,11 @@ class Engine {
       // are sample-identical (kept small — pitch is the thump's weight).
       case 'deuceThump': return this.sample('deuceThump', t, 0.95 * g, 0.97 + Math.random() * 0.05, undefined, opts.seat, opts.playerCount);
       case 'trumpCut': return this.sample('trumpCut', t, 0.8 * g, 0.98 + Math.random() * 0.05, undefined, opts.seat, opts.playerCount);
+      // Extinguish: the steam put-out, centred (the animfx layer cannot
+      // ground a seat direction for it) and staged just under the thump —
+      // a hiss should read as an event, not an explosion. A whisper of
+      // rate jitter so no two put-outs are sample-identical.
+      case 'fireOut': return this.sample('fireOut', t, 0.85 * g, 0.98 + Math.random() * 0.04);
       case 'tap': return this.sample('tap', t, 0.5 * g, 1.1);
       case 'flip': this.sample('deal', t, 0.32 * g, 1.55); this.sample('deal', t + 0.07, 0.22 * g, 1.75); return this.whoosh(t, 0.06 * g);
       case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05, undefined, opts.seat, opts.playerCount); return this.whoosh(t, 0.18 * g);
@@ -3039,7 +3031,6 @@ class Engine {
       window.setTimeout(() => nodes.forEach((n) => n.stop()), 1600);
     }
     this.venuePlaying = want;
-    if (want !== 'none') this.bindAmbienceToVenue(want);
     if (typeof window !== 'undefined' && want !== 'none') (window as unknown as { __bwmRoomPlaying?: unknown }).__bwmRoomPlaying = { bed: want, at: performance.now() };
     if (want === 'none' || !this.ctx || !this.venueBus) return;
     const c = this.ctx; const bus = this.venueBus;
@@ -3093,35 +3084,6 @@ class Engine {
     const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + Math.min(0.01, dur / 3)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(f).connect(g).connect(dest ?? this.venueBus!); src.start(t); src.stop(t + dur + 0.05);
   }
-  /** Bind the ambience decode cache to a venue (crash-2 lane, 2026-11-01):
-   *  on a venue switch, every decoded buffer that does not belong to the
-   *  incoming venue is dropped — the previous venue's 64 s bed and its
-   *  event one-shots stop accumulating across a hop-heavy session (the
-   *  cache's ceiling falls from ~135–150 MB across five venues to one
-   *  venue's ~25–30 MB). Returning to a venue re-fetches from the HTTP
-   *  cache and re-decodes on the ordinary first-visit path — behind the
-   *  loader gate at table entry, never mid-bed. A load from the old
-   *  venue that resolves after the switch returns its buffer to its
-   *  (already superseded) starter but is never cached — loadAmbience
-   *  stamps the binding it started under — so the map holds only the
-   *  current venue's set at all times. The watchdog is untouched: the
-   *  map stays keyed to the live context exactly as before, so a
-   *  rebuild still invalidates it wholesale. */
-  private bindAmbienceToVenue(bed: VenueBed): void {
-    const prev = this.ambVenue;
-    this.ambVenue = bed;
-    if (prev === bed) return;
-    if (!this.ambCache || this.ambCache.ctx !== this.ctx) return;
-    const rec = RECORDED_AMBIENCE[bed];
-    const keep = new Set<string>(rec ? [rec.bedKey, ...rec.urls] : []);
-    for (const k of [...this.ambCache.map.keys()]) if (!keep.has(k)) this.ambCache.map.delete(k);
-  }
-
-  /** Ambience-cache keys currently held for the live context (checks). */
-  ambienceCacheKeys(): string[] {
-    return this.ambCache && this.ambCache.ctx === this.ctx ? [...this.ambCache.map.keys()] : [];
-  }
-
   /** Fetch + decode one recorded-ambience file into the ambience cache. A load that
    *  outlives its context (a heal rebuilt it mid-flight) caches nothing and reports
    *  null — the next bed build retries from the HTTP cache. */
@@ -3134,7 +3096,6 @@ class Engine {
     if (hit) return Promise.resolve(hit);
     const pending = this.ambLoading.get(key);
     if (pending && pending.ctx === c) return pending.p;
-    const venue = this.ambVenue;
     const entry: { ctx: Ctx; p: Promise<AudioBuffer | null> } = { ctx: c, p: Promise.resolve(null) };
     entry.p = (async (): Promise<AudioBuffer | null> => {
       try {
@@ -3142,11 +3103,7 @@ class Engine {
         if (!res.ok) return null;
         const buf = await decodeAudioBuffer(c, await res.arrayBuffer());
         if (this.ctx !== c) return null;
-        // Cache only under the venue binding the load STARTED in: a decode
-        // resolving after a venue switch still returns its buffer (the bed
-        // starters re-check the live venue before playing) but never
-        // re-enters the map — no stale tail from the previous venue.
-        if (this.ambVenue === venue) cache.set(key, buf);
+        cache.set(key, buf);
         return buf;
       } catch { return null; }
       finally { if (this.ambLoading.get(key) === entry) this.ambLoading.delete(key); }

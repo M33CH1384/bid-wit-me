@@ -12,7 +12,7 @@ import {
   comebackSides, fireSeat, handWinnerSide, heatSides,
   matchPointSides, newlyEliminated, nilBustedSeats, nilLiveSeats, photoFinish,
   ratingGap, runClaimerSeat, saveInTrick, sealedNilSeats, setSides,
-  spadePlayed, syncSides, trickStreak, trickWasCut, wheelsSides, winMargin,
+  spadePlayed, streakDeath, syncSides, trickStreak, trickWasCut, wheelsSides, winMargin,
   wireSides,
 } from '../src/animfx/detect';
 
@@ -228,6 +228,44 @@ describe('wave 3 — on fire + streak heat', () => {
     expect(heatSides([hand(90, 0), hand(10, 10), hand(50, 0), hand(70, 0)])).toEqual([]);
     expect(heatSides([hand(0, 90), hand(0, 60), hand(0, 50), hand(0, 20)])).toEqual([1]);
     expect(HEAT_STREAK).toBe(3);
+  });
+});
+
+describe('extinguished — a streak fire broken by another seat (owner, 2026-11-01)', () => {
+  const wt = (winner: number): Trick => ({ leader: 0, plays: [], winner });
+  it('a T1+ fire broken by another seat\'s trick win is a death, with the died tier', () => {
+    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(0)]))
+      .toEqual({ seat: 2, tier: 1, count: 3 });
+    expect(streakDeath([wt(1), wt(1), wt(1), wt(1)], [wt(1), wt(1), wt(1), wt(1), wt(3)]))
+      .toEqual({ seat: 1, tier: 2, count: 4 });
+    // a T4 wall (7 straight) broken by anyone
+    const run7 = Array.from({ length: 7 }, () => wt(3));
+    expect(streakDeath(run7, [...run7, wt(0)])).toEqual({ seat: 3, tier: 4, count: 7 });
+    // the breaker being the dead seat's PARTNER still extinguishes that seat's fire
+    expect(streakDeath([wt(0), wt(0), wt(0)], [wt(0), wt(0), wt(0), wt(2)]))
+      .toEqual({ seat: 0, tier: 1, count: 3 });
+  });
+  it('a SMOLDER guttering out is not a death — embers were never a fire', () => {
+    expect(streakDeath([wt(2), wt(2)], [wt(2), wt(2), wt(1)])).toBeNull();
+    expect(streakDeath([wt(2)], [wt(2), wt(1)])).toBeNull();
+    expect(streakDeath([], [wt(1)])).toBeNull();
+  });
+  it('a run that grows or continues is not a death', () => {
+    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(2)])).toBeNull();
+    // a multi-trick jump that ends with the same seat still running: alive
+    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(0), wt(2), wt(2), wt(2), wt(2)])).toBeNull();
+  });
+  it('no growth, no death: re-renders, corrections and hand-end resets stay silent', () => {
+    const run = [wt(2), wt(2), wt(2)];
+    expect(streakDeath(run, run)).toBeNull();
+    expect(streakDeath(run, [wt(2), wt(2)])).toBeNull(); // a rewind is not a kill
+    expect(streakDeath(run, [])).toBeNull(); // the next hand's empty tricks: hand-end, gated upstream too
+  });
+  it('a death inside a multi-trick jump still names the seat that died', () => {
+    // state jumped two tricks: seat 2's fire broke on the first, seat 0
+    // took the second too — the moment belongs to the fire that died
+    expect(streakDeath([wt(2), wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(2), wt(0), wt(0)]))
+      .toEqual({ seat: 2, tier: 2, count: 4 });
   });
 });
 

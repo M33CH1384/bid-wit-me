@@ -574,6 +574,61 @@ describe('wave 3 layer', () => {
     expect(Q('animfx-firering')).toBeNull();
   });
 
+  it('EXTINGUISH: a broken fire is PUT OUT on the same canvas — steam moment, chip gone (owner, 2026-11-01)', () => {
+    const wt = (winner: number) => ({
+      leader: 0, plays: [{ seat: winner, card: 'AS' }], winner,
+    }) as unknown as PlayerView['tricks'][number];
+    mount(view({ tricks: [wt(2), wt(2), wt(2)] }));
+    expect(Q('animfx-firering')).not.toBeNull();
+    const canvasBefore = document.querySelector('.animfx-platefire canvas');
+    expect(canvasBefore).not.toBeNull();
+    // seat 0 takes a trick: seat 2's fire is extinguished, not just removed
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0)] }));
+    expect(Q('animfx-firering')).toBeNull();
+    expect(Q('animfx-extinguish')).not.toBeNull();
+    // the ON FIRE chip does not ride the smoke — the fire is out
+    expect(Q('animfx-firelabel')).toBeNull();
+    // the canvas NEVER unmounted across the death: same DOM node, so the
+    // engine's burst starts on the fire's own surface with no gap frame
+    expect(document.querySelector('.animfx-platefire canvas')).toBe(canvasBefore);
+    // a re-render with no new trick never re-fires the moment
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0)] }));
+    expect(Q('animfx-extinguish')).not.toBeNull();
+  });
+
+  it('EXTINGUISH: a SMOLDER dying is silent — no burst for embers that never caught', () => {
+    const wt = (winner: number) => ({
+      leader: 0, plays: [{ seat: winner, card: 'AS' }], winner,
+    }) as unknown as PlayerView['tricks'][number];
+    mount(view({ tricks: [wt(2), wt(2)] }));
+    expect(Q('animfx-smolder')).not.toBeNull();
+    rerender(view({ tricks: [wt(2), wt(2), wt(1)] }));
+    expect(Q('animfx-smolder')).toBeNull();
+    expect(Q('animfx-extinguish')).toBeNull();
+  });
+
+  it('EXTINGUISH: a fire that dies with the HAND gets no moment — the hand-end flow owns that beat', () => {
+    const wt = (winner: number) => ({
+      leader: 0, plays: [{ seat: winner, card: 'AS' }], winner,
+    }) as unknown as PlayerView['tricks'][number];
+    mount(view({ tricks: [wt(2), wt(2), wt(2)] }));
+    expect(Q('animfx-firering')).not.toBeNull();
+    rerender(view({ handNo: 2, phase: 'bidding', tricks: [], tricksWon: [0, 0, 0, 0] }));
+    expect(Q('animfx-extinguish')).toBeNull();
+  });
+
+  it('EXTINGUISH: Reduce effects keeps the old silent death — no burst at all', () => {
+    fx.setReduce(true);
+    const wt = (winner: number) => ({
+      leader: 0, plays: [{ seat: winner, card: 'AS' }], winner,
+    }) as unknown as PlayerView['tricks'][number];
+    mount(view({ tricks: [wt(2), wt(2), wt(2)] }));
+    expect(Q('animfx-firering')).not.toBeNull();
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0)] }));
+    expect(Q('animfx-firering')).toBeNull();
+    expect(Q('animfx-extinguish')).toBeNull();
+  });
+
   it('STREAK HEAT + BAG BRINK: the scorebug cell carries both while they hold', () => {
     const hand = (handNo: number, p0: number, p1: number) => ({
       handNo, dealer: 0, bids: [4, 4, 4, 4], tricksWon: [4, 3, 3, 3],
