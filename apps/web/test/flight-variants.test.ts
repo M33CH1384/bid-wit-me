@@ -176,7 +176,7 @@ describe('the flick toss (owner 2026-10-30): quick, flat, snapping down', () => 
     expect(Math.abs(capped.curve!)).toBeLessThanOrEqual(Math.abs(flickFlightFor([2.5, 0])!.curve!) + 1e-9);
   });
 
-  it('is corner-first at touchdown, snaps down, and is at rest from t=0.78 — no skating (owner 2026-10-31)', () => {
+  it('is corner-first at touchdown, snaps down, then a short settle skid — no skating (owner 2026-11-01)', () => {
     expect(impactFraction('flick')).toBe(0.55);
     const flick = flickFlightFor([1.8, -0.6])!;
     for (const seat of SEATS) {
@@ -185,25 +185,41 @@ describe('the flick toss (owner 2026-10-30): quick, flat, snapping down', () => 
       const tq = new Quaternion(...to.q);
       // Corner-first: at touchdown the leading edge is pitched well down.
       // (The 2026-10-30 flick landed flat at t=0.55 and skated 8-45% of the
-      // trip; the 2026-10-31 verdict called that slide fake.)
+      // trip; the 2026-10-31 toss stopped that but rested dead at t=0.78;
+      // the 2026-11-01 verdict wants the momentum to bleed off in a short
+      // flat skid instead.)
       const at55 = playFlightPose(from, to, 0.55, { motion: 'flick', arc: 0.35, variant: flick });
       expect(dipDeg(at55, from, to), `${seat} dip at touchdown`).toBeGreaterThan(10);
-      // Only a small bite of the trip remains at touchdown.
+      // A bite of the trip remains at touchdown (Euclidean — it includes the
+      // flick's lateral bend offset, which is still unwinding then).
       const total = Math.hypot(to.p[0] - from.p[0], to.p[2] - from.p[2]);
       const rest = Math.hypot(to.p[0] - at55.p[0], to.p[2] - at55.p[2]);
-      expect(rest / total, `${seat} bite share`).toBeLessThan(0.18);
-      // From the snap-down's end the card is exactly at rest: flat, at rest
-      // height, and no residual travel (the curve bend closes there too).
+      expect(rest / total, `${seat} bite share`).toBeLessThan(0.24);
+      // From the snap-down's end the card is flat and at rest height, but a
+      // short skid of travel remains — the flick's is the family's shortest.
       for (let i = 78; i <= 100; i++) {
         const pose = playFlightPose(from, to, i / 100, { motion: 'flick', arc: 0.35, variant: flick });
         expect(new Quaternion(...pose.q).angleTo(tq), `${seat} tilt @${i}`).toBeLessThan(0.01);
         expect(pose.p[1], `${seat} height @${i}`).toBeCloseTo(to.p[1], 6);
-        expect(Math.hypot(to.p[0] - pose.p[0], to.p[2] - pose.p[2]) / total, `${seat} travel left @${i}`).toBeLessThan(0.005);
       }
-      // covers ground fast: by touchdown most of the trip is done (a tap toss is nowhere near)
+      const at78 = playFlightPose(from, to, 0.78, { motion: 'flick', arc: 0.35, variant: flick });
+      const skidLeft = Math.hypot(to.p[0] - at78.p[0], to.p[2] - at78.p[2]);
+      expect(skidLeft, `${seat} skid left @0.78`).toBeGreaterThan(0.012);
+      expect(skidLeft, `${seat} skid left @0.78`).toBeLessThan(0.04);
+      // …bled off before the tween ends (a sub-perceptual creep at most by
+      // t=0.97), and the endpoint is exact.
+      const at97 = playFlightPose(from, to, 0.97, { motion: 'flick', arc: 0.35, variant: flick });
+      expect(Math.hypot(to.p[0] - at97.p[0], to.p[2] - at97.p[2]) / total, `${seat} travel left @0.97`).toBeLessThan(0.005);
+      const at1 = playFlightPose(from, to, 1, { motion: 'flick', arc: 0.35, variant: flick });
+      expect(Math.hypot(to.p[0] - at1.p[0], to.p[2] - at1.p[2]), `${seat} exact endpoint`).toBeLessThan(1e-9);
+      // covers ground fast: by touchdown most of the trip is done (a tap toss
+      // is nowhere near). Measured along the throw axis — the flick's bend is
+      // lateral and would flatter neither side honestly in Euclidean terms.
+      const ux = (to.p[0] - from.p[0]) / total, uz = (to.p[2] - from.p[2]) / total;
+      const alongLeft = (pose: Xform) => (to.p[0] - pose.p[0]) * ux + (to.p[2] - pose.p[2]) * uz;
       const tapAt55 = playFlightPose(from, to, 0.55, { motion: 'flight', arc: 0.35 });
-      const flickDone = 1 - rest / total;
-      const tapDone = 1 - Math.hypot(to.p[0] - tapAt55.p[0], to.p[2] - tapAt55.p[2]) / total;
+      const flickDone = 1 - alongLeft(at55) / total;
+      const tapDone = 1 - alongLeft(tapAt55) / total;
       expect(flickDone).toBeGreaterThan(tapDone + 0.05);
       // and it stays low: peak height never approaches the tap toss's hop.
       // (At the bottom seat the hand sits high and both flights only descend,

@@ -120,47 +120,88 @@ describe('played-card flight: the corner never stabs the felt (owner 2026-10-29)
     }
   });
 
-  it('glide: corner-first touchdown, a short flop, then rest — no flat skate (owner 2026-10-31)', () => {
+  it('glide: corner-first touchdown, a flop, then a flat settle skid — no skate, no dead stop (owner 2026-11-01)', () => {
     for (const seat of SEATS) {
       const from = launchFrom(seat);
       const to = trickSpot(seat, 4, 0, 0.3, undefined, { dx: 0.18, dz: 0.1, spin: 0.5 });
       const tq = new Quaternion(...to.q);
       // At touchdown the leading edge is pitched DOWN — the corner meets the
       // pile first. (The 2026-10-29 design landed flat from t=0.35 and skated;
-      // the 2026-10-31 verdict called that slide fake.)
+      // the 2026-10-31 toss fixed the skate but stopped dead at the flop's
+      // end; the 2026-11-01 verdict: the fall is right, the dead stop is not —
+      // a real card skids a few centimetres flat before it rests.)
       const at35 = playFlightPose(from, to, 0.35, { motion: 'glide', arc: 0.3 });
       expect(dipDeg(at35, from, to), `${seat} dip at touchdown`).toBeGreaterThan(8);
-      // Only a bite of the trip is left at touchdown (~10%, not the old 46%).
+      // A bite of the trip is left at touchdown — most of it is covered (not
+      // the old 46%), and materially more than the dead-stop design's ~10%:
+      // the flop and the skid need room to bleed the momentum.
       const total = Math.hypot(to.p[0] - from.p[0], to.p[2] - from.p[2]);
       const rest = Math.hypot(to.p[0] - at35.p[0], to.p[2] - at35.p[2]);
-      expect(rest / total, `${seat} bite share`).toBeLessThan(0.18);
-      // The bite is nearly spent halfway through the flop.
+      expect(rest / total, `${seat} bite share`).toBeGreaterThan(0.12);
+      expect(rest / total, `${seat} bite share`).toBeLessThan(0.32);
+      // The bite is mostly spent halfway through the flop.
       const at50 = playFlightPose(from, to, 0.5, { motion: 'glide', arc: 0.3 });
-      expect(Math.hypot(to.p[0] - at50.p[0], to.p[2] - at50.p[2]) / total, `${seat} bite left @0.5`).toBeLessThan(0.03);
-      // From the flop's end the card is exactly at rest: flat and at rest height.
+      expect(Math.hypot(to.p[0] - at50.p[0], to.p[2] - at50.p[2]) / total, `${seat} bite left @0.5`).toBeLessThan(0.16);
+      // From the flop's end the card is FLAT and at rest height — but NOT yet
+      // at rest in position: what remains is the settle skid, a few
+      // centimetres travelled flat along the throw direction.
       for (let i = 58; i <= 100; i++) {
         const pose = playFlightPose(from, to, i / 100, { motion: 'glide', arc: 0.3 });
         expect(new Quaternion(...pose.q).angleTo(tq), `${seat} tilt @${i}`).toBeLessThan(0.01);
         expect(pose.p[1], `${seat} height @${i}`).toBeCloseTo(to.p[1], 6);
       }
+      const at58 = playFlightPose(from, to, 0.58, { motion: 'glide', arc: 0.3 });
+      const skidLen = Math.hypot(to.p[0] - at58.p[0], to.p[2] - at58.p[2]);
+      expect(skidLen, `${seat} skid length`).toBeGreaterThan(0.03);
+      expect(skidLen, `${seat} skid length`).toBeLessThan(0.06);
+      // It really moves right after the flop (the dead stop is gone)…
+      const at66 = playFlightPose(from, to, 0.66, { motion: 'glide', arc: 0.3 });
+      expect(Math.hypot(at66.p[0] - at58.p[0], at66.p[2] - at58.p[2]), `${seat} early skid travel`).toBeGreaterThan(0.004);
+      // …along the throw direction, not sideways…
+      const ux = (to.p[0] - from.p[0]) / total, uz = (to.p[2] - from.p[2]) / total;
+      const at90 = playFlightPose(from, to, 0.9, { motion: 'glide', arc: 0.3 });
+      const cross = Math.abs((at90.p[0] - at58.p[0]) * uz - (at90.p[2] - at58.p[2]) * ux);
+      expect(cross, `${seat} skid cross-track`).toBeLessThan(0.004);
+      // …and it is fully at rest before the tween ends.
+      const at95 = playFlightPose(from, to, 0.95, { motion: 'glide', arc: 0.3 });
+      expect(Math.hypot(to.p[0] - at95.p[0], to.p[2] - at95.p[2]), `${seat} rest by 0.95`).toBeLessThan(1e-9);
     }
   });
 
-  it('flight: the card tips into its landing and slaps flat exactly at rest (owner 2026-10-31)', () => {
+  it('flight: tips in, slaps flat inside the tween, then a short settle skid (owner 2026-11-01)', () => {
     for (const seat of SEATS) {
       const from = launchFrom(seat);
       const to = trickSpot(seat, 4, 2, -0.4);
       const tq = new Quaternion(...to.q);
-      // Not a parallel descent: through the final approach the card is pitched
-      // into the landing (dip at t=0.9), and it is NOT flat yet at t=0.85.
-      const at90 = playFlightPose(from, to, 0.9, { motion: 'flight', arc: 0.35 });
-      expect(dipDeg(at90, from, to), `${seat} dip @0.9`).toBeGreaterThan(8);
+      // Not a parallel descent: the dip peaks late (t=0.82) and the card is
+      // NOT flat yet at t=0.85 — the slap is still unwinding.
+      const at82 = playFlightPose(from, to, 0.82, { motion: 'flight', arc: 0.35 });
+      expect(dipDeg(at82, from, to), `${seat} dip @0.82`).toBeGreaterThan(10);
       const at85 = playFlightPose(from, to, 0.85, { motion: 'flight', arc: 0.35 });
       expect(new Quaternion(...at85.q).angleTo(tq), `${seat} tilt @0.85`).toBeGreaterThan(0.05);
-      // Almost all the trip is done by then — the slap, not a skid, finishes it.
+      // Almost all the trip is done by then — the slap, not a skate, brings it in.
       const total = Math.hypot(to.p[0] - from.p[0], to.p[2] - from.p[2]);
       const tail = Math.hypot(to.p[0] - at85.p[0], to.p[2] - at85.p[2]);
-      expect(tail / total, `${seat} tail travel share`).toBeLessThan(0.06);
+      expect(tail / total, `${seat} tail travel share`).toBeLessThan(0.08);
+      // The slap completes inside the tween (flat from t=0.94)…
+      for (let i = 94; i <= 100; i++) {
+        const pose = playFlightPose(from, to, i / 100, { motion: 'flight', arc: 0.35 });
+        expect(new Quaternion(...pose.q).angleTo(tq), `${seat} tilt @${i}`).toBeLessThan(0.01);
+      }
+      // …and what travel remains after it is the settle skid: it is still
+      // moving just after the slap, covers a few centimetres flat, and is
+      // fully at rest before the tween ends (the 2026-10-31 design slapped
+      // flat exactly AT t=1 and stopped dead — the owner called the dead
+      // stop unrealistic on 2026-11-01).
+      const at90 = playFlightPose(from, to, 0.9, { motion: 'flight', arc: 0.35 });
+      const at96 = playFlightPose(from, to, 0.96, { motion: 'flight', arc: 0.35 });
+      expect(Math.hypot(at96.p[0] - at90.p[0], at96.p[2] - at90.p[2]), `${seat} skid travel after slap`).toBeGreaterThan(0.003);
+      const at94 = playFlightPose(from, to, 0.94, { motion: 'flight', arc: 0.35 });
+      const flatLeft = Math.hypot(to.p[0] - at94.p[0], to.p[2] - at94.p[2]);
+      expect(flatLeft, `${seat} flat-phase travel`).toBeGreaterThan(0.003);
+      expect(flatLeft, `${seat} flat-phase travel`).toBeLessThan(0.025);
+      const at98 = playFlightPose(from, to, 0.98, { motion: 'flight', arc: 0.35 });
+      expect(Math.hypot(to.p[0] - at98.p[0], to.p[2] - at98.p[2]), `${seat} rest by 0.98`).toBeLessThan(1e-9);
       // Flat exactly at t=1 (the endpoints suite pins the position exactly).
       const at1 = playFlightPose(from, to, 1, { motion: 'flight', arc: 0.35 });
       expect(new Quaternion(...at1.q).angleTo(tq), `${seat} tilt @1`).toBeLessThan(1e-6);
