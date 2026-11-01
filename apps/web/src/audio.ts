@@ -227,6 +227,17 @@ export const TRACKS: Track[] = [
   { file: 'that-feeling', title: 'That Feeling', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/that-feeling/', credit: '"That Feeling" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'a-little-faith', title: 'A Little Faith', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/a-little-faith/', credit: '"A Little Faith" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'will-make-you-happy', title: 'Will Make You Happy', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/will-make-you-happy/', credit: '"Will Make You Happy" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  // Backyard Cookout rotation (owner picks, 2026-11-01): hip-hop instrumentals
+  // for the yard — HoliznaCC0's bass-driven Make Funk and Breath (CC0, off his
+  // BASSIC album) and Ketsa's jazz-chop Take It Out (CC BY 4.0, via Free Music
+  // Archive) — that play ONLY at the Backyard Cookout (the venue pin is a
+  // closed list — see ROOM_STYLES in spatial.ts), exactly like the rotations
+  // above. The owner's first Cookout set (a soul/funk audition) was rejected
+  // for hip-hop; "Off Days" was auditioned as an optional fourth and not
+  // picked — it is not here.
+  { file: 'make-funk', title: 'Make Funk', artist: 'HoliznaCC0', license: 'CC0', source: 'https://freemusicarchive.org/music/holiznacc0/bassic/make-funk/' },
+  { file: 'take-it-out', title: 'Take It Out', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/take-it-out/', credit: '"Take It Out" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'breath', title: 'Breath', artist: 'HoliznaCC0', license: 'CC0', source: 'https://freemusicarchive.org/music/holiznacc0/bassic/breath-1/' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -522,6 +533,35 @@ const GMA_EVENT_GAIN = 3.59;
  *  material's own step noise, p99 0.071). */
 const GMA_BED_LEAD_S = 1105 / 44100;
 const GMA_BED_SECONDS = 64;
+/** The Cookout's recorded bed (owner sample pick, 2026-10-31): a 64.000 s
+ *  seamless loop of backyard recordings — REAL crickets chirping through
+ *  the whole loop at yard distance (freesfx.co.uk, attribution EULA —
+ *  CREDITS.md), a family picnic walla low-passed at 800 Hz so no words
+ *  survive and evening air (SSE Library, CC0), and the grill flame-broiling
+ *  across the yard over a charcoal crackle body. Four recorded yard
+ *  one-shots — ice shifting in the cooler, the metal screen door, kids
+ *  passing a yard over and a grill flare — ride over it as scheduled
+ *  events. */
+const CTT_BED_URL = '/audio/ambience/cookout-bed.mp3';
+const CTT_EVENT_URLS = {
+  ice: ['/audio/ambience/cookout-event-ice.mp3'],
+  screenDoor: ['/audio/ambience/cookout-event-screen-door.mp3'],
+  kids: ['/audio/ambience/cookout-event-kids.mp3'],
+  grillFlare: ['/audio/ambience/cookout-event-grill-flare.mp3'],
+} as const;
+/** Event staging gain, same construction as GMA_EVENT_GAIN: the bed file is
+ *  the −16 LUFS master; the event clips keep their premaster staging, so
+ *  they play through this gain to hold the approved demo balance (the
+ *  loudnorm raised the bed +9.41 dB over its premaster — measured RMS on
+ *  the shipped files). */
+const CTT_EVENT_GAIN = 2.95;
+/** The bed's MP3 loop trim, from the shipped file's own measured offsets:
+ *  1105 samples of encoder delay at 44.1 kHz ahead of exactly 64.000 s of
+ *  content — same encoder settings as The Pj's, Speakeasy, Barbershop and
+ *  Grandma's beds (the shipped file's measured seam step, 0.027, sits far
+ *  below the material's own step noise, p99 0.097). */
+const CTT_BED_LEAD_S = 1105 / 44100;
+const CTT_BED_SECONDS = 64;
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
  *  when it is already the content length (a gapless-aware decoder) or too short. */
@@ -3348,6 +3388,71 @@ class Engine {
     arm('chairScrape', 120, 240, true);
   }
 
+  private startCookoutBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('ctt-bed', CTT_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, CTT_BED_LEAD_S, CTT_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...CTT_EVENT_URLS.ice, ...CTT_EVENT_URLS.screenDoor, ...CTT_EVENT_URLS.kids, ...CTT_EVENT_URLS.grillFlare]) void this.loadAmbience(url, url);
+    this.scheduleCookoutEvents();
+  }
+
+  /** Yard life over the recorded bed: four independent randomized timers —
+   *  ice shifting in the cooler every 60–120 s, the metal screen door every
+   *  90–180 s, and kids passing a yard over and a grill flare every
+   *  120–240 s (owner densities, 2026-10-31) — sharing one busy gate, so an
+   *  event never talks over another (the street pattern). Each kind has a
+   *  single recording, so there is no variant to rotate; the spacing itself
+   *  is the variety. The timers live in venueTimers, so leaving the venue
+   *  silences the yard, and the first fire comes a half-interval in, once
+   *  the table settles. */
+  private scheduleCookoutEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the yard
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = CTT_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof CTT_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(CTT_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('ice', 60, 120, true);
+    arm('screenDoor', 90, 180, true);
+    arm('kids', 120, 240, true);
+    arm('grillFlare', 120, 240, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -3355,16 +3460,23 @@ class Engine {
     const room = (k: number) => this.vNoise('lowpass', 260, 0.5, 0.05 * k);
     const crackle = (min: number, max: number, k = 1) => this.vEvery(min, max, (t) => { for (let i = 0; i < 3; i++) this.vBurst(t + Math.random() * 0.25, 0.012, 'highpass', 2500, 0.05 * k); });
     switch (bed) {
-      case 'cookout':
-        murmur(0.8); this.vNoise('highpass', 3500, 0.5, 0.008, 0.4, 0.6); // grill sizzle
-        this.vEvery(1.5, 4, (t) => { for (let i = 0; i < 3; i++) this.tone(t + i * 0.07, 4600, 0.04, 'sine', 0.012, { dest: B }); }); // crickets
-        crackle(0.6, 1.8, 0.7);
-        // Story Audio Pass: the yard is alive — kids a yard over (bright little arcs of noise,
-        // never words), a screen door slapping now and then, the cooler lid and ice.
-        this.vEvery(16, 38, (t) => { const n = 2 + Math.floor(Math.random() * 3); for (let i = 0; i < n; i++) this.tone(t + i * (0.14 + Math.random() * 0.1), 1250 + Math.random() * 750, 0.1, 'sine', 0.006, { dest: B }); });
-        this.vEvery(34, 80, (t) => { this.tone(t, 300, 0.28, 'sine', 0.008, { glideTo: 620, dest: B }); this.vBurst(t + 0.3, 0.05, 'lowpass', 500, 0.05); }); // screen door creak + slap
-        this.vEvery(11, 26, (t) => { for (let i = 0; i < 3; i++) this.vBurst(t + Math.random() * 0.3, 0.02, 'bandpass', 3400 + Math.random() * 900, 0.02); }); // ice settling in the cooler
+      case 'cookout': {
+        // The Cookout's bed is a RECORDING now (owner sample pick,
+        // 2026-10-31), replacing the synthesized stand-in (murmur wash, a
+        // high-pass "grill sizzle" and 4600 Hz sine-tone "crickets", with
+        // synth kids / screen-door / ice one-shots baked into the graph):
+        // a seamless 64 s yard loop — real crickets at yard distance, a
+        // real picnic walla through a low-pass, the grill genuinely
+        // broiling across the yard over a charcoal body, and the yard is alive
+        // in the recording now: kids passing a yard over, the metal screen
+        // door slapping, ice shifting in the cooler and a grill flare —
+        // all riding over the bed as one-shot events on their own timers
+        // (startCookoutBed). Story Stop 4 plays here: its yard life is in
+        // the recording (its music stays the story theme — the stop's mood
+        // outranks the venue pin in story context, as at the Barbershop).
+        this.startCookoutBed();
         break;
+      }
       case 'mansion':
         room(0.8);
         this.vEvery(6, 9, (t) => { const ch = [[392, 493.88, 587.33], [349.23, 440, 523.25], [329.63, 415.3, 493.88]][Math.floor(Math.random() * 3)]!; ch.forEach((f, i) => this.tone(t + i * 0.35, f, 3.2, 'sine', 0.012, { attack: 0.6, dest: B })); }); // distant piano-ish

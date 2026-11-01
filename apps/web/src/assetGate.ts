@@ -211,6 +211,18 @@ export const BRB_BED_URL = '/audio/ambience/barbershop-bed.mp3';
  * lazily by the engine after the bed starts.
  */
 export const GMA_BED_URL = '/audio/ambience/grandmas-bed.mp3';
+/**
+ * The Cookout's recorded backyard bed (owner, 2026-10-31): gated exactly
+ * like the Barbershop's bed — the engine fetches it at every Backyard
+ * Cookout table (story Stop 4 plays the same 'cookout' bed in the same
+ * room), so at High the loader's promise covers it; at Low it streams in
+ * behind the loader as music always has. There is no seam exception:
+ * Stop 4 mounts the Backyard's own room and hears the same bed, so the
+ * unit applies at every story stop. The bed's event one-shots (ice,
+ * screen door, kids, grill flare) deliberately do NOT gate: optional
+ * life, loaded lazily by the engine after the bed starts.
+ */
+export const CTT_BED_URL = '/audio/ambience/cookout-bed.mp3';
 export function roomAudioUrls(
   venue: string,
   quality: 'high' | 'low',
@@ -221,6 +233,7 @@ export function roomAudioUrls(
   if (venue === 'speakeasy') return [{ label: 'ambience bed (Speakeasy lounge)', url: SPK_BED_URL }];
   if (venue === 'barbershop') return [{ label: 'ambience bed (Barbershop)', url: BRB_BED_URL }];
   if (venue === 'grandma' && storyStopId !== 'porch') return [{ label: 'ambience bed (Grandma\'s Kitchen)', url: GMA_BED_URL }];
+  if (venue === 'backyard') return [{ label: 'ambience bed (Backyard Cookout)', url: CTT_BED_URL }];
   return [];
 }
 

@@ -109,7 +109,7 @@ export interface RoomStyle { venue: string; name: string; bed: VenueBed; surface
  *  ambience bed, reverb character, table surface and crowd. Pool/picker enumerate exactly these. */
 export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'classic', name: 'Classic Studio', bed: 'none', surface: 'felt', reverb: 'studio', crowd: 'none', music: { lean: ['windows-down', 'chillin-hard', 'glad-to-be-stuck-inside'] }, events: [] },
-  { venue: 'backyard', name: 'Backyard Cookout', bed: 'cookout', surface: 'wood', reverb: 'dry-outdoor', crowd: 'party', music: { lean: ['sunset-drive', 'windows-down', 'coins'] }, events: [] },
+  { venue: 'backyard', name: 'Backyard Cookout', bed: 'cookout', surface: 'wood', reverb: 'dry-outdoor', crowd: 'party', music: { pin: ['make-funk', 'take-it-out', 'breath'], lean: [] }, events: [] },
   { venue: 'mansion', name: 'Mansion', bed: 'mansion', surface: 'glass', reverb: 'hall', crowd: 'low', music: { lean: ['slowly', 'memories-of-spring', 'chillin-hard'] }, events: [] },
   { venue: 'barbershop', name: 'Barbershop', bed: 'barbershop', surface: 'wood', reverb: 'lively', crowd: 'low', music: { pin: ['funk-trunk', 'soul-sync', 'c-funk'], lean: [] }, events: [] },
   { venue: 'church', name: 'Basement Spades Night', bed: 'basement', surface: 'laminate', reverb: 'tight', crowd: 'low', music: { lean: ['glad-to-be-stuck-inside', 'slowly', 'snow-drift'] }, events: [] },
