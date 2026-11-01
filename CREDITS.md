@@ -96,6 +96,7 @@ The spray-transition sounds are cuts of those two recordings, stereo 112 kbps MP
 | `overreach.mp3` | Overreach | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/overreach/ | CC BY 4.0 |
 | `no-quit.mp3` | No Quit | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/no-quit/ | CC BY 4.0 |
 | `busted-jazz.mp3` | Busted Jazz | HoliznaCC0 — https://freemusicarchive.org/music/holiznacc0/lo-fi-and-chill/busted-jazz/ | CC0 1.0 |
+| `my-deal.mp3` | My Deal | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/my-deal/ | CC BY 4.0 |
 | `spy-glass.mp3` | Spy Glass | Kevin MacLeod — https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500058 | CC BY 4.0 |
 | `night-on-the-docks-sax.mp3` | Night on the Docks - Sax | Kevin MacLeod — https://incompetech.com/music/royalty-free/mp3-royaltyfree/Night%20on%20the%20Docks%20-%20Sax.mp3 | CC BY 4.0 |
 | `dances-and-dames.mp3` | Dances and Dames | Kevin MacLeod — https://incompetech.com/music/royalty-free/mp3-royaltyfree/Dances%20and%20Dames.mp3 | CC BY 4.0 |
@@ -111,7 +112,7 @@ The spray-transition sounds are cuts of those two recordings, stereo 112 kbps MP
 | `breath.mp3` | Breath | HoliznaCC0 — https://freemusicarchive.org/music/holiznacc0/bassic/breath-1/ | CC0 1.0 |
 
 Holizna tracks are CC0 (no credit required); courtesy credit: Music by Holizna.
-The four tracks appended on 2026-10-30 (Soul Epic / Overreach / No Quit by Ketsa, CC BY 4.0, and Busted Jazz by HoliznaCC0, CC0 1.0) are The Pj's venue rotation: the venue is pinned to them and plays them at random (owner, 2026-10-30). Busted Jazz needs no credit (CC0); courtesy credit: "Busted Jazz" by HoliznaCC0, via Free Music Archive.
+The four tracks appended on 2026-10-30 (Soul Epic / Overreach / No Quit by Ketsa, CC BY 4.0, and Busted Jazz by HoliznaCC0, CC0 1.0) are The Pj's venue rotation: the venue is pinned to them and plays them at random (owner, 2026-10-30). Busted Jazz needs no credit (CC0); courtesy credit: "Busted Jazz" by HoliznaCC0, via Free Music Archive. A fifth track joined the rotation on 2026-11-01: "My Deal" by Ketsa (CC BY 4.0) — auditioned for the Church Basement and redirected by the owner to The Pj's ("Like this for the PJs, not necessarily the church"); the pin is now a closed rotation of five.
 The four tracks appended on 2026-10-30 (Spy Glass / Night on the Docks - Sax / Dances and Dames / Covert Affair, all by Kevin MacLeod, CC BY 4.0) are the Speakeasy Lounge venue rotation: the venue is pinned to them and plays them at random (owner, 2026-10-30). The same day the Speakeasy's synthesized bed was replaced by a recorded lounge bed (SSE Library layers, CC0 — see the ambience table) with Kevin MacLeod's "George Street Shuffle" (CC BY 4.0) baked in low-passed as the band through the wall; its attribution line follows below.
 The three tracks appended on 2026-10-30 (Funk Trunk / Soul Sync by Ketsa, CC BY 4.0, and C-Funk by Kevin MacLeod, CC BY 4.0) are the Barbershop venue rotation: the venue is pinned to them and plays them at random (owner, 2026-10-30). ("Soul Syrup" by Ketsa was auditioned as an optional fourth and not picked.) The same day the Barbershop's synthesized bed was replaced by a recorded shop bed — a real electric-clippers recording (freesfx.co.uk, attribution EULA — see the ambience table and Required Attributions) over SSE Library walla layers (CC0) — with seven recorded shop one-shots (trimmer, clippers power-down, scissors, laugh, door bell, broom, antique register) riding over it.
 
@@ -149,6 +150,8 @@ Slow Grind by Ron Gelinas Chillout Lounge | https://soundcloud.com/atmospheric-m
 "Overreach" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.
 
 "No Quit" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.
+
+"My Deal" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.
 
 "Spy Glass" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/
 

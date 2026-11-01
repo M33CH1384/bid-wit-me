@@ -119,7 +119,7 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'beach', name: 'Beach Cabana', bed: 'beach', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['sunset-drive', '2-hour-delay', 'pretty-little-lies'] }, events: [] },
   { venue: 'grandma', name: "Grandma's Kitchen", bed: 'kitchen', surface: 'laminate', reverb: 'tight', crowd: 'none', music: { pin: ['that-feeling', 'a-little-faith', 'will-make-you-happy'], lean: [] }, events: [] },
   { venue: 'yacht', name: 'Yacht Deck', bed: 'yacht', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['slowly', 'sunset-drive', '2-hour-delay'] }, events: [] },
-  { venue: 'blockAfterDark', name: "The Pj's", bed: 'street', surface: 'felt', reverb: 'dry-outdoor', crowd: 'low', music: { pin: ['soul-epic', 'overreach', 'no-quit', 'busted-jazz'], lean: [] }, events: ['driveby', 'headlights'] },
+  { venue: 'blockAfterDark', name: "The Pj's", bed: 'street', surface: 'felt', reverb: 'dry-outdoor', crowd: 'low', music: { pin: ['soul-epic', 'overreach', 'no-quit', 'busted-jazz', 'my-deal'], lean: [] }, events: ['driveby', 'headlights'] },
 ];
 export function styleForVenue(venue: string): RoomStyle | undefined { return ROOM_STYLES.find((r) => r.venue === venue); }
 

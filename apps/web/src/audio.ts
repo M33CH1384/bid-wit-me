@@ -242,6 +242,12 @@ export const TRACKS: Track[] = [
   { file: 'make-funk', title: 'Make Funk', artist: 'HoliznaCC0', license: 'CC0', source: 'https://freemusicarchive.org/music/holiznacc0/bassic/make-funk/' },
   { file: 'take-it-out', title: 'Take It Out', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/take-it-out/', credit: '"Take It Out" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'breath', title: 'Breath', artist: 'HoliznaCC0', license: 'CC0', source: 'https://freemusicarchive.org/music/holiznacc0/bassic/breath-1/' },
+  // The Pj's rotation grows to five (owner, 2026-11-01): Ketsa's "My Deal"
+  // (CC BY 4.0, via Free Music Archive) was auditioned for the Church Basement
+  // and the owner redirected it — "Like this for the PJs, not necessarily the
+  // church." It joins the blockAfterDark pin in spatial.ts; appended last so
+  // every existing track index keeps its meaning, exactly like the sets above.
+  { file: 'my-deal', title: 'My Deal', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/my-deal/', credit: '"My Deal" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
