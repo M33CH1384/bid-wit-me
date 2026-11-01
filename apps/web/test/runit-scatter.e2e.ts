@@ -47,17 +47,19 @@ async function run(b: Browser, opts: { tips: boolean; reduced?: boolean; shots?:
   const snd = () => p.evaluate(() => { const s = (window as unknown as { __bwmSound: { played: Record<string, number>; atTable: boolean } }).__bwmSound; return { play: s.played.play ?? 0, runSlam: s.played.runSlam ?? 0, atTable: s.atTable }; });
   const s0 = await snd();
   await p.getByTestId('run-it').click();
-  // zoom 1.5s, then the drop (≤1.1s + 0.42s flight), a beat, then the tornado at +1.75s
+  // zoom 1.5s, then the slam (raise + arc + strike over a 0.9s flight, strikes at ~0.83–0.95s),
+  // the disturbance settles, then the tornado at +1.75s
   await p.waitForTimeout(1500 + 250);
   if (opts.shots) await p.screenshot({ path: `${SHOTS}/runit-${opts.shots}-mid-drop-390.png` });
-  await p.waitForTimeout(750);
+  await p.waitForTimeout(900);
   if (opts.shots) await p.screenshot({ path: `${SHOTS}/runit-${opts.shots}-settled-390.png` });
   const rest = await p.evaluate(() => (window as unknown as { __bwmRest?: Record<string, { y: number; tilt: number }> }).__bwmRest ?? {});
   await p.waitForTimeout(1300);
   if (opts.shots) await p.screenshot({ path: `${SHOTS}/runit-${opts.shots}-tornado-390.png` });
   const timing = await p.evaluate(() => ({ land: (window as unknown as { __bwmLandFx?: { card: string; at: number; t: number }[] }).__bwmLandFx ?? [], fly: (window as unknown as { __bwmFly?: Record<string, { now?: number; t: number }[]> }).__bwmFly ?? {} }));
   for (const l of timing.land) {
-    const f = timing.fly[l.card]?.find((x) => x.t >= 1);
+    // the landing cue fires on the STRIKE frame (impactFraction 0.9 of the slam flight), not at settle end
+    const f = timing.fly[l.card]?.find((x) => x.t >= 0.9);
     if (f?.now && Math.abs(l.at - f.now) > 50) throw new Error(`run drop ${l.card}: sound ${Math.abs(l.at - f.now).toFixed(0)}ms from impact`);
   }
   console.log(`run sound-sync: ${timing.land.length} landing sounds on their impact frames`);

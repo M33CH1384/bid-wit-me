@@ -19,6 +19,8 @@ import { impactFraction } from '../landTiming';
 import { PILE_THUMP, slamThump } from './shake';
 import { PLAY_FLIGHT_MOTIONS, pendingSweepDue, sweepMustWait, type PendingSweep } from './sweepGate';
 import { CUT_FACE_ANGLE, deuceFxElapsed, deuceImpactsAfter, deuceSeed, lastDeuceImpactId, pushDeuceImpact } from './deuceImpact';
+import { runSlamPose } from './runSlamPose';
+import { DISTURBANCE_MS, disturbanceFor, disturbanceOffsetAt, lastSlamDisturbanceId, pushSlamDisturbance, slamDisturbancesAfter, type DisturbanceParams } from './slamDisturbance';
 import { cutColorFor } from '../deuceFx';
 import type { Card } from '@spades/rules';
 
@@ -37,7 +39,7 @@ interface Props {
   /** 'lift' is the 200ms group rise. 'slide' closes a gap over 240ms (translate + rotate only, same curve).
    *  'flight' is the deal / table arc. */
   /** glide: tossed, touches down corner-first and flops flat over a short bite (physics landing) */
-  motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick';
+  motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick' | 'runslam';
   arc?: number;
   /** Toss character for a played card's flight (flightPose.ts): reshapes the path inside the same duration. */
   variant?: FlightVariant;
@@ -339,6 +341,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     dipAt: 0, dipDepth: 0, knockAt: 0, knockDir: { x: 0, z: 1 }, innerActive: false,
     cutAt: 0, heroAt: 0, heroAxis: new Vector3(1, 0, 0), splitShown: false,
     seen: lastDeuceImpactId(), q: new Quaternion(), w: new Vector3(), axis: new Vector3(), dimCol: new Color(),
+    // Run It slam disturbance (slamDisturbance.ts): the felt strike this card
+    // last drained, its seeded bounce/slide, and the frame's live offset —
+    // composed on the inner group beside the knock by composeDeuceInner.
+    distSeen: lastSlamDisturbanceId(), distAt: 0, distParams: null as DisturbanceParams | null,
+    distOff: null as { x: number; y: number; z: number; tilt: number } | null, dq: new Quaternion(),
   });
   const raiseNow = useRef(raise);
   raiseNow.current = raise;
@@ -421,12 +428,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (!ig) return;
     const owned = bl.current.on || bl.current.flung || tn.current.on || tn.current.gone;
     if (owned) return;
-    if (dipEnv > 0 || knockEnv > 0 || heroEnv > 0) {
+    const distOff = dkS.distOff;
+    if (dipEnv > 0 || knockEnv > 0 || heroEnv > 0 || distOff) {
       const calm = fx.reduced;
-      const kx = calm ? 0 : dkS.knockDir.x * 0.055 * knockEnv;
-      const kz = calm ? 0 : dkS.knockDir.z * 0.055 * knockEnv;
+      const kx = calm ? 0 : dkS.knockDir.x * 0.055 * knockEnv + (distOff ? distOff.x : 0);
+      const kz = calm ? 0 : dkS.knockDir.z * 0.055 * knockEnv + (distOff ? distOff.z : 0);
       const heroLift = calm ? 0 : 0.085 * heroEnv;
-      const w = dkS.w.set(kx, -dkS.dipDepth * dipEnv + heroLift, kz);
+      const w = dkS.w.set(kx, -dkS.dipDepth * dipEnv + heroLift + (calm || !distOff ? 0 : distOff.y), kz);
       dkS.q.copy(g.quaternion).invert();
       w.applyQuaternion(dkS.q).divideScalar(g.scale.x || 1);
       ig.position.copy(w);
@@ -437,6 +445,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         dkS.axis.copy(dkS.heroAxis).normalize().applyQuaternion(dkS.q);
         ig.quaternion.setFromAxisAngle(dkS.axis, 0.34 * heroEnv);
       } else ig.quaternion.identity();
+      // The slam disturbance's own tilt rides on top (tipping away from the strike).
+      if (!calm && distOff && distOff.tilt > 0.0005 && dkS.distParams) {
+        dkS.axis.set(dkS.distParams.dirZ, 0, -dkS.distParams.dirX).normalize().applyQuaternion(dkS.q);
+        dkS.dq.setFromAxisAngle(dkS.axis, distOff.tilt);
+        ig.quaternion.multiply(dkS.dq);
+      }
       ig.scale.setScalar(calm ? 1 : 1 + 0.15 * heroEnv);
       dkS.innerActive = true;
       invalidate();
@@ -588,6 +602,31 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
           }
         }
       }
+    }
+    // Run It slam disturbance — drain the felt-strike bus like the impact bus
+    // above. Only a card AT REST on the felt can be disturbed: not a hand card
+    // (blast 'hand' / a fan back with no id), not the striking card itself, not
+    // a card still in the air. Under Reduce effects the event is drained and
+    // dropped (the knock's calm, one step earlier). Seeded per card, so every
+    // viewer disturbs the same cards the same way.
+    if (lastSlamDisturbanceId() > dkS.distSeen) {
+      const freshSlams = slamDisturbancesAfter(dkS.distSeen);
+      if (freshSlams.length) {
+        dkS.distSeen = freshSlams[freshSlams.length - 1]!.id;
+        const s0 = tw.current;
+        for (const e of freshSlams) {
+          if (!fx.reduced && cardId && e.source !== cardId && blast !== 'hand'
+            && s0.t >= 1 && g.position.y < 0.35) {
+            const params = disturbanceFor(g.position.x - e.x, g.position.z - e.z, (e.seed ^ deuceSeed(cardId)) >>> 0);
+            if (params) { dkS.distAt = e.at; dkS.distParams = params; }
+          }
+        }
+      }
+    }
+    {
+      const elapsed = dkS.distAt ? deuceFxElapsed(performance.now() - dkS.distAt) : Number.POSITIVE_INFINITY;
+      dkS.distOff = dkS.distParams && elapsed < DISTURBANCE_MS ? disturbanceOffsetAt(dkS.distParams, elapsed) : null;
+      if (dkS.distAt && elapsed >= DISTURBANCE_MS) { dkS.distAt = 0; dkS.distParams = null; }
     }
     const knockU = dkS.knockAt ? deuceFxElapsed(performance.now() - dkS.knockAt) / 450 : 1;
     const knockEnv = knockU < 1 ? Math.pow(Math.sin(Math.PI * Math.min(1, Math.max(0, knockU))), 1.4) : 0;
@@ -884,7 +923,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     // neither stabs a corner through the table (owner 2026-10-29) nor skates flat
     // into its spot like a puck (owner 2026-10-31).
     // 'lift' is hand-internal and keeps its original single-ease path below.
-    const pose = s.motionSnap === 'lift' ? null : playFlightPose(
+    // 'runslam' is the Run It show flight (runSlamPose.ts): slow raise, arc, slam.
+    const pose = s.motionSnap === 'lift' ? null : s.motionSnap === 'runslam' ? runSlamPose(
+      { p: [s.sp.x, s.sp.y, s.sp.z], q: [s.sq.x, s.sq.y, s.sq.z, s.sq.w], s: s.ss },
+      { p: [s.tp.x, s.tp.y, s.tp.z], q: [s.tq.x, s.tq.y, s.tq.z, s.tq.w], s: s.ts },
+      s.t,
+      { arc: s.arcSnap },
+    ) : playFlightPose(
       { p: [s.sp.x, s.sp.y, s.sp.z], q: [s.sq.x, s.sq.y, s.sq.z, s.sq.w], s: s.ss },
       { p: [s.tp.x, s.tp.y, s.tp.z], q: [s.tq.x, s.tq.y, s.tq.z, s.tq.w], s: s.ts },
       s.t,
@@ -929,6 +974,14 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         if (!fx.reduced && !fx.osReducedMotion) {
           if (land.includes('runSlam')) fx.shake = { start: performance.now(), ...PILE_THUMP };
           else if (sl2 && sl2.shake > 0) fx.shake = { start: performance.now(), ...slamThump(sl2.intensity) };
+        }
+        // The Run It slam's strike disturbs the felt (slamDisturbance.ts):
+        // every card resting on the table drains this and bounces or slides on
+        // its inner group. Only the full show's striking card fires it — the
+        // reduced-motion slide path never does (its motion is 'slide'), and
+        // Reduce effects drains it unplayed.
+        if (land.includes('runSlam') && s.motionSnap === 'runslam' && !fx.reduced) {
+          pushSlamDisturbance({ at: performance.now(), x: g.position.x, z: g.position.z, source: cardId, seed: deuceSeed(`${cardId ?? ''}|${s.key}`) });
         }
         // Deuce Drop / Cut (deuceFx.ts): a classified landing fires its felt
         // event on this same frame (DeuceFxLayer ripples from the touchdown

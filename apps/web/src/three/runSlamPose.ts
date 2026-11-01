@@ -1,0 +1,122 @@
+import { Quaternion, Vector3 } from 'three';
+import { GATHER_CLEARANCE, gatherClearanceLift, minCardCornerY } from './gather';
+import type { Xform } from './layout';
+import type { RunDrop } from './landing';
+
+/**
+ * 'Run it!' slam (owner, 2026-11-01: "the run it animation suck honestly, i really
+ * want to see an animation where the cards slowly raise from the hand and in an
+ * upward then downward arc slam to the table"). The claimer's remaining cards get
+ * ONE two-beat flight, replacing the old 0.3 s throw-down barrage:
+ *
+ *  1. RAISE (t < RUN_SLAM_RAISE_END): the card lifts SLOWLY out of the fan on a
+ *     smoothstep — a deliberate, stately rise, drifting only a little toward the
+ *     table while it levels face-up flat. It reads as the player lifting the
+ *     cards to show them before throwing them down.
+ *  2. ARC + SLAM: the card comes over the top — a small crest as it tips in —
+ *     then falls ACCELERATING, leading edge dipped, and strikes the felt flat
+ *     at RUN_SLAM_IMPACT_T of the flight (slap, not settle: the dip unwinds
+ *     AT contact). The last tenth is the card flat on its scatter spot;
+ *     Card3D's slam rebound rides on top, exactly where it always did.
+ *
+ * Same ballistic language as the toss family in flightPose.ts (accelerating
+ * fall, corner-first contact, the clearance law keeping every corner off the
+ * felt until the slap), at show scale. Endpoints are exact: pose(0) is `from`,
+ * pose(1) is `to` (the runScatter rest), so the tornado that follows takes
+ * every card from the same spot it always did.
+ */
+
+/** Every slam card's flight, raise + arc + strike (s). */
+export const RUN_SLAM_FLIGHT_SEC = 0.9;
+/** The raise beat's share of the flight. */
+export const RUN_SLAM_RAISE_END = 0.5;
+/** The felt strike, as a fraction of the flight (landTiming's impactFraction reads the same number). */
+export const RUN_SLAM_IMPACT_T = 0.9;
+/** The whole flight's delays are compressed into this spread (s): one collective slam, not a barrage. */
+export const RUN_SLAM_MAX_STAGGER_SEC = 0.12;
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const smoothstep = (u: number) => { const c = clamp01(u); return c * c * (3 - 2 * c); };
+
+/**
+ * Per-card schedule for the slam: one shared flight duration, and the scatter's
+ * release delays compressed into RUN_SLAM_MAX_STAGGER_SEC (order preserved), so
+ * every card strikes inside one tight cluster — the impact the mega's detonation
+ * is timed to (RUN_MEGA_DETONATE_MS after the slam starts, on the cluster's
+ * first strikes) and the single beat the table disturbance fires on.
+ */
+export function runSlamSchedule(drops: readonly RunDrop[]): { delay: number; duration: number }[] {
+  const maxDelay = drops.reduce((m, d) => Math.max(m, d.delay), 0);
+  const scale = maxDelay > RUN_SLAM_MAX_STAGGER_SEC ? RUN_SLAM_MAX_STAGGER_SEC / maxDelay : 1;
+  return drops.map((d) => ({ delay: d.delay * scale, duration: RUN_SLAM_FLIGHT_SEC }));
+}
+
+const quatOf = (q: Xform['q']): Quaternion => new Quaternion(q[0], q[1], q[2], q[3]);
+
+/** Leading-edge dip at the slap (radians) — the flight family's drive character, at show weight. */
+const RUN_SLAM_DIP = 0.36;
+
+/**
+ * One frame of a Run It slam card's flight from `from` (its fan slot) to `to`
+ * (its scatter rest) at t in [0, 1]. `arc` is the raise height in world units
+ * (scaled by travel distance like the toss family's hop).
+ */
+export function runSlamPose(from: Xform, to: Xform, t: number, opts: { arc?: number } = {}): Xform {
+  const clamped = clamp01(t);
+  const sp = new Vector3(...from.p);
+  const tp = new Vector3(...to.p);
+  const dist = sp.distanceTo(tp);
+  const raiseH = (opts.arc ?? 0.55) * Math.min(1, dist);
+  const hoverY = Math.max(sp.y, tp.y) + raiseH;
+
+  let p: Vector3;
+  let level: number; // levelling slerp factor (fan pose → flat rest pose)
+  let eXZ: number; // horizontal travel progress (drives scale + the clearance floor)
+  let dip = 0;
+  if (clamped <= RUN_SLAM_RAISE_END) {
+    // Beat 1 — the slow raise: mostly UP, a slight drift toward the table,
+    // levelling as it climbs. Smoothstep both ends: no snap out of the hand.
+    const u = smoothstep(clamped / RUN_SLAM_RAISE_END);
+    eXZ = 0.12 * u;
+    p = new Vector3(
+      sp.x + (tp.x - sp.x) * eXZ,
+      sp.y + (hoverY - sp.y) * u,
+      sp.z + (tp.z - sp.z) * eXZ,
+    );
+    level = u;
+  } else {
+    // Beat 2 — over the top and down: horizontal travel accelerates in, the
+    // height crests briefly then falls away accelerating, striking at
+    // RUN_SLAM_IMPACT_T; past the strike the card is flat on its spot.
+    const v = (clamped - RUN_SLAM_RAISE_END) / (1 - RUN_SLAM_RAISE_END); // 0..1 across beat 2
+    const vI = (RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END) / (1 - RUN_SLAM_RAISE_END); // the strike within beat 2
+    const w = clamp01(v / vI); // 0..1 up to the strike, then 1
+    eXZ = 0.12 + 0.88 * Math.pow(w, 1.55);
+    const crest = w < 1 ? 0.2 * raiseH * Math.sin(Math.PI * clamp01(w / 0.55)) * (1 - w) : 0;
+    const y = w >= 1 ? tp.y : tp.y + (hoverY - tp.y) * (1 - Math.pow(w, 2.1)) + crest;
+    p = new Vector3(sp.x + (tp.x - sp.x) * eXZ, y, sp.z + (tp.z - sp.z) * eXZ);
+    level = Math.min(1, 0.85 + 0.15 * smoothstep(w / 0.7));
+    // The dip builds through the fall and is gone AT the strike (the slap).
+    if (w < 1) dip = RUN_SLAM_DIP * smoothstep((w - 0.3) / 0.7);
+  }
+
+  let q = new Quaternion().slerpQuaternions(quatOf(from.q), quatOf(to.q), level);
+  if (dip > 0) {
+    const hx = tp.x - sp.x;
+    const hz = tp.z - sp.z;
+    const hl = Math.hypot(hx, hz);
+    if (hl > 1e-6) {
+      const axis = new Vector3(hz / hl, 0, -hx / hl);
+      q = new Quaternion().setFromAxisAngle(axis, dip).multiply(q);
+    }
+  }
+  const s = from.s + (to.s - from.s) * eXZ;
+  // No corner through the felt on the way down: same law as the toss family —
+  // the floor rises to the spot's own rest height as the strike approaches, so
+  // the dipped corner rides onto the scatter pile instead of sinking into it.
+  const restCornerY = minCardCornerY(tp.y, quatOf(to.q), to.s);
+  const blend = smoothstep((eXZ - 0.84) / 0.13);
+  const floorY = Math.max(GATHER_CLEARANCE, restCornerY * blend);
+  p.y += gatherClearanceLift(p.y, q, s, floorY - GATHER_CLEARANCE);
+  return { p: [p.x, p.y, p.z], q: [q.x, q.y, q.z, q.w], s };
+}

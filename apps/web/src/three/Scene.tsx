@@ -22,6 +22,7 @@ import { reducedMotion } from './handLift';
 import { fanRestSeconds, fanRestTarget, restCharacter, NEUTRAL_REST_CHARACTER, type FanRestPose, type RestCharacter } from './fanRest';
 import { flickFlightFor, pickFlightVariant, type FlightVariant, type FlightVariantId } from './flightPose';
 import { VISIBLE_FELT, landTrick, playSeed, runScatter } from './landing';
+import { runSlamSchedule } from './runSlamPose';
 import { shakeOffset, swayOffset } from './shake';
 import { captureFlipFrame, flipHeld, flipRehearsed, flipUserFlipped, markRehearsed, noteFlipSizeCommit, notePresentedFrame, noteRehearsalSize, registerCover, releaseFlipHold, setFlipHoldLock, subscribeFlipHold } from './flipHold';
 import { isShortLandscape } from '../viewport';
@@ -1016,7 +1017,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; armed?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick'; variant?: FlightVariant; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean; impactFx?: { kind: 'drop' | 'cut'; victim?: Card | null } | null; knock?: { dirX: number; dirZ: number } | null };
+  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; armed?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick' | 'runslam'; variant?: FlightVariant; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean; impactFx?: { kind: 'drop' | 'cut'; victim?: Card | null } | null; knock?: { dirX: number; dirZ: number } | null };
   const items: Item[] = [];
   // Seats still in this hand (a Cutthroat ejection leaves a seat with no cards): the deal
   // schedule goes around these only, or late cards are timed past the end of the deal.
@@ -1241,7 +1242,11 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // Thrown down one after another and scattered like real cards hitting a table (every viewer, Tips or not:
     // it's a show moment). Same seed on every client, so online tables see the same pile. Reduced motion: a tidy row.
     const drops = reduced ? null : runScatter(playSeed(props.gameSeed ?? '', handNo, 99, `runit:${seat}`), k);
-    if (typeof window !== 'undefined') (window as unknown as { __bwmRunDrop?: unknown }).__bwmRunDrop = { cards, drops, reduced };
+    // The slam's choreography (owner 2026-11-01): ONE slow flight per card — a deliberate raise out of
+    // the hand, an arc over the top, a flat slam onto its scatter spot (runSlamPose.ts) — with the
+    // releases compressed so the cards strike as one blow (runSlamSchedule), not the old barrage.
+    const slamPlan = drops ? runSlamSchedule(drops) : null;
+    if (typeof window !== 'undefined') (window as unknown as { __bwmRunDrop?: unknown }).__bwmRunDrop = { cards, drops, reduced, plan: slamPlan };
     cards.forEach((c, i) => {
       const base = trickSpot('bottom', n, i, jitterOf(c), trickScale);
       const w = CW * (trickScale ?? TRICK_SCALE) * 0.84; // slightly overlapped: 4 cards ≈ the trick's width
@@ -1252,7 +1257,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       const leftHand = seat === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
       const seatRest = restFor(seat);
       const from = leftHand ?? (seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k, seatRest.drop, seatRest.pinch));
-      if (d) items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02 + d.delay, duration: 0.3, arc: 0.3, slam: slamFeel(i === k - 1 ? 1 : 0.85), sfxLand: i === k - 1 ? 'play,runSlam' : 'play', spatialSeat: positions[seat]!, spatialN: n });
+      if (d) items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02 + slamPlan![i]!.delay, duration: slamPlan![i]!.duration, arc: 0.55, motion: 'runslam', slam: slamFeel(i === k - 1 ? 1 : 0.85), sfxLand: i === k - 1 ? 'play,runSlam' : 'play', spatialSeat: positions[seat]!, spatialN: n });
       else items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: reduced ? 0 : 0.9, ...(reduced ? { motion: 'slide' as const } : {}), sfxLand: i === k - 1 ? 'runSlam' : undefined, spatialSeat: positions[seat]!, spatialN: n }); // slow motion
     });
     // the rest of the table's cards: one quick cascade, a smaller row under the claimer's (from each player's spot)
