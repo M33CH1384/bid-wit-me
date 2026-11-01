@@ -187,3 +187,47 @@ describe('wizard step structure under both themes', () => {
     expect(c.querySelector('.wiz-bar .wiz-right .dock-slot')).toBeTruthy();
   });
 });
+
+/**
+ * TEAM-NAME SAVE BUTTON CLIPPED AT THE PANEL EDGE (owner screenshot,
+ * 2026-11-01, Mac desktop, Neon): on the YOUR TABLE step the TEAM NAME
+ * form (.team-name-edit) rode 38px past its card — the Save button slid
+ * under the BOTS & SCORE card and only "SAVI" showed. Measured on the
+ * live build (Chromium, 1440x900): the form is a flex item of .ess-row
+ * (flex, wrap, space-between), so its base size is its max-content —
+ * the input's intrinsic size-20 width (251px at 16px) + 6px gap + the
+ * 52.6px button = 309.6px — and with no min-width/max-width of its own
+ * its automatic minimum (min-content) was the same 309.6px, against a
+ * 257.5px card content box. The input's own min-width: 0 never got a
+ * chance: the FORM would not shrink. Landscape phones overflowed the
+ * same way (+40px); portrait phones escaped by ~14px of slack.
+ * The fix is the containment the .team-row instance of this same form
+ * already carried: min-width: 0 + max-width: 100% on .team-name-edit
+ * itself, so the input (flex: 1, min-width: 0) absorbs the shrink and
+ * the button — whose own floor is its min-content — always lands
+ * whole inside the panel. These pins hold that shape in the shipped
+ * CSS for every surface the editor renders on (setup card, lobby
+ * team pill, online table team row).
+ */
+describe('team-name editor containment', () => {
+  const rule = (re: RegExp, label: string) => {
+    const m = css.match(re);
+    expect(m, label).toBeTruthy();
+    return m![0];
+  };
+  it('the form itself can shrink and is capped at its container', () => {
+    const base = rule(/\.team-name-edit \{[^}]*\}/, 'team-name-edit base rule');
+    expect(base).toMatch(/min-width:\s*0/);
+    expect(base).toMatch(/max-width:\s*100%/);
+  });
+  it('the input stays the shrink absorber (flex grows, floor is zero)', () => {
+    const input = rule(/\.team-name-edit input \{[^}]*\}/, 'team-name-edit input rule');
+    expect(input).toMatch(/flex:\s*1/);
+    expect(input).toMatch(/min-width:\s*0/);
+  });
+  it('the online-table team row keeps its earlier containment', () => {
+    const rowRule = rule(/\.team-row \.team-name-edit \{[^}]*flex-basis[^}]*\}/, 'team-row team-name-edit containment rule');
+    expect(rowRule).toMatch(/min-width:\s*0/);
+    expect(rowRule).toMatch(/max-width:\s*100%/);
+  });
+});
