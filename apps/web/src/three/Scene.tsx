@@ -80,6 +80,7 @@ import {
   CH, CW, MIN_STRIP_PX, TRICK_SCALE, type CamSpec, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
   xf,
+  FELT, RAIL,
 } from './layout';
 import { plateCy0, solvePlates, type PlateRect, type PlateSolveInput, type SidePlateGeom, type TopPlateGeom } from './plateLayout';
 
@@ -1623,7 +1624,13 @@ function LayoutProbe({ items, trickKeys, handKeys, positions, n, short }: { item
     const pick = (keys: string[]) => keys.map((k) => by.get(k)).filter((t): t is Xform => !!t).map(rect);
     // keyed by card too (tips draw rings / tags over specific cards: the led card, your trumps, …)
     const keyed = (keys: string[]) => keys.flatMap((k) => { const t = by.get(k); const card = k.slice(k.indexOf('-') + 1); return t && !card.startsWith('hb-') ? [{ card, ...rect(t) }] : []; });
-    (window as unknown as { __bwmLayout: unknown }).__bwmLayout = { w: size.width, h: size.height, trick: pick(trickKeys), hand: pick(handKeys), trickCards: keyed(trickKeys), handCards: keyed(handKeys),
+    // the table on screen (felt + rail, projected with the live camera): the photoreal overlays size and anchor to it
+    const proj = (x: number, z: number) => { const v = new Vector3(x, 0, z).project(camera); return { x: (v.x + 1) * size.width / 2, y: (1 - v.y) * size.height / 2 }; };
+    const ex = FELT.hx + RAIL, ez = FELT.hz + RAIL;
+    const tc = [proj(-ex, -ez), proj(ex, -ez), proj(ex, ez), proj(-ex, ez)];
+    const c0 = proj(0, 0);
+    const table = { cx: c0.x, cy: c0.y, x0: Math.min(...tc.map((p) => p.x)), x1: Math.max(...tc.map((p) => p.x)), y0: Math.min(...tc.map((p) => p.y)), y1: Math.max(...tc.map((p) => p.y)) };
+    (window as unknown as { __bwmLayout: unknown }).__bwmLayout = { w: size.width, h: size.height, table, trick: pick(trickKeys), hand: pick(handKeys), trickCards: keyed(trickKeys), handCards: keyed(handKeys),
       // every seat's trick slot, played yet or not (the layout check keeps name plates off all of them)
       slots: short ? [] : trickRects(camera, size, positions, n).map((r) => ({ x: r.left + 4, y: r.top + 4, w: r.right - r.left - 8, h: r.bottom - r.top - 8 })) };
   });
@@ -2425,6 +2432,16 @@ function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low';
     const id = ric ? ric(start, { timeout: 2500 }) : window.setTimeout(start, 800);
     return () => { alive = false; if (ric && cancel) cancel(id as number); else clearTimeout(id as number); };
   }, [tableUp]);
+  // photoreal canvas overlays (lazy; see photoreal/host.ts), mounted over the 3D canvas once the felt is up
+  const gl = useThree((st) => st.gl);
+  useEffect(() => {
+    if (!tableUp) return;
+    const mount = gl.domElement.parentElement;
+    if (!mount) return;
+    let stop: (() => void) | null = null, alive = true;
+    void importChunk(() => import('../photoreal/host')).then((m) => { if (alive) stop = m.startPhotoreal(mount); }, () => {});
+    return () => { alive = false; stop?.(); };
+  }, [tableUp, gl]);
   if (!nuke && !tornado && !wheels) return null;
   return (
     <>
