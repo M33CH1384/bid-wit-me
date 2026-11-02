@@ -1,3 +1,4 @@
+import { nuke2D } from '../photoreal/host';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Bloom, ChromaticAberration, EffectComposer, Vignette } from '@react-three/postprocessing';
 import { BlendFunction, BloomEffect, ChromaticAberrationEffect, EffectComposer as PostEffectComposer, EffectPass, RenderPass, VignetteEffect } from 'postprocessing';
@@ -237,6 +238,8 @@ export function Nuke3D({ quality }: { quality: 'high' | 'low' }) {
     if (e.kind !== 'nuke' && e.kind !== 'mega') return;
     const mode = fx.nukeMode;
     if (mode === 'off') return;
+    // iPhone / iPad Safari: the photoreal 2D nuke (photoreal/host.ts) plays instead of the 3D blast
+    if (nuke2D()) return;
     const mega = e.kind === 'mega';
     setRun({ id: e.id, start: performance.now(), full: mode === 'full', mega, len: mega ? MEGA_LEN : NUKE_LEN });
   }), []);
@@ -814,7 +817,7 @@ export class NukeGuard extends Component<{ children: ReactNode }, { failed: bool
 }
 
 /** Full Nuke: the HUD (scorebug, plates, chat, last trick, controls) is blown outward from the blast, then springs back. */
-function blowHud() {
+export function blowHud() {
   const screen = document.querySelector('.table-screen');
   if (!screen) return;
   const L = (window as unknown as { __bwmLayout?: { trick: { x: number; y: number; w: number; h: number }[] } }).__bwmLayout;
