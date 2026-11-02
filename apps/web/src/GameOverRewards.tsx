@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { CoinIcon } from './RepBlock';
 import { CardTakeover, CARD_TAKEOVER_DELAY_MS, CARD_TAKEOVER_EXIT_MS, cardTakeoverKey, markTakeoverDismissed, takeoverDismissed } from './CardTakeover';
 import { VictoryConfetti } from './RecapFx';
@@ -1081,8 +1082,18 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
           </div>
         )}
       </div>
-      {takeover && d.cardUp && d.cardAfter && d.rankAfter && (
-        <CardTakeover d={d} leaving={takeover.leaving} onDismiss={dismissTakeover} />
+      {/* TRUE OVERLAY (owner, 2026-11-01: the promotion "should raise
+       * above all element on the screen"): the takeover portals to the
+       * document root. Rendered in place it inherits the victory
+       * panel's containing blocks — .glass's backdrop-filter and
+       * .slant's clip-path trap position:fixed, and the scroll region
+       * then clips it to a cropped band in the flow. At the root its
+       * fixed inset-0 layer (z 1200) covers the screen as designed;
+       * arming, the painted-frame entrance gate and dismissal-only
+       * retirement are unchanged. */}
+      {takeover && d.cardUp && d.cardAfter && d.rankAfter && createPortal(
+        <CardTakeover d={d} leaving={takeover.leaving} onDismiss={dismissTakeover} />,
+        document.body,
       )}
     </>
   );

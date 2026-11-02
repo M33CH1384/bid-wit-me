@@ -148,7 +148,10 @@ function openGate() {
   pumpFrame(16);
 }
 
-const takeover = () => container.querySelector('[data-testid="card-takeover"]');
+/* The takeover portals to the document root (2026-11-02 overlay fix:
+ * it must raise above the victory panel, not render inside it), so it
+ * is queried at document scope; everything else stays in the flow. */
+const takeover = () => document.querySelector('[data-testid="card-takeover"]');
 
 let visState = 'visible';
 function setVisibility(v: 'visible' | 'hidden') {
@@ -307,7 +310,7 @@ describe('reload recovery', () => {
     expect(container.querySelector('[data-testid="rewards"]')).not.toBeNull();
     openGate();
     advance(CARD_TAKEOVER_DELAY_MS);
-    expect(container.querySelector('[data-testid="card-takeover"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="card-takeover"]')).not.toBeNull();
   });
 
   it('presents nothing for a plain finished match — no second postgame step', () => {

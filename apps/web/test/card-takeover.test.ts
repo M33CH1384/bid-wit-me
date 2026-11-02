@@ -171,7 +171,10 @@ function openGate() {
   pumpFrame(16);
 }
 
-const takeover = () => container.querySelector('[data-testid="card-takeover"]');
+/* The takeover portals to the document root (2026-11-02 overlay fix:
+ * it must raise above the victory panel, not render inside it), so it
+ * is queried at document scope; the panel stays in the flow. */
+const takeover = () => document.querySelector('[data-testid="card-takeover"]');
 const panel = () => container.querySelector('[data-testid="rewards-cardup"]');
 
 /* document.visibilityState, stubbed per test: the takeover's entrance
