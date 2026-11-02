@@ -6,6 +6,7 @@ import {
 import { useFrame, useThree } from '@react-three/fiber';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CHAIR_SPOTS } from './classicStudioLayout';
+import { isSouthSeatSpot, useOwnChairHidden } from './ownChair';
 
 /** The shared table's floor plane (sibling rooms keep their own). */
 const FLOOR_Y = -0.9;
@@ -466,6 +467,7 @@ function SideTable({ a }: { a: Assets }) {
  * rearmost −0.32 (the CHAIR_BACK constant the gate measures).
  */
 function Armchairs({ a }: { a: Assets }) {
+  const hideOwnChair = useOwnChairHidden();
   const frame = useMemo(() => {
     const parts: G[] = [];
     for (const sx of [-1, 1]) {
@@ -485,12 +487,15 @@ function Armchairs({ a }: { a: Assets }) {
   ]), []);
   return (
     <group>
-      {CHAIR_SPOTS.map((s, i) => (
+      {CHAIR_SPOTS.map((s, i) => {
+        if (hideOwnChair && isSouthSeatSpot(s)) return null;
+        return (
         <group key={i} position={[s.x, Y, s.z]} rotation={[0, s.ry, 0]}>
           <mesh geometry={frame} material={a.steel} castShadow />
           <mesh geometry={cushions} material={a.leather} castShadow />
         </group>
-      ))}
+        );
+      })}
     </group>
   );
 }

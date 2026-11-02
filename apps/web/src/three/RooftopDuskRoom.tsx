@@ -7,6 +7,7 @@ import {
 import { useFrame, useThree } from '@react-three/fiber';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CHAIR_SPOTS } from './classicStudioLayout';
+import { isSouthSeatSpot, useOwnChairHidden } from './ownChair';
 
 /** The shared table's floor plane (sibling rooms keep their own). */
 const FLOOR_Y = -0.9;
@@ -452,16 +453,20 @@ function chairPanelGeo() {
 }
 
 function FoldingChairs({ a }: { a: RoofAssets }) {
+  const hideOwnChair = useOwnChairHidden();
   const frame = useMemo(chairFrameGeo, []);
   const panels = useMemo(chairPanelGeo, []);
   return (
     <group>
-      {CHAIR_SPOTS.map((s, i) => (
+      {CHAIR_SPOTS.map((s, i) => {
+        if (hideOwnChair && isSouthSeatSpot(s)) return null;
+        return (
         <group key={i} position={[s.x, FLOOR_Y, s.z]} rotation={[0, s.ry, 0]}>
           <mesh geometry={frame} material={a.steelBlack} castShadow receiveShadow />
           <mesh geometry={panels} material={a.chairPanel} castShadow receiveShadow />
         </group>
-      ))}
+        );
+      })}
     </group>
   );
 }

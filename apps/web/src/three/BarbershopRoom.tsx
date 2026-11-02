@@ -16,6 +16,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { BARBER, BARBER_ASSETS, CHAIR_SPOTS, skySeekFraction, todFromDate, todLighting, type TodState } from './barbershopLayout';
+import { isSouthSeatSpot, useOwnChairHidden } from './ownChair';
 import { noteRoomAssets } from '../assetGate';
 
 const CLASSIC = '/assets/venues/classic';
@@ -61,6 +62,7 @@ function stripesTexture(): CanvasTexture {
 }
 
 export default function BarbershopRoom({ quality, handNo }: { quality: 'high' | 'low'; handNo: number }) {
+  const hideOwnChair = useOwnChairHidden();
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
   const propsRef = useRef<Group>(null);
@@ -122,6 +124,7 @@ export default function BarbershopRoom({ quality, handNo }: { quality: 'high' | 
         if (dead || !propsRef.current) return;
         const host = propsRef.current;
         for (const spot of CHAIR_SPOTS) {
+          if (hideOwnChair && isSouthSeatSpot(spot)) continue;
           const c = chair.clone(true) as Group;
           c.rotation.y = spot.ry; c.position.set(spot.x, 0, spot.z);
           c.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
@@ -141,7 +144,7 @@ export default function BarbershopRoom({ quality, handNo }: { quality: 'high' | 
       } catch { /* shell stays */ }
     })();
     return () => { dead = true; for (const g of added) { g.parent?.remove(g); } ktx2.dispose(); };
-  }, [quality, gl, invalidate, lock.tod]);
+  }, [quality, gl, invalidate, lock.tod, hideOwnChair]);
 
   const w = BARBER.roomX * 2;
   const frame = '#241a20';

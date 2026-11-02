@@ -18,6 +18,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { STUDIO, CHAIR_SPOTS } from './classicStudioLayout';
+import { isSouthSeatSpot, useOwnChairHidden } from './ownChair';
 import { BARBER_ASSETS, skySeekFraction, todFromDate, todLighting, type TodState } from './barbershopLayout';
 
 export { STUDIO, CHAIR_SPOTS };
@@ -88,6 +89,7 @@ function CubeLifePulse({ cfg, quality, lights }: { cfg: CubeVenueConfig; quality
 }
 
 export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenueConfig; quality: 'high' | 'low'; handNo: number }) {
+  const hideOwnChair = useOwnChairHidden();
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
   const propsRef = useRef<Group>(null);
@@ -130,14 +132,14 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
         const chair = await load(`${CLASSIC}/chair.glb`);
         const lamp = cfg.pendants === false ? null : await load(`${CLASSIC}/lamp.glb`);
         if (dead || !propsRef.current) return; const host = propsRef.current;
-        for (const spot of CHAIR_SPOTS) { const c = chair.clone(true) as Group; c.rotation.y = spot.ry; c.position.set(spot.x, 0, spot.z); c.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); host.add(c); ground(c, STUDIO.floorY); added.push(c); }
+        for (const spot of CHAIR_SPOTS) { if (hideOwnChair && isSouthSeatSpot(spot)) continue; const c = chair.clone(true) as Group; c.rotation.y = spot.ry; c.position.set(spot.x, 0, spot.z); c.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); host.add(c); ground(c, STUDIO.floorY); added.push(c); }
         if (lamp) for (const x of [-STUDIO.lampX, STUDIO.lampX]) { const l = lamp.clone(true) as Group; l.position.set(x, 0, 0); l.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = false; m.receiveShadow = true; } }); host.add(l); l.updateMatrixWorld(true); const box = new Box3().setFromObject(l); l.position.y += STUDIO.floorY + STUDIO.lampShadeBottom - box.min.y; added.push(l); }
         (window as unknown as { __bwmVenue?: unknown }).__bwmVenue = { id: cfg.id, fx: false, studio: true, room: cfg.slug, props: true, tod: lock.tod };
         invalidate();
       } catch { /* shell stays */ }
     })();
     return () => { dead = true; for (const g of added) g.parent?.remove(g); ktx2.dispose(); };
-  }, [cfg, quality, gl, invalidate, lock.tod]);
+  }, [cfg, quality, gl, invalidate, lock.tod, hideOwnChair]);
 
   const w = STUDIO.roomX * 2;
   const wins = cfg.windows ?? [];

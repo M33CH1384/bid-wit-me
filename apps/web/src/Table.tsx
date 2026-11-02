@@ -2978,6 +2978,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           dealer={st.dealer}
           positions={pos}
           human={HUMAN}
+          spectator={spectating}
           myHand={fanHand}
           handCounts={display.counts}
           shownTrick={display.trick}

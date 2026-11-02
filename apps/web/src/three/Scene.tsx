@@ -69,6 +69,7 @@ import PorchFigures from './PorchFigures';
 import PersonaFigures from './PersonaFigures';
 import SeatVideoLayer from './SeatVideo';
 import { FIGURE_SEAT_CONFIGS } from './figureSeats';
+import { OwnChairHiddenContext } from './ownChair';
 import GrandmasKitchenRoom from './GrandmasKitchenRoom';
 import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
@@ -99,6 +100,12 @@ export interface SceneProps {
   dealer: number;
   positions: SeatPos[];
   human: number;
+  /** True on spectator / watch / broadcast surfaces (Table's
+   *  spectating). The camera anchors at seat 0 in every mode, but
+   *  only in local play is that seat the viewer's own — so only then
+   *  is its chair suppressed (three/ownChair.ts, owner 2026-11-02).
+   *  Absent/false = local seated scene. */
+  spectator?: boolean;
   /** null while the human's cards are face down (Blind Nil decision). */
   myHand: Card[] | null;
   handCounts: number[];
@@ -2259,6 +2266,10 @@ export default function Scene(props: SceneProps) {
           this subtree against the restored context while the Canvas,
           the camera rig and the controls above never unmount. */}
       <Fragment key={glEpoch}>
+      {/* Own-chair rule (owner, 2026-11-02): in a local seated scene the
+          south/camera seat's chair is not built (three/ownChair.ts);
+          spectator surfaces keep all four chairs. */}
+      <OwnChairHiddenContext.Provider value={!props.spectator}>
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
       <Lights quality={props.quality} def={def} shadowSize={shadowSize} />
@@ -2372,6 +2383,7 @@ export default function Scene(props: SceneProps) {
       <DeuceFxLayer reducedProp={!!props.reduceFx} />
       <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
+      </OwnChairHiddenContext.Provider>
       </Fragment>
     </Canvas>
     <FlipCoverOverlay />
