@@ -640,6 +640,7 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard .pcard-stats td.pcard-nogames-cell { text-align: left; color: #6a6284; font-style: italic; font-weight: 400; }
 .plcard .pcard-stats tr.streakrow td { text-align: left; }
 .plcard .pcard-vs { margin: 2px 0 0; font-size: 13.5px; font-size: 4.5cqw; }
+.plcard .pcard-quits { margin: 2px 0 0; font-size: 13.5px; font-size: 4.5cqw; }
 .plcard .pcard-vs b { color: #8a5f06; }
 /* The empty line centers in the panel space it owns (its auto
  * margins share the free height with the footnotes' anchor), instead
