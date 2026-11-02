@@ -35,6 +35,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { UNCLEAN_BOOT_AT_KEY, markUncleanBoot } from '../src/diagnostics';
 
 /* ---------- fakes ---------- */
 
@@ -464,5 +465,49 @@ describe('the output witness hears the music it verifies', () => {
     expect(chain).toContain('this.musicDuck.connect(this.musicAnalyser)');
     const dead = src.slice(src.indexOf('private outputDead()'), src.indexOf('private outputDead()') + 2400);
     expect(dead).toContain('musicSourceRms');
+  });
+});
+
+/* ---------- crash round 3: the dead output no in-graph meter can see ----------
+ * The 2026-11-01 Pj's crash: jetsam killed the process mid-table; the
+ * relaunch auto-resumed the game, but the iOS audio OUTPUT was dead while
+ * every in-graph witness read healthy — decks feed samples, meters move,
+ * nothing sounds, and no detector can ever fire (outputDead judges
+ * in-graph silence; a dead output stops no sample flow). The heal is
+ * deliberately dumb: telemetry's startup witness marks a boot that
+ * follows a process death, and the first unlocked gesture after such a
+ * boot forces ONE graph rebuild — recreating the context is what
+ * rebinds the iOS audio session. Ordinary boots must never pay for it. */
+describe('crash-resume heal: one forced rebuild after a process death', () => {
+  it('no mark, no rebuild: an ordinary gesture leaves the graph alone', async () => {
+    localStorage.removeItem(UNCLEAN_BOOT_AT_KEY);
+    await step(3000); // let any earlier arcs' timers settle before counting
+    const ctxCount = FakeCtx.instances.length;
+    sound.wake('gesture');
+    expect(FakeCtx.instances.length).toBe(ctxCount);
+  });
+
+  it('a stale mark is cleared without a rebuild', async () => {
+    markUncleanBoot(Date.now() - 11 * 60_000);
+    const ctxCount = FakeCtx.instances.length;
+    sound.wake('gesture');
+    expect(FakeCtx.instances.length).toBe(ctxCount);
+    expect(localStorage.getItem(UNCLEAN_BOOT_AT_KEY)).toBeNull();
+  });
+
+  it('a fresh mark forces exactly one rebuild on the first gesture, then never again', async () => {
+    markUncleanBoot();
+    // The heal escalates through the same 3s recreate cooldown as the
+    // interruption paths; earlier arcs in this file rebuilt recently, so
+    // zero the stamp the way the suite already reaches into the engine.
+    (sound as unknown as { lastRecreateAt: number }).lastRecreateAt = 0;
+    const ctxCount = FakeCtx.instances.length;
+    sound.wake('gesture');
+    expect(FakeCtx.instances.length).toBe(ctxCount + 1); // the heal rebuild
+    expect(localStorage.getItem(UNCLEAN_BOOT_AT_KEY)).toBeNull(); // consumed
+    await step(1500); // the rebuild re-syncs and the music restarts
+    expect(sound.playingDeckCount()).toBe(1);
+    sound.wake('gesture'); // a second gesture must not rebuild again
+    expect(FakeCtx.instances.length).toBe(ctxCount + 1);
   });
 });
