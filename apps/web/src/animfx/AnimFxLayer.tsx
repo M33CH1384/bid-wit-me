@@ -1451,16 +1451,27 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
           const disp = live ?? puffFx!;
           const f = trickFire(disp.count);
           const s = disp.spot;
-          const padX = 12;
+          const padX = 0;
           const padB = 12;
-          // Step-up (2026-10-30): the procedural fire CASTS light past
-          // the flame box — the container grows a glow margin on the
-          // sides and below (the rise above already hosts the crown)
-          // so the shader's flickering halo lands on the felt/rim
-          // instead of being clipped at the flame's edge. The plate
-          // mask and the chip keep their exact positions relative to
-          // the plate: mask.x absorbs the extra left margin.
-          const glowPadX = 18;
+          // Width (owner, 2026-11-01): "The fire shouldn't extend
+          // beyond the plate here they should have the same width."
+          // The 2026-10-30 step-up grew this box 30 px a side
+          // (padX 12 + glowPadX 18) so the shader's halo could spill
+          // onto the felt — at the west seat that read as a flame
+          // band stretching past the plate in both directions, off
+          // the screen edge and behind the north seat's book piles.
+          // The horizontal margins are ZERO now: the container IS the
+          // plate's width (left == plate left, width == plate width),
+          // the mask starts at the container's left edge (mask.x ==
+          // padX + glowPadX == 0, so the mask IS the plate rect), and
+          // because every renderer paints inside the canvas, nothing
+          // — flame, glow, embers, or the extinguish puff — can land
+          // a pixel past the plate's edges. The chip keeps its exact
+          // plate-relative spot (its right offset absorbs the removed
+          // margin). Vertical is untouched: the crown still rises
+          // above the plate and the glow still spills below it
+          // (rise, padB, glowPadB unchanged).
+          const glowPadX = 0;
           const glowPadB = 16;
           // a puff gets extra headroom: its cloud climbs ~2.5x the died
           // flame's height, well past the flame's own rise — the plate
