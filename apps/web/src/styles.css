@@ -533,6 +533,11 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .table-screen.short .bid-grid { gap: 4px; }
 .table-screen.short .bid-grid button { padding: 4px 0; font-size: 16px; }
 .table-screen.short .panel-title { font-size: 13px; }
+/* Landscape phones: the bid panel drops its YOUR BID heading (owner
+   2026-11-01 — at these heights the heading's ~21px is the panel's whole
+   fit margin, so the number row ran off the box). The player's plate keeps
+   its own YOUR BID ribbon as the turn indicator. Portrait is untouched. */
+.table-screen.short .bid-panel .bid-title { display: none; }
 
 .table-screen.short .ctl-cluster { bottom: calc(8px + env(safe-area-inset-bottom)); top: auto; flex-direction: row; }
 .table-screen.short .ctl-cluster .av-btn, .table-screen.short .chat-toggle { width: 44px; height: 44px; }

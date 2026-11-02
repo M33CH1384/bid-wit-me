@@ -3202,7 +3202,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
             <div className={`bid-panel glass slant ${coachBid ? 'with-coach' : ''}`}>
               <div className="bid-tip-slot" />
               {coachBid && <BidCoach key={bcKey} view={view} startOpen={help || bcOpen} />}
-              <div className="panel-title">YOUR BID</div>
+              <div className="panel-title bid-title">YOUR BID</div>
               <BidSummary st={st} names={names} me={HUMAN} partnerEstimate={partnerEstimate} />
               {!raisedMin && teamMinNote(hostMinimum(r), r.partnerships) && <p className="team-min-note" data-testid="team-min-note">{teamMinNote(hostMinimum(r), r.partnerships)}</p>}
               {raisedMin ? <MinBidLine note={raisedMin} /> : (view.bidOptions.blockReason || view.bidOptions.nilReason) && (
