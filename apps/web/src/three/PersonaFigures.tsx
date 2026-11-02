@@ -37,15 +37,17 @@
  * persona-figures.test.ts.
  *
  * Loading: declarative useLoader + Suspense + a per-figure error
- * boundary. The persona GLBs are NOT in the loader's asset gate —
- * deliberately: the gate's promise covers the room and the cards,
- * figures are seat dressing, and the portrait plate + fan already
- * render at the seat, so a figure streams in over today's treatment
- * and a failed figure degrades to exactly today's treatment (the
- * failure names itself on window.__bwmPersonaFigures). Gating every
- * regular table on ~3 x 2.5 MB of dressing would tax every load.
- * (The Porch pilot gates its three GLBs deliberately — it is a story
- * centerpiece, not dressing.)
+ * boundary. The persona GLBs ARE in the loader's asset gate at regular
+ * High tables (Table registers the seated seats' URLs beside their
+ * portraits): the original design streamed figures in over the
+ * portrait treatment as seat dressing, and the owner overrode it on
+ * 2026-11-01 ("the table screen shouldn't load until all this stuff
+ * is in place" — his shot showed plates with no bodies). The gate
+ * waits on the same bytes this loader fetches, so the tax is the
+ * bounded wait (ASSET_GATE_CAP_MS), not a second download. A figure
+ * that fails still degrades to exactly the portrait treatment (the
+ * failure names itself on window.__bwmPersonaFigures, and now on the
+ * gate's probe too).
  *
  * Deliberately NOT here: played-card travel IK (same call as the
  * pilot — production plays are real events on no fixed clock; the

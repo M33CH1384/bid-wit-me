@@ -10,6 +10,18 @@ export const FELT_LEGAL_LIFT_PX = 12;
 export const FELT_EXPOSED_PX = 44;
 
 /**
+ * Widest exposed strip the fan may ever use. The strip is a property of the
+ * hand, not of the window: once the card width caps at 120px, back-solving
+ * the strip from the full window width stretched the fan across a desktop
+ * (7 cards at 1152px: a 170px strip and POSITIVE margins — cards spaced
+ * apart, ends running off the edge; owner report 2026-11-01, the Pj's).
+ * The widest strip the phone matrix produces is 64.5px (5 cards at 390px,
+ * pinned in felt-hand.test.ts); the ceiling sits a breath above it, so
+ * phone fans are byte-identical and only window-stretched fans change.
+ */
+export const FELT_MAX_EXPOSED_PX = 72;
+
+/**
  * Quick-load card box. Bigger than the old 52×74, kept inside `screenW` with a few pixels for the outline.
  * The exposed strip is 44px when that still leaves a readable card; otherwise the row fits at about a third showing.
  */
@@ -56,6 +68,10 @@ export function feltCardBox(count: number, screenW: number, screenH?: number): {
     width = height / 1.4;
     exposed = gaps === 0 ? width : (avail - width) / gaps;
   }
+  // The strip never exceeds the fan's own ceiling, and never the card
+  // itself: margin derives from (width - exposed), so exposed <= width is
+  // what keeps the margin <= 0 — cards overlap or touch, never spread.
+  if (gaps > 0) exposed = Math.min(exposed, FELT_MAX_EXPOSED_PX, width);
   return { width, height, margin: -(width - exposed) / 2, exposed };
 }
 

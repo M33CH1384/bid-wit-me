@@ -29,7 +29,7 @@ import { booksBanner, teamMinNote } from './polishText';
 import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import PersonaFace from './PersonaFace';
-import { personaFigureKeyForName } from './personaFigureKey';
+import { personaFigureGlbUrl, personaFigureKeyForName } from './personaFigureKey';
 import StoryFace from './story/StoryFace';
 import { useMyTeamName } from './TeamName';
 import { offlineTalk } from './offlineTalk';
@@ -2746,6 +2746,23 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       if (seat.storyId) gate.add(storyPortraitFor(seat.storyId), imageSettled(storyPortraitFor(seat.storyId)));
       else if (seat.bot) gate.add(personaPortraitFor(seat.name), imageSettled(personaPortraitFor(seat.name)));
     }
+    // Persona figures (owner, 2026-11-01: "the table screen shouldn't load
+    // until all this stuff is in place"): at a regular High table the seated
+    // personas' GLBs join the gate beside their portraits, so the loader
+    // holds until the bodies have arrived, not just the faces. They were
+    // deliberately ungated before (PersonaFigures' streaming-dressing
+    // call); his report overrides it. Story seats are excluded — their
+    // cast rides roomGlbUrls — and Low never mounts figures. A failed GLB
+    // settles the gate as failed and is named on the probe; the seat
+    // keeps its portrait treatment (PersonaFigures' own discipline).
+    if (settings.quality === 'high') {
+      for (const seat of loadingSeats) {
+        if (seat.storyId || !seat.bot) continue;
+        const key = personaFigureKeyForName(seat.name);
+        if (key) gate.add(`glb figure (persona ${key})`, fetchSettled(personaFigureGlbUrl(key)));
+      }
+    }
+
     publish();
     const off = gate.onProgress(() => {
       if (!alive) return;

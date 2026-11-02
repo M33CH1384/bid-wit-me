@@ -72,3 +72,11 @@ export function personaFigureKeyForName(name: string): string | null {
   const key = `${personaForName(name)}-${voiceGender(name)}`;
   return SHIPPED.has(key) ? key : null;
 }
+
+/** The GLB a figure key ships as. three/PersonaFigures.tsx builds its
+ *  loader map from the same template; Table's asset gate registers these
+ *  URLs at regular High tables (owner, 2026-11-01: the table screen
+ *  doesn't load until the seated figures are in place). */
+export function personaFigureGlbUrl(key: string): string {
+  return `/assets/figures/personas/${key}.glb`;
+}

@@ -9,9 +9,11 @@
  * closed the roster: all 38 persona x gender keys ship, so only an
  * empty name resolves null), the seam wiring
  * through Table -> Scene -> PersonaFigures with story tables
- * excluded on both paths, the LAZY loader-gate decision (persona
- * GLBs are NOT in the asset gate — they stream in over the portrait
- * treatment and degrade to it on failure), the failure discipline
+ * excluded on both paths, the loader-gate decision (owner override
+ * 2026-11-01: the seated personas' GLBs ARE in the asset gate at
+ * regular High tables — Table registers them beside the portraits;
+ * they stay out of roomGlbUrls, which is room-keyed, not seat-keyed),
+ * the failure discipline
  * (declarative loads, error boundary, probe), and the per-venue seat
  * geometry (spots + seat tops measured from the room sources — the
  * solve sits figures in the rooms' OWN chairs, not a fleet guess).
@@ -20,7 +22,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { roomGlbUrls } from '../src/assetGate';
-import { PERSONA_FIGURE_KEYS, personaFigureKeyForName } from '../src/personaFigureKey';
+import { PERSONA_FIGURE_KEYS, personaFigureGlbUrl, personaFigureKeyForName } from '../src/personaFigureKey';
 
 const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
 
@@ -79,15 +81,31 @@ describe('figure-key resolution', () => {
   });
 });
 
-describe('the lazy loader-gate decision', () => {
-  it('persona GLBs are NOT in the asset gate at any seam', () => {
+describe('the loader-gate decision (owner override, 2026-11-01)', () => {
+  it('persona GLBs stay out of roomGlbUrls — seat-keyed, not room files', () => {
     for (const venue of ['classic', 'grandma', 'mansion', 'beach'] as const) {
       for (const g of roomGlbUrls(venue, 'high', null)) {
         expect(g.url).not.toContain('/assets/figures/personas/');
       }
     }
+    // The gate module itself stays persona-agnostic: the URL knowledge
+    // lives in personaFigureKey, and Table does the registering.
     expect(src('src/assetGate.ts')).not.toContain('personas/');
     expect(src('src/assetGate.ts')).not.toContain('PersonaFigures');
+  });
+
+  it('the gate URL is the loader URL for every shipped key', () => {
+    for (const k of PERSONA_FIGURE_KEYS) {
+      expect(personaFigureGlbUrl(k)).toBe(`/assets/figures/personas/${k}.glb`);
+    }
+    expect(src('src/three/PersonaFigures.tsx')).toContain('`/assets/figures/personas/${k}.glb`');
+  });
+
+  it('Table registers the seated personas in the gate at High', () => {
+    const table = src('src/Table.tsx');
+    expect(table).toContain("if (settings.quality === 'high')");
+    expect(table).toContain('gate.add(`glb figure (persona ${key})`, fetchSettled(personaFigureGlbUrl(key)))');
+    expect(table).toContain('if (seat.storyId || !seat.bot) continue;');
   });
 
   it('the figures module lazy-loads with the portrait fallback discipline', () => {
