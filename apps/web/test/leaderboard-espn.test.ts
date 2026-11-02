@@ -48,10 +48,17 @@ describe('metric-based leaderboard: no named tiers, no Elo', () => {
     expect(compete).not.toContain("pills('lb-board'");
   });
   it('the data-wave boards are tabs too: Win %, Books/hand, Nils made (league data wave, item 2)', () => {
-    expect(compete).toContain("'rating', 'wins', 'winpct', 'accuracy', 'books', 'nils', 'duos'");
+    expect(compete).toContain("'rating', 'wins', 'winpct', 'accuracy', 'books', 'nils', 'pace', 'duos'");
     expect(compete).toContain("winpct: 'Win %'");
     expect(compete).toContain("books: 'Books/hand'");
     expect(compete).toContain("nils: 'Nils made'");
+  });
+  it('Fastest Climbers is a tab too (owner, 2026-11-02: rank-up pace as a public league stat)', () => {
+    expect(compete).toContain("pace: 'Fastest climbers'");
+    // the value column is headed XP, and the footer says exactly what the
+    // number counts — game XP only, arrow vs the previous period
+    expect(compete).toContain("board === 'pace' ? 'XP'");
+    expect(compete).toContain('Fastest Climbers counts Rep XP earned in games; its arrow tracks the previous period.');
   });
   it('the list is a stat table: column header, GP column, striped rows', () => {
     expect(compete).toContain('className="ranks-head"');

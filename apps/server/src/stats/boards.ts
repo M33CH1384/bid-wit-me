@@ -1,7 +1,7 @@
 /** Release 9b: leaderboards, server stats, personal stat lines (D1 aggregates over game_players). */
-export type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils' | 'streak';
+export type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils' | 'streak' | 'pace';
 export type Period = 'all' | 'month' | 'week';
-export interface BoardRow { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number }
+export interface BoardRow { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number; trend?: number }
 
 /** Who the opponents were, from the seats stored on the game. Guest opponents are 'other' (neither bucket). */
 export type OpponentBucket = 'players' | 'bots' | 'other';
@@ -27,7 +27,7 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
   // a pair when either partner declared it
   const decl = o.declaredRegion ? 'AND u.region = ?' : '';
   const declArgs = o.declaredRegion ? [o.declaredRegion] : [];
-  let rows: { id: string; name: string | null; value: number; games: number; extra?: string }[] = [];
+  let rows: { id: string; name: string | null; value: number; games: number; extra?: string; trend_cur?: number; trend_prev?: number }[] = [];
   if (o.board === 'rating' && o.period === 'all') {
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name, ROUND(x.elo) AS value, x.games AS games FROM ratings x JOIN users u ON u.id = x.user_id
       WHERE x.kind = ? AND x.games > 0 ${loc} ${decl} ORDER BY x.elo DESC LIMIT 50`).bind(o.kind, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
@@ -114,6 +114,51 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
       WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING SUM(json_extract(x.stats, '$.bids')) >= ${min} ORDER BY value DESC, extra DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results
       .map((r) => ({ ...r, extra: `${r.extra} bids` }));
+  } else if (o.board === 'pace') {
+    // Fastest Climbers (owner, 2026-11-02: "track how fast people rank up
+    // as a metric" — a public league stat: "a screen that shows progression
+    // or regression with an arrow but ranks people like a stat sheet").
+    // Rank-up pace = Rep XP EARNED IN RECORDED GAMES in the window. The
+    // figure is exact, not estimated: per game, base XP is the deterministic
+    // onGameEnd formula in cred/hooks.ts (finish 25 + win 25 at full rate;
+    // half rate — 12/12 — when the game was unrated or the opponents were
+    // bots), and the Play-Well bonus is read from cred_playwell, whose row
+    // IS the settled amount (an absent row for a pre-0034 game = 0, truly:
+    // the bonus system did not exist yet). Abandoned games earn nothing and
+    // are excluded. XP from achievements / challenge claims / story rewards
+    // is NOT in this number (no per-event history exists for it) — the
+    // client footer says "XP earned in games", never "total XP". Levels
+    // gained are NOT claimed either: level is a function of cumulative XP
+    // from every source and no level history is recorded.
+    // Windows mirror the siblings on ended_at: week = trailing 7d, month =
+    // trailing 30d (value + games from that ranking window); the trend pair
+    // is that same span vs the equal span immediately before it. For period
+    // 'all' the value is all-time and the trend pair is the last 30d vs the
+    // 30d before, which the row's extra line spells out. trend = current-
+    // window XP − previous-window XP (signed); the client renders its arrow
+    // from the sign and the delta itself rides in the row's extra line — an
+    // arrow never ships without its number. Floor: ≥5 games and >0 XP in
+    // the ranking window (the books/nils 5-game precedent).
+    const span = o.period === 'week' ? 7 * DAY : 30 * DAY;
+    const curFrom = o.period === 'all' ? 0 : o.now - span;
+    const trendFrom = o.now - span;
+    const trendPrevFrom = o.now - 2 * span;
+    rows = (await db.prepare(`SELECT p.user_id AS id, p.username AS name,
+        SUM(CASE WHEN p.ended_at >= ? THEN p.xp ELSE 0 END) AS value,
+        SUM(CASE WHEN p.ended_at >= ? THEN 1 ELSE 0 END) AS games,
+        SUM(CASE WHEN p.ended_at >= ? THEN p.xp ELSE 0 END) AS trend_cur,
+        SUM(CASE WHEN p.ended_at >= ? AND p.ended_at < ? THEN p.xp ELSE 0 END) AS trend_prev
+      FROM (
+        SELECT x.user_id AS user_id, u.username AS username, x.ended_at AS ended_at,
+          (CASE WHEN g.rated = 0 OR ${VS_BOTS} THEN 12 ELSE 25 END) * (1 + x.won) + COALESCE(pw.xp, 0) AS xp
+        FROM game_players x
+        JOIN users u ON u.id = x.user_id
+        JOIN games g ON g.id = x.game_id
+        LEFT JOIN cred_playwell pw ON pw.game_id = x.game_id AND pw.user_id = x.user_id
+        WHERE x.kind = ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl}
+      ) p
+      GROUP BY p.user_id HAVING games >= 5 AND value > 0 ORDER BY value DESC, games DESC LIMIT 50`)
+      .bind(curFrom, curFrom, trendFrom, trendPrevFrom, trendFrom, o.kind, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
   } else {
     // best duos: signed-in partners, by wins together (team games only)
     const locD = o.region ? 'AND x.user_id IN (SELECT user_id FROM social_settings WHERE region = ? AND hide_location = 0) AND x.partner_id IN (SELECT user_id FROM social_settings WHERE region = ? AND hide_location = 0)' : '';
@@ -131,6 +176,12 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
       const vsBots = Number((r as { vs_bots?: number }).vs_bots) || 0;
       row.vsPlayers = row.value;
       row.vsBots = vsBots;
+    }
+    if (o.board === 'pace') {
+      const delta = (Number(r.trend_cur) || 0) - (Number(r.trend_prev) || 0);
+      row.trend = delta;
+      const spanLabel = o.period === 'all' ? 'last 30d vs prior 30d' : `vs prior ${o.period === 'week' ? '7d' : '30d'}`;
+      row.extra = delta > 0 ? `+${delta} ${spanLabel}` : delta < 0 ? `${delta} ${spanLabel}` : `Even ${spanLabel}`;
     }
     return row;
   });

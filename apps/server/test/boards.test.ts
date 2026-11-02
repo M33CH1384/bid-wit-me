@@ -299,3 +299,107 @@ describe('streak board (owner 2026-11-01: highest win streaks for the ticker)', 
     expect(body.rows[0]).toMatchObject({ name: 'P2', value: 6, games: 6 });
   });
 });
+
+describe('pace board (Fastest Climbers — Rep XP earned in games, trend vs the prior period)', () => {
+  const D = 86400_000;
+  async function pg(id: string, at: number, uid: string, won: number, opts?: { seats?: string; rated?: number; kind?: 'team' | 'cutthroat'; endReason?: string }) {
+    const kind = opts?.kind ?? 'team';
+    await db.prepare('INSERT INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, end_reason) VALUES (?, ?, ?, ?, ?, 8, ?, ?, ?, ?, ?, ?)')
+      .bind(id, 'R', kind === 'cutthroat' ? 'cutthroat' : 'joker', kind, at, '[]', '[]', '[]', opts?.seats ?? FOUR, opts?.rated ?? 1, opts?.endReason ?? 'finished').run();
+    await db.prepare('INSERT INTO game_players (game_id, user_id, kind, seat, side, won, partner_id, ended_at, stats, elo_before, elo_after) VALUES (?, ?, ?, 0, 0, ?, NULL, ?, ?, 1200, 1200)')
+      .bind(id, uid, kind, won, at, st({ made: won ? 4 : 2 })).run();
+  }
+  async function pw(gameId: string, uid: string, xp: number, at: number) {
+    await db.prepare("INSERT INTO cred_playwell (game_id, user_id, xp, coins, lines, ended_at) VALUES (?, ?, ?, 0, '[]', ?)").bind(gameId, uid, xp, at).run();
+  }
+  const CUT4 = JSON.stringify([
+    { name: 'P9', side: 0, kind: 'user', uid: 'p9' }, { name: 'X', side: 1, kind: 'user', uid: 'x' },
+    { name: 'Y', side: 2, kind: 'user', uid: 'y' }, { name: 'Z', side: 3, kind: 'user', uid: 'z' },
+  ]);
+  const pace = (o?: Partial<{ kind: 'team' | 'cutthroat'; period: 'all' | 'month' | 'week'; region: string | null; declaredRegion: string }>) =>
+    leaderboard(db, { board: 'pace', kind: o?.kind ?? 'team', period: o?.period ?? 'week', region: o?.region ?? null, declaredRegion: o?.declaredRegion, now: NOW });
+
+  beforeEach(async () => {
+    for (const u of ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10'])
+      await db.prepare('INSERT INTO users (id, username, username_key, created_at) VALUES (?, ?, ?, 1)').bind(u, u.toUpperCase(), u).run();
+    // p1 — climbing: 210 this week (3W 2L at full rate + a +10 Play-Well row), 75 the week before
+    await pg('p1a', NOW - 1 * D, 'p1', 1); await pw('p1a', 'p1', 10, NOW - 1 * D);
+    await pg('p1b', NOW - 2 * D, 'p1', 1);
+    await pg('p1c', NOW - 3 * D, 'p1', 1);
+    await pg('p1d', NOW - 4 * D, 'p1', 0);
+    await pg('p1e', NOW - 5 * D, 'p1', 0);
+    await pg('p1f', NOW - 8 * D, 'p1', 1);
+    await pg('p1g', NOW - 9 * D, 'p1', 0);
+    await pg('p1x', NOW - 1 * D, 'p1', 1, { endReason: 'abandoned' }); // earns nothing, counts nowhere
+    // p2 — regressing: 125 this week (5L), 250 the week before (5W)
+    for (let i = 0; i < 5; i++) await pg(`p2c${i}`, NOW - (1 + i) * D, 'p2', 0);
+    for (let i = 0; i < 5; i++) await pg(`p2p${i}`, NOW - (8 + i) * D, 'p2', 1);
+    // p3 — flat: 175 (2W 3L) in both weeks
+    for (let i = 0; i < 5; i++) await pg(`p3c${i}`, NOW - (1 + i) * D, 'p3', i < 2 ? 1 : 0);
+    for (let i = 0; i < 5; i++) await pg(`p3p${i}`, NOW - (8 + i) * D, 'p3', i < 2 ? 1 : 0);
+    // p4 — only 4 games this week: under the 5-game floor despite 200 XP
+    for (let i = 0; i < 4; i++) await pg(`p4c${i}`, NOW - (1 + i) * D, 'p4', 1);
+    // p5 — brand new: nothing before this week; 250 base + 17 Play-Well
+    for (let i = 0; i < 5; i++) await pg(`p5c${i}`, NOW - (1 + i) * D, 'p5', 1);
+    await pw('p5c0', 'p5', 17, NOW - 1 * D);
+    // p6 — played only in the previous week
+    for (let i = 0; i < 5; i++) await pg(`p6p${i}`, NOW - (8 + i) * D, 'p6', 1);
+    // p7 — half rate both ways: unrated vs bots (24/win) and rated vs bot seats (still half)
+    for (let i = 0; i < 4; i++) await pg(`p7a${i}`, NOW - (1 + i) * D, 'p7', 1, { seats: bots, rated: 0 });
+    await pg('p7b', NOW - 5 * D, 'p7', 1, { seats: bots, rated: 1 });
+    // p8 — window edges: exactly at the 7d edge counts as current; 1s older is previous; 14d+1s is neither
+    for (let i = 0; i < 5; i++) await pg(`p8e${i}`, NOW - 7 * D, 'p8', 0);
+    for (let i = 0; i < 5; i++) await pg(`p8p${i}`, NOW - 7 * D - 1000, 'p8', 1);
+    await pg('p8old', NOW - 14 * D - 1000, 'p8', 1);
+    // p9 — cutthroat only
+    for (let i = 0; i < 5; i++) await pg(`p9c${i}`, NOW - (1 + i) * D, 'p9', 1, { kind: 'cutthroat', seats: CUT4 });
+    // p10 — rated vs guests is FULL rate (guests are not bots): 5 wins = 250
+    for (let i = 0; i < 5; i++) await pg(`p10c${i}`, NOW - (1 + i) * D, 'p10', 1, { seats: guests });
+  });
+
+  it('week board: exact game-XP reconstruction, ranked, with the signed trend + its delta line', async () => {
+    const rows = await pace();
+    expect(rows.map((r) => r.name)).toEqual(['P5', 'P10', 'P1', 'P3', expect.stringMatching(/^P[28]$/), expect.stringMatching(/^P[28]$/), 'P7']);
+    const by = Object.fromEntries(rows.map((r) => [r.name, r]));
+    expect(by.P5).toMatchObject({ value: 267, games: 5, trend: 267, extra: '+267 vs prior 7d' }); // new player: previous window is truly 0
+    expect(by.P10).toMatchObject({ value: 250, games: 5, trend: 250 });
+    expect(by.P1).toMatchObject({ value: 210, games: 5, trend: 135, extra: '+135 vs prior 7d' }); // abandoned game excluded from value AND games
+    expect(by.P3).toMatchObject({ value: 175, games: 5, trend: 0, extra: 'Even vs prior 7d' });
+    expect(by.P2).toMatchObject({ value: 125, games: 5, trend: -125, extra: '-125 vs prior 7d' });
+    expect(by.P8).toMatchObject({ value: 125, games: 5, trend: -125 }); // edge-inclusive current, edge-exclusive previous
+    expect(by.P7).toMatchObject({ value: 120, games: 5, trend: 120 }); // half rate: 5 × 24
+    expect(by.P4).toBeUndefined(); // 4 games < floor
+    expect(by.P6).toBeUndefined(); // nothing this week
+    expect(by.P9).toBeUndefined(); // cutthroat games are not team games
+    expect(by.A).toBeUndefined();  // base fixtures: 3 games < floor
+  });
+
+  it('month board widens the ranking window; the trend pair widens with it', async () => {
+    const rows = await pace({ period: 'month' });
+    const by = Object.fromEntries(rows.map((r) => [r.name, r]));
+    expect(by.P1).toMatchObject({ value: 285, games: 7, trend: 285, extra: '+285 vs prior 30d' });
+    expect(by.P2).toMatchObject({ value: 375, games: 10, trend: 375 });
+    expect(by.P6).toMatchObject({ value: 250, games: 5, trend: 250 }); // last week's games are inside this month
+    expect(by.P4).toBeUndefined();
+  });
+
+  it("period 'all': value is all-time; the trend pair is the last 30d vs the 30d before, and the row says so", async () => {
+    const rows = await pace({ period: 'all' });
+    const by = Object.fromEntries(rows.map((r) => [r.name, r]));
+    expect(by.P1).toMatchObject({ value: 285, games: 7, trend: 285, extra: '+285 last 30d vs prior 30d' });
+    expect(by.P6).toMatchObject({ value: 250, games: 5 });
+  });
+
+  it('kind slice, region paths, and the API contract', async () => {
+    const cut = await pace({ kind: 'cutthroat' });
+    expect(cut.map((r) => [r.name, r.value, r.games, r.trend])).toEqual([['P9', 250, 5, 250]]);
+    expect(await pace({ region: 'US-GA' })).toEqual([]); // p-users shared no location; a–d never qualify
+    expect(await pace({ declaredRegion: 'US-GA' })).toEqual([]);
+    const ORIGIN = 'https://bid-wit-me.pages.dev';
+    const url = new URL('/api/social/leaderboard?board=pace&kind=team&scope=global&period=week', ORIGIN);
+    const res = await handleSocialHttp(new Request(url), { DB: db, PUBLIC_ORIGIN: ORIGIN }, url, ['api', 'social', 'leaderboard'], NOW);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { rows: { name: string; value: number; games: number; trend: number; extra: string }[] };
+    expect(body.rows[0]).toMatchObject({ name: 'P5', value: 267, games: 5, trend: 267, extra: '+267 vs prior 7d' });
+  });
+});

@@ -22,7 +22,7 @@ function when(at: number, now = Date.now()): string {
 
 /* ------------------------------------------------------------ leaderboards */
 
-type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils';
+type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils' | 'pace';
 type Kind = 'team' | 'cutthroat';
 /** Board scopes. The server serves 'global' and 'local' (IP region); 'friends'
  *  and 'online' are honest client-side views over the global board — filtered
@@ -35,7 +35,7 @@ type Scope = 'global' | 'friends' | 'online' | 'regions' | 'local';
  *  a manual Filters pick, not part of the cycle. */
 const ROTATION: Scope[] = ['global', 'friends', 'online'];
 type Period = 'all' | 'month' | 'week';
-interface Row { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number }
+interface Row { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number; trend?: number }
 interface ModeStats {
   games: number; wins: number; winPct: number | null;
   winsVsPlayers: number; winsVsBots: number; gamesVsPlayers: number; gamesVsBots: number;
@@ -50,7 +50,7 @@ const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 const num = (n: number | null) => (n === null ? '—' : String(n));
 const UNRATED_HINT = 'Play a signed-in player to get rated';
 
-const BOARD_LABEL: Record<Board, string> = { rating: 'Rating', wins: 'Wins', accuracy: 'Bid accuracy', duos: 'Best duos', winpct: 'Win %', books: 'Books/hand', nils: 'Nils made' };
+const BOARD_LABEL: Record<Board, string> = { rating: 'Rating', wins: 'Wins', accuracy: 'Bid accuracy', duos: 'Best duos', winpct: 'Win %', books: 'Books/hand', nils: 'Nils made', pace: 'Fastest climbers' };
 const SCOPE_LABEL: Record<Scope, string> = { global: 'Global', friends: 'Friends', online: 'Online now', regions: 'Regions', local: 'Local' };
 const PERIOD_LABEL: Record<Period, string> = { week: 'This week', month: 'This month', all: 'All-time' };
 
@@ -75,6 +75,9 @@ export function ranksEmptyLine(board: Board, period: Period, scope: Scope): stri
   if (board === 'winpct') return `No one has 10 games${near} on this board yet — Win % opens at 10 games.`;
   if (board === 'books') return `No books${near} on this board yet.`;
   if (board === 'nils') return `No nils made${near} on this board yet.`;
+  if (board === 'pace' && period === 'week') return `No one has 5 games${near} this week yet — Fastest Climbers opens at 5 games.`;
+  if (board === 'pace' && period === 'month') return `No one has 5 games${near} this month yet — Fastest Climbers opens at 5 games.`;
+  if (board === 'pace') return `No one has 5 games${near} yet — Fastest Climbers opens at 5 games.`;
   return `No duos${near} on this board yet.`;
 }
 
@@ -92,16 +95,21 @@ function isMineRow(r: Row, youId: string | undefined, myName: string | undefined
   return false;
 }
 
-function metricText(board: Board, period: Period, r: Row): string {
+export function metricText(board: Board, period: Period, r: Row): string {
   if (board === 'accuracy' || board === 'winpct') return `${r.value}%`;
   if (board === 'books') return r.value.toFixed(1);
+  if (board === 'pace') return r.value.toLocaleString('en-US');
   if (board === 'rating' && period !== 'all') return `${r.value > 0 ? '+' : ''}${r.value}`;
   return String(r.value);
 }
 
-function trendDir(board: Board, period: Period, value: number): 'up' | 'down' | 'flat' {
+export function trendDir(board: Board, period: Period, r: Row): 'up' | 'down' | 'flat' {
+  // Fastest Climbers: the arrow is the pace trend itself — this window's
+  // game-XP vs the previous equal window (server `trend`, signed; the delta
+  // number rides in the row's sub-line, never an arrow without its number).
+  if (board === 'pace') { const t = r.trend ?? 0; return t > 0 ? 'up' : t < 0 ? 'down' : 'flat'; }
   if (board !== 'rating' || period === 'all') return 'flat';
-  return value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
+  return r.value > 0 ? 'up' : r.value < 0 ? 'down' : 'flat';
 }
 
 function Trend({ dir }: { dir: 'up' | 'down' | 'flat' }) {
@@ -125,7 +133,7 @@ function Trend({ dir }: { dir: 'up' | 'down' | 'flat' }) {
 function RankRow({ r, board, period, mine, onOpen, rowRef, testId }: {
   r: Row; board: Board; period: Period; mine: boolean; onOpen?: () => void; rowRef?: (el: HTMLElement | null) => void; testId?: string;
 }) {
-  const dir = trendDir(board, period, r.value);
+  const dir = trendDir(board, period, r);
   const sub = board === 'wins' && r.vsPlayers !== undefined
     ? `${r.vsPlayers} vs players · ${r.vsBots ?? 0} vs bots`
     : (r.extra ?? null);
@@ -401,7 +409,7 @@ export function Leaderboards() {
             Books/hand, Nils made, Best duos (league data wave added the
             middle three from the same stored stat JSON). */}
         <div className="ranks-cat" role="group" aria-label="Category" data-testid="lb-cats">
-          {(['rating', 'wins', 'winpct', 'accuracy', 'books', 'nils', 'duos'] as Board[]).map((b) => (
+          {(['rating', 'wins', 'winpct', 'accuracy', 'books', 'nils', 'pace', 'duos'] as Board[]).map((b) => (
             <button key={b} type="button" className={board === b ? 'on' : ''} data-testid={`lb-board-${b}`}
               disabled={b === 'duos' && kind === 'cutthroat'} onClick={() => pickBoard(b)}>{BOARD_LABEL[b]}</button>
           ))}
@@ -426,7 +434,7 @@ export function Leaderboards() {
               <span className="ranks-rk">#</span>
               <span className="ranks-av-sp" />
               <span className="ranks-name">{board === 'duos' ? 'Duo' : 'Player'}</span>
-              <span className="ranks-val-h">{board === 'accuracy' ? 'Accuracy' : board === 'rating' ? 'Rating' : board === 'winpct' ? 'Win %' : board === 'books' ? 'Books/hand' : board === 'nils' ? 'Nils' : 'Wins'}</span>
+              <span className="ranks-val-h">{board === 'accuracy' ? 'Accuracy' : board === 'rating' ? 'Rating' : board === 'winpct' ? 'Win %' : board === 'books' ? 'Books/hand' : board === 'nils' ? 'Nils' : board === 'pace' ? 'XP' : 'Wins'}</span>
               <span className="ranks-gp-h">GP</span>
               <span className="ranks-trend" />
             </div>
@@ -437,7 +445,7 @@ export function Leaderboards() {
             </div>
           </>
         )}
-        <p className="soc-note">Ratings and Best duos count signed-in opponents. Wins split into vs players and vs bots.</p>
+        <p className="soc-note">Ratings and Best duos count signed-in opponents. Wins split into vs players and vs bots. Fastest Climbers counts Rep XP earned in games; its arrow tracks the previous period.</p>
         <PowerRankings kind={board === 'duos' ? 'team' : kind} onOpen={(name) => social.showProfile(name)} />
         <RecordBook onOpen={(name) => social.showProfile(name)} />
       </div>
