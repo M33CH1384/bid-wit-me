@@ -2,6 +2,7 @@
  * Story Mode API client (same-origin /api/story/* via the Pages proxy, cookie
  * session — the same pattern as the rest of the account APIs).
  */
+import { skipSelfRead } from '../account/sessionHint';
 import {
   STORY_CHARACTERS, STORY_STOPS, mannerBandOf, targetForStop,
   type StoryBeatFacts, type StoryEndReason, type StoryStop, type StoryStopState,
@@ -180,6 +181,9 @@ export type ProgressFetch =
 
 export async function fetchStoryProgress(track = 'solo'): Promise<ProgressFetch> {
   try {
+    // Progress is per signed-in user (the server 401s every guest): once /api/auth/me has said "no user", answer
+    // signedOut without the request — the same result the 401 produced, minus the console error (sessionHint).
+    if (await skipSelfRead()) return { status: 'signedOut' };
     const r = await fetch(`/api/story/progress?track=${encodeURIComponent(track)}`, { headers: { accept: 'application/json' } });
     if (r.status === 401) return { status: 'signedOut' };
     if (r.status === 403) return { status: 'locked' };

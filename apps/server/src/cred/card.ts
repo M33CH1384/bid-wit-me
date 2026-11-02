@@ -26,6 +26,7 @@
 import { STORY_BADGE_DEFS, STORY_STOPS, storyBadgesFor, type StoryBadgeFacts } from '@spades/bots';
 import { cleanText, maskProfanity } from '../filter';
 import { myStats, personalStats, type MyModeStats } from '../stats/boards';
+import { personalQuitStats, type PersonalQuitStats } from '../stats/quits';
 import { ACHIEVEMENTS, achievementStates } from './achievements';
 import { bigJokerSeasonActive } from './bigJokerSeason';
 import { ensureSeason } from './seasons';
@@ -234,6 +235,11 @@ export interface PlayerCardData {
     bestStreak: number;
     team: CardModeSplit;
     cutthroat: CardModeSplit;
+    /** rated-games quit line (owner, 2026-11-02: quit metrics live on
+     *  player cards): recorded leaves that ended a rated game as a human
+     *  contest — stats/quits.ts owns the definition (rated-only, human
+     *  opposition, first leaver of a deal; disconnects never count) */
+    quits: PersonalQuitStats;
   };
   /** head-to-head vs the viewer, FROM THE VIEWER'S perspective
    *  ({games, wins: viewer's wins, losses: viewer's losses}); present only
@@ -281,7 +287,7 @@ export async function cardFor(
   if (!u) return null;
 
   const season = await ensureSeason(db, now);
-  const [level, stats, badges, story, combined, team, cutthroat] = await Promise.all([
+  const [level, stats, badges, story, combined, team, cutthroat, quits] = await Promise.all([
     pre?.level ?? xpSnapshot(db, userId),
     pre?.stats ?? myStats(db, userId),
     earnedBadgesFor(db, userId),
@@ -289,6 +295,7 @@ export async function cardFor(
     personalStats(db, userId),
     seasonSplit(db, userId, season.id, 'team'),
     seasonSplit(db, userId, season.id, 'cutthroat'),
+    personalQuitStats(db, userId, undefined, 'all', now),
   ]);
 
   const tags = parseStoredList(u.tagsRaw).filter((t): t is PartnerTag => TAG_SET.has(t)).slice(0, CARD_TAGS_MAX);
@@ -340,6 +347,7 @@ export async function cardFor(
       streak: combined.streak,
       bestStreak: combined.bestStreak,
       team, cutthroat,
+      quits,
     },
   };
 

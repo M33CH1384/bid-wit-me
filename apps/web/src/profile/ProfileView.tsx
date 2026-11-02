@@ -76,7 +76,7 @@ import { accountUidOf, AvatarCircle, compressAvatarFile, forgetAvatar, useAvatar
 import { BADGES } from '../badges';
 import { offlineStats } from '../offlineStats';
 import { CoinIcon, RepBlock } from '../RepBlock';
-import { PlayerCard, type PlayerCardData } from './PlayerCard';
+import { PlayerCard, quitStatRows, type PlayerCardData } from './PlayerCard';
 import { CardEditor } from './CardEditor';
 import { TaglineText } from '../tagline';
 import { SOCIAL_PLATFORMS, SocialLinksChips, type SocialLinks } from '../socialLinks';
@@ -960,6 +960,15 @@ export function ProfileView({ host, name, id }: {
               <>
                 <h3>Partnership</h3><StatsGrid stats={cred.stats.team} />
                 <h3>Cutthroat</h3><StatsGrid stats={cred.stats.cutthroat} />
+              </>
+            )}
+            {cred?.card?.stats.quits && (
+              <>
+                <h3>Quits</h3>
+                <div data-testid="profile-quits">
+                  <StatRows rows={quitStatRows(cred.card.stats.quits)} />
+                </div>
+                <p className="soc-muted">Rated games only — a quit is a recorded leave that ended a rated game. Disconnects don’t count.</p>
               </>
             )}
             {socialP?.stats && socialP.stats.games > 0 && (

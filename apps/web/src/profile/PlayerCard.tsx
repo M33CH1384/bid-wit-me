@@ -90,6 +90,40 @@ import './playercard.css';
 export type CardBadgeKind = 'achievement' | 'story' | 'badge';
 export interface CardBadge { kind: CardBadgeKind; id: string; name: string | null; icon: string | null; earnedAt: number | null }
 export interface CardModeSplit { rating: number; games: number; wins: number; losses: number }
+/** The quit block of the card payload (server stats/quits.ts
+ *  PersonalQuitStats): RATED games only — `started` rated games, `quits`
+ *  recorded leaves that ended one, `rate` quits/started as a 1dp percent
+ *  (null when the player has no rated starts), and the when-split by the
+ *  hand in progress at the leave (early = hands 1–2, mid = 3–5, late = 6+).
+ *  Disconnects are never counted — the server module owns the definition. */
+export interface CardQuitStats {
+  started: number;
+  quits: number;
+  rate: number | null;
+  byHand: { early: number; mid: number; late: number };
+  score: { behind: number; ahead: number; level: number; unknown: number };
+}
+
+/** The card back's quit line, one string so every surface quotes it the
+ *  same way: "Rated games 55 · Quit 3 (5.5%) · early 1 · mid 1 · late 1"
+ *  (the when-split rides along only when there are quits to split). */
+export function quitSummaryText(q: CardQuitStats): string {
+  const head = `Rated games ${q.started} · Quit ${q.quits} (${q.rate === null ? '—' : `${q.rate}%`})`;
+  if (!q.quits) return head;
+  return `${head} · early ${q.byHand.early} · mid ${q.byHand.mid} · late ${q.byHand.late}`;
+}
+
+/** The same block as stat-table rows for the profile Stats tab — one
+ *  source for the labels so the tab and the card can never drift. */
+export function quitStatRows(q: CardQuitStats): [string, string][] {
+  return [
+    ['Rated games', String(q.started)],
+    ['Quits', q.rate === null ? String(q.quits) : `${q.quits} (${q.rate}%)`],
+    ['Quit early — hands 1–2', String(q.byHand.early)],
+    ['Quit mid — hands 3–5', String(q.byHand.mid)],
+    ['Quit late — hand 6+', String(q.byHand.late)],
+  ];
+}
 /** The rank card, exactly as the server derives it (cred/xp.ts). */
 export interface CardRankData {
   level: number;
@@ -124,6 +158,10 @@ export interface PlayerCardData {
     games: number; wins: number; losses: number;
     winPct: number | null; streak: number; bestStreak: number;
     team: CardModeSplit; cutthroat: CardModeSplit;
+    /** the rated-games quit line (owner, 2026-11-02): recorded leaves that
+     *  ended a rated game — optional only so a stale cached payload
+     *  degrades to no line instead of breaking the card */
+    quits?: CardQuitStats;
   };
   vsViewer?: { games: number; wins: number; losses: number };
 }
@@ -463,6 +501,12 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
                 </>
               ) : (
                 <p className="pcard-nogames" data-testid="pcard-nogames">No games on record yet</p>
+              )}
+              {/* the rated quit line (owner, 2026-11-02): only when the
+                  player has rated starts on record — no rated history
+                  means no line, never a dressed-up zero */}
+              {s.quits && s.quits.started > 0 && (
+                <p className="pcard-quits" data-testid="pcard-quits">{quitSummaryText(s.quits)}</p>
               )}
               <p className="pcard-back-story">
                 Story — {data.story.stopsCleared} of {data.story.stopsTotal} stops cleared{data.story.completed && ' · route complete 👑'}

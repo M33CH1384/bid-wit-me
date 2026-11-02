@@ -285,6 +285,23 @@ export const TRACKS: Track[] = [
   { file: 'feeling', title: 'Feeling', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/feeling-1/', credit: '"Feeling" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'the-road', title: 'The Road', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/the-road-1/', credit: '"The Road" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'roof-tops', title: 'Roof Tops', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/summer-air-lo-fi/roof-tops/' },
+  // The Yacht rotation (owner, 2026-11-02): three Ketsa hip-hop
+  // instrumentals (CC BY 4.0, via Free Music Archive) — "West Coast"
+  // the identity pick, all sun and money — over three HoliznaCC0 lofi
+  // instrumentals (CC0): "Ocean Memory" the hushed floor, "Tetrapod"
+  // the steady mid, "Ocean Breeze" the sunny colour. The full set was
+  // approved as presented ("I like it", 2026-11-02), all six in these
+  // roles. They join the yacht pin in spatial.ts; appended last so
+  // every existing track index keeps its meaning, exactly like the
+  // sets above. "Doobie" and "All Ways" stay out — the audition's
+  // alternates, held out unplayed, exactly like "Off Days" above;
+  // this is the closed rotation the owner actually picked.
+  { file: 'west-coast', title: 'West Coast', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/west-coast-1/', credit: '"West Coast" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'put-me-down', title: 'Put Me Down', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/put-me-down/', credit: '"Put Me Down" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'all-out', title: 'All Out', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/all-out/', credit: '"All Out" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'ocean-memory', title: 'Ocean Memory', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/ocean-memory-lo-fi-chill/ocean-memory/' },
+  { file: 'tetrapod', title: 'Tetrapod', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/tetrapod-lofi-relaxing-mp3/' },
+  { file: 'ocean-breeze', title: 'Ocean Breeze', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/ocean-breeze-lofi-ukulele-peaceful-mp3/' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -689,15 +706,50 @@ const ROO_EVENT_GAIN = 0.86;
  *  step, 0.036, sits below the material's own step noise, p99 0.045). */
 const ROO_BED_LEAD_S = 1105 / 44100;
 const ROO_BED_SECONDS = 64;
+/** The Yacht's recorded bed (owner sample pick, 2026-11-02): a
+ *  64.000 s seamless loop of harbour recordings — a real surf body
+ *  low-passed deep, the calm stretches of a nautical water take as
+ *  the lap against the hull, steady breeze moving over the deck and
+ *  a high-passed seaside sheen over everything so the bed reads DAY,
+ *  matching the bright deck it plays under (SSE Library, CC0). Five
+ *  recorded one-shots ride over it as scheduled events: a swell
+ *  leaning on the hull, the boat creaking against its mooring, the
+ *  stern ensign cracking once in a gust, gull calls, and a ship's
+ *  horn far out in the harbour — mid-sparse densities: a working
+ *  boat makes some noise, but never talks over the table. The gulls
+ *  are an event, never looped into the bed: the same cries on a
+ *  64 s loop would repeat on the minute, every minute. */
+const YACHT_BED_URL = '/audio/ambience/yacht-bed.mp3';
+const YACHT_EVENT_URLS = {
+  waveSwell: ['/audio/ambience/yacht-event-wave-swell.mp3'],
+  hullCreak: ['/audio/ambience/yacht-event-hull-creak.mp3'],
+  flagSnap: ['/audio/ambience/yacht-event-flag-snap.mp3'],
+  gullCalls: ['/audio/ambience/yacht-event-gull-calls.mp3'],
+  farHorn: ['/audio/ambience/yacht-event-far-horn.mp3'],
+} as const;
+/** Event staging gain, same construction as CHU_EVENT_GAIN: the bed
+ *  file is the −16 LUFS master; the event clips keep their premaster
+ *  staging, so they play through this gain to hold the approved demo
+ *  balance (the shipped bed sits +9.19 dB over its premaster —
+ *  measured RMS on the shipped files). */
+const YACHT_EVENT_GAIN = 2.880;
+/** The bed's MP3 loop trim, from the shipped file's own measured
+ *  offsets: 1105 samples of encoder delay at 44.1 kHz ahead of
+ *  exactly 64.000 s of content — same encoder settings as The Pj's,
+ *  Speakeasy, Barbershop, Grandma's, Cookout, Church and Rooftop
+ *  beds (the shipped file's measured seam step, 0.0012, sits far
+ *  below the material's own step noise, p99 0.0319). */
+const YACHT_BED_LEAD_S = 1105 / 44100;
+const YACHT_BED_SECONDS = 64;
 /** Every recorded venue's ambience-cache footprint: the bed's cache key
  *  plus every event URL the venue lazy-loads. The engine binds its decode
  *  cache to the CURRENT venue (bindAmbienceToVenue, crash-2 lane
- *  2026-11-01): seven recorded 64 s beds decode to ~23–25 MB each and the
+ *  2026-11-01): eight recorded 64 s beds decode to ~23–25 MB each and the
  *  event one-shots add ~15–25 MB across venues, and the cache used to
  *  keep ALL of it for the life of the context — up to ~150–175 MB of
  *  decoded audio accumulating in exactly the table-hopping pattern that
  *  feeds iOS process death. Synthesized beds (mansion,
- *  casino, beach, yacht, rec, porch) decode nothing and map to no entry:
+ *  casino, beach, rec, porch) decode nothing and map to no entry:
  *  switching to one evicts every recorded buffer. */
 const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readonly string[] }>> = {
   street: { bedKey: 'pjs-bed', urls: [PJS_BED_URL, ...Object.values(PJS_EVENT_URLS).flat()] },
@@ -707,6 +759,7 @@ const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readon
   cookout: { bedKey: 'ctt-bed', urls: [CTT_BED_URL, ...Object.values(CTT_EVENT_URLS).flat()] },
   basement: { bedKey: 'chu-bed', urls: [CHU_BED_URL, ...Object.values(CHU_EVENT_URLS).flat()] },
   rooftop: { bedKey: 'roo-bed', urls: [ROO_BED_URL, ...Object.values(ROO_EVENT_URLS).flat()] },
+  yacht: { bedKey: 'yct-bed', urls: [YACHT_BED_URL, ...Object.values(YACHT_EVENT_URLS).flat()] },
 };
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
@@ -3867,6 +3920,76 @@ class Engine {
     arm('looseMetal', 180, 300, true);
   }
 
+  private startYachtBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('yct-bed', YACHT_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, YACHT_BED_LEAD_S, YACHT_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...YACHT_EVENT_URLS.waveSwell, ...YACHT_EVENT_URLS.hullCreak, ...YACHT_EVENT_URLS.flagSnap, ...YACHT_EVENT_URLS.gullCalls, ...YACHT_EVENT_URLS.farHorn]) void this.loadAmbience(url, url);
+    this.scheduleYachtEvents();
+  }
+
+  /** Boat life over the recorded bed: five independent randomized
+   *  timers — a swell leaning on the hull every 60–150 s, the boat
+   *  creaking against its mooring every 45–120 s, the stern ensign
+   *  cracking in a gust every 90–240 s, gull calls every 120–300 s
+   *  and a ship's horn far out in the harbour every 240–480 s
+   *  (samples-lane densities, 2026-11-02) — sharing one busy gate,
+   *  so an event never talks over another (the street pattern).
+   *  Mid-sparse: the Yacht is a working boat, not a slow stop, but
+   *  the table still owns the room. Each kind has a single
+   *  recording, so there is no variant to rotate; the spacing itself
+   *  is the variety. The timers live in venueTimers, so leaving the
+   *  venue silences the boat, and the first fire comes a
+   *  half-interval in, once the table settles. */
+  private scheduleYachtEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the deck
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = YACHT_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof YACHT_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(YACHT_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('waveSwell', 60, 150, true);
+    arm('hullCreak', 45, 120, true);
+    arm('flagSnap', 90, 240, true);
+    arm('gullCalls', 120, 300, true);
+    arm('farHorn', 240, 480, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -4051,12 +4174,23 @@ class Engine {
         this.refreshFilm(1.2);
         break;
       }
-      case 'yacht':
-        this.vNoise('bandpass', 420, 0.8, 0.06, 0.3, 0.7); // water lapping on the hull
-        this.vNoise('lowpass', 500, 0.6, 0.035, 0.06, 0.6); // sea breeze
-        this.vEvery(10, 22, (t) => this.tone(t, 90, 0.9, 'triangle', 0.01, { glideTo: 70, filter: 300, dest: B })); // a creak
-        this.vEvery(16, 30, (t) => this.tone(t, 1800, 0.4, 'sine', 0.006, { glideTo: 1200, dest: B })); // gull
+      case 'yacht': {
+        // The Yacht's bed is a RECORDING now (owner sample pick,
+        // 2026-11-02), replacing the synthesized stand-in (filtered-noise
+        // water lap and breeze, a triangle-tone creak and a sine-tone
+        // gull — the synth gull was the tell): a seamless 64 s harbour
+        // loop — a real surf body, water lapping the hull for real,
+        // breeze moving over the deck, and a bright seaside sheen over
+        // everything so the bed reads day, like the deck it plays
+        // under. The boat's life rides over it as one-shot events on
+        // their own timers (startYachtBed): a swell leaning on the
+        // hull, the boat creaking against its mooring, the ensign
+        // cracking in a gust, gull calls, and a ship's horn far out in
+        // the harbour. No story surface plays here — the Yacht is a
+        // league venue only.
+        this.startYachtBed();
         break;
+      }
       case 'street': {
         // Ambient events come from the venue's audio identity (spatial.ts): only The Pj's
         // carries 'driveby' + 'headlights'. A bare bed start with no room applied keeps the

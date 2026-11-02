@@ -607,7 +607,11 @@ describe('the card face (source pins)', () => {
   });
 
   it('ProfileView renders the card as its header and the editor from the card’s own button', () => {
-    expect(view).toContain("import { PlayerCard, type PlayerCardData } from './PlayerCard';");
+    // pin revised 2026-11-02 (quit-metrics card wiring): the import grew
+    // quitStatRows — the Stats tab renders the card's quit block through
+    // the shared helper from the same module; the pin's intent (the card
+    // + its data type come from './PlayerCard') is unchanged.
+    expect(view).toContain("import { PlayerCard, quitStatRows, type PlayerCardData } from './PlayerCard';");
     expect(view).toContain('<PlayerCard data={cardData}');
     expect(view).toContain('<CardEditor card={cardData}');
     expect(view.indexOf('<PlayerCard')).toBeLessThan(view.indexOf('testid="profile-rep"'));
