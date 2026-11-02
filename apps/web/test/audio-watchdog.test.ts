@@ -72,8 +72,17 @@ class FakeNode {
 /** What the master meter hears. 0 = digital silence; 0.02 = honest signal. */
 let analyserLevel = 0.02;
 class FakeAnalyser extends FakeNode {
+  static instances: FakeAnalyser[] = [];
+  /** Which FakeCtx built this meter (index into FakeCtx.instances). */
+  ctxIndex = -1;
+  /** Per-meter level override; null follows the suite-wide analyserLevel.
+   *  The engine carries more than one meter (the master witness and, from
+   *  the 2026-11-01 fix, the music path's own) — a scenario that needs the
+   *  stems to disagree sets them per instance. */
+  level: number | null = null;
   fftSize = 2048;
-  getFloatTimeDomainData(buf: Float32Array): void { buf.fill(analyserLevel); }
+  constructor() { super(); FakeAnalyser.instances.push(this); }
+  getFloatTimeDomainData(buf: Float32Array): void { buf.fill(this.level ?? analyserLevel); }
 }
 
 class FakeCtx {
@@ -90,7 +99,7 @@ class FakeCtx {
   createBiquadFilter(): FakeNode { return new FakeNode(); }
   createConvolver(): FakeNode { return new FakeNode(); }
   createOscillator(): FakeNode { return new FakeNode(); }
-  createAnalyser(): FakeNode { return new FakeAnalyser(); }
+  createAnalyser(): FakeNode { const a = new FakeAnalyser(); a.ctxIndex = FakeCtx.instances.length - 1; return a; }
   createMediaElementSource(): FakeNode { return new FakeNode(); }
   createChannelSplitter(): FakeNode { return new FakeNode(); }
   createChannelMerger(): FakeNode { return new FakeNode(); }
@@ -363,5 +372,97 @@ describe('the dropout watchdog', () => {
     expect(src).toContain('this.startWatchdog()');
     expect(src).toContain('this.armVerify()');
     expect(src).toContain('MUSIC_FETCH_TIMEOUT_MS');
+  });
+});
+
+/* ---------- the 2026-11-01 recurrence: the witness must hear the music ----------
+ * The routing fact the Oct-30 suite never modeled: the decks reach the
+ * destination through the music duck, NOT through the master bus — so the
+ * master meter (beds / SFX / voices) cannot hear the music it was asked to
+ * verify. In any bed-silent moment (bed off, a bed-'none' venue, the async
+ * decode window after a venue hop or a rebuild) outputDead() read a
+ * healthy, playing deck as a dead graph and escalated to a full rebuild;
+ * every rebuild invalidated the bed's decode cache, so on a pressured
+ * phone the bed could not land before the next escalation — a
+ * self-sustaining rebuild loop ("pauses a lot", music restarting on fresh
+ * picks). The fix gives the music path its own witness meter and refers
+ * its reading back to the source before believing a silence verdict. */
+describe('the output witness hears the music it verifies', () => {
+  /** The live context's meters, in build order: master first, then the
+   *  music path's witness (which exists only once the deck path carries
+   *  one — before the fix this list has just the master). */
+  const ctxMeters = () => FakeAnalyser.instances.filter((a) => a.ctxIndex === FakeCtx.instances.length - 1);
+  const masterMeter = () => ctxMeters()[0]!;
+  const musicMeter = () => ctxMeters()[1];
+
+  /** Stage a bed-silent table whose deck is honestly playing a quiet
+   *  passage: nothing on the master meter, a hymn-quiet level on the
+   *  music path (referred to the source through the bus gain, ≈ −49 dBFS). */
+  const arrange = (masterLevel: number, musicLevel: number) => {
+    // The fake param rests at 0; a real GainNode rests at 1, and the
+    // source referral divides by the duck's live value — set it honestly.
+    const duck = (sound as unknown as { musicDuck: { gain: { value: number } } | null }).musicDuck;
+    if (duck) duck.gain.value = 1;
+    masterMeter().level = masterLevel;
+    const mm = musicMeter(); if (mm) mm.level = musicLevel;
+    activeDeck().el.currentTime = 30;
+  };
+  const release = () => { masterMeter().level = null; const mm = musicMeter(); if (mm) mm.level = null; };
+
+  it('a quiet passage over a silent bed never escalates (watchdog path)', async () => {
+    const ctxCount = FakeCtx.instances.length;
+    arrange(0, 0.001); // bed silent at the master meter; the hymn plays on, quietly
+    for (let i = 0; i < 5; i++) await step(2000); // five ticks: two more than the escalation count
+    expect(FakeCtx.instances.length).toBe(ctxCount); // no rebuild: the music was never dead
+    expect(sound.playingDeckCount()).toBe(1);
+    release();
+  });
+
+  it('a quiet passage over a silent bed never escalates (wake-verify path)', async () => {
+    const ctxCount = FakeCtx.instances.length;
+    arrange(0, 0.001);
+    sound.wake('gesture'); // any tap arms the outcome verification
+    await step(800); // first reading
+    await step(800); // second reading — used to confirm a rebuild here
+    expect(FakeCtx.instances.length).toBe(ctxCount);
+    expect(sound.playingDeckCount()).toBe(1);
+    release();
+  });
+
+  it('the music witness is referred to the source: low music volume is not silence', async () => {
+    sound.set({ musicVolume: 0.15 }); // bus gain falls to ≈0.04: the same hymn now reads ≈0.00015 at the meter
+    const ctxCount = FakeCtx.instances.length;
+    arrange(0, 0.00015);
+    for (let i = 0; i < 5; i++) await step(2000);
+    expect(FakeCtx.instances.length).toBe(ctxCount);
+    expect(sound.playingDeckCount()).toBe(1);
+    release();
+    sound.set({ musicVolume: 0.5 });
+  });
+
+  it('a truly dead music path still escalates to a rebuild', async () => {
+    const ctxCount = FakeCtx.instances.length;
+    arrange(0, 0); // both meters silent while a deck claims to play: the Oct-30 disease, unchanged
+    await step(2000);
+    await step(2000);
+    expect(FakeCtx.instances.length).toBe(ctxCount); // hysteresis holds
+    await step(2000);
+    expect(FakeCtx.instances.length).toBe(ctxCount + 1); // the rebuild still comes
+    release();
+    analyserLevel = 0.02;
+    await step(1500); // the rebuild re-syncs and the music restarts
+    expect(sound.playingDeckCount()).toBe(1);
+    activeDeck().el.currentTime = 30;
+  });
+
+  it('the deck path carries the witness (source pin)', () => {
+    const candidates = [join(process.cwd(), 'apps/web/src/audio.ts'), join(process.cwd(), 'src/audio.ts')];
+    const srcPath = candidates.find((p) => existsSync(p))!;
+    const src = readFileSync(srcPath, 'utf8');
+    const chain = src.slice(src.indexOf('private buildMusicChain()'), src.indexOf('private buildMusicChain()') + 4200);
+    expect(chain).toContain('musicAnalyser');
+    expect(chain).toContain('this.musicDuck.connect(this.musicAnalyser)');
+    const dead = src.slice(src.indexOf('private outputDead()'), src.indexOf('private outputDead()') + 2400);
+    expect(dead).toContain('musicSourceRms');
   });
 });

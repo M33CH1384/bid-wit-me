@@ -309,6 +309,13 @@ const MUSIC_FETCH_TIMEOUT_MS = 20000;
 /** Analyser RMS below this while a deck verifiably plays = digital silence:
  *  the graph is up, every flag says playing, and nothing is sounding. */
 const OUTPUT_SILENCE_EPS = 0.0005;
+/** The music witness's floor, referred to the SOURCE (see musicSourceRms):
+ *  the playing track's own level, with the bus / duck / deck gains divided
+ *  back out. A dead deck path reads exactly 0; the quietest sustained
+ *  passage in the shipped rotations (the Church hymns) sits well above
+ *  this — only isolated sub-window dips cross it, never the sustained
+ *  readings the escalation paths require. */
+const MUSIC_SILENCE_FLOOR = 0.001;
 
 /** Indices of the tracks the general shuffle may play — every track except the storyOnly score and the menuOnly menu theme. */
 export function generalPool(): number[] { return TRACKS.map((t, i) => i).filter((i) => !TRACKS[i]!.storyOnly && !TRACKS[i]!.menuOnly); }
@@ -711,6 +718,14 @@ class Engine {
   /** Output meter on the master bus (master → analyser → compressor). The
    *  only witness that can catch a graph that reads 'running' but is silent. */
   private analyser: AnalyserNode | null = null;
+  /** Output meter on the MUSIC path (musicDuck → musicAnalyser →
+   *  destination, a pass-through: nothing audible changes). The decks
+   *  never pass through the master bus, so the master meter cannot hear
+   *  them — the 2026-11-01 recurrence, where a healthy playing deck over
+   *  a silent bed read as a dead graph and the watchdog rebuilt the
+   *  context in a loop. Rebuilt with the chain (buildMusicChain) on every
+   *  context; nulled alongside the master meter on a rebuild. */
+  private musicAnalyser: AnalyserNode | null = null;
   /** One-shot post-wake silence verification (see armVerify). */
   private verifyTimer: number | null = null;
   private silenceTicks = 0;
@@ -910,7 +925,19 @@ class Engine {
     outL.connect(merge, 0, 0); outR.connect(merge, 0, 1);
     const bus = c.createGain();
     this.musicDuck = c.createGain();
-    merge.connect(bus).connect(this.musicDuck).connect(c.destination);
+    merge.connect(bus).connect(this.musicDuck);
+    // The music path's own output witness (see the musicAnalyser field):
+    // the decks reach the destination here, never through the master bus,
+    // so the watchdog's silence verdict about a playing deck must be read
+    // on THIS path. An AnalyserNode passes its input through untouched —
+    // the audible chain is identical with or without the witness. Where
+    // createAnalyser is unavailable the path connects straight through
+    // and the master meter's verdict stands alone, exactly as before.
+    try {
+      this.musicAnalyser = c.createAnalyser();
+      this.musicAnalyser.fftSize = 2048;
+      this.musicDuck.connect(this.musicAnalyser).connect(c.destination);
+    } catch { this.musicAnalyser = null; this.musicDuck.connect(c.destination); }
     this.musicBus = bus;
     this.applyFilmMix();
     return input;
@@ -1384,20 +1411,37 @@ class Engine {
     this.watchdogTimer = window.setInterval(() => this.watchdogTick(), WATCHDOG_MS);
   }
 
-  private outputRms(): number {
-    if (!this.analyser) return -1;
+  /** One meter's instantaneous RMS; -1 when there is no meter to read. */
+  private meterRms(a: AnalyserNode | null): number {
+    if (!a) return -1;
     try {
-      const buf = new Float32Array(this.analyser.fftSize);
-      this.analyser.getFloatTimeDomainData(buf);
+      const buf = new Float32Array(a.fftSize);
+      a.getFloatTimeDomainData(buf);
       let acc = 0;
       for (let i = 0; i < buf.length; i++) acc += buf[i]! * buf[i]!;
       return Math.sqrt(acc / buf.length);
     } catch { return -1; }
   }
 
+  private outputRms(): number { return this.meterRms(this.analyser); }
+
+  /** The decks' own testimony, referred to the source: the music meter's
+   *  RMS with the gains it sits behind (music bus, duck, the active deck)
+   *  divided back out, so the reading means the same thing at any volume
+   *  the player chose. -1 = the witness cannot testify (no meter, or the
+   *  chain gains are ~0 — the music is turned down to silence on purpose
+   *  and its audibility proves nothing either way). */
+  private musicSourceRms(): number {
+    const m = this.meterRms(this.musicAnalyser);
+    if (m < 0) return -1;
+    const chain = (this.musicBus?.gain.value ?? 0) * (this.musicDuck?.gain.value ?? 1) * (this.decks[this.active]?.gain.gain.value ?? 0);
+    if (!(chain > 0.0001)) return -1;
+    return m / chain;
+  }
+
   /** True when every witness says sound should be audible — context running,
-   *  master up, a deck verifiably playing — yet the master meter hears
-   *  digital silence. The signature of a dead output path (iOS interruption
+   *  master up, a deck verifiably playing — yet the meters hear digital
+   *  silence. The signature of a dead output path (iOS interruption
    *  residue, audio-route change), invisible to every state check. */
   private outputDead(): boolean {
     if (!this.analyser || !this.ctx || !this.unlocked) return false;
@@ -1406,7 +1450,19 @@ class Engine {
     if (this.advancing || this.fading) return false; // a crossfade owns the decks; its loads are timeout-guarded
     if (!wantsMusic(this.settings) || this.playingDeckCount() === 0) return false;
     const rms = this.outputRms();
-    return rms >= 0 && rms < OUTPUT_SILENCE_EPS;
+    if (!(rms >= 0 && rms < OUTPUT_SILENCE_EPS)) return false; // the master stems are sounding (or unreadable): not dead
+    // The master meter cannot hear the decks — they reach the destination
+    // through the music duck, not the master bus. Judging a playing deck
+    // by that meter alone read every bed-silent moment (bed off, a
+    // bed-'none' venue, the decode window after a hop or a rebuild) as a
+    // dead graph, and each rebuild invalidated the bed's decode cache,
+    // so the bed could not land before the next escalation: the
+    // 2026-11-01 self-sustaining rebuild loop. Ask the music path's own
+    // witness before believing the verdict; where it cannot testify,
+    // the master reading decides, exactly as it did before.
+    const src = this.musicSourceRms();
+    if (src >= 0) return src < MUSIC_SILENCE_FLOOR;
+    return true;
   }
 
   /** Rebuild the context through the same rate limit as the interruption
@@ -1506,6 +1562,7 @@ class Engine {
     this.ctx = null;
     this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
     this.analyser = null; // ensure() builds the new context's meter
+    this.musicAnalyser = null; // buildMusicChain rebuilds the music path's meter with the decks
     this.loading = null;
     this.loadGen++;
     if (old && old.state !== 'closed') void settleAudio(old.close());
