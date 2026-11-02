@@ -97,7 +97,7 @@ describe('character loader (cube rig)', () => {
     expect(skins).toHaveLength(2);
     expect(skins[0]!.skeleton).toBe(skins[1]!.skeleton);
     const hair = skins.find((s) => s.name === 'hair')!.material as T.Material;
-    expect([hair.alphaTest, hair.depthWrite, hair.transparent]).toEqual([0.12, true, false]);
+    expect([hair.alphaTest, hair.depthWrite, hair.transparent, hair.alphaToCoverage]).toEqual([0.12, true, true, false]);
     expect(a.clips.idle).toBeDefined();
     expect(a.triangles).toBe(24);
     a.setExpression('smile');
@@ -131,5 +131,65 @@ describe('CSP for character assets', () => {
     expect(cfg).toContain("\"script-src 'self' 'wasm-unsafe-eval'\""); // meshopt WASM: already allowed, unchanged
     expect(cfg.match(/(?<!_)CHARACTERS_ORIGIN\b/g)).toHaveLength(3) // const + two uses;
     expect(cfg).not.toContain("'unsafe-eval'");
+  });
+});
+
+import { HEADROOM, SHOULDER_SPAN, VISIBLE_SPAN, bandForWidth, bandFromRects, frameStage } from '../src/three/characters/framing';
+import { stepWeights } from '../src/three/characters/expressions';
+import { HAIR_CARD_MATERIALS } from '../src/three/characters/loader';
+
+describe('stage framing (portrait 390x844, landscape 844x390 and 667x375)', () => {
+  // stage-relative bands as measured on the preview: cast row bottom → dialogue card top
+  const cases = [
+    { name: '390x844', stage: { left: 17, top: 129, width: 356, height: 600 }, castBottom: 129 + 60, cardTop: 129 + 60 + bandForWidth(356) },
+    { name: '844x390', stage: { left: 59, top: 1, width: 726, height: 430 }, castBottom: 1 + 76, cardTop: 1 + 76 + 132 },
+    { name: '667x375', stage: { left: 71, top: 1, width: 526, height: 420 }, castBottom: 1 + 76, cardTop: 1 + 76 + 128 },
+  ];
+  for (const c of cases) {
+    it(`${c.name}: three equal figures, Dee centred, every head inside the band above the card`, () => {
+      const band = bandFromRects(c.stage, c.castBottom, c.cardTop);
+      const f = frameStage(band);
+      expect(f.map((x) => x.slot)).toEqual(['left', 'dee', 'right']);
+      expect(new Set(f.map((x) => x.height)).size).toBe(1); // equal size
+      expect(new Set(f.map((x) => x.headTop)).size).toBe(1); // heads level (Dee not lower)
+      expect(f[1]!.cx).toBeCloseTo(band.stageW / 2);
+      const bandH = band.bottom - band.top;
+      for (const x of f) {
+        expect(x.headTop).toBeCloseTo(band.top + bandH * HEADROOM); // headroom, never cropped at the top
+        expect(x.headTop + x.height * VISIBLE_SPAN).toBeLessThanOrEqual(band.bottom + 0.5); // chest line clears the card
+        const half = (x.height * SHOULDER_SPAN) / 2;
+        expect(x.cx - half).toBeGreaterThanOrEqual(-0.5); expect(x.cx + half).toBeLessThanOrEqual(band.stageW + 0.5);
+      }
+      expect(f[1]!.cx - f[0]!.cx).toBeGreaterThanOrEqual(f[0]!.height * SHOULDER_SPAN * 0.99); // shoulders don't overlap
+    });
+  }
+  it('portrait asks for exactly the band that fills chest-up at its width', () => {
+    const w = 356, f = frameStage({ stageW: w, stageH: 600, top: 0, bottom: bandForWidth(w) });
+    expect(f[0]!.headTop + f[0]!.height * VISIBLE_SPAN).toBeCloseTo(bandForWidth(w), -1);
+  });
+  it('missing rects fall back to the top of the stage', () => {
+    expect(bandFromRects({ left: 0, top: 0, width: 300, height: 500 }, null, null)).toEqual({ stageW: 300, stageH: 500, top: 0, bottom: 300 });
+  });
+});
+
+describe('expression life', () => {
+  it('maps lines onto the 6 morphs for the speaker only', () => {
+    const say = (line: string) => expressionForBeat('ray', { speaker: 'ray', line });
+    expect(say('Hahaha, look at him')).toBe('laugh');
+    expect(say('You did WHAT?!')).toBe('shocked');
+    expect(say('Boy, never do that again!')).toBe('angry');
+    expect(say('Welcome to the porch!')).toBe('smile');
+    expect(say('Told you she could play')).toBe('smug');
+    expect(say('Sit down.')).toBe('neutral');
+    expect(expressionForBeat('pat', { speaker: 'ray', line: 'Hahaha' })).toBe('neutral');
+  });
+  it('cross-fades between expressions', () => {
+    const a = morphWeights('neutral'), b = morphWeights('smile');
+    const mid = stepWeights(a, b, 0.5);
+    expect(mid[0]).toBeCloseTo(0.5); expect(mid[1]).toBeCloseTo(0.5);
+    expect(stepWeights(a, b, 1)).toEqual(b);
+  });
+  it('hair/beard cards include the beard material', () => {
+    expect(HAIR_CARD_MATERIALS).toContain('hair_beard');
   });
 });

@@ -74,13 +74,28 @@ export function bindSharedSkeleton(root: Object3D): { shared: Skeleton | null; r
 }
 
 /** MASK hair (and any alpha-tested material): crisp cut-out, depth-writing, never sorted as transparent. */
+/** Hair / beard card materials by name (the asset viewer's list, story-chars export/viewer.html). */
+export const HAIR_CARD_MATERIALS = ['hair_cards', 'hair_puff', 'hair_beard', 'hair_vlayer', 'hair_vbase', 'hair_long', 'hair_locs'] as const;
+
+/**
+ * Hair and beard cards: alpha-test + blend WITH depth write (the viewer's settings — manifest note "three.js:
+ * transparent=true, alphaTest=0.12, depthWrite=true"): the test discards the sparse texels that read as noise/dots,
+ * the blend softens what survives, depth write keeps the cards sorted against the head. No alpha-to-coverage.
+ * Applies to the named hair materials and to any other MASK material (alphaTest > 0).
+ */
 export function fixMaskMaterials(root: Object3D): number {
   let n = 0;
+  const seen = new Set<Material>();
   root.traverse((o) => {
     const mats = (o as Mesh).material;
     if (!mats) return;
     for (const m of (Array.isArray(mats) ? mats : [mats]) as Material[]) {
-      if (m.alphaTest > 0) { m.alphaTest = CHARACTER_RIG.hairAlphaTest; m.depthWrite = true; m.transparent = false; n++; }
+      if (seen.has(m)) continue;
+      seen.add(m);
+      if (m.alphaTest > 0 || (HAIR_CARD_MATERIALS as readonly string[]).includes(m.name)) {
+        m.transparent = true; m.alphaTest = CHARACTER_RIG.hairAlphaTest; m.depthWrite = true; m.alphaToCoverage = false;
+        m.needsUpdate = true; n++;
+      }
     }
   });
   return n;
