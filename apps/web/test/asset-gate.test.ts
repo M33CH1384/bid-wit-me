@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, PJS_BED_URL, ROO_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, PJS_BED_URL, ROO_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, YACHT_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomAudioUrls, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -266,6 +266,19 @@ describe('room asset enumeration', () => {
     expect(existsSync(new URL('../public/audio/ambience/rooftop-bed.mp3', import.meta.url))).toBe(true);
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain(`const ROO_BED_URL = '${ROO_BED_URL}'`);
+  });
+
+  it("the Yacht's recorded bed rides the gate at High yacht tables — regular venue only, never Low", () => {
+    // Owner, 2026-11-02: the recorded day bed joins the Yacht loader
+    // gate exactly like the Rooftop's bed (the gate gains one unit at
+    // the regular venue; the Yacht has no story surface, so no stop
+    // composition changes; the bed's event one-shots deliberately do
+    // not gate and are not listed here).
+    expect(roomAudioUrls('yacht', 'high', null)).toEqual([{ label: expect.any(String), url: YACHT_BED_URL }]);
+    expect(roomAudioUrls('yacht', 'low', null)).toEqual([]);
+    expect(existsSync(new URL('../public/audio/ambience/yacht-bed.mp3', import.meta.url))).toBe(true);
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain(`const YACHT_BED_URL = '${YACHT_BED_URL}'`);
   });
 
   it('the gate sedan URL is the very file PjsStreetRoom loads', () => {

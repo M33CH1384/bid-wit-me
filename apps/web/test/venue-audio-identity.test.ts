@@ -38,7 +38,7 @@ describe('venue audio identity', () => {
     for (const v of VENUES) expect(VENUE_DEFS[v].bed, v).toBe(audioIdentityForVenue(v)!.bed);
   });
 
-  it("only The Pj's, the Speakeasy, the Barbershop, Grandma's Kitchen, the Backyard Cookout, the Church Basement and the Rooftop pin their music, and their tracks are real", () => {
+  it("only The Pj's, the Speakeasy, the Barbershop, Grandma's Kitchen, the Backyard Cookout, the Church Basement, the Rooftop and the Yacht pin their music, and their tracks are real", () => {
     for (const v of VENUES) {
       const id = audioIdentityForVenue(v)!;
       // The Pj's pin is a closed rotation of five (the original four of
@@ -46,8 +46,9 @@ describe('venue audio identity', () => {
       // 2026-11-01); the Speakeasy's and the Cookout's are four; the
       // Barbershop's and Grandma's are closed rotations of three; the
       // Church Basement's is a closed rotation of five; the Rooftop's is
-      // a closed rotation of four (owner, 2026-10-30 / 2026-10-31 /
-      // 2026-11-01 / 2026-11-02): the venue plays these at random and
+      // a closed rotation of four; the Yacht's is a closed rotation of
+      // six (owner, 2026-10-30 / 2026-10-31 / 2026-11-01 / 2026-11-02):
+      // the venue plays these at random and
       // never draws from the general pool.
       if (v === 'blockAfterDark') expect(id.music.pin).toEqual(['soul-epic', 'overreach', 'no-quit', 'busted-jazz', 'my-deal']);
       else if (v === 'speakeasy') expect(id.music.pin).toEqual(['spy-glass', 'night-on-the-docks-sax', 'dances-and-dames', 'covert-affair']);
@@ -56,6 +57,7 @@ describe('venue audio identity', () => {
       else if (v === 'backyard') expect(id.music.pin).toEqual(['make-funk', 'take-it-out', 'breath', 'saviour-above']);
       else if (v === 'church') expect(id.music.pin).toEqual(['amazing-grace', 'still-dreams', 'with-regards', 'jesu-joy-of-mans-desiring', 'thaxted']);
       else if (v === 'rooftop') expect(id.music.pin).toEqual(['tide-turns', 'feeling', 'the-road', 'roof-tops']);
+      else if (v === 'yacht') expect(id.music.pin).toEqual(['west-coast', 'put-me-down', 'all-out', 'ocean-memory', 'tetrapod', 'ocean-breeze']);
       else expect(id.music.pin, v).toBeUndefined();
     }
   });

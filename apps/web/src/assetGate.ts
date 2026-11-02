@@ -249,6 +249,17 @@ export const CHU_BED_URL = '/audio/ambience/church-bed.mp3';
  * by the engine after the bed starts.
  */
 export const ROO_BED_URL = '/audio/ambience/rooftop-bed.mp3';
+/**
+ * The Yacht's recorded day bed (owner, 2026-11-02): gated exactly
+ * like the Rooftop's bed — the engine fetches it at every Yacht
+ * table, so at High the loader's promise covers it; at Low it
+ * streams in behind the loader as music always has. The Yacht has
+ * no story surface, so the unit applies at the regular venue only.
+ * The bed's event one-shots (wave swell, hull creak, flag snap,
+ * gull calls, far horn) deliberately do NOT gate: optional life,
+ * loaded lazily by the engine after the bed starts.
+ */
+export const YACHT_BED_URL = '/audio/ambience/yacht-bed.mp3';
 export function roomAudioUrls(
   venue: string,
   quality: 'high' | 'low',
@@ -262,6 +273,7 @@ export function roomAudioUrls(
   if (venue === 'backyard') return [{ label: 'ambience bed (Backyard Cookout)', url: CTT_BED_URL }];
   if (venue === 'church') return [{ label: 'ambience bed (Church Basement)', url: CHU_BED_URL }];
   if (venue === 'rooftop') return [{ label: 'ambience bed (Rooftop)', url: ROO_BED_URL }];
+  if (venue === 'yacht') return [{ label: 'ambience bed (Yacht)', url: YACHT_BED_URL }];
   return [];
 }
 
