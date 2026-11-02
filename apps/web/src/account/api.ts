@@ -3,6 +3,7 @@
  * and vite proxies it locally, so the HttpOnly session cookie is first-party. Guest play never calls any of this
  * except one cheap GET /api/auth/config + /me when the menu opens.
  */
+import { noteSession } from './sessionHint';
 import { useSyncExternalStore } from 'react';
 import { clearIdleNotice } from '../inactivity';
 import { invalidateVenueUnlocks } from '../venues';
@@ -40,6 +41,7 @@ function set(p: Partial<AccountState>) {
   // (or the signed-out 401) the page happened to read first.
   if ('user' in p && (state.user?.id ?? null) !== (p.user?.id ?? null)) invalidateVenueUnlocks();
   state = { ...state, ...p };
+  if ('user' in p && p.user) noteSession('user');
   // EVERY transition to signed-in passes through this one set() — session restore,
   // an OAuth return, a passkey, any surface's sign-in. A signed-in player is not
   // idle-signed-out, so retire the owed inactivity notice at the transition itself.
@@ -92,6 +94,8 @@ export function loadAccount(force = false): Promise<void> {
     try {
       const [cfg, me] = await Promise.all([call<{ providers: ProviderId[]; passkeys: boolean; accounts: boolean }>('config'), call<{ user: AccountUser | null }>('me')]);
       set({ ready: true, accounts: !!cfg.accounts, providers: (cfg.providers ?? []).filter((p) => p in PROVIDER_LABEL), passkeys: !!cfg.passkeys && typeof PublicKeyCredential !== 'undefined', user: me.user ?? null });
+      // definitive only when auth/me itself answered (a failed/non-JSON call stays 'unknown')
+      noteSession(me.user ? 'user' : (me.ok === false || me.error ? null : 'guest'));
       if (me.user) await afterSignIn(me.user, result === 'ok' || result === 'new');
       // An OAuth RETURN (?signin=ok/new) is an interactive sign-in completing —
       // unlike the silent restore this same function performs on every other
@@ -99,6 +103,7 @@ export function loadAccount(force = false): Promise<void> {
       if (me.user && (result === 'ok' || result === 'new')) set({ firstSignIn: me.user });
     } catch {
       set({ ready: true, accounts: false, providers: [], passkeys: false });
+      noteSession(null);
     }
   })();
   return loading;
@@ -140,10 +145,11 @@ export async function setUsername(u: string): Promise<string | null> {
   if (r.user) { const prev = state.user?.username; set({ user: r.user }); if (!loadName() || loadName() === prev) saveName(r.user.username ?? ''); return null; }
   return r.reason ?? r.error ?? 'Could not save that name.';
 }
-export async function signOut() { await call('logout', {}); set({ user: null, notice: 'Signed out. You can keep playing as a guest.', noticeKind: 'ok' }); }
+export async function signOut() { await call('logout', {}); noteSession('guest'); set({ user: null, notice: 'Signed out. You can keep playing as a guest.', noticeKind: 'ok' }); }
 export async function deleteAccount(): Promise<string | null> {
   const r = await call('delete', {});
   if (r.ok === false) return r.error ?? 'Could not delete the account.';
+  noteSession('guest');
   set({ user: null, notice: 'Your account and everything tied to it were deleted.', noticeKind: 'ok' });
   return null;
 }

@@ -6,6 +6,7 @@
  * jpg backdrop + a 256×128 .hdr for lighting in High quality), light colours, a few procedural props and a quiet
  * procedural ambient sound bed (audio.ts → venueBed). Sources are in CREDITS.md.
  */
+import { skipSelfRead } from './account/sessionHint';
 import { isVenueChoice, type VenueChoice, type VenueId, VENUES, rollVenue } from '@spades/protocol';
 import { styleForVenue } from './spatial';
 import { noteDailyBonus } from './dailyBonus';
@@ -109,8 +110,9 @@ export interface VenueUnlockState { unlocks: string[]; dev: boolean; storyAccess
 let unlockCache: Promise<VenueUnlockState | null> | null = null;
 export function fetchVenueUnlocks(): Promise<VenueUnlockState | null> {
   if (!unlockCache) {
-    unlockCache = fetch('/api/profile/me', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
+    // a known guest skips the guaranteed 401 (sessionHint); anyone else reads as before
+    unlockCache = skipSelfRead().then((guest) => (guest ? null : fetch('/api/profile/me', { credentials: 'include' })))
+      .then((r) => (r && r.ok ? r.json() : null))
       // This read can be the one that lands today's daily grant (it runs on
       // the first venue-picker/setup visit of the day): receipt it before
       // mapping the payload down to unlock state (see dailyBonus.ts).
