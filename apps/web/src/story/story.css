@@ -1822,3 +1822,9 @@ html[data-theme="neon"] .story-you-face {
 @media (orientation: landscape) and (max-height: 540px) {
   .dee-video-frame { width: min(100%, calc((100dvh - 120px) * 16 / 9)); }
 }
+
+/* Story stage 3D figures (three/characters): the canvas fills the stage box; a slot's 2D portrait fades only once its
+   figure has rendered (data-3d="on"), and comes back by itself if the 3D side tears down. */
+.story-stage-3d-host { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.story-stage-3d { position: absolute; inset: 0; display: block; }
+.story-stage-one[data-3d="on"] .story-stage-face { opacity: 0; transition: opacity 0.35s ease; }
