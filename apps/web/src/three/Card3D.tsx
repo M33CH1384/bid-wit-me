@@ -52,6 +52,10 @@ interface Props {
   /** Painter's order. Legal cards use a higher band than illegal cards; index order is kept inside each band. */
   order?: number;
   dim?: boolean;
+  /** Played card lying on the felt (trick / Run It): its face takes the matte rest
+   *  finish (createRestCardMaterial) instead of the held card's gloss — flat under
+   *  the venue light at the sitting camera, gloss bleaches the pips (2026-11-01). */
+  restFace?: boolean;
   glow?: boolean;
   /** ☢ armed nuke: this trick card pulses hot red/orange — the nuke is ready to blow but waits for the last cards. */
   armed?: boolean;
@@ -114,6 +118,49 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
   return saturate ? withSaturation(m) : m;
 }
 
+/**
+ * Played-card face finish — the glare-cut stock for a card lying flat on the felt.
+ *
+ * The 2026-11-01 round-2 glare report (owner, Grandma's Kitchen, sitting view):
+ * the round-1 matte backs read fine, but a played card's FACE bleaches where it
+ * lies flat in the trick — the partner's A♥ read almost blank until he stood up.
+ * The gloss face stock (clearcoat 0.35, roughness 0.42, env 1) suits a card
+ * tilted in a hand; lying flat under the venue's overhead light at the sitting
+ * camera it sits in the mirror path, and the specular adds white on white until
+ * the pips drown (ACES squashes what is left). A played card is print lying on a
+ * table, not a held collectible: matte like the backs, tuned on the felt. Held
+ * cards keep createLitCardMaterial and their gloss, untouched.
+ */
+export const FACE_REST_ROUGHNESS_HIGH = 0.85;
+export const FACE_REST_CLEARCOAT = 0;
+export const FACE_REST_ENV_INTENSITY_HIGH = 0.4;
+export const FACE_REST_ROUGHNESS_LOW = 0.8;
+export const FACE_REST_ENV_INTENSITY_LOW = 0.45;
+
+function restCardMaterial(map: Texture, quality: 'high' | 'low') {
+  if (quality === 'high') {
+    const m = new MeshPhysicalMaterial({
+      map,
+      roughness: FACE_REST_ROUGHNESS_HIGH,
+      clearcoat: FACE_REST_CLEARCOAT,
+      clearcoatRoughness: 0.6,
+      sheen: 0,
+    });
+    m.envMapIntensity = FACE_REST_ENV_INTENSITY_HIGH;
+    return m;
+  }
+  const m = new MeshStandardMaterial({ map, roughness: FACE_REST_ROUGHNESS_LOW });
+  m.envMapIntensity = FACE_REST_ENV_INTENSITY_LOW;
+  return m;
+}
+
+/** The played-card face program (matte rest finish, saturated like every face). Warmed before it is ever drawn. */
+export function createRestCardMaterial(map: Texture, quality: 'high' | 'low') {
+  const m = withSaturation(restCardMaterial(map, quality));
+  (m.userData as { restFace?: boolean }).restFace = true;
+  return m;
+}
+
 type Pt = { x: number; y: number };
 /** Sutherland–Hodgman clip of the face outline by one side of the cut line. */
 function clipHalf(pts: Pt[], nx: number, ny: number, side: 1 | -1): Pt[] {
@@ -170,7 +217,7 @@ function buildCutHalves(): { face: ShapeGeometry; core: ExtrudeGeometry }[] {
   });
 }
 
-function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, variant, raise = 0, roll = 0, order = 0, dim, glow, armed, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, impactFx, knock, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
+function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, motion = 'flight', arc = 0.25, variant, raise = 0, roll = 0, order = 0, dim, restFace, glow, armed, castShadow = true, quality, onTap, cardId = null, name, sfxStart, sfxLand, impactFx, knock, spatialSeat, spatialN = 4, blast = 'table', holdUntilMove = false, lit = true, slam }: Props) {
   const slamNow = useRef(slam);
   const postLand = useRef(0);
   slamNow.current = slam;
@@ -193,12 +240,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const frontMat = useMemo(() => {
     const map = frontTex ?? back;
     // Unlit until the physical program is linked. MeshBasic with a map is one small shader shared by every card.
-    const m = lit ? createLitCardMaterial(map, quality, true) : new MeshBasicMaterial({ map });
+    // A played card lying on the felt takes the matte rest finish, never the held card's gloss (2026-11-01 glare round 2).
+    const m = lit ? (restFace ? createRestCardMaterial(map, quality) : createLitCardMaterial(map, quality, true)) : new MeshBasicMaterial({ map });
     // Face and cap are both opaque, so they share one list. renderOrder can sort them,
     // but a 16-bit depth test still drops the face when the two planes quantize together.
     applyFaceDepthBias(m);
     return m;
-  }, [frontTex, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [frontTex, back, quality, lit, restFace]); // eslint-disable-line react-hooks/exhaustive-deps
   const backMat = useMemo(() => {
     // Backs are matte print (cardBack.ts) — the face's glossy stock mirrors the
     // table lights into a white slab off the tilted opponent fans (2026-11-01 glare).
@@ -233,13 +281,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const geos = buildCutHalves();
     const mkFace = () => {
       const map = frontTex ?? back;
-      const m = lit ? createLitCardMaterial(map, quality, true) : new MeshBasicMaterial({ map });
+      const m = lit ? (restFace ? createRestCardMaterial(map, quality) : createLitCardMaterial(map, quality, true)) : new MeshBasicMaterial({ map });
       (m as unknown as { userData: Record<string, unknown> }).userData.cutHalf = true;
       applyFaceDepthBias(m as MeshBasicMaterial);
       return m;
     };
     return geos.map((g) => ({ faceGeo: g.face, coreGeo: g.core, faceMat: mkFace(), coreMat: edgeMat.clone() }));
-  }, [frontTex, back, quality, lit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [frontTex, back, quality, lit, restFace]); // eslint-disable-line react-hooks/exhaustive-deps
   const gashGeo = useMemo(() => {
     const g = new PlaneGeometry(0.43, 0.014);
     g.translate(0, 0, CT / 2 + FACE_CAP_GAP + 0.0008);
@@ -279,7 +327,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     look.current.sat = lookAt.sat;
     if ('emissive' in frontMat && frontMat.emissive) frontMat.emissive.set('#000000');
     // the clear coat / sheen add white on top of the colour (and ACES squashes the rest), so ease them off too when dimmed
-    if (frontMat instanceof MeshPhysicalMaterial) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
+    // (a rest-finish face has no gloss to restore — its matte values are its home values)
+    if (frontMat instanceof MeshPhysicalMaterial && !(frontMat.userData as { restFace?: boolean }).restFace) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
     invalidate();
   }, [dim, frontMat, invalidate]);
 

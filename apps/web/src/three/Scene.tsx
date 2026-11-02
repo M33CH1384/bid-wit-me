@@ -4,7 +4,7 @@ import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fi
 import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
-import Card3D, { createLitCardMaterial } from './Card3D';
+import Card3D, { createLitCardMaterial, createRestCardMaterial } from './Card3D';
 import { createBackCardMaterial } from './cardBack';
 import DeuceFxLayer from './DeuceFxLayer';
 import { CUT_FACE_ANGLE, setDeuceCutPose } from './deuceImpact';
@@ -1530,6 +1530,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
           roll={it.roll}
           order={it.order}
           dim={it.dim}
+          restFace={!!it.public}
           glow={it.glow}
           armed={it.armed}
           castShadow={it.shadow !== false && quality === 'high'}
@@ -1843,6 +1844,7 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
     const cardDim = createLitCardMaterial(white, quality, true);
     if (cardDim instanceof MeshPhysicalMaterial) { cardDim.clearcoat = 0.05; cardDim.sheen = 0; }
     const cardBack = createBackCardMaterial(white, quality);
+    const cardRest = createRestCardMaterial(white, quality);
     const basics: Material[] = [
       new MeshBasicMaterial({ name: 'basic-color', color: def.felt }),
       new MeshBasicMaterial({ name: 'basic-stripe', color: '#d9b04a', transparent: true, opacity: 0.35, depthWrite: false }),
@@ -1859,7 +1861,8 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
     card.name = 'card';
     cardDim.name = 'card-dim';
     cardBack.name = 'card-back';
-    const litMats = [table.felt, table.wood, table.apron, table.floor, card, cardDim, cardBack];
+    cardRest.name = 'card-rest';
+    const litMats = [table.felt, table.wood, table.apron, table.floor, card, cardDim, cardBack, cardRest];
     void (async () => {
       await nextFrame();
       if (!alive) return;
