@@ -7,6 +7,23 @@
  * "You bid {bid} for THAT?!" lines have one take per number. Lines without a clip → Web Speech (right gender),
  * which talkPrefs fences off during live play — so at a table they are text-only (prevention pass, 2026-10-21).
  * Opus/WebM where the browser can play it, else AAC/M4A (Safari).
+ *
+ * PER-CLIP DECODE (2026-11-02, crash round 3's residency conviction): the
+ * legacy layer below decodes each sprite WHOLESALE and holds the PCM for
+ * the table's life — a typical table ~345 MiB decoded, the worst seated
+ * sets 730–770 MiB against an 896 MiB budget, the structural half of the
+ * iOS jetsam stack. The per-clip layer (bottom half of this file) keeps
+ * only the sprite's COMPRESSED bytes resident (LRU-capped at 96 MiB) and
+ * decodes individual lines just ahead of playback into a hard-capped
+ * 48 MiB clip cache, warmed by the schedulers that know the next lines
+ * (scene beats, the rundown, table preload). It ships behind a flag —
+ * VOICE_PER_CLIP_DEFAULT, per-device override localStorage
+ * 'bwm.voicePerClip' = '0' — with this legacy layer intact and tested,
+ * because decode latency on unwarmed lines could not be measured on the
+ * owner's hardware from the build sandbox; the owner's ear is the gate.
+ * Both layers share the manifest, the clip lookup, the decode helper and
+ * the engine calls: same clips, same selection, same mix — only the
+ * residency differs.
  */
 import { type PersonaId, lineById, storyCastForName, storyVoiceKey, voiceFor } from '@spades/bots';
 import { decodeAudioBuffer, sound } from '../audio';
@@ -117,6 +134,9 @@ export const VOICE_DECODE_RATE = 24000;
  * in, a scene voice) before the cap has to touch anything. The bigger
  * reduction is the table-change eviction below (setSeatedVoiceKeys):
  * non-seated sprites no longer linger across hops at all.
+ *
+ * (Legacy layer only since 2026-11-02: the per-clip layer's ceilings are
+ * VOICE_CLIP_CACHE_BUDGET_BYTES + VOICE_ENCODED_BUDGET_BYTES below.)
  */
 export const VOICE_RESIDENCY_BUDGET_BYTES = 896 * 1024 * 1024;
 
@@ -184,7 +204,7 @@ function evictSprite(key: string): void {
  * its buffer and finishes, and an evicted voice refetches (HTTP-cached)
  * and re-decodes on its next line.
  */
-export function setSeatedVoiceKeys(keys: readonly string[]): void {
+function setSeatedVoiceKeysLegacy(keys: readonly string[]): void {
   seatedKeys.clear();
   for (const k of keys) seatedKeys.add(k);
   for (const k of [...residency.keys()]) if (!seatedKeys.has(k)) evictSprite(k);
@@ -291,7 +311,7 @@ function load(key: string): Promise<Sprite | null> {
 export function rawLine(lineId: string | undefined): string | undefined { return lineId ? lineById(lineId) : undefined; }
 
 /** A bot sat down: fetch + decode its persona-gender sprite in the background (only seated bots are ever fetched). */
-export function preloadVoice(persona: PersonaId, name: string): void {
+function preloadVoiceLegacy(persona: PersonaId, name: string): void {
   const key = keyFor(persona, name);
   if (cache.has(key)) return;
   const go = () => { void load(key); };
@@ -307,7 +327,7 @@ export function preloadVoice(persona: PersonaId, name: string): void {
  * `opts.deferCut` (regular-table chatter, also set by speakBot): when the plan would replace the
  * playing line, this clip instead waits for the room (short waits) or drops — never a mid-sentence cut.
  */
-export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4, opts?: { crossTalk?: boolean; deferCut?: boolean; key?: string }): Promise<boolean> {
+async function playClipLegacy(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4, opts?: { crossTalk?: boolean; deferCut?: boolean; key?: string }): Promise<boolean> {
   if (!raw) return false;
   const t0 = performance.now();
   const key = keyFor(persona, name);
@@ -338,11 +358,593 @@ export async function playClip(persona: PersonaId, name: string, raw: string | u
  * anything or forking the speech path. The story scene player paces
  * its typewriter reveal against this (talkPrefs.spokenClipDurationMs).
  */
-export async function clipDurationMs(persona: PersonaId, name: string, raw: string | undefined, bid?: number, key?: string): Promise<number | null> {
+async function clipDurationMsLegacy(persona: PersonaId, name: string, raw: string | undefined, bid?: number, key?: string): Promise<number | null> {
   if (!raw) return null;
   const spriteKey = keyFor(persona, name);
   const sp = await load(spriteKey);
   if (sp?.buf) touchResident(spriteKey);
   const at = sp && ((key !== undefined ? sp.clips[`${raw}#${key}`] : bid !== undefined ? sp.clips[`${raw}#${bid}`] : undefined) ?? sp.clips[raw]);
   return at ? at[1] : null;
+}
+
+/* =====================================================================
+ * PER-CLIP DECODE LAYER (2026-11-02)
+ *
+ * The legacy layer above decodes whole sprites: Dee's sprite alone is
+ * 402.8 MiB of PCM, a typical table ~345 MiB, and decoded voice was the
+ * largest single block in the process the crash audit weighed. This
+ * layer never holds a decoded sprite. It holds, per sprite:
+ *   - the MANIFEST (kilobytes of JSON) — all clipDurationMs ever needs;
+ *   - the sprite's COMPRESSED bytes (12–19 MB worst case), LRU-capped;
+ * and decodes CLIPS, not sprites: a decode pass decodes the sprite once,
+ * slices the wanted lines into their own small buffers (~342 KB at the
+ * 3.56 s median), and drops the whole buffer. Decoded clips live in a
+ * hard-capped LRU cache; passes are serialized (one decode at a time —
+ * the crash audit also fingered parallel whole-corpus decodes in the
+ * cold window after a resume) and are triggered ahead of need by the
+ * surfaces that know the next lines: scene beats (ScriptPlayer warms
+ * the next 8), Dee's rundown, consultation pacing, and the table
+ * preload, which warms a starter window while the loading gate is up.
+ * A line whose clip is not ready decodes at need through the same pass;
+ * a failed pass resolves the line exactly as the legacy layer's failed
+ * load does — false, and the caller shows the line as text.
+ * ===================================================================== */
+
+/** Which voice layer serves playback. Default ON (the per-clip layer);
+ *  the legacy whole-sprite layer remains one flip away — flip the
+ *  constant, or set localStorage 'bwm.voicePerClip' to '0' on a device
+ *  for an instant A/B — until the owner's ear closes the question. */
+export const VOICE_PER_CLIP_DEFAULT = true;
+const PER_CLIP_FLAG_KEY = 'bwm.voicePerClip';
+export function voicePerClipEnabled(): boolean {
+  try {
+    const v = localStorage.getItem(PER_CLIP_FLAG_KEY);
+    if (v === '0') return false;
+    if (v === '1') return true;
+  } catch { /* storage unavailable: the default rules */ }
+  return VOICE_PER_CLIP_DEFAULT;
+}
+
+/**
+ * The hard ceiling on decoded voice clips held at once. Defense, from
+ * the shipped manifests: the median clip is 3.56 s ≈ 342 KB decoded, so
+ * 48 MiB holds ~140 clips — a full scene or consultation exchange for
+ * four speakers (~60–100 clips ≈ 20–34 MB) with headroom — while being
+ * ~5% of the legacy 896 MiB budget. A single clip larger than the cap
+ * (the longest shipped take is 39.7 s ≈ 3.8 MB, so none is) would be
+ * admitted alone. Clips are NOT seat-exempt: the cap is small enough
+ * that eviction pressure is the point, and a clip in active use is
+ * most-recently-used by construction.
+ */
+export const VOICE_CLIP_CACHE_BUDGET_BYTES = 48 * 1024 * 1024;
+/**
+ * The ceiling on resident COMPRESSED sprite bytes. The worst seated set
+ * (AAC on Safari) is ~45–50 MB of m4a; 96 MiB holds a full table plus a
+ * scene/rail sprite or two without refetching audio on every line,
+ * while staying a rounding error next to the decoded residency it
+ * replaces. Seated sprites are pinned, as in the legacy layer.
+ */
+export const VOICE_ENCODED_BUDGET_BYTES = 96 * 1024 * 1024;
+/** Clips either side of a wanted clip that a decode pass also slices:
+ *  the bake lays a sprite out in coarse family order (chatter, bid
+ *  takes, the consultation grid, story lines), so a wanted line's
+ *  manifest neighbours are its likeliest next lines. */
+const PC_WINDOW = 10;
+/** Starter clips warmed per seated sprite by the table preload. */
+const PC_HEAD_WARM = 12;
+
+interface PcManifest { clips: Record<string, [number, number]>; order: string[] }
+const pcManifests = new Map<string, Promise<PcManifest | null>>();
+const pcRetries = new Map<string, number>();
+
+const pcBytesMap = new Map<string, { data: ArrayBuffer; used: number }>();
+const pcBytesPromises = new Map<string, Promise<ArrayBuffer | null>>();
+let pcEncodedTotal = 0;
+
+interface PcClip { buf: AudioBuffer; bytes: number; used: number }
+const pcClipsMap = new Map<string, PcClip>();
+const pcWholeMap = new Map<string, PcClip>();
+let pcClipTotal = 0;
+let pcClock = 0;
+
+let pcPasses = 0;
+let pcLastPassMs: number | null = null;
+let pcClipHits = 0;
+let pcClipMisses = 0;
+
+const pcClipId = (key: string, clipKey: string) => `${key}\n${clipKey}`;
+const pcIdKey = (id: string) => id.slice(0, id.indexOf('\n'));
+
+/** The manifest key playClip would use for this line — the take
+ *  resolution is the legacy layer's, verbatim: a defined key/bid take
+ *  that EXISTS wins, else the raw line itself. */
+function pcResolveClipKey(clips: Record<string, [number, number]>, raw: string, bid?: number, key?: string): string | null {
+  const takeKey = key !== undefined ? `${raw}#${key}` : bid !== undefined ? `${raw}#${bid}` : undefined;
+  if (takeKey !== undefined && clips[takeKey]) return takeKey;
+  return clips[raw] ? raw : null;
+}
+
+/** Manifest only — the small JSON, never the audio. A failed manifest
+ *  is evicted once it settles (budgeted, mirroring the legacy heal) so
+ *  the next line retries it against a live network/context. */
+function pcManifest(key: string): Promise<PcManifest | null> {
+  let p = pcManifests.get(key);
+  if (!p) {
+    p = (async () => {
+      try {
+        const res = await fetch(voiceUrl(`${key}.json`));
+        if (!res.ok) return null;
+        const { clips } = (await res.json()) as { clips: Record<string, [number, number]> };
+        return { clips, order: Object.keys(clips) };
+      } catch { return null; }
+    })();
+    pcManifests.set(key, p);
+    void p.then((m) => { if (!m && pcManifests.get(key) === p) pcNoteFailure(key); });
+  }
+  return p;
+}
+
+/** A failed manifest/bytes/decode evicts the sprite's cached layers
+ *  (budgeted per session, mirroring the legacy LOAD_RETRY_BUDGET heal)
+ *  so the next line retries; past the budget the dead entries stay put
+ *  rather than re-downloading megabytes on every line. */
+function pcNoteFailure(key: string): void {
+  const used = pcRetries.get(key) ?? 0;
+  if (used >= LOAD_RETRY_BUDGET) return;
+  pcRetries.set(key, used + 1);
+  pcManifests.delete(key);
+  pcDropBytes(key);
+}
+
+function pcDropBytes(key: string): void {
+  const e = pcBytesMap.get(key);
+  if (e) { pcEncodedTotal -= e.data.byteLength; pcBytesMap.delete(key); }
+  pcBytesPromises.delete(key);
+}
+
+function pcEnforceEncodedBudget(keepKey: string): void {
+  if (pcEncodedTotal <= VOICE_ENCODED_BUDGET_BYTES) return;
+  const lru = [...pcBytesMap.entries()]
+    .filter(([k]) => k !== keepKey && !seatedKeys.has(k))
+    .sort((a, b) => a[1].used - b[1].used);
+  for (const [k] of lru) {
+    if (pcEncodedTotal <= VOICE_ENCODED_BUDGET_BYTES) break;
+    pcDropBytes(k);
+  }
+}
+
+/** The sprite's compressed bytes, fetched once per residency lifetime. */
+function pcFetchBytes(key: string): Promise<ArrayBuffer | null> {
+  const held = pcBytesMap.get(key);
+  if (held) { held.used = ++pcClock; return Promise.resolve(held.data); }
+  let p = pcBytesPromises.get(key);
+  if (!p) {
+    p = (async () => {
+      try {
+        const res = await fetch(voiceUrl(`${key}.${format()}`));
+        if (!res.ok) return null;
+        const data = await res.arrayBuffer();
+        pcBytesMap.set(key, { data, used: ++pcClock });
+        pcEncodedTotal += data.byteLength;
+        pcEnforceEncodedBudget(key);
+        publishVoiceProbe();
+        return data;
+      } catch { return null; }
+    })();
+    pcBytesPromises.set(key, p);
+    void p.then((d) => { if (!d && pcBytesPromises.get(key) === p) pcNoteFailure(key); });
+  }
+  return p;
+}
+
+function pcDropClip(id: string): void {
+  const c = pcClipsMap.get(id);
+  if (c) { pcClipTotal -= c.bytes; pcClipsMap.delete(id); }
+}
+
+function pcDropWhole(key: string): void {
+  const w = pcWholeMap.get(key);
+  if (w) { pcClipTotal -= w.bytes; pcWholeMap.delete(key); }
+}
+
+/** Evict least-recently-used clips (and whole-sprite fallbacks) until
+ *  the decoded total fits the cap. `protect` holds the clip ids a pass
+ *  just sliced for waiting lines — they are never evicted by their own
+ *  pass. Eviction drops only the cache reference; a playing line holds
+ *  its buffer and finishes. */
+function pcEnforceClipBudget(protect: ReadonlySet<string>): void {
+  if (pcClipTotal <= VOICE_CLIP_CACHE_BUDGET_BYTES) return;
+  const candidates: { id: string; used: number; whole: boolean }[] = [
+    ...[...pcClipsMap.entries()].map(([id, c]) => ({ id, used: c.used, whole: false })),
+    ...[...pcWholeMap.entries()].map(([k, c]) => ({ id: k, used: c.used, whole: true })),
+  ].sort((a, b) => a.used - b.used);
+  for (const cand of candidates) {
+    if (pcClipTotal <= VOICE_CLIP_CACHE_BUDGET_BYTES) break;
+    if (!cand.whole && protect.has(cand.id)) continue;
+    // A whole-sprite fallback stored by THIS pass (its sprite is the
+    // protected clips' sprite) is never evicted by its own pass.
+    if (cand.whole && [...protect].some((id) => pcIdKey(id) === cand.id)) continue;
+    if (cand.whole) pcDropWhole(cand.id); else pcDropClip(cand.id);
+  }
+}
+
+function pcStoreClip(key: string, clipKey: string, buf: AudioBuffer): void {
+  const id = pcClipId(key, clipKey);
+  pcDropClip(id);
+  const raw = voiceBufferBytes(buf);
+  const bytes = Number.isFinite(raw) && raw > 0 ? raw : 0;
+  pcClipsMap.set(id, { buf, bytes, used: ++pcClock });
+  pcClipTotal += bytes;
+}
+
+/** A factory for slice buffers: an offline context where one exists
+ *  (the decode already proved the class), else the engine context. */
+function makeSliceBuffer(len: number, rate: number): AudioBuffer | null {
+  try {
+    if (typeof OfflineAudioContext !== 'undefined') {
+      const b = new OfflineAudioContext(1, 1, rate).createBuffer(1, len, rate);
+      if (b && typeof b.copyToChannel === 'function') return b;
+    }
+  } catch { /* fall through to the engine context */ }
+  try {
+    const ctx = sound.audioContext();
+    if (ctx && typeof ctx.createBuffer === 'function') {
+      const b = ctx.createBuffer(1, len, rate);
+      if (b && typeof b.copyToChannel === 'function') return b;
+    }
+  } catch { /* no buffer factory in this environment */ }
+  return null;
+}
+
+/** Cut one clip out of a decoded sprite, at the DECODED buffer's own
+ *  rate (24 kHz on the offline path). Returns null when the decoded
+ *  object cannot be sliced — test doubles and nothing else: production
+ *  decodeAudioData always yields channel data — in which case the pass
+ *  retains the whole buffer as that sprite's fallback (accounted at
+ *  full size) and lines play with their original sprite offsets. */
+function sliceClip(decoded: AudioBuffer, at: [number, number]): AudioBuffer | null {
+  try {
+    const rate = decoded.sampleRate;
+    const total = decoded.length;
+    if (!rate || !total || typeof decoded.getChannelData !== 'function') return null;
+    const src = decoded.getChannelData(0);
+    const start = Math.min(total - 1, Math.max(0, Math.floor((at[0] / 1000) * rate)));
+    const len = Math.max(1, Math.min(total - start, Math.round((at[1] / 1000) * rate)));
+    const out = makeSliceBuffer(len, rate);
+    if (!out) return null;
+    out.copyToChannel(src.subarray(start, start + len) as Float32Array<ArrayBuffer>, 0);
+    return out;
+  } catch { return null; }
+}
+
+interface PcWaiter { clipKey: string; resolve: (r: { buf: AudioBuffer; whole: boolean } | null) => void }
+const pcPendingWants = new Map<string, Set<string>>();
+const pcWaiters = new Map<string, PcWaiter[]>();
+const pcQueued = new Set<string>();
+let pcRunningKey: string | null = null;
+let pcChain: Promise<void> = Promise.resolve();
+
+function pcAddWant(key: string, clipKey: string): void {
+  let set = pcPendingWants.get(key);
+  if (!set) { set = new Set(); pcPendingWants.set(key, set); }
+  set.add(clipKey);
+}
+
+/** Queue a decode pass for a sprite. Passes are SERIALIZED — never two
+ *  sprites decoding at once — and a sprite already queued or running
+ *  is not queued twice (a running pass re-kicks itself if wants landed
+ *  while it worked). */
+function pcKickPass(key: string): void {
+  if (pcQueued.has(key) || pcRunningKey === key) return;
+  pcQueued.add(key);
+  pcChain = pcChain.then(async () => {
+    pcQueued.delete(key);
+    pcRunningKey = key;
+    try { await pcRunPass(key); } catch { /* pcRunPass resolves its own waiters; never rethrow */ }
+    pcRunningKey = null;
+    // Wants that landed while this pass decoded belong to a follow-up
+    // pass (a kick during the run no-ops against pcRunningKey, so the
+    // chain tail is where the follow-up is armed).
+    if ((pcPendingWants.get(key)?.size ?? 0) > 0 || (pcWaiters.get(key)?.length ?? 0) > 0) pcKickPass(key);
+  });
+}
+
+/** Register a want and wait for the pass that slices it. */
+function pcAwaitClip(key: string, clipKey: string): Promise<{ buf: AudioBuffer; whole: boolean } | null> {
+  return new Promise((resolve) => {
+    pcAddWant(key, clipKey);
+    let ws = pcWaiters.get(key);
+    if (!ws) { ws = []; pcWaiters.set(key, ws); }
+    ws.push({ clipKey, resolve });
+    pcKickPass(key);
+  });
+}
+
+async function pcRunPass(key: string): Promise<void> {
+  const wants = pcPendingWants.get(key) ?? new Set<string>();
+  pcPendingWants.delete(key);
+  const waiters = pcWaiters.get(key) ?? [];
+  pcWaiters.delete(key);
+  if (!wants.size && !waiters.length) return;
+  const t0 = performance.now();
+  const finish = (failed: boolean) => {
+    pcPasses++;
+    pcLastPassMs = Math.round(performance.now() - t0);
+    if (failed) pcNoteFailure(key);
+    for (const w of waiters) {
+      const c = pcClipsMap.get(pcClipId(key, w.clipKey));
+      if (c) { c.used = ++pcClock; w.resolve({ buf: c.buf, whole: false }); continue; }
+      const whole = pcWholeMap.get(key);
+      if (whole) { whole.used = ++pcClock; w.resolve({ buf: whole.buf, whole: true }); continue; }
+      w.resolve(null);
+    }
+    publishVoiceProbe();
+  };
+  const man = await pcManifest(key);
+  if (!man) { finish(true); return; }
+  // Expand each want to its manifest neighbourhood (minus what's held).
+  const sliceSet = new Set<string>();
+  for (const ck of wants) {
+    if (pcClipsMap.has(pcClipId(key, ck)) || pcWholeMap.has(key)) continue;
+    const ix = man.order.indexOf(ck);
+    if (ix < 0) { sliceSet.add(ck); continue; }
+    for (let j = Math.max(0, ix - PC_WINDOW); j <= Math.min(man.order.length - 1, ix + PC_WINDOW); j++) {
+      const nk = man.order[j]!;
+      if (!pcClipsMap.has(pcClipId(key, nk))) sliceSet.add(nk);
+    }
+  }
+  if (!sliceSet.size) { finish(false); return; }
+  const data = await pcFetchBytes(key);
+  if (!data) { finish(true); return; }
+  let decoded: AudioBuffer | null = null;
+  try { decoded = await decodeSprite(data); } catch { decoded = null; }
+  if (!decoded) { finish(true); return; }
+  // Retention is decided at store time (mirrors the legacy loadGen
+  // rule): a sprite evicted mid-pass still serves its waiting callers —
+  // the line plays — but nothing it sliced is retained.
+  const retain = seatedKeys.has(key) || pcBytesMap.has(key);
+  const sliced = new Set<string>();
+  let wholeFallback = false;
+  for (const ck of sliceSet) {
+    const at = man.clips[ck];
+    if (!at) continue;
+    const buf = sliceClip(decoded, at);
+    if (!buf) { wholeFallback = true; break; }
+    sliced.add(ck);
+    pcStoreClip(key, ck, buf);
+  }
+  if (wholeFallback) {
+    pcDropWhole(key);
+    const raw = voiceBufferBytes(decoded);
+    const bytes = Number.isFinite(raw) && raw > 0 ? raw : 0;
+    pcWholeMap.set(key, { buf: decoded, bytes, used: ++pcClock });
+    pcClipTotal += bytes;
+  }
+  if (retain) pcEnforceClipBudget(new Set([...sliced].map((ck) => pcClipId(key, ck))));
+  finish(false);
+  if (!retain) {
+    // The transient slices served their waiters in finish(); drop them.
+    for (const ck of sliced) pcDropClip(pcClipId(key, ck));
+    pcDropWhole(key);
+  }
+}
+
+/** Table change, per-clip layer: a departed sprite loses its manifest,
+ *  its compressed bytes and every decoded clip on the spot (the legacy
+ *  layer's rule, at per-clip scale). A pass in flight for it still
+ *  resolves its waiting callers — see the retention check in pcRunPass. */
+function pcEvictNonSeated(): void {
+  for (const k of [...pcManifests.keys()]) if (!seatedKeys.has(k)) pcManifests.delete(k);
+  for (const k of [...pcBytesMap.keys()]) if (!seatedKeys.has(k)) pcDropBytes(k);
+  for (const k of [...pcBytesPromises.keys()]) if (!seatedKeys.has(k)) pcBytesPromises.delete(k);
+  for (const id of [...pcClipsMap.keys()]) if (!seatedKeys.has(pcIdKey(id))) pcDropClip(id);
+  for (const k of [...pcWholeMap.keys()]) if (!seatedKeys.has(k)) pcDropWhole(k);
+  for (const k of [...pcRetries.keys()]) if (!seatedKeys.has(k)) pcRetries.delete(k);
+  publishVoiceProbe();
+}
+
+/** Play through the per-clip layer: cache hit plays at once; a miss
+ *  registers the want and awaits the sprite's pass (the legacy 1.5 s
+ *  too-late rule applies from the call, unchanged). */
+async function playClipPc(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4, opts?: { crossTalk?: boolean; deferCut?: boolean; key?: string }): Promise<boolean> {
+  if (!raw) return false;
+  const t0 = performance.now();
+  const key = keyFor(persona, name);
+  const man = await pcManifest(key);
+  if (!man) return false;
+  const clipKey = pcResolveClipKey(man.clips, raw, bid, opts?.key);
+  if (!clipKey) return false;
+  const at = man.clips[clipKey]!;
+  const playWith = (sp: { buf: AudioBuffer }, slice: [number, number]): boolean => {
+    if (opts?.crossTalk) return sound.playVoiceCrossTalk(sp.buf, gain, slice, seat, playerCount, name, { defer: !!opts.deferCut });
+    return sound.playVoice(sp.buf, gain, slice, seat, playerCount);
+  };
+  const whole = pcWholeMap.get(key);
+  if (whole) { whole.used = ++pcClock; pcClipHits++; return playWith({ buf: whole.buf }, [at[0] / 1000, at[1] / 1000]); }
+  const hitClip = pcClipsMap.get(pcClipId(key, clipKey));
+  if (hitClip) { hitClip.used = ++pcClock; pcClipHits++; return playWith({ buf: hitClip.buf }, [0, at[1] / 1000]); }
+  pcClipMisses++;
+  const got = await pcAwaitClip(key, clipKey);
+  if (performance.now() - t0 > 1500) return true; // too late to still fit the moment: stay quiet
+  if (!got) return false;
+  return got.whole
+    ? playWith({ buf: got.buf }, [at[0] / 1000, at[1] / 1000])
+    : playWith({ buf: got.buf }, [0, at[1] / 1000]);
+}
+
+/** clipDurationMs through the per-clip layer: the manifest alone
+ *  answers — no audio fetch, no decode (the legacy doc comment always
+ *  promised this; the per-clip layer is what makes it true). */
+async function clipDurationMsPc(persona: PersonaId, name: string, raw: string | undefined, bid?: number, key?: string): Promise<number | null> {
+  if (!raw) return null;
+  const spriteKey = keyFor(persona, name);
+  const man = await pcManifest(spriteKey);
+  if (!man) return null;
+  const clipKey = pcResolveClipKey(man.clips, raw, bid, key);
+  return clipKey ? man.clips[clipKey]![1] : null;
+}
+
+/** Preload through the per-clip layer: fetch the manifest + compressed
+ *  bytes in the background (NO whole-sprite decode) and queue one
+ *  starter pass — pending wants plus a head window of the manifest —
+ *  so the first lines of the loading/deal/bidding window hit cache. */
+function preloadVoicePc(persona: PersonaId, name: string): void {
+  const key = keyFor(persona, name);
+  if (pcBytesMap.has(key)) return;
+  const go = () => {
+    void (async () => {
+      const man = await pcManifest(key);
+      if (!man) return;
+      await pcFetchBytes(key);
+      for (const ck of man.order.slice(0, PC_HEAD_WARM)) pcAddWant(key, ck);
+      pcKickPass(key);
+    })();
+  };
+  const ric = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback;
+  if (ric) ric(go); else setTimeout(go, 400);
+}
+
+/**
+ * Warm one line's clip ahead of its moment: register the want and kick
+ * the sprite's decode pass, fire-and-forget. The schedulers that know
+ * upcoming lines call this — ScriptPlayer for the next scene beats,
+ * DeeRundown for its single line — so by the time the line's turn
+ * arrives its decode is done or under way. Never plays anything, never
+ * rejects, and is a no-op on the legacy layer (which warms whole
+ * sprites at preload instead).
+ */
+export function warmClip(persona: PersonaId, name: string, raw: string | undefined, bid?: number, key?: string): void {
+  if (!raw || !voicePerClipEnabled()) return;
+  const spriteKey = keyFor(persona, name);
+  void (async () => {
+    try {
+      const man = await pcManifest(spriteKey);
+      if (!man) return;
+      const clipKey = pcResolveClipKey(man.clips, raw, bid, key);
+      if (!clipKey) return;
+      if (pcClipsMap.has(pcClipId(spriteKey, clipKey)) || pcWholeMap.has(spriteKey)) return;
+      pcAddWant(spriteKey, clipKey);
+      pcKickPass(spriteKey);
+    } catch { /* warming is best-effort by construction */ }
+  })();
+}
+
+/** Warm a batch of one speaker's upcoming lines (see warmClip). */
+export function warmClips(persona: PersonaId, name: string, raws: readonly string[]): void {
+  for (const r of raws) warmClip(persona, name, r);
+}
+
+/* =====================================================================
+ * RESIDENCY PROBE + PUBLIC SURFACE
+ * The dispatchers below are the module's public contract (Table.tsx,
+ * talkPrefs.ts): signatures identical to the legacy layer's, routed by
+ * the flag. voiceResidencySnapshot mirrors the figure-residency probe
+ * pattern and is published on window.__bwmVoiceResidency whenever the
+ * per-clip residency changes, so a device session can be read live:
+ * decoded clip bytes against their hard cap, compressed bytes against
+ * theirs, pass count and the last pass's duration.
+ * ===================================================================== */
+
+export interface VoiceResidencySnapshot {
+  layer: 'per-clip' | 'legacy';
+  /** Decoded clip bytes currently held (per-clip layer). */
+  clipBytes: number;
+  clipBudgetBytes: number;
+  clipCount: number;
+  wholeSprites: number;
+  /** Compressed sprite bytes currently held (per-clip layer). */
+  encodedBytes: number;
+  encodedBudgetBytes: number;
+  encodedSprites: number;
+  passes: number;
+  lastPassMs: number | null;
+  clipHits: number;
+  clipMisses: number;
+  /** The legacy layer's decoded residency, for the flagged-off A/B. */
+  legacyResidentBytes: number;
+  legacyBudgetBytes: number;
+}
+
+/** Total decoded clip PCM currently held by the per-clip cache. */
+export function residentClipBytes(): number { return pcClipTotal; }
+/** Clip ids (`spriteKey\nclipKey`) currently held by the per-clip cache. */
+export function residentClipIds(): string[] { return [...pcClipsMap.keys()]; }
+/** Total compressed sprite bytes currently held by the per-clip layer. */
+export function residentEncodedBytes(): number { return pcEncodedTotal; }
+
+export function voiceResidencySnapshot(): VoiceResidencySnapshot {
+  return {
+    layer: voicePerClipEnabled() ? 'per-clip' : 'legacy',
+    clipBytes: pcClipTotal,
+    clipBudgetBytes: VOICE_CLIP_CACHE_BUDGET_BYTES,
+    clipCount: pcClipsMap.size,
+    wholeSprites: pcWholeMap.size,
+    encodedBytes: pcEncodedTotal,
+    encodedBudgetBytes: VOICE_ENCODED_BUDGET_BYTES,
+    encodedSprites: pcBytesMap.size,
+    passes: pcPasses,
+    lastPassMs: pcLastPassMs,
+    clipHits: pcClipHits,
+    clipMisses: pcClipMisses,
+    legacyResidentBytes: residentVoiceBytes(),
+    legacyBudgetBytes: VOICE_RESIDENCY_BUDGET_BYTES,
+  };
+}
+
+export function publishVoiceProbe(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      (window as unknown as Record<string, unknown>).__bwmVoiceResidency = voiceResidencySnapshot();
+    }
+  } catch { /* probe publication is never load-bearing */ }
+}
+
+/**
+ * A table change (see setSeatedVoiceKeysLegacy for the full story):
+ * the dispatcher updates the shared seated set through the legacy body
+ * — which also runs the legacy layer's evictions — and then applies
+ * the same rule to the per-clip layer's manifests, bytes and clips.
+ */
+export function setSeatedVoiceKeys(keys: readonly string[]): void {
+  setSeatedVoiceKeysLegacy(keys);
+  pcEvictNonSeated();
+  publishVoiceProbe();
+}
+
+/** A bot sat down: warm its voice in the background (only seated bots are ever fetched). */
+export function preloadVoice(persona: PersonaId, name: string): void {
+  if (voicePerClipEnabled()) preloadVoicePc(persona, name);
+  else preloadVoiceLegacy(persona, name);
+}
+
+/**
+ * Play the recorded clip for this line. Resolves true when a clip played (or is playing), false when there's no clip
+ * (the caller falls back to Web Speech). A sprite that isn't decoded yet still plays if it arrives within 1.5 s.
+ * `opts.crossTalk` (set by speakBot on every surface): the clip may start over the tail of a different
+ * speaker's line instead of cutting it — the engine's planVoiceArrival decides, per arrival.
+ * `opts.deferCut` (regular-table chatter, also set by speakBot): when the plan would replace the
+ * playing line, this clip instead waits for the room (short waits) or drops — never a mid-sentence cut.
+ */
+export async function playClip(persona: PersonaId, name: string, raw: string | undefined, gain: number, bid?: number, seat?: import('../spatial').SeatPos, playerCount = 4, opts?: { crossTalk?: boolean; deferCut?: boolean; key?: string }): Promise<boolean> {
+  const played = voicePerClipEnabled()
+    ? await playClipPc(persona, name, raw, gain, bid, seat, playerCount, opts)
+    : await playClipLegacy(persona, name, raw, gain, bid, seat, playerCount, opts);
+  publishVoiceProbe();
+  return played;
+}
+
+/**
+ * The recorded duration (ms) of the clip playClip would play for this
+ * line, or null when there is none. Same sprite, same lookup — the
+ * manifest JSON alone answers (the audio needn't have decoded), so a
+ * caller can pace itself against a line's voice without playing
+ * anything or forking the speech path. The story scene player paces
+ * its typewriter reveal against this (talkPrefs.spokenClipDurationMs).
+ * On the per-clip layer the promise is kept literally: the manifest is
+ * all that is ever fetched here.
+ */
+export async function clipDurationMs(persona: PersonaId, name: string, raw: string | undefined, bid?: number, key?: string): Promise<number | null> {
+  return voicePerClipEnabled()
+    ? clipDurationMsPc(persona, name, raw, bid, key)
+    : clipDurationMsLegacy(persona, name, raw, bid, key);
 }

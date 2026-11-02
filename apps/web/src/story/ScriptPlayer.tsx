@@ -24,6 +24,7 @@ import { STORY_CHARACTERS, personaForName, storyPortraitFor, type StoryBeat } fr
 import { sound } from '../audio';
 import { cancelActiveSpeech } from '../audioSession';
 import { setStoryVoiceScope, speakBot, spokenClipDurationMs } from '../talkPrefs';
+import { warmClip } from '../voices/voices';
 import StoryFace from './StoryFace';
 import KingGunArt from './KingGunArt';
 import { PORCH_LIVING_MOOD, livingClipFor, livingMoodVars, type LivingClip, type LivingMood } from './storyLiving';
@@ -318,6 +319,19 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
     });
     return () => { live = false; window.clearInterval(timer); };
   }, [i, lines]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Per-clip voice decode: warm the next beats' clips so their decode
+  // passes run while this beat plays and is read — a scene holds every
+  // line ahead of time, so no beat should ever arrive at an undecoded
+  // clip. Warmth only; playback, pacing and selection are untouched.
+  useEffect(() => {
+    for (let j = i; j < Math.min(lines.length, i + 8); j++) {
+      const b = lines[j];
+      if (!b || b.speaker === 'you') continue;
+      const nm = speakerName(b.speaker);
+      warmClip(personaForName(nm), nm, b.line);
+    }
+  }, [i, lines]);
 
   const sizerRef = useRef<HTMLDivElement | null>(null);
   const [reservedH, setReservedH] = useState<number | null>(null);

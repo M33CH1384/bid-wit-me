@@ -37,6 +37,7 @@ import StoryFace from './StoryFace';
 import { fixedRevealMs, revealDurationMs } from './ScriptPlayer';
 import { setStoryVoiceScope, speakBot, spokenClipDurationMs, talkPrefs, useTalkPrefs } from '../talkPrefs';
 import { sound } from '../audio';
+import { warmClip } from '../voices/voices';
 import { cancelActiveSpeech } from '../audioSession';
 import { fx, useReduceEffects } from '../fx';
 import DeeRundownVideo from './DeeRundownVideo';
@@ -184,6 +185,9 @@ export function DeeRundownTextPanel({ rundown, track, autoplay = true }: {
     let live = true;
     void (async () => {
       let ms: number | null = null;
+      // Per-clip voice decode: start this line's decode pass now, so
+      // the clip is sliced and resident before playback asks for it.
+      warmClip(personaForName('Dee'), 'Dee', full);
       try { ms = await spokenClipDurationMs('Dee', full, personaForName('Dee')); } catch { ms = null; }
       if (!live) return;
       setClipMs(ms);
