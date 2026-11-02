@@ -1193,12 +1193,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // cards stay face-down only while Blind Nil is actually on offer; otherwise just turn them over (no button)
   const autoReveal = myTurn && !dealing && st.phase === 'bidding' && view.hand === null && !!view.bidOptions && !view.bidOptions.blindNil;
   useEffect(() => { if (autoReveal) apply({ type: 'reveal', seat: HUMAN }); }, [autoReveal]); // eslint-disable-line react-hooks/exhaustive-deps
-  // 🃏 Last-card throw-in (Demetrius 2026-10-19): on the hand's final trick every live seat
-  // holds exactly one card, so the player can throw theirs in out of turn — mirroring the
-  // engine's throwInOpen window (hand counts are public). Until then, only the turn seat plays.
-  const throwInOpenView = st.phase === 'playing' && !spectating
+  // 🃏 Last-card free drop (Demetrius 2026-11-02): holding exactly one card, the player
+  // may throw it in out of turn on ANY trick — mirroring the engine's lastCardDropOpen
+  // for this seat (their hand size and the trick's plays are both in the view). A seat
+  // with two or more cards still waits for the turn.
+  const dropOpenView = st.phase === 'playing' && !spectating
     && (hand ?? []).length === 1
-    && view.handCounts.every((c) => c <= 1)
     && view.trick.plays.every((p) => p.seat !== HUMAN);
   // Presentation gate (owner, 2026-10-30: the playable highlight lit ~a second
   // before the play that made it his turn had landed): the state advances the
@@ -1222,7 +1222,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     const t = window.setTimeout(() => { if (!certifiedEver.current) setSceneSilent(true); }, 5000);
     return () => window.clearTimeout(t);
   }, [sceneSilent, presented, myTurn, st.phase, turnKey]);
-  const legal = highlightLegal({ myTurn, throwInOpen: throwInOpenView, phase: st.phase, presented, viewLegal: view.legal, hand });
+  const legal = highlightLegal({ myTurn, dropOpen: dropOpenView, phase: st.phase, presented, viewLegal: view.legal, hand });
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
   const mySide = sideOf(HUMAN, r);

@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, botPaceDelayMs, canRunIt, isJoker, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, secureSeed, throwInOpen, viewFor, withCompleteNil,
+  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, botPaceDelayMs, canRunIt, isJoker, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, secureSeed, lastCardDropOpen, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
@@ -154,6 +154,9 @@ export interface RoomData {
    * still knows the deadline; the in-memory wake alone does not survive.
    */
   botDueAt?: number | null;
+  /** the bot seat whose last-card free drop is scheduled out of turn, and when it lands (epoch ms) */
+  dropSeat?: number | null;
+  dropDueAt?: number | null;
   /** latched when a game starts: this deal counts for Elo, so a leaver doesn't open their seat to a guest */
   rated?: boolean;
   /** this deal was already written as abandoned (leave, replacement, or expiry) */
@@ -1458,18 +1461,23 @@ export class Room {
   }
 
   /**
-   * A card play that is still legal for the turn in progress. `seq` has to be from this turn
-   * (`turnSeq`), not from the previous trick, or a late tap would lead the next one.
-   * The last-card throw-in window is also honored (out-of-turn final-trick throws are legal).
+   * A card play that is still legal for the turn in progress. For the turn seat, `seq` has
+   * to be from this turn (`turnSeq`), not from the previous trick, or a late tap would lead
+   * the next one. A last-card free drop (out of turn, one card in hand) is exempt from the
+   * seq floor: two one-card players tapping at the same moment compose against the same
+   * seq, and the first drop bumps it — the second drop is still unambiguously THIS trick's
+   * play, because the checks below pin it down (the seat hasn't played in this trick and
+   * the card is its legal drop right now; a previous trick's card is never in hand).
    */
   private sameTurnCard(me: Member, card: string, seq: number | undefined): boolean {
     const d = this.data;
     const g = d.game;
     if (!g || d.phase !== 'playing' || me.seat === null || seq === undefined) return false;
-    if (seq < (d.turnSeq ?? 0)) return false;
     const turn = pendingTurn(g);
     if (!turn || turn.kind !== 'play') return false;
-    if (turn.seat !== me.seat && !throwInOpen(g)) return false;
+    if (turn.seat === me.seat) {
+      if (seq < (d.turnSeq ?? 0)) return false;
+    } else if (!lastCardDropOpen(g, me.seat)) return false;
     if (g.trick.plays.some((p) => p.seat === me.seat)) return false;
     return viewFor(g, me.seat).legal.some((c) => c === card);
   }
@@ -2607,6 +2615,8 @@ export class Room {
         d.turnSeq = d.seq ?? 0;
         d.deadline = null;
         d.botDueAt = null;
+        d.dropSeat = null;
+        d.dropDueAt = null;
         changed = true;
         // Push: a fresh bid/play turn — the DO pings the player when they're away.
         const pt = pendingTurn(g);
@@ -2696,8 +2706,41 @@ export class Room {
         if (d.deadline !== null) { d.deadline = null; changed = true; }
         d.turnKey = null; // the clock restarts when someone reconnects
         d.botDueAt = null;
+        d.dropSeat = null;
+        d.dropDueAt = null;
         this.io.setAlarm(null);
         return changed;
+      }
+
+      // Last-card free drop (Demetrius 2026-11-02): a bot seat holding exactly one card
+      // throws it in without waiting for its turn — the same rule the engine enforces for
+      // every seat. Scheduled on the seeded humanized pacing draw, like a bot turn (a
+      // short beat, never frame-instant). The drop is forced, so when the brain declines
+      // off-turn, autoAct's fallback plays the card — exactly the card, nothing to choose.
+      const dropSeat = d.seats.slice(0, g.rules.playerCount).findIndex((sl, i) => !!sl && sl.kind === 'bot' && i !== turn.seat && lastCardDropOpen(g, i as Seat));
+      // the room's next alarm must also wake for a scheduled drop, whichever branch owns the turn
+      const alarmWithDrop = (at: number): number => (d.dropDueAt != null && d.dropSeat != null ? Math.min(at, d.dropDueAt) : at);
+      if (dropSeat >= 0) {
+        if (d.dropDueAt == null || d.dropSeat !== dropSeat) {
+          d.dropSeat = dropSeat;
+          d.dropDueAt = Math.max(now, (d.turnStartedAt ?? now) + leadIn + botPaceDelayMs({
+            seed: g.seed, handNo: g.handNo, trickNo: g.tricks.length, seat: dropSeat as Seat,
+            position: g.trick.plays.length, playerCount: g.rules.playerCount, kind: 'play',
+            baseMs: this.timing.botMs,
+          }));
+          changed = true;
+        }
+        if (now >= d.dropDueAt) {
+          const dslot = d.seats[dropSeat]!;
+          try { this.autoAct(dropSeat as Seat, dslot.kind === 'bot' ? dslot.level : d.botLevel); } catch (e) { console.error('bot last-card drop failed', e); }
+          if (this.turnKeyOf(d.game!) !== key) { changed = true; continue; }
+          // the drop didn't move (brain and fallback both declined): fall through to the
+          // turn machinery — its alarm (min'd with the drop's) retries on the next tick.
+        }
+      } else if (d.dropDueAt != null || d.dropSeat != null) {
+        d.dropSeat = null;
+        d.dropDueAt = null;
+        changed = true;
       }
 
       if (slot.kind === 'bot' || slot.kind === 'empty') {
@@ -2753,11 +2796,11 @@ export class Room {
           if (moved) { changed = true; continue; }
           // The brain hung or declined. Do not spin: the watchdog plays a legal card or bid.
           this.io.wake(Math.max(0, watchdogAt - now));
-          this.io.setAlarm(watchdogAt);
+          this.io.setAlarm(alarmWithDrop(watchdogAt));
           return true;
         }
-        this.io.wake(due - now);
-        this.io.setAlarm(due);
+        this.io.wake(Math.max(0, alarmWithDrop(due) - now));
+        this.io.setAlarm(alarmWithDrop(due));
         return changed;
       }
 
@@ -2779,7 +2822,7 @@ export class Room {
           continue;
         }
         this.io.wake(Math.max(250, Math.min(1000, capAt - now)));
-        this.io.setAlarm(capAt);
+        this.io.setAlarm(alarmWithDrop(capAt));
         return changed;
       }
       if (connected && member?.loaderSince != null) {
@@ -2821,7 +2864,7 @@ export class Room {
         changed = true;
         continue;
       }
-      this.io.setAlarm(d.deadline);
+      this.io.setAlarm(d.deadline == null ? null : alarmWithDrop(d.deadline));
       return changed;
     }
     return changed;
@@ -2845,6 +2888,8 @@ export class Room {
     this.data.deadline = null;
     this.data.turnKey = null;
     this.data.botDueAt = null;
+    this.data.dropSeat = null;
+    this.data.dropDueAt = null;
     this.io.setAlarm(null);
   }
 

@@ -515,7 +515,7 @@ function playOutRun(st: GameState, seat: Seat): GameState {
   // the rest of the hand as if played: the claimer plays a proven card, everyone else their lowest legal card
   while (s.phase === 'playing') {
     const who = s.turn!;
-    const card = who === seat ? solver.pick(s) : lowestLegal(s.rules, s.hands[who]!, s.trick.plays, s.spadesBroken);
+    const card = who === seat ? solver.pick(s) : lowestLegal(s.rules, s.hands[who]!, anchoredTrickPlays(s), s.spadesBroken);
     if (!card) throw new Error('run it: lost the guaranteed line'); // can't happen: proven for every response
     s = applyAction(s, { type: 'play', seat: who, card });
   }
@@ -626,7 +626,8 @@ export function nukeArmed(st: Pick<GameState, 'rules' | 'phase' | 'tricks' | 'tr
  * happens a lot"). Nobody has a choice of card left, so order can't change what anyone
  * holds; the trick leader still sets the led suit because the completed trick's plays
  * are reordered leader-first before the winner is decided (see the 'play' handler).
- * Outside this window turn order is enforced exactly as before.
+ * Kept as a state predicate (the final-trick window); the play rule itself is the
+ * per-seat free drop below, which subsumes this window seat by seat.
  */
 export function throwInOpen(st: GameState): boolean {
   if (st.phase !== 'playing') return false;
@@ -634,6 +635,39 @@ export function throwInOpen(st: GameState): boolean {
   // ≤ 1 (not exactly 1): the window stays open while the final trick's cards land,
   // as the seats that already threw drop to zero.
   return liveSeats(st).every((s) => st.hands[s]!.length <= 1);
+}
+
+/**
+ * 🃏 Last-card free drop (Demetrius 2026-11-02): ANY trick, not just the hand's last —
+ * a seat holding exactly one card may throw it in without waiting for the turn pointer
+ * ("When it's my last card I don't want to have to wait to throw it out — all players
+ * should be able to drop the last card out of the normal order"). The play is forced:
+ * a one-card hand holds no choice, so dropping early can never change WHAT the seat
+ * plays, only when the card lands — the dead wait is all that goes away. Every player
+ * (human, online opponent, bot) and every mode plays by this rule.
+ * A seat that already threw in this trick is never open: it may hold one card again
+ * (played from two), but one card per seat per trick is absolute.
+ */
+export function lastCardDropOpen(st: GameState, seat: Seat): boolean {
+  if (st.phase !== 'playing') return false;
+  if (isEliminated(st, seat)) return false;
+  if (st.hands[seat]?.length !== 1) return false;
+  return !st.trick.plays.some((p) => p.seat === seat);
+}
+
+/**
+ * The current trick as legality sees it: the leader's card first — it alone sets the
+ * led suit — or no plays at all while the leader hasn't thrown. Last-card drops land
+ * in `trick.plays` in arrival order, but a drop never sets the suit: the leader still
+ * leads freely, and everyone after follows the LEADER's card, not whichever card
+ * happened to land first.
+ */
+function anchoredTrickPlays(st: GameState): Play[] {
+  const plays = st.trick.plays;
+  const li = plays.findIndex((p) => p.seat === st.trick.leader);
+  if (li < 0) return [];
+  if (li === 0) return [...plays];
+  return [plays[li]!, ...plays.filter((_, i) => i !== li)];
 }
 
 /** Order a completed trick leader-first: the rotation from the trick's leader through every live seat. */
@@ -654,27 +688,28 @@ function mustLead2C(st: GameState): boolean {
 
 export function legalPlays(st: GameState, seat: Seat): Card[] {
   if (st.phase !== 'playing' || st.turn !== seat) return [];
-  return legalPlaysFor(rulesForLive(st), st.hands[seat]!, st.trick.plays, st.spadesBroken, mustLead2C(st));
+  return legalPlaysFor(rulesForLive(st), st.hands[seat]!, anchoredTrickPlays(st), st.spadesBroken, mustLead2C(st));
 }
 
 /**
- * The cards `seat` may actually send right now: the turn seat's legal plays — plus, during the
- * last-card throw-in (see throwInOpen), this seat's single remaining card even out of turn.
- * Used by the play handler's validation and by the player view, so the engine, the server and
- * the client's tappable cards never disagree about the throw-in window.
+ * The cards `seat` may actually send right now: the turn seat's legal plays — plus, when the
+ * last-card free drop is open for this seat (see lastCardDropOpen), its single remaining card
+ * even out of turn. The drop is forced, so no suit test applies to it: it may land before the
+ * leader has set the led suit. Used by the play handler's validation and by the player view,
+ * so the engine, the server and the client's tappable cards never disagree about the drop.
  */
 export function playableCards(st: GameState, seat: Seat): Card[] {
   if (st.phase !== 'playing') return [];
   if (st.turn === seat) return legalPlays(st, seat);
-  if (!throwInOpen(st)) return [];
-  return legalPlaysFor(rulesForLive(st), st.hands[seat]!, st.trick.plays, st.spadesBroken, mustLead2C(st));
+  if (!lastCardDropOpen(st, seat)) return [];
+  return [st.hands[seat]![0]!];
 }
 
 function explainIllegal(st: GameState, seat: Seat, card: Card): RuleError {
   const r = st.rules;
   const hand = st.hands[seat]!;
   if (!hand.includes(card)) return new RuleError('CARD_NOT_IN_HAND', `${card} is not in seat ${seat}'s hand`);
-  if (st.trick.plays.length === 0) {
+  if (anchoredTrickPlays(st).length === 0) {
     if (mustLead2C(st) && hand.includes('2C')) return new RuleError('MUST_LEAD_TWO_OF_CLUBS', 'The 2♣ must lead the first trick');
     return new RuleError('SPADES_NOT_BROKEN', 'Spades have not been broken');
   }
@@ -857,7 +892,7 @@ export function applyAction(st: GameState, action: Action): GameState {
         if (mine.card === action.card) return st;
         throw new RuleError('ALREADY_PLAYED', 'You already played in this trick');
       }
-      if (st.turn !== seat && !throwInOpen(st)) throw new RuleError('NOT_YOUR_TURN', 'Not your turn to play');
+      if (st.turn !== seat && !lastCardDropOpen(st, seat)) throw new RuleError('NOT_YOUR_TURN', 'Not your turn to play');
       const legal = playableCards(st, seat);
       if (!legal.includes(action.card)) throw explainIllegal(st, seat, action.card);
       const hands = [...st.hands];
@@ -875,11 +910,17 @@ export function applyAction(st: GameState, action: Action): GameState {
       const spadesBroken = st.spadesBroken || isTrump(action.card, r);
       const liveN = liveSeats(st).length;
       if (plays.length < liveN) {
-        // The turn pointer names the next seat that hasn't thrown yet, so bots and the UI
-        // stay in sync even when the final trick's cards land out of order.
+        // The turn pointer names the next seat in rotation that hasn't thrown yet,
+        // counted from where it already points: an out-of-turn last-card drop never
+        // moves it past a seat still waiting to play, and once the pointed seat has
+        // thrown (in turn, or as the leader whose card a drop preceded) it advances
+        // past every seat that already threw — the dropper included.
         const thrown = new Set(plays.map((p) => p.seat));
-        let t = nextLive(st, seat);
-        while (thrown.has(t)) t = nextLive(st, t);
+        let t = st.turn ?? seat;
+        if (thrown.has(t)) {
+          t = nextLive(st, t);
+          while (thrown.has(t)) t = nextLive(st, t);
+        }
         return { ...st, hands, spadesBroken, trick: { ...st.trick, plays }, turn: t };
       }
       // 🃏 Throw-in reorder: the led suit (plays[0]) is always the trick leader's card,
