@@ -370,4 +370,22 @@ describe('home band positioning — the Neon blanket lift must never swallow the
     expect(css).toContain('.home-streak-fire');
     expect(css).toContain('position: fixed; left: 0; right: 0; bottom: 0;');
   });
+
+  // Round 2 (owner, 2026-11-01, on device): "Now the fire is too low."
+  // The BottomLine ticker (.ranks-ticker.bar, fixed bottom, z-15) rides
+  // on top of the band's bottom 38px + safe-area — the flame bases — so
+  // only haze and tips showed above it. While the ticker is up (html
+  // carries bwm-ticker-on, the layout's own signal), the band stands on
+  // the ticker: its bottom edge is the ticker's top edge, by the exact
+  // height social.css composes for the bar. No ticker → bottom: 0.
+  it('fire.css stands the band on the BottomLine ticker while the ticker is up', () => {
+    const css = fireCss();
+    expect(css).toContain('html.bwm-ticker-on .home-streak-fire');
+    expect(css).toContain('bottom: calc(38px + env(safe-area-inset-bottom));');
+    // The offset must stay the ticker's own height: if the bar's height
+    // declaration in social.css ever moves, this pin forces the band's
+    // stand-on offset to be revisited in the same change.
+    const social = readFileSync(new URL('../src/social/social.css', import.meta.url), 'utf8');
+    expect(social).toContain('height: calc(38px + env(safe-area-inset-bottom))');
+  });
 });

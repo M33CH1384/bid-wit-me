@@ -39,6 +39,17 @@
   z-index: 0;
   pointer-events: none;
 }
+/* while the BottomLine ticker rides the bottom edge (html carries
+ * bwm-ticker-on), the band stands ON the ticker instead of behind it:
+ * its bottom edge becomes the ticker's top edge — the exact height the
+ * layout composes for the bar (social.css .ranks-ticker.bar: 38px +
+ * the bottom safe-area), the same reservation every surface makes.
+ * Without the ticker the designed bottom: 0 above stands. (Owner,
+ * 2026-11-01: with the band at bottom: 0 the ticker buried the flame
+ * bases — "now the fire is too low", only haze and tips showed.) */
+html.bwm-ticker-on .home-streak-fire {
+  bottom: calc(38px + env(safe-area-inset-bottom));
+}
 /* the home column rides ABOVE the band — buttons and text keep their
  * full contrast at every tier, in both themes */
 .wiz-home .splash, .wiz-home .wiz-actions { position: relative; z-index: 1; }
