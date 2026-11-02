@@ -22,3 +22,9 @@ export function expressionForBeat(characterId: string, beat: { speaker: string; 
   if (/\b(told you|of course|easy|sure)\b/i.test(l)) return 'smug';
   return 'neutral';
 }
+
+/** Ease a weight vector toward a target by `t` (0..1) — the stage's expression cross-fade, one step per frame. */
+export function stepWeights(cur: readonly number[], target: readonly number[], t: number): number[] {
+  const a = Math.min(1, Math.max(0, t));
+  return cur.map((v, i) => v + ((target[i] ?? 0) - v) * a);
+}

@@ -22,6 +22,8 @@ export interface CharacterHandle {
   triangles: number;
   meshes: number;
   setExpression(expr: CharacterExpression, k?: number): void;
+  /** Raw weights in CHARACTER_MORPHS order (the stage cross-fades between expressions with this). */
+  setWeights(w: readonly number[]): void;
   release(): void;
 }
 
@@ -149,18 +151,18 @@ export async function acquireCharacter(
   const clips = Object.fromEntries(src.animations.map((c) => [c.name, c]));
   const morphMeshes: Mesh[] = [];
   root.traverse((o) => { const m = o as Mesh; if (m.isMesh && m.morphTargetDictionary && m.morphTargetInfluences) morphMeshes.push(m); });
-  const setExpression = (expr: CharacterExpression, k = 1) => {
-    const w = morphWeights(expr, k);
+  const setWeights = (w: readonly number[]) => {
     for (const m of morphMeshes) {
       const dict = m.morphTargetDictionary!, inf = m.morphTargetInfluences!;
       CHARACTER_MORPHS.forEach((name, i) => { const ix = dict[name]; if (ix !== undefined) inf[ix] = w[i]!; });
     }
   };
+  const setExpression = (expr: CharacterExpression, k = 1) => setWeights(morphWeights(expr, k));
   setExpression('neutral');
   const { triangles, meshes } = countTriangles(root);
   let released = false;
   return {
-    id, root, mixer, clips, triangles, meshes, setExpression,
+    id, root, mixer, clips, triangles, meshes, setExpression, setWeights,
     release() {
       if (released) return; released = true;
       mixer.stopAllAction(); mixer.uncacheRoot(root);
