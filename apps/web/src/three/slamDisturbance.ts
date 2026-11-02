@@ -60,12 +60,19 @@ export function resetSlamDisturbances(): void { events.length = 0; seq = 0; }
 
 /** How long a disturbed card takes to settle back onto its spot (ms). */
 export const DISTURBANCE_MS = 600;
-/** Cards farther than this from the strike feel nothing (world units). */
-export const DISTURBANCE_RADIUS = 1.7;
+/**
+ * Cards farther than this from the strike feel nothing (world units).
+ * Aggression retune (owner 2026-11-02: the slam "isn't aggressive
+ * enough"): radius 1.7 → 2.0, slide 0.095 → 0.14, hop 0.06 → 0.10 — a
+ * harder jolt across more of the felt. The peaks stay well under a
+ * card length and every envelope still returns to exactly zero, so a
+ * disturbed card is jolted on its spot, never scattered off it.
+ */
+export const DISTURBANCE_RADIUS = 2.0;
 /** Peak slide of a card struck dead-on (world units). */
-export const DISTURBANCE_SLIDE = 0.095;
+export const DISTURBANCE_SLIDE = 0.14;
 /** Peak hop of a bounced card struck dead-on (world units). */
-export const DISTURBANCE_HOP = 0.06;
+export const DISTURBANCE_HOP = 0.1;
 
 export interface DisturbanceParams {
   mode: 'bounce' | 'slide';

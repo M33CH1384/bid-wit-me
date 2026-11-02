@@ -15,12 +15,14 @@ import type { RunDrop } from './landing';
  *     cards to show them before throwing them down. (Retune, owner 2026-11-01:
  *     "go up slow but come down fast and HARD" — the raise now takes ~2/3 of
  *     the flight.)
- *  2. ARC + SLAM: the card tips over the top — a short crest — then DROPS: the
- *     fall is compressed into the last ~quarter of the flight on a steep power
- *     curve (it hangs, then plummets), leading edge dipped hard, and strikes
- *     the felt flat at RUN_SLAM_IMPACT_T of the flight (slap, not settle: the
- *     dip unwinds AT contact). The last tenth is the card flat on its scatter
- *     spot; Card3D's slam rebound rides on top, exactly where it always did.
+ *  2. ARC + SLAM: the card tips over the top — a short crest — and HANGS
+ *     there a beat (aggression retune, owner 2026-11-02: the raised slam
+ *     "isn't aggressive enough"), then DROPS: the whole fall is compressed
+ *     into the last ~0.11 s on a steeper power curve, leading edge dipped
+ *     hard, and strikes the felt flat at RUN_SLAM_IMPACT_T of the flight
+ *     (slap, not settle: the dip unwinds AT contact). The last tenth is the
+ *     card flat on its scatter spot; Card3D's slam rebound rides on top,
+ *     exactly where it always did.
  *
  * Same ballistic language as the toss family in flightPose.ts (accelerating
  * fall, corner-first contact, the clearance law keeping every corner off the
@@ -35,6 +37,14 @@ export const RUN_SLAM_FLIGHT_SEC = 0.9;
 export const RUN_SLAM_RAISE_END = 0.675;
 /** The felt strike, as a fraction of the flight (landTiming's impactFraction reads the same number). */
 export const RUN_SLAM_IMPACT_T = 0.9;
+/**
+ * The drop begins, as a fraction of the flight (aggression retune, owner
+ * 2026-11-02). Between RUN_SLAM_RAISE_END and here the card HANGS at the
+ * crest (~0.09 s — the wait is part of the violence); from here to
+ * RUN_SLAM_IMPACT_T the whole height falls (~0.11 s). The raise and the
+ * strike never moved — only the hang and the fall did.
+ */
+export const RUN_SLAM_DROP_T = 0.78;
 /** The whole flight's delays are compressed into this spread (s): one collective slam, not a barrage. */
 export const RUN_SLAM_MAX_STAGGER_SEC = 0.12;
 
@@ -55,6 +65,14 @@ export function runSlamSchedule(drops: readonly RunDrop[]): { delay: number; dur
 }
 
 const quatOf = (q: Xform['q']): Quaternion => new Quaternion(q[0], q[1], q[2], q[3]);
+
+/**
+ * The drop's power curve (aggression retune, owner 2026-11-02: 3.4 → 4.8).
+ * Over the compressed ~0.11 s fall the peak descent at show height is
+ * ≈ 38 units/s (was ≈ 14), and the drop's last fifth carries ~66% of
+ * the height (the old, longer fall carried ~53% across all of beat 2).
+ */
+const RUN_SLAM_DROP_EXPONENT = 4.8;
 
 /** Leading-edge dip at the slap (radians) — the flight family's drive character, at show weight (retune: harder attack). */
 const RUN_SLAM_DIP = 0.42;
@@ -90,20 +108,21 @@ export function runSlamPose(from: Xform, to: Xform, t: number, opts: { arc?: num
     );
     level = u;
   } else {
-    // Beat 2 — over the top and DOWN HARD: horizontal travel holds back then
-    // rushes in, the height crests briefly then plummets on a steep power
-    // curve (most of the drop lands in the fall's last moments), striking at
-    // RUN_SLAM_IMPACT_T; past the strike the card is flat on its spot.
-    const v = (clamped - RUN_SLAM_RAISE_END) / (1 - RUN_SLAM_RAISE_END); // 0..1 across beat 2
-    const vI = (RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END) / (1 - RUN_SLAM_RAISE_END); // the strike within beat 2
-    const w = clamp01(v / vI); // 0..1 up to the strike, then 1
+    // Beat 2 — HANG, then DROP: the crest bob, the levelling and the dip
+    // run on beat progress b exactly as they always did; only the height
+    // and the horizontal rush wait for the drop. The card hangs at the
+    // top until RUN_SLAM_DROP_T, then the whole height falls at once on
+    // the steep curve, striking at RUN_SLAM_IMPACT_T; past the strike
+    // the card is flat on its spot.
+    const b = clamp01((clamped - RUN_SLAM_RAISE_END) / (RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END)); // 0..1 raise end → strike
+    const w = clamp01((clamped - RUN_SLAM_DROP_T) / (RUN_SLAM_IMPACT_T - RUN_SLAM_DROP_T)); // the drop proper: 0 through the hang, 0..1 across the fall, then 1
     eXZ = 0.12 + 0.88 * Math.pow(w, 2.0);
-    const crest = w < 1 ? 0.15 * raiseH * Math.sin(Math.PI * clamp01(w / 0.4)) * (1 - w) : 0;
-    const y = w >= 1 ? tp.y : tp.y + (hoverY - tp.y) * (1 - Math.pow(w, 3.4)) + crest;
+    const crest = w < 1 ? 0.15 * raiseH * Math.sin(Math.PI * clamp01(b / 0.4)) * (1 - b) : 0;
+    const y = w >= 1 ? tp.y : tp.y + (hoverY - tp.y) * (1 - Math.pow(w, RUN_SLAM_DROP_EXPONENT)) + crest;
     p = new Vector3(sp.x + (tp.x - sp.x) * eXZ, y, sp.z + (tp.z - sp.z) * eXZ);
-    level = Math.min(1, 0.85 + 0.15 * smoothstep(w / 0.7));
-    // The dip builds across the fall to full attack and is gone AT the strike (the slap).
-    if (w < 1) dip = RUN_SLAM_DIP * smoothstep((w - 0.15) / 0.85);
+    level = Math.min(1, 0.85 + 0.15 * smoothstep(b / 0.7));
+    // The dip builds across beat 2 to full attack and is gone AT the strike (the slap).
+    if (b < 1) dip = RUN_SLAM_DIP * smoothstep((b - 0.15) / 0.85);
   }
 
   let q = new Quaternion().slerpQuaternions(quatOf(from.q), quatOf(to.q), level);

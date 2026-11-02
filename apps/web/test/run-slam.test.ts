@@ -7,11 +7,11 @@ import { RUN_MEGA_DETONATE_MS, RUN_MEGA_TORNADO_AFTER_MS, RUN_TORNADO_AFTER_MS }
 import { playSeed, runScatter } from '../src/three/landing';
 import { CH, CT, CW, flatRest, handFan, opponentFan, type Xform } from '../src/three/layout';
 import {
-  RUN_SLAM_FLIGHT_SEC, RUN_SLAM_IMPACT_T, RUN_SLAM_MAX_STAGGER_SEC, RUN_SLAM_RAISE_END,
+  RUN_SLAM_DROP_T, RUN_SLAM_FLIGHT_SEC, RUN_SLAM_IMPACT_T, RUN_SLAM_MAX_STAGGER_SEC, RUN_SLAM_RAISE_END,
   runSlamPose, runSlamSchedule,
 } from '../src/three/runSlamPose';
 import {
-  DISTURBANCE_MS, DISTURBANCE_RADIUS, disturbanceFor, disturbanceOffsetAt,
+  DISTURBANCE_HOP, DISTURBANCE_MS, DISTURBANCE_RADIUS, DISTURBANCE_SLIDE, disturbanceFor, disturbanceOffsetAt,
   lastSlamDisturbanceId, pushSlamDisturbance, resetSlamDisturbances, slamDisturbancesAfter,
 } from '../src/three/slamDisturbance';
 
@@ -106,17 +106,34 @@ describe("'Run it!' slam flight (runSlamPose)", () => {
     }
   });
 
-  it('retune shape: the fall is compressed into the last ~quarter and drops HARD', () => {
-    // fall window (raise end → strike) is at most a quarter of the flight
+  it('aggression shape: a hang at the crest, then a compressed, harder drop (owner 2026-11-02)', () => {
+    // Owner verdict on the 0.85-arc build: "the run it slam isn't aggressive
+    // enough." The arc did not move (0.85, pinned in the wiring block below);
+    // beat 2 is now a HANG at the crest, then the whole fall inside ~0.11 s
+    // on a steeper curve (drop exponent 3.4 → 4.8 in runSlamPose).
+    // beat 2 (raise end → strike) is still at most a quarter of the flight…
     expect(RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END).toBeLessThanOrEqual(0.25);
+    // …but the drop proper is only its tail — the card hangs at the top first
+    expect(RUN_SLAM_DROP_T).toBeGreaterThan(RUN_SLAM_RAISE_END);
+    expect((RUN_SLAM_DROP_T - RUN_SLAM_RAISE_END) * RUN_SLAM_FLIGHT_SEC).toBeGreaterThanOrEqual(0.08); // ≥0.08 s hanging at the crest
+    expect(RUN_SLAM_IMPACT_T - RUN_SLAM_DROP_T).toBeLessThanOrEqual(0.125);
+    expect((RUN_SLAM_IMPACT_T - RUN_SLAM_DROP_T) * RUN_SLAM_FLIGHT_SEC).toBeLessThanOrEqual(0.12); // the fall proper: ≤0.12 s
     for (const { from, to } of slamPairs().pairs) {
       const y = (t: number) => runSlamPose(from, to, t, { arc: 0.55 }).p[1];
       const tAt = (w: number) => RUN_SLAM_RAISE_END + w * (RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END);
-      // the drop hangs, then plummets: the fall's last fifth covers ≥45% of the height
+      // measured across beat 2 (the 2026-11-01 pin's measure), the fall's
+      // last fifth now carries ~90% of the height (was ~53%, pinned ≥45%)
       const total = y(RUN_SLAM_RAISE_END) - y(RUN_SLAM_IMPACT_T);
       const late = y(tAt(0.8)) - y(RUN_SLAM_IMPACT_T);
-      expect(late).toBeGreaterThan(0.45 * total);
-      // peak descent speed is a multiple of the fall's mean speed — a drop, not a glide
+      expect(late).toBeGreaterThan(0.8 * total);
+      // and the drop's OWN last fifth carries ~66% of the height (1 − 0.8^4.8)
+      const tAtD = (w: number) => RUN_SLAM_DROP_T + w * (RUN_SLAM_IMPACT_T - RUN_SLAM_DROP_T);
+      const totalD = y(RUN_SLAM_DROP_T) - y(RUN_SLAM_IMPACT_T);
+      const lateD = y(tAtD(0.8)) - y(RUN_SLAM_IMPACT_T);
+      expect(lateD).toBeGreaterThan(0.6 * totalD);
+      // peak descent dwarfs the fall's mean — a plummet, not a glide.
+      // Sampled on the real pose at this fixture height: peaks 42–134 u/s,
+      // 8.8–16× the beat-2 mean (the 2026-11-01 pins were >2.5× and >6 u/s).
       let peak = 0;
       const N = 200;
       for (let i = 1; i <= N; i++) {
@@ -125,8 +142,8 @@ describe("'Run it!' slam flight (runSlamPose)", () => {
         peak = Math.max(peak, (y(t0) - y(t1)) / ((t1 - t0) * RUN_SLAM_FLIGHT_SEC));
       }
       const mean = total / ((RUN_SLAM_IMPACT_T - RUN_SLAM_RAISE_END) * RUN_SLAM_FLIGHT_SEC);
-      expect(peak).toBeGreaterThan(2.5 * mean);
-      expect(peak).toBeGreaterThan(6); // world units/s at show scale
+      expect(peak).toBeGreaterThan(5 * mean);
+      expect(peak).toBeGreaterThan(20); // world units/s at show scale
     }
   });
 
@@ -201,10 +218,27 @@ describe('slam disturbance model (slamDisturbance)', () => {
     for (const seed of [1, 7, 42, 99]) {
       const near = disturbanceFor(0.25, 0, seed)!;
       const mid = disturbanceFor(0.9, 0, seed)!;
-      const far = disturbanceFor(1.55, 0, seed)!;
+      // the far sample sits at the rails (~1.85). The aggression retune
+      // (2026-11-02) grew the radius 1.7 → 2.0, so the old 1.55 sample is
+      // mid-field now and takes a real jolt by design; the property this
+      // pin protects — the rails only shiver — is re-anchored at the
+      // rail's true distance, not loosened (measured far mag ≤ 0.006).
+      const far = disturbanceFor(1.85, 0, seed)!;
       expect(near.mag + near.hop).toBeGreaterThan(mid.mag + mid.hop);
       expect(mid.mag + mid.hop).toBeGreaterThan(far.mag + far.hop);
       expect(far.mag).toBeLessThan(0.02); // the rails only shiver
+    }
+  });
+
+  it('aggression retune: the disturbance constants carry the harder jolt (owner 2026-11-02)', () => {
+    expect(DISTURBANCE_RADIUS).toBe(2.0);
+    expect(DISTURBANCE_SLIDE).toBe(0.14);
+    expect(DISTURBANCE_HOP).toBe(0.1);
+    // dead-on, the peaks stay well under a card length — a jolt, not a scatter
+    for (const seed of [1, 7, 42, 99]) {
+      const p = disturbanceFor(0, 0, seed)!;
+      expect(p.mag).toBeLessThan(0.2);
+      expect(p.hop).toBeLessThan(0.13);
     }
   });
 

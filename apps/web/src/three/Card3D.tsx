@@ -1016,11 +1016,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     }
     if (sl && dist > 0.02) {
       if (s.motionSnap === 'runslam') {
-        // Run It strike (retune 2026-11-01 — "come down fast and HARD"): NO
-        // rebound before the slap, so the fall stays clean, then ONE tight
-        // hop off the felt that peaks at once and dies inside the settle —
-        // not the generic double-wobble below, which starts mid-fall.
-        if (s.t > RUN_SLAM_IMPACT_T) { const u = (s.t - RUN_SLAM_IMPACT_T) / (1 - RUN_SLAM_IMPACT_T); g.position.y += sl.bounce * 2.0 * Math.sin(Math.PI * Math.pow(u, 0.7)) * Math.pow(1 - u, 2); }
+        // Run It strike (retune 2026-11-01 — "come down fast and HARD";
+        // aggression retune 2026-11-02 — the rebound grows with the harder
+        // fall, 2.0 → 2.5× the slam's bounce): NO rebound before the slap,
+        // so the fall stays clean, then ONE tight hop off the felt that
+        // peaks at once and dies inside the settle — not the generic
+        // double-wobble below, which starts mid-fall.
+        if (s.t > RUN_SLAM_IMPACT_T) { const u = (s.t - RUN_SLAM_IMPACT_T) / (1 - RUN_SLAM_IMPACT_T); g.position.y += sl.bounce * 2.5 * Math.sin(Math.PI * Math.pow(u, 0.7)) * Math.pow(1 - u, 2); }
       } else if (s.t > 0.75) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
     }
     }
