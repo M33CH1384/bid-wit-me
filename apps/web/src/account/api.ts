@@ -3,7 +3,7 @@
  * and vite proxies it locally, so the HttpOnly session cookie is first-party. Guest play never calls any of this
  * except one cheap GET /api/auth/config + /me when the menu opens.
  */
-import { noteSession } from './sessionHint';
+import { noteSession, noteSessionLoading } from './sessionHint';
 import { useSyncExternalStore } from 'react';
 import { clearIdleNotice } from '../inactivity';
 import { invalidateVenueUnlocks } from '../venues';
@@ -91,6 +91,7 @@ export function loadAccount(force = false): Promise<void> {
       else if (result === 'ok') set({ notice: 'Signed in.', noticeKind: 'ok' });
       pendingOpen = result === 'linked' ? 'account' : null;
     }
+    noteSessionLoading();
     try {
       const [cfg, me] = await Promise.all([call<{ providers: ProviderId[]; passkeys: boolean; accounts: boolean }>('config'), call<{ user: AccountUser | null }>('me')]);
       set({ ready: true, accounts: !!cfg.accounts, providers: (cfg.providers ?? []).filter((p) => p in PROVIDER_LABEL), passkeys: !!cfg.passkeys && typeof PublicKeyCredential !== 'undefined', user: me.user ?? null });

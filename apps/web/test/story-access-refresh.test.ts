@@ -138,7 +138,7 @@ describe('story access refresh after interactive sign-in (sequential narrative)'
     expect(account.get().user).toBeNull();
     expect(await fetchStoryAccess()).toBeNull(); // signed-out 401 → null (locked)
     expect(await fetchVenueUnlocks()).toBeNull();
-    expect(profileCalls).toBe(1); // the second read was served from the cache
+    expect(profileCalls).toBe(0); // audit fix 7: a known guest makes no /api/profile/me read at all (was 1 guaranteed 401, then cached)
   });
 
   it('surfaces mounted signed out show the lock (the owner’s symptom)', async () => {
@@ -176,7 +176,7 @@ describe('story access refresh after interactive sign-in (sequential narrative)'
     // And the flag itself now reads the server's truth — via a FRESH fetch,
     // not the poisoned cache (the call count moved past the pre-auth read).
     expect(await fetchStoryAccess()).toBe(true);
-    expect(profileCalls).toBeGreaterThan(1);
+    expect(profileCalls).toBeGreaterThanOrEqual(1); // the signed-in read really went to the server (guest pre-auth made none)
   });
 
   it('sign-out converges back to locked on the same mounted surfaces', async () => {

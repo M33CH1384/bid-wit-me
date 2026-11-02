@@ -13,18 +13,22 @@ let first = new Promise<void>((r) => { resolveFirst = r; });
 
 /** account/api.ts: the definitive /api/auth/me result (null = unknown, e.g. the call failed). */
 export function noteSession(s: 'guest' | 'user' | null): void {
-  known = s;
+  known = s; inFlight = false;
   resolveFirst?.(); resolveFirst = null;
 }
 
 /** Sync read (no waiting). */
 export function isKnownGuest(): boolean { return known === 'guest'; }
 
-/** Wait (bounded) for the first auth/me answer, then say whether to skip a self-only read. */
+/** Wait for the first auth/me answer only while one is actually in flight (account/api.ts marked it), bounded;
+ *  then say whether to skip a self-only read. With no auth/me in flight it answers at once (no added delay). */
 export async function skipSelfRead(waitMs = 1500): Promise<boolean> {
-  if (known === null && resolveFirst) await Promise.race([first, new Promise((r) => setTimeout(r, waitMs))]);
+  if (known === null && inFlight && resolveFirst) await Promise.race([first, new Promise((r) => setTimeout(r, waitMs))]);
   return known === 'guest';
 }
+let inFlight = false;
+/** account/api.ts: an /api/auth/me request has started. */
+export function noteSessionLoading(): void { inFlight = true; }
 
 /** tests only */
-export function __resetSessionHint(): void { known = null; first = new Promise<void>((r) => { resolveFirst = r; }); }
+export function __resetSessionHint(): void { known = null; inFlight = false; first = new Promise<void>((r) => { resolveFirst = r; }); }
