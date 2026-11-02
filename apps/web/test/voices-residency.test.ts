@@ -467,9 +467,12 @@ describe('per-clip decode layer (flag on)', () => {
       return new Response(new Uint8Array([7]).buffer as ArrayBuffer, { status: 200 });
     }));
     await expect(playClip('petty', 'Rae', 'a raw line', 1, 5)).resolves.toBe(true);
-    expect(residentClipIds()).toContain(pcClipIdOf('petty-', 'a raw line#5'));
+    // This test's fetch stub doesn't record manifestFetches, so the
+    // sprite key is read back from the resident ids themselves.
+    const pettyKey = residentClipIds().find((id) => id.startsWith('petty-'))!.split('\n')[0]!;
+    expect(residentClipIds()).toContain(`${pettyKey}\na raw line#5`);
     await expect(playClip('petty', 'Rae', 'a raw line', 1, 7)).resolves.toBe(true);
-    expect(residentClipIds()).toContain(pcClipIdOf('petty-', 'a raw line'));
+    expect(residentClipIds()).toContain(`${pettyKey}\na raw line`);
     await expect(clipDurationMs('petty', 'Rae', 'a raw line', 5)).resolves.toBe(PC_CLIP_MS);
   });
 
