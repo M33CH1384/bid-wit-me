@@ -128,6 +128,35 @@ describe('residency + recovery wiring (source pins)', () => {
   });
 });
 
+describe('lean mode (crash round 3: shed on context loss)', () => {
+  it('evicts every unmounted entry immediately — in-grace and under budget alike — and spares mounted', () => {
+    const { reg, disposed } = harness(500 * MB); // huge budget: nothing would ever evict in normal mode
+    reg.acquire('/f/a.glb', fakeGltf, 24 * MB); reg.release('/f/a.glb'); // unmounted, still inside its grace
+    reg.acquire('/f/b.glb', fakeGltf, 24 * MB); reg.release('/f/b.glb');
+    reg.acquire('/f/seated.glb', fakeGltf, 24 * MB); // mounted: must survive the shed
+    reg.enterLeanMode();
+    expect(reg.isLeanMode()).toBe(true);
+    expect(disposed.sort()).toEqual(['/f/a.glb', '/f/b.glb']);
+    expect(reg.snapshot().entries.map((e) => e.url)).toEqual(['/f/seated.glb']);
+    expect(reg.totalBytes()).toBe(24 * MB);
+  });
+
+  it('the grace stays off after lean: a later release is evictable the moment the budget demands', () => {
+    const { reg, disposed } = harness(30 * MB);
+    reg.enterLeanMode();
+    reg.acquire('/f/a.glb', fakeGltf, 24 * MB); reg.release('/f/a.glb'); // no clock advance: inside what was the grace window
+    reg.acquire('/f/b.glb', fakeGltf, 24 * MB); // 48 > 30 — normally a's grace would protect it
+    expect(disposed).toEqual(['/f/a.glb']);
+  });
+
+  it('wiring: Scene enters lean mode on context loss (source pin)', () => {
+    const scene = readFileSync(join(process.cwd(), 'apps/web', 'src/three/Scene.tsx'), 'utf8');
+    expect(scene).toContain('enterFigureLeanMode()');
+    const mod = readFileSync(join(process.cwd(), 'apps/web', 'src/three/figureResidency.ts'), 'utf8');
+    expect(mod).toContain('enterLeanMode()');
+  });
+});
+
 describe('estimateGltfTextureBytes', () => {
   it('measures width × height × 4 × mips, deduped across cloned materials', () => {
     const tex = new Texture();
