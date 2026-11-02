@@ -101,12 +101,12 @@ export const FAN_REST_TIGHTEN = 0.36;
  *  when the holder peers over it. The rest drop eased 0.11 → 0.09
  *  with it so the lowered fan's bottom edge keeps its clearance
  *  over the rail. */
-export const OPP_FAN_BASE_Y = 0.156;
+export const OPP_FAN_BASE_Y = 0.162;
 export const OPP_FAN_REST_DROP = 0.09;
 export const OPP_FAN_REST_OUT = 0.15;
 export const OPP_FAN_REST_TIGHTEN = 0.45;
 /** Round 3 (owner 2026-11-01, Mac screenshot: the partner's face
- *  covered by her fan at the north seat): BASE_Y 0.165 -> 0.156 and
+ *  covered by her fan at the north seat): BASE_Y 0.165 -> 0.162 and
  *  the open fan's seatward offset 0.12 -> 0.02 (BASE_OUT) at the
  *  top/bottom seats — the held fan rides lower and further over the
  *  felt, the way a player leans in over the table; REST_OUT 0.05 ->
@@ -118,11 +118,14 @@ export const OPP_FAN_REST_TIGHTEN = 0.45;
  *  stole the side book piles' new clearance (3D SAT sweep). Tilt
  *  was measured and rejected as a lever: tipping the top edge down
  *  swings it toward the head plane by the same amount — a wash in
- *  the sightline. BASE_Y's floor is set by the played-card flight's
- *  corner law, not the face: below ~0.152 the launch pose's lowest
- *  corner dips under the felt plane and playFlightPose must lift the
- *  card at t=0 (a visible pop; flight-pose.test.ts pins endpoints
- *  exact) — at 0.156 the launch corner clears by ~0.006, so the rest
+ *  the sightline. BASE_Y's floor is set by the card flights' corner
+ *  law, not the face: below it the launch pose's lowest corner dips
+ *  under the felt plane and the flight must lift the card at t=0 (a
+ *  visible pop; flight-pose.test.ts and run-slam.test.ts pin the
+ *  endpoints exact). The binding case is the slam's offset fan cards
+ *  (opponentFan('top', 4, 1, 5)): corner +0.0056 at 0.165, so the
+ *  base can fall 0.003 and no further — at 0.162 that corner clears
+ *  by ~0.0026 and the centre-card flight corner by ~0.012; the rest
  *  of the sightline gain comes from FIGURE_SCALE (1.33). */
 export const OPP_FAN_BASE_OUT = 0.02;
 export const OPP_FAN_BASE_OUT_SIDE = 0.12;
