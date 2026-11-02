@@ -295,7 +295,11 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
   const [flipped, setFlipped] = useState(false);
   /* Arms the mid-flip lift in playercard.css: the lift animation keys
    * off data-flip-seen so a freshly mounted card never stirs — only a
-   * card that has actually been flipped lifts, on every flip. */
+   * card that has actually been flipped lifts, on every flip. The
+   * attributes live on the .plcard box, not on .pcard-inner: the lift
+   * rides the perspective carrier outside the preserve-3d context so
+   * it can never interfere with the flip's backface culling (the
+   * 2026-11-02 mirror regression — see playercard.css). */
   const [flipSeen, setFlipSeen] = useState(false);
   const [openBadge, setOpenBadge] = useState<string | null>(null);
   const shownPic = pic !== undefined ? pic : data.avatar;
@@ -364,9 +368,10 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
       )}
       <div className="pcard plcard" data-testid="player-card" data-variant={variant}
         data-suit={r.suit ?? 'joker'} data-treatment={treatment}
+        data-flip-seen={flipSeen ? '1' : undefined} data-flipped={flipped ? '1' : undefined}
         onClick={flip}
         role="group" aria-label={`Player card for ${data.name} — ${r.rankName} — tap to flip`}>
-        <div className={`pcard-inner${flipped ? ' flipped' : ''}`} data-flip-seen={flipSeen ? '1' : undefined}>
+        <div className={`pcard-inner${flipped ? ' flipped' : ''}`}>
           {/* ------------------------------------------------------ FRONT */}
           <section className="pcard-face pcard-front" aria-hidden={flipped} data-testid="pcard-front">
             <div className="pcard-corner tl" aria-hidden>

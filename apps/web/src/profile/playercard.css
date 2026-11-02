@@ -136,6 +136,30 @@ html[data-theme="neon"] .plcard.pcard {
  * true midpoint, and settles out, so one face or the other paints at
  * every angle of the turn. A whisper of lift rides the turn (the
  * rules below); the settled footprint never changes. */
+/* MIRROR REGRESSION (owner on-device report, 2026-11-02): the
+ * paragraph above was WRONG about where the mirror stops — the
+ * owner flipped the shipped build on his iPhone and got the
+ * 2026-10-23 bug verbatim: "just shows a mirror image of the front,"
+ * stats nowhere. Culling alone — faces plus the every-descendant
+ * rule — does NOT hold on iOS WebKit for this structure; it held in
+ * Chromium, which is all the 2026-11-01 lane could test. The
+ * 2026-10-23 fix had it right: the visibility swap is the guarantee
+ * that makes the settled state deterministic, and it was load-
+ * bearing. What WAS broken in 2023's version is only its timing:
+ * the old ease crossed edge-on at ~.09s while the swap fired at
+ * .28s. So the swap RETURNS, retimed to this turn: the symmetric
+ * ease crosses edge-on at exactly half of .62s, and the swap delay
+ * is that half (.31s) — it fires at the one instant both faces are
+ * zero-width, so it can never hide a paintable face or show an
+ * unpaintable one, while culling covers every other angle. The two
+ * guarantees stack again, as they did from 2023-10-23 to 2026-11-01
+ * (a year of clean flips; the owner's only complaint was the old
+ * swap's timing). The lift also moved: it used to animate the
+ * standalone scale and translate properties ON .pcard-inner — the
+ * preserve-3d container itself, during the exact window its 3D
+ * context does the culling. It now rides .plcard, the perspective
+ * carrier OUTSIDE that context, where it reads identically (the
+ * whole card breathes) and cannot touch the culling. */
 .plcard .pcard-inner {
   display: grid; height: 100%;
   transform-style: preserve-3d;
@@ -145,12 +169,16 @@ html[data-theme="neon"] .plcard.pcard {
 /* The mid-flip lift: armed only once the card has been flipped at
  * least once (data-flip-seen, set by the component on the first
  * flip), so a freshly mounted card never stirs. Each direction runs
- * its own keyframe twin so every flip restarts the breath. scale and
+ * its own keyframe twin so every flip restarts the breath. The lift
+ * rides .plcard — the card box that carries the perspective, OUTSIDE
+ * the preserve-3d context — never .pcard-inner itself (MIRROR
+ * REGRESSION note above): the whole card breathes, and the 3D
+ * context that does the culling is left strictly alone. scale and
  * translate are standalone properties here, so the lift composes
- * with the rotateY transition instead of overriding it — no
+ * with the inner's rotateY transition instead of overriding it — no
  * transform, and no scaling function, is involved. */
-.plcard .pcard-inner[data-flip-seen="1"] { animation: pcard-flip-lift-a .62s cubic-bezier(.7, 0, .3, 1); }
-.plcard .pcard-inner[data-flip-seen="1"].flipped { animation-name: pcard-flip-lift-b; }
+.plcard[data-flip-seen="1"] { animation: pcard-flip-lift-a .62s cubic-bezier(.7, 0, .3, 1); }
+.plcard[data-flip-seen="1"][data-flipped="1"] { animation-name: pcard-flip-lift-b; }
 @keyframes pcard-flip-lift-a {
   0% { scale: 1; translate: 0 0; }
   50% { scale: 1.03; translate: 0 -1.2%; }
@@ -166,6 +194,7 @@ html[data-theme="neon"] .plcard.pcard {
   position: relative; overflow: hidden; border-radius: 13px;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  transition: visibility 0s linear .31s;
 }
 /* Every layer inside a face is culled with its face (fix note above). */
 .plcard .pcard-face *,
@@ -174,13 +203,19 @@ html[data-theme="neon"] .plcard.pcard {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
-/* The back face rides pre-rotated; backface culling alone decides
- * which face paints at every angle of the turn — there is no
- * visibility swap (REALISTIC FLIP note above). */
-.plcard .pcard-back { transform: rotateY(180deg); }
+/* The settled-state guarantee (2026-10-23, reinstated 2026-11-02 —
+ * MIRROR REGRESSION note above): the back starts unpainted, and the
+ * flipped class swaps both faces' visibility at the midpoint delay
+ * carried by the .pcard-face transition above. At .31s the turn is
+ * exactly edge-on, so no compositor behaviour can paint the wrong
+ * face at rest OR catch the swap mid-turn. */
+.plcard .pcard-back { transform: rotateY(180deg); visibility: hidden; }
+.plcard .pcard-inner.flipped .pcard-front { visibility: hidden; }
+.plcard .pcard-inner.flipped .pcard-back { visibility: visible; }
 @media (prefers-reduced-motion: reduce) {
   .plcard .pcard-inner { transition: none; }
-  .plcard .pcard-inner { animation: none; }
+  .plcard .pcard-face { transition: none; }
+  .plcard[data-flip-seen="1"] { animation: none; }
 }
 
 /* ------------------------------------------------- front: the card face */

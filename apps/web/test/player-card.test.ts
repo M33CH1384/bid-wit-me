@@ -914,29 +914,43 @@ describe('flip culling: the turned-away face can never paint (iOS bleed fix)', (
     expect(rule).toContain('-webkit-backface-visibility: hidden');
   });
 
-  it('the flip is ONE continuous rotation — the visibility swap is retired (owner, 2026-11-01)', () => {
-    /* The 2026-10-23 swap fired at .28s while the old ease crossed
-     * edge-on at ~.09s: neither face painted in between and the
-     * incoming face popped in near-flat — the owner's "flashes from
-     * front to back." Culling alone decides which face paints now. */
-    expect(css).not.toContain('transition: visibility');
-    expect(block('.plcard .pcard-back')).not.toContain('visibility: hidden');
-    expect(css).not.toContain('.pcard-inner.flipped .pcard-front');
-    expect(css).not.toContain('.pcard-inner.flipped .pcard-back');
-    expect(block('.plcard .pcard-face')).not.toContain('transition:');
+  it('culling AND a midpoint visibility swap stack — neither alone is trusted on iOS (owner, 2026-11-02)', () => {
+    /* REVISED PIN, owner-cited: the 2026-11-01 version of this test
+     * retired the swap on the theory that culling alone stops the
+     * mirror bleed. The owner flipped the shipped build on his
+     * iPhone that night: "I can't see my stats. It just shows a
+     * mirror image of the front" — the 2026-10-23 bug verbatim. On
+     * iOS WebKit, descendant layers in the shared 3D context escape
+     * culling; the swap is what makes the settled state
+     * deterministic. It returns RETIMED, which was the actual
+     * 2026-11-01 defect: the old swap fired at .28s while the old
+     * ease crossed edge-on at ~.09s (the flash). The symmetric ease
+     * crosses edge-on at exactly half the .62s turn, and the swap
+     * delay IS that half — at .31s both faces are zero-width, so the
+     * swap can never be seen, and culling covers every other angle. */
+    expect(block('.plcard .pcard-face')).toContain('transition: visibility 0s linear .31s');
+    expect(block('.plcard .pcard-back')).toContain('visibility: hidden');
+    expect(css).toContain('.pcard-inner.flipped .pcard-front { visibility: hidden; }');
+    expect(css).toContain('.pcard-inner.flipped .pcard-back { visibility: visible; }');
     /* one continuous turn on a symmetric ease: the rotation runs
      * fastest AT the edge, which lands at the .62s turn's midpoint */
     expect(block('.plcard .pcard-inner')).toContain('transition: transform .62s cubic-bezier(.7, 0, .3, 1)');
-    /* reduced motion: no turn and no lift — the class swap is instant */
+    /* reduced motion: no turn, no lift, and no swap delay — the
+     * class change settles instantly */
     const rm = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
     expect(rm).toContain('.pcard-inner { transition: none; }');
-    expect(rm).toContain('.pcard-inner { animation: none; }');
+    expect(rm).toContain('.pcard-face { transition: none; }');
+    expect(rm).toContain('[data-flip-seen="1"] { animation: none; }');
   });
 
   it('a flipped card breathes at mid-turn — and only once it has been flipped', () => {
     expect(css).toContain('@keyframes pcard-flip-lift-a');
     expect(css).toContain('@keyframes pcard-flip-lift-b');
-    expect(css).toContain('.pcard-inner[data-flip-seen="1"].flipped { animation-name: pcard-flip-lift-b; }');
+    expect(css).toContain('.plcard[data-flip-seen="1"][data-flipped="1"] { animation-name: pcard-flip-lift-b; }');
+    /* the lift rides .plcard, OUTSIDE the preserve-3d context — it
+     * never animates the .pcard-inner whose culling does the flip
+     * (2026-11-02 mirror regression) */
+    expect(css).not.toContain('.pcard-inner[data-flip-seen');
     /* the lift rides the standalone scale property, never a transform —
      * the settled-footprint pin above (no scale() anywhere) still holds */
     const lift = css.slice(css.indexOf('@keyframes pcard-flip-lift-a'), css.indexOf('@keyframes pcard-flip-lift-b'));
@@ -945,6 +959,7 @@ describe('flip culling: the turned-away face can never paint (iOS bleed fix)', (
     /* the component arms the lift on the first flip, and only then */
     const tsx = read('../src/profile/PlayerCard.tsx');
     expect(tsx).toContain("data-flip-seen={flipSeen ? '1' : undefined}");
+    expect(tsx).toContain("data-flipped={flipped ? '1' : undefined}");
     expect(tsx).toContain('const flip = () => { setFlipSeen(true); setFlipped((f) => !f); };');
   });
 
