@@ -2681,11 +2681,11 @@ class Engine {
   /**
    * Cop drive-by system (Demetrius 2026-10-19): positional gunfire + siren on the
    * venue (ambience) bus. Gunfire comes from a random direction each time;
-   * the siren pans across as the cruiser "drives by". Variants rotate via
-   * pickVariant so it never sounds the same twice in a row.
+   * the siren pans across as the cruiser "drives by". RETUNED on the owner's word
+   * (2026-11-02, option B of the 2026-10-29 audio audit): the gunfire is the distant
+   * variant only and the siren is the recorded Whelen wail only — the old variant
+   * rotation is gone, so there is no last-variant state to keep.
    */
-  private lastGunfireVariant = -1;
-  private lastSirenVariant = -1;
 
   /** One-shot panner at an azimuth (degrees, 0 = ahead) and distance (meters). */
   private drivebyPanner(azimuthDeg: number, distanceM: number): PannerNode | null {
@@ -2740,9 +2740,10 @@ class Engine {
         this.vBurst(t, 0.09, 'highpass', 1800, 0.5, out);
         this.tone(t, 150, 0.15, 'sine', 0.4, { glideTo: 50, dest: out });
         break;
-      case 1: // distant pop: filtered, softer, mostly low end
-        this.vBurst(t, 0.12, 'lowpass', 900, 0.3, out);
-        this.tone(t, 110, 0.2, 'sine', 0.3, { glideTo: 45, dest: out });
+      case 1: // distant pop: filtered, softer, mostly low end — the drive-by's only
+        // gunfire variant since the retune (owner, 2026-11-02); its gains are halved here
+        this.vBurst(t, 0.12, 'lowpass', 900, 0.15, out);
+        this.tone(t, 110, 0.2, 'sine', 0.15, { glideTo: 45, dest: out });
         break;
       case 2: // alley echo: crack + two delayed reflections
         this.vBurst(t, 0.08, 'highpass', 2000, 0.45, out);
@@ -2758,7 +2759,9 @@ class Engine {
     }
   }
 
-  /** 3 siren variants: 0 = recorded Whelen wail (CC0), 1 = synth yelp, 2 = synth hi-lo. */
+  /** 3 siren variants: 0 = recorded Whelen wail (CC0), 1 = synth yelp, 2 = synth hi-lo.
+   * The bed event picks variant 0 only since the drive-by retune (owner, 2026-11-02);
+   * variants 1–2 stay implemented here, just unpicked. */
   private drivebySirenVariant(t: number, variant: number, pan: PannerNode | null, dest: AudioNode, gain: number) {
     const out = pan ?? dest;
     if (variant === 0) {
@@ -3941,17 +3944,18 @@ class Engine {
         // sizzle stays: it is the table's own sound, not the street's.
         this.vNoise('highpass', 3500, 0.5, 0.006, 0.35, 0.5); // grill sizzle
         this.startStreetBed();
-        // Cop drive-by: semi-auto gunfire barrage, then a siren wail fading as the cruiser passes (Demetrius 2026-10-19)
-        // Variants rotate (never the same twice); gunfire is positioned in 3D, siren pans across.
-        if (streetEvents.includes('driveby')) this.vEvery(180, 420, (t) => {
+        // Cop drive-by (Demetrius 2026-10-19), RETUNED to option B on his word (2026-11-02,
+        // "follow your recommendation" on the 2026-10-29 audio audit): rare (every 10–20 min),
+        // far away (distant pops only, halved gains, 20–34 m out), and the siren is the recorded
+        // Whelen wail only. Gunfire is positioned in 3D, siren pans across.
+        if (streetEvents.includes('driveby')) this.vEvery(600, 1200, (t) => {
           const B = this.venueBus!;
-          // Gunfire from a random direction (not where the player is looking)
+          // Gunfire from a random direction (not where the player is looking), blocks away
           const gunAz = 40 + Math.random() * 280; // 40°–320°: off to the side/behind
-          const gunDist = 8 + Math.random() * 12; // 8–20m away
+          const gunDist = 20 + Math.random() * 14; // 20–34m away (was 8–20m)
           const gunPan = this.drivebyPanner(gunAz, gunDist);
           if (gunPan) gunPan.connect(B);
-          const gv = pickVariant(4, this.lastGunfireVariant);
-          this.lastGunfireVariant = gv;
+          const gv = 1; // distant pop only — close pistol / alley crack / heavy rifle read as at-the-table
           // Gunfire: 8-12 semi-auto shots, 0.28-0.46s apart (3-4 seconds total)
           const shots = 8 + Math.floor(Math.random() * 5);
           for (let i = 0; i < shots; i++) {
@@ -3960,8 +3964,7 @@ class Engine {
           }
           // Siren drive-by after a 1-2s pause: pans across as the cruiser passes
           const sirenT = t + 4.5 + Math.random() * 1.5;
-          const sv = pickVariant(3, this.lastSirenVariant);
-          this.lastSirenVariant = sv;
+          const sv = 0; // recorded Whelen wail only — the synth yelp/hi-lo are out of the rotation (owner, 2026-11-02)
           const c = this.ctx!;
           const sirenPan = this.drivebyPanner(-60, 12);
           if (sirenPan) {
@@ -3972,10 +3975,11 @@ class Engine {
             px.linearRampToValueAtTime(12, sirenT + 6);
             window.setTimeout(() => { try { sirenPan.disconnect(); } catch { /* already gone */ } }, (sirenT - c.currentTime + 8) * 1000);
           }
-          // Two wails: full volume as it passes, quieter as it recedes
-          this.drivebySirenVariant(sirenT, sv, sirenPan, B, 0.9);
+          // Two wails, both at the old receding-pass level (0.4; the near pass was 0.9):
+          // the cruiser is heard passing, never blaring at the table
+          this.drivebySirenVariant(sirenT, sv, sirenPan, B, 0.4);
           this.drivebySirenVariant(sirenT + 3.1, sv, sirenPan, B, 0.4);
-          // Tell the UI to flash the cop lights
+          // Tell the UI to wash the cop lights past (softened to a distant spill in styles.css)
           window.dispatchEvent(new CustomEvent('pj-driveby'));
         });
         // Calm drive-by: headlights sweep the fence, no gunfire — rarer and softer than the barrage above
