@@ -142,6 +142,18 @@ describe("'Run it!' slam flight (runSlamPose)", () => {
     expect(impactFraction('runslam')).toBe(RUN_SLAM_IMPACT_T);
     expect(RUN_SLAM_IMPACT_T).toBe(0.9);
   });
+
+  it('the pose default (no explicit arc) raises to the retuned show height', () => {
+    // Arc retune (owner 2026-11-02: "the arc for the run it animation is too
+    // low"): 0.55 -> 0.85. Scene passes the same 0.85 explicitly (source pin
+    // in the wiring block below); the default is what any arc-less caller
+    // inherits, so the two are pinned to the same height here.
+    for (const { from, to } of slamPairs().pairs) {
+      const dist = new Vector3(...from.p).distanceTo(new Vector3(...to.p));
+      const top = runSlamPose(from, to, RUN_SLAM_RAISE_END);
+      close(top.p[1], Math.max(from.p[1], to.p[1]) + 0.85 * Math.min(1, dist), 4);
+    }
+  });
 });
 
 describe("'Run it!' slam schedule (runSlamSchedule)", () => {
@@ -244,6 +256,8 @@ describe("'Run it!' slam wiring (source pins)", () => {
   it("the scatter flies the slam motion; the reduced path stays a plain slide", () => {
     expect(scene).toMatch(/motion: 'runslam'/);
     expect(scene).toMatch(/runSlamSchedule\(drops\)/);
+    // the show arc is the retuned 0.85 (owner 2026-11-02: the 0.55 arc read too low)
+    expect(scene).toMatch(/arc: 0\.85, motion: 'runslam'/);
     const reducedItem = scene.split('\n').find((l) => l.includes('RUN_SLAM_MS / 1000')) ?? '';
     expect(reducedItem).toMatch(/motion: 'slide'/);
     expect(reducedItem).not.toMatch(/runslam/);

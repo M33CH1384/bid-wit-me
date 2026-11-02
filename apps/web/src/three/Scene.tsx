@@ -1274,6 +1274,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // The slam's choreography (owner 2026-11-01): ONE slow flight per card — a deliberate raise out of
     // the hand, an arc over the top, a flat slam onto its scatter spot (runSlamPose.ts) — with the
     // releases compressed so the cards strike as one blow (runSlamSchedule), not the old barrage.
+    // Arc 0.55 -> 0.85 (owner 2026-11-02: "the arc for the run it animation is too low") — height
+    // only: same launch slot, same strike spot/moment, same timings; the crest stays in frame at
+    // the sitting cameras by projection proof (worst: portrait stock 0.87 NDC, landscape people 0.79).
     const slamPlan = drops ? runSlamSchedule(drops) : null;
     if (typeof window !== 'undefined') (window as unknown as { __bwmRunDrop?: unknown }).__bwmRunDrop = { cards, drops, reduced, plan: slamPlan };
     cards.forEach((c, i) => {
@@ -1286,7 +1289,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       const leftHand = seat === human ? departureSlot(held.current.slots, held.current.cards, c) : undefined;
       const seatRest = restFor(seat);
       const from = leftHand ?? (seat === human ? undefined : opponentFan(positions[seat]!, n, Math.min(i, k - 1), k, seatRest.drop, seatRest.pinch));
-      if (d) items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02 + slamPlan![i]!.delay, duration: slamPlan![i]!.duration, arc: 0.55, motion: 'runslam', slam: slamFeel(i === k - 1 ? 1 : 0.85), sfxLand: i === k - 1 ? 'play,runSlam' : 'play', spatialSeat: positions[seat]!, spatialN: n });
+      if (d) items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02 + slamPlan![i]!.delay, duration: slamPlan![i]!.duration, arc: 0.85, motion: 'runslam', slam: slamFeel(i === k - 1 ? 1 : 0.85), sfxLand: i === k - 1 ? 'play,runSlam' : 'play', spatialSeat: positions[seat]!, spatialN: n });
       else items.push({ key: `${handNo}-${c}`, card: c, public: true, target, from, origin: leftHand, delay: 0.02, duration: RUN_SLAM_MS / 1000, arc: reduced ? 0 : 0.9, ...(reduced ? { motion: 'slide' as const } : {}), sfxLand: i === k - 1 ? 'runSlam' : undefined, spatialSeat: positions[seat]!, spatialN: n }); // slow motion
     });
     // the rest of the table's cards: one quick cascade, a smaller row under the claimer's (from each player's spot)

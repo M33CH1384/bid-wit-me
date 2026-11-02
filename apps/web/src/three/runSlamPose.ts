@@ -62,14 +62,16 @@ const RUN_SLAM_DIP = 0.42;
 /**
  * One frame of a Run It slam card's flight from `from` (its fan slot) to `to`
  * (its scatter rest) at t in [0, 1]. `arc` is the raise height in world units
- * (scaled by travel distance like the toss family's hop).
+ * (scaled by travel distance like the toss family's hop). The show value is
+ * 0.85 (raised from 0.55 on 2026-11-02 — owner: the arc read too low) and the
+ * default below matches it, so an arc-less caller never drifts from the show.
  */
 export function runSlamPose(from: Xform, to: Xform, t: number, opts: { arc?: number } = {}): Xform {
   const clamped = clamp01(t);
   const sp = new Vector3(...from.p);
   const tp = new Vector3(...to.p);
   const dist = sp.distanceTo(tp);
-  const raiseH = (opts.arc ?? 0.55) * Math.min(1, dist);
+  const raiseH = (opts.arc ?? 0.85) * Math.min(1, dist);
   const hoverY = Math.max(sp.y, tp.y) + raiseH;
 
   let p: Vector3;
