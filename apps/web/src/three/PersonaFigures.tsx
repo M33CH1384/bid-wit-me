@@ -1580,7 +1580,9 @@ function SeatLights({ seats, positions, n, geo, venue }: {
   const keys = useRef<(import('three').SpotLight | null)[]>([]);
   const rims = useRef<(import('three').SpotLight | null)[]>([]);
   const camRight = useMemo(() => new Vector3(), []);
-  useFrame(() => {
+  const invalidate = useThree((st) => st.invalidate);
+  const solve = () => {
+    const probe: Record<string, unknown> = {};
     camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
     for (const seat of lit) {
       const pos = positions[seat]!;
@@ -1589,8 +1591,13 @@ function SeatLights({ seats, positions, n, geo, venue }: {
       const k = keys.current[seat], m = rims.current[seat];
       if (k) { k.position.copy(r.key); k.target.position.copy(r.head); k.target.updateMatrixWorld(); }
       if (m) { m.position.copy(r.rim); m.target.position.copy(r.head); m.target.updateMatrixWorld(); }
+      probe[pos] = { key: r.key.toArray().map((v) => +v.toFixed(2)), head: r.head.toArray().map((v) => +v.toFixed(2)), rim: m ? r.rim.toArray().map((v) => +v.toFixed(2)) : null, hasKey: !!k };
     }
-  });
+    (window as unknown as { __bwmSeatLights?: unknown }).__bwmSeatLights = { venue, cam: camera.position.toArray().map((v) => +v.toFixed(2)), seats: probe };
+  };
+  // frameloop="demand": solve once at mount (a static table never ticks useFrame) and on every frame after
+  useLayoutEffect(() => { solve(); invalidate(); });
+  useFrame(solve);
   return (
     <>
       <hemisphereLight args={[SEAT_FILL_SKY, SEAT_FILL_GROUND, SEAT_FILL_INTENSITY * tune.fill]} />

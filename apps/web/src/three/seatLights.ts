@@ -3,7 +3,7 @@
  * improvement"). Pure rig math + per-venue tuning — PersonaFigures mounts the lights, tests pin the numbers.
  *
  * Per opponent seat, aimed at the HEAD (never the felt):
- *  - KEY: warm spot, 35° off the seat's camera bisector toward the camera's left, ~30° up (motivated, face-on).
+ *  - KEY: warm spot, 35° off the seat's camera bisector on the camera-facing side (camera left on a tie), ~30° up.
  *  - RIM: venue-tinted spot behind/above, opposite the key — side seats (west/east) only: they are the
  *    profile-to-camera seats that sat in silhouette; north faces the camera and the felt bounce.
  *  - FILL: not a light — one cool hemisphere bias for all seats (key:fill ≈ 3:1, 2:1 on dark venues).
@@ -41,7 +41,7 @@ export const tuneFor = (venue: string): SeatLightTune => SEAT_LIGHT_TUNE[venue] 
 
 /** Base intensities (physical, decay 2). Desi's proof at KEY 14 only lifted a side face ~12 → ~22/255, so the
  *  base starts hotter and is tuned against real 390x844 / 844x390 captures (see the PR's luma table). */
-export const SEAT_KEY_INTENSITY = 26;
+export const SEAT_KEY_INTENSITY = 34;
 export const SEAT_RIM_INTENSITY = 16;
 /** Fill: a cool hemisphere bias (sky, ground) added while figures are seated; ×tune.fill. */
 export const SEAT_FILL_INTENSITY = 0.55;
@@ -73,7 +73,10 @@ export function seatRig(chair: { x: number; z: number }, outward: Vector3, cam: 
   if (B.lengthSq() < 1e-6) B.copy(F); else B.normalize();
   const r = new Vector3(camRight.x, 0, camRight.z).normalize();
   const a = rotY(B, KEY_YAW), b = rotY(B, -KEY_YAW);
-  const keyDir = a.dot(r) <= b.dot(r) ? a : b; // the camera's left
+  // The side of the bisector that faces the camera more (the cheek the camera actually sees: side seats sit in
+  // profile, and the table-side choice left their visible face in shadow on real captures); ties → camera left.
+  const da = a.dot(C), db = b.dot(C);
+  const keyDir = Math.abs(da - db) > 0.05 ? (da > db ? a : b) : (a.dot(r) <= b.dot(r) ? a : b);
   const up = KEY_UP + Math.tan((steepDeg * Math.PI) / 180) * KEY_DIST;
   const key = head.clone().addScaledVector(keyDir, KEY_DIST).add(new Vector3(0, up, 0));
   const side = keyDir.dot(r) < 0 ? r : r.clone().negate(); // opposite the key
