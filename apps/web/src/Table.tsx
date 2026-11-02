@@ -1398,10 +1398,10 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
       fx.tornado = { start: performance.now() + tornadoAfter, reduced: fx.reduced };
       if (runFx.mega) {
         // ☢☢ the detonation's pin-point starts mid-slam so the white flash lands on the cards'
-        // impact. The mega banner + boom ride this emit; the ordinary RAN IT! pop steps aside.
+        // impact. The mega banner + boom ride this emit; the ordinary RUN IT! pop steps aside.
         toMega = window.setTimeout(() => fx.emit('mega'), RUN_MEGA_DETONATE_MS);
       } else {
-        fx.emit('ranIt', { text: 'RAN IT!', sub: `${who} · +${runFx.books} book${runFx.books === 1 ? '' : 's'}`, silent: true });
+        fx.emit('ranIt', { text: 'RUN IT!', sub: `${who} · +${runFx.books} book${runFx.books === 1 ? '' : 's'}`, silent: true });
       }
     }, RUN_ZOOM_MS);
     // (capture scripts set __bwmHoldRun to step the tornado frame by frame via fx.warp)

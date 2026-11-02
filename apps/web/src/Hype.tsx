@@ -47,7 +47,7 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
     }
     else if (e.kind === 'wheelsCar') setCar({ id: e.id, who: e.text ?? '' });
     else if (e.kind === 'wheels') add({ id: e.id, kind: e.kind, text: 'WHEELS!', sub: e.sub ?? e.text }, 1900);
-    else if (e.kind === 'ranIt') add({ id: e.id, kind: e.kind, text: e.text ?? 'RAN IT!', sub: e.sub }, 2700);
+    else if (e.kind === 'ranIt') add({ id: e.id, kind: e.kind, text: e.text ?? 'RUN IT!', sub: e.sub }, 2700);
     else if (e.kind === 'hustled') add({ id: e.id, kind: e.kind, text: 'HUSTLED!', sub: e.text }, 2000);
     else if (e.kind === 'jokerLittle' || e.kind === 'jokerBig') { setPulse({ id: e.id, big: e.kind === 'jokerBig' }); window.setTimeout(() => setPulse((p) => (p?.id === e.id ? null : p)), e.kind === 'jokerBig' ? 1100 : 500); }
     else if (e.kind === 'nuke') {
@@ -92,7 +92,7 @@ export default function Hype({ reduced, low = false }: { reduced: boolean; low?:
           {!reduced && mega.mode !== 'off' && <div key={`f${mega.id}`} className="nuke-flash mega-flash" data-testid="mega-flash" />}
           <div key={`b${mega.id}`} className={`nuke-banner mega-banner ${mega.mode === 'off' || reduced ? 'calm' : ''}`} data-testid="mega" onClick={() => setMega(null)}>
             <div className="nb-title" data-text="☢☢ ANNIHILATION ☢☢">☢☢ ANNIHILATION ☢☢</div>
-            <div className="nb-sub">Ran it with BOTH Jokers</div>
+            <div className="nb-sub">Run it with BOTH Jokers</div>
           </div>
         </>
       )}
