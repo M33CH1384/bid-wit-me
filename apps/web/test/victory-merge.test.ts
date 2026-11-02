@@ -28,7 +28,7 @@
 import { act, createElement, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import GameOverRewards, { VictoryReport, computeRewards, type RewardsData, type RewardsProfile } from '../src/GameOverRewards';
+import GameOverRewards, { VictoryReport, VictoryXpStrip, computeRewards, type RewardsData, type RewardsProfile } from '../src/GameOverRewards';
 import VictoryRecovery from '../src/VictoryRecovery';
 import { CARD_TAKEOVER_DISMISSED_KEY, CARD_TAKEOVER_DELAY_MS, cardTakeoverKey, markTakeoverDismissed } from '../src/CardTakeover';
 import { claimDeferredToVictory, savePendingClaim } from '../src/pendingClaim';
@@ -199,6 +199,45 @@ describe('the merged in-table victory report', () => {
     expect(pg!.textContent).toContain('Postgame Report');
     expect(pg!.textContent).toContain('Your books');
     expect(pg!.textContent).toContain('Best hand: +118 on hand 6');
+  });
+});
+
+describe('the XP slider placement (owner, 2026-11-01: buried in the scroll)', () => {
+  it('VictoryXpStrip carries the XP row + level bar on its own gate scope', () => {
+    mountEl(createElement(VictoryXpStrip, { d: plainData() }));
+    const strip = container.querySelector('[data-testid="victory-xp"]');
+    expect(strip).not.toBeNull();
+    expect(strip!.classList.contains('rw-scope')).toBe(true);
+    expect(strip!.textContent).toContain('XP earned');
+    expect(strip!.querySelector('.rw-levelbar')).not.toBeNull();
+    expect(strip!.querySelector('.rw-levelbar-fill')).not.toBeNull();
+  });
+
+  it('with omitXp the report drops the row — XP renders exactly once across strip + report', () => {
+    mountEl(createElement('div', null,
+      createElement(VictoryXpStrip, { d: plainData() }),
+      createElement(VictoryReport, { data: plainData(), links: true, omitXp: true }),
+    ));
+    const xpRows = [...container.querySelectorAll('.rw-row')].filter((el) => (el.textContent || '').includes('XP earned'));
+    expect(xpRows.length).toBe(1);
+    const report = container.querySelector('[data-testid="victory-report"]')!;
+    expect(report.textContent).not.toContain('XP earned');
+    // the rest of the report is untouched
+    expect(report.textContent).toContain('Coins earned');
+    expect(report.textContent).toContain('Team rating');
+  });
+
+  it('the remaining rows keep their indexes when the XP row is external (delays unchanged)', () => {
+    mountEl(createElement(VictoryReport, { data: plainData(), omitXp: true }));
+    const coins = [...container.querySelectorAll('.rw-row')].find((el) => (el.textContent || '').includes('Coins earned')) as HTMLElement;
+    // XP held index 0, so Coins is index 1 — 160ms, exactly as inline
+    expect(coins.style.animationDelay).toBe('160ms');
+  });
+
+  it('guests get no XP strip — the claim panel stays in the report rows', () => {
+    mountEl(createElement(VictoryXpStrip, { d: guestData() }));
+    expect(container.querySelector('[data-testid="victory-xp"]')).toBeNull();
+    expect(container.textContent).not.toContain('XP earned');
   });
 });
 

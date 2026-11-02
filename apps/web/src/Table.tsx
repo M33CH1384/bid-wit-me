@@ -81,7 +81,7 @@ import { clientSeesNuke } from './three/blastSweep';
 import { loadScene } from './three/preload';
 import { TableLoading, type LoadingSeat } from './TableLoading';
 import { VersusIntro, markVersusShown, versusDismissReady, versusEligible, type VersusMember, type VersusModel } from './VersusIntro';
-import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, VictoryReport, type RewardsData, RollNum, tallyTone, type RewardsProfile } from './GameOverRewards';
+import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, VictoryReport, type RewardsData, VictoryXpStrip, RollNum, tallyTone, type RewardsProfile } from './GameOverRewards';
 import { stashRewards, type RewardsPayload } from './rewardsStash';
 import { flushLocalGames, localGameId } from './localStats';
 import { warmTableEffects } from './effects/warm';
@@ -3369,6 +3369,12 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
               {/* the middle of the foot scrolls inside the panel (long games run
                   tall); the action buttons stay pinned below it, always reachable */}
               <div className="vic-scroll" data-testid="victory-scroll">
+                {/* the XP slider leads the scroll (owner, 2026-11-01: it
+                    sat behind the box score + Postgame Report, so far down
+                    "people will never see it") — directly under the fixed
+                    headline, ahead of the standings and every detail block;
+                    VictoryReport below omits its own copy (omitXp) */}
+                {mergedRewards && <VictoryXpStrip d={mergedRewards} />}
                 {res.endReason === 'shotOut' && <div className="shot-out-banner" data-testid="shot-out">{shotOutBannerFor(st)}</div>}
                 {res.endReason === 'third-set' && <div className="shot-out-banner third-set" data-testid="third-set">{THIRD_SET_HEADLINE}</div>}
                 <ol className="placements compact">
@@ -3384,7 +3390,7 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
                 {/* the merged report (2026-11-01): Postgame Report + reward
                     rows inside this same scroll — the whole story, once */}
-                {mergedRewards && <VictoryReport data={mergedRewards} gameId={online ? undefined : localGameId(matchSeed)} onDataSwap={onMergedSwap} links />}
+                {mergedRewards && <VictoryReport data={mergedRewards} gameId={online ? undefined : localGameId(matchSeed)} onDataSwap={onMergedSwap} links omitXp />}
               </div>
               <div className="confirm-actions">
                 <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
@@ -3428,12 +3434,18 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
                 ))}
             </ol>
             <div className="scroll go-scroll" data-testid="gameover-scroll">
+              {/* the XP slider leads the scroll (owner, 2026-11-01: it sat
+                  behind the box score + Postgame Report, so far down
+                  "people will never see it") — directly under the fixed
+                  hero + standings block; VictoryReport below omits its
+                  own copy (omitXp) */}
+              {!storyGame && mergedRewards && <VictoryXpStrip d={mergedRewards} />}
               <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} roll reduced={reduceFx} />
               {/* the merged report (2026-11-01): Postgame Report + reward
                   rows join the box score in the scroll region — standings
                   stay fixed above, actions pinned below, as before. Story
                   games never render it (their outro carries their rewards). */}
-              {!storyGame && mergedRewards && <VictoryReport data={mergedRewards} gameId={localGameId(matchSeed)} onDataSwap={onMergedSwap} links />}
+              {!storyGame && mergedRewards && <VictoryReport data={mergedRewards} gameId={localGameId(matchSeed)} onDataSwap={onMergedSwap} links omitXp />}
               {tipNudge && (
                 <p className="tip-nudge" data-testid="tip-nudge">
                   Enjoying BWM? <button type="button" className="link" onClick={openTip}>Tip the devs ♥</button> <small>(a donation, not a prize)</small>

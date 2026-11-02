@@ -926,18 +926,27 @@ function useVictoryClaim({ gameId, data, onSwap }: { gameId?: string; data: Rewa
  * view), the count-ups and the takeover arming ride them exactly as they
  * did when this was only ever the /rewards page's body.
  */
-function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef }: {
+function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExternal }: {
   d: RewardsData;
   play: boolean;
   rowsPlay: boolean;
   reduced: boolean;
   guestClaim?: GuestClaimUi;
   rowsRef: RefObject<HTMLDivElement | null>;
+  /** The XP row is rendered by the owning surface instead (VictoryXpStrip
+   *  at the top of the victory screen's scroll region — owner, 2026-11-01:
+   *  the slider sat so far down the merged screen that people would never
+   *  see it). The row counter still consumes the XP row's index, so every
+   *  remaining row keeps the exact index, entrance delay and count-up
+   *  delay it had when the XP row led the rows column. */
+  xpExternal?: boolean;
 }) {
   const rowGate = play && rowsPlay;
   // Level-up CARD TAKEOVER (owner, 2026-10-29): when this report grants a
   // new rank card, the card itself takes the screen (see CardTakeover.tsx).
-  // Armed off the ROWS' gate — the XP count and the level bar run on it —
+  // Armed off the ROWS' gate (the XP row runs on that gate too when it is
+  // rendered inline; when the surface lifts it into VictoryXpStrip, the
+  // strip runs its own in-view gate and this arming is unchanged) —
   // and delayed so it rises as the bar settles into the new level.
   // Retirement (reworked, owner 2026-11-01): DISMISSAL is the only thing
   // that retires a grant — the dismissed key is written when the player
@@ -977,7 +986,8 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef }: {
   let row = 0;
   const rows: React.ReactNode[] = [];
   if (d.signedIn) {
-    rows.push(<XpRow key="xp" d={d} index={row++} play={rowGate} reduced={reduced} />);
+    if (xpExternal) row++; // VictoryXpStrip carries the XP row (index 0)
+    else rows.push(<XpRow key="xp" d={d} index={row++} play={rowGate} reduced={reduced} />);
     if (d.cardUp) rows.push(<CardUpRow key="cardup" d={d} index={row++} />);
     if (d.coinsGained > 0) rows.push(<CoinsRow key="coins" d={d} index={row++} play={rowGate} reduced={reduced} />);
     rows.push(<EloRow key="elo" d={d} index={row++} play={rowGate} reduced={reduced} />);
@@ -1173,14 +1183,52 @@ export default function GameOverRewards({
  * screen survives and absorbs the Postgame Report). Table renders this
  * inside the victory screen's scroll region, after the box score: the
  * Postgame Report (final/books/nils, your books, best hand), then the
- * reward rows (XP count-up + rank bar, Playing well itemized, the rating
- * line) — the whole story once, at the table, under the same reveal gates
- * (presented + in view) the report has always run on. The surface owns
- * its gates via .rw-scope (styles.css mirrors the .rewards-page gate
- * rules for it), owns the guest claim for its match while mounted, and
- * holds the data state a claim swap replaces.
+ * reward rows (Playing well itemized, the rating line) — the whole story
+ * once, at the table, under the same reveal gates (presented + in view)
+ * the report has always run on. The XP row is NOT in this block anymore:
+ * Table renders VictoryXpStrip at the very top of the scroll region and
+ * passes omitXp (owner, 2026-11-01: the slider was buried behind the
+ * box score + Postgame Report). The surface owns its gates via
+ * .rw-scope (styles.css mirrors the .rewards-page gate rules for it),
+ * owns the guest claim for its match while mounted, and holds the data
+ * state a claim swap replaces.
  */
-export function VictoryReport({ data: initial, gameId, onDataSwap, links }: {
+/**
+ * The XP row on its own, for the TOP of the victory screen (owner,
+ * 2026-11-01: "The xp slider should be so far down the victory screen,
+ * people will never see it" — inside the merged report the row sat behind
+ * the box score and the whole Postgame Report, deep in the scroll).
+ * Table renders this as the first element of the victory scroll region,
+ * directly under the headline/standings block; VictoryReport then omits
+ * the row from its rows column (omitXp) so it renders exactly once.
+ *
+ * The row is the same XpRow, at the same index (0 — same entrance and
+ * count-up delays), under the same gate discipline: it carries its own
+ * .rw-scope gate classes and runs useRowsInView on ITSELF, so its
+ * count-up and level-bar fill play when the strip reaches the viewport
+ * (at the top of the scroll region: on presentation), never spent unseen
+ * below the fold and never held by the rows far below it. Reduced motion
+ * shows the final state immediately, as everywhere on this screen.
+ * Guests have no XP row — the claim panel stays in the report's rows.
+ */
+export function VictoryXpStrip({ d }: { d: RewardsData }) {
+  const { play, reduced } = useRewardsReveal();
+  const xpRef = useRef<HTMLDivElement>(null);
+  const xpPlay = useRowsInView(xpRef, play, reduced);
+  if (!d.signedIn) return null;
+  return (
+    <div
+      className={`rw-scope rw-armed${play ? ' rw-play' : ''}${xpPlay ? ' rw-rows-play' : ''}${reduced ? ' rw-reduced' : ''}`}
+      data-testid="victory-xp"
+    >
+      <div ref={xpRef}>
+        <XpRow d={d} index={0} play={play && xpPlay} reduced={reduced} />
+      </div>
+    </div>
+  );
+}
+
+export function VictoryReport({ data: initial, gameId, onDataSwap, links, omitXp }: {
   data: RewardsData;
   /** the finished offline match's client game id — ties an unsigned
    *  breakdown to its pending rewards claim. Absent online. */
@@ -1190,6 +1238,9 @@ export function VictoryReport({ data: initial, gameId, onDataSwap, links }: {
   /** Profile / Open Tables as quiet links under the report — the actions
    *  the old second screen carried that the table's own row lacks */
   links?: boolean;
+  /** The surface renders VictoryXpStrip above this report (the XP row's
+   *  top-of-screen placement) — the rows column then omits it. */
+  omitXp?: boolean;
 }) {
   const [d, setD] = useState(initial);
   useEffect(() => { setD(initial); }, [initial]);
@@ -1203,7 +1254,7 @@ export function VictoryReport({ data: initial, gameId, onDataSwap, links }: {
       className={`rw-scope rw-armed${play ? ' rw-play' : ''}${rowsPlay ? ' rw-rows-play' : ''}${reduced ? ' rw-reduced' : ''}`}
       data-testid="victory-report"
     >
-      <ReportBody d={d} play={play} rowsPlay={rowsPlay} reduced={reduced} guestClaim={claim.guestClaim} rowsRef={rowsRef} />
+      <ReportBody d={d} play={play} rowsPlay={rowsPlay} reduced={reduced} guestClaim={claim.guestClaim} rowsRef={rowsRef} xpExternal={omitXp} />
       {links && (
         <div className="rw-links">
           <button type="button" className="ghost-btn" data-testid="victory-profile" onClick={() => { location.href = '/profile'; }}>Profile</button>

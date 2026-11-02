@@ -43,6 +43,22 @@ describe('one postgame surface', () => {
     expect(offlineBlock).toContain('!storyGame && mergedRewards');
   });
 
+  it('the XP slider leads both scroll regions and the report omits its copy (owner, 2026-11-01)', () => {
+    // the strip is the FIRST content of each scroll region: ahead of the
+    // box score (and the standings online) that used to bury it
+    const onlineStrip = onlineBlock.indexOf('<VictoryXpStrip');
+    const offlineStrip = offlineBlock.indexOf('<VictoryXpStrip');
+    expect(onlineStrip).toBeGreaterThan(-1);
+    expect(offlineStrip).toBeGreaterThan(-1);
+    expect(onlineStrip).toBeLessThan(onlineBlock.indexOf('<ol className="placements compact">'));
+    expect(offlineStrip).toBeLessThan(offlineBlock.indexOf('<BoxScore'));
+    // exactly one XP row per screen: the reports render with omitXp
+    expect(onlineBlock).toContain('links omitXp');
+    expect(offlineBlock).toContain('links omitXp');
+    expect(gor).toContain('export function VictoryXpStrip(');
+    expect(gor).toContain('xpExternal?: boolean');
+  });
+
   it('the breakdown computes at presentation, once per finished match, and is stashed for recovery', () => {
     expect(table).toContain('mergedFor.current === matchSeed');
     expect(table).toContain('computeRewardsSettled(profileBefore.current');
