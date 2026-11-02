@@ -19,8 +19,68 @@ export const TORNADO_CLAIM_TTL_MS = 10_000;
  *  produced this tornado was counted on the tornado ladder — its rung and claimant.
  *  `presentedAt` is stamped by Tornado3D on the first frame the funnel actually
  *  presents at/after `start`: the funnel and card clocks run from it, so a blocked
- *  frame delays the show instead of eating its spin-up (see heroPresented). */
-export interface TornadoFx { start: number; reduced: boolean; level?: TornadoLevel; side?: number; seat?: number; presentedAt?: number }
+ *  frame delays the show instead of eating its spin-up (see heroPresented).
+ *  `clockP` / `clockLast` are the presented-time integration state (see
+ *  tornadoPresentedT): seconds of funnel time actually presented so far, and
+ *  the wall time of the last presented frame. */
+export interface TornadoFx { start: number; reduced: boolean; level?: TornadoLevel; side?: number; seat?: number; presentedAt?: number; clockP?: number; clockLast?: number }
+
+/**
+ * Presented-time clocks for the hero shows (nuke / mega / tornado) — round 2
+ * of the 2026-10-29 presentation fix (owner report 2026-11-01: the nuke
+ * "pauses, then skips ahead" — he can hear it but far too often can't see it).
+ * Round 1 anchored the START of each show to its first presented frame, but
+ * the clocks then ran on WALL time for the whole run: any mid-show stall
+ * (long task, lazy shader compile, GC) froze the picture while the timeline
+ * kept running, and the next presented frame leapt to the wall-clock
+ * position — pause, skip, pause, skip. These clocks instead integrate the
+ * real delta of PRESENTED frames, clamped per frame: at a healthy frame
+ * rate the show runs at exactly its nominal length; under a stall it
+ * stretches in presented time rather than skipping, so the whole timeline
+ * is what the player actually sees. Durations are unchanged in presented
+ * time; no timing constant moves.
+ */
+/** One presented frame may advance a hero clock by at most this much (s). A
+ *  stalled frame therefore stretches the show instead of skipping it; at
+ *  ≥10 fps the clamp never binds and the show runs at full speed. */
+export const PRESENTED_DT_CLAMP_S = 0.1;
+
+/**
+ * Advance a presented-time clock. `last` is the wall time (performance.now
+ * ms) of the previous presented frame, or null before the first: the first
+ * presented frame anchors the clock (advance 0, `last` becomes now) —
+ * round 1's start anchoring, kept. Later frames add their real delta
+ * clamped to [0, PRESENTED_DT_CLAMP_S] seconds.
+ */
+export function advancePresentedClock(t: number, last: number | null, now: number): { t: number; last: number } {
+  if (last === null) return { t, last: now };
+  const dt = Math.min(Math.max((now - last) / 1000, 0), PRESENTED_DT_CLAMP_S);
+  return { t: t + dt, last: now };
+}
+
+/**
+ * The tornado's presented time (seconds since the funnel first presented).
+ * Before `start`, returns the plain wall lead-in (negative), exactly as the
+ * old `(now - start) / 1000` reads did, and stamps nothing. At/after start,
+ * the first caller stamps `presentedAt` and starts the presented clock at
+ * 0; later calls integrate presented frames with the clamp. The state lives
+ * on the TornadoFx object itself, so the many readers per frame (funnel,
+ * every swept card, the camera sway) all advance the same clock by ~0
+ * after the first — the integration is idempotent within a frame.
+ */
+export function tornadoPresentedT(T: TornadoFx, now: number): number {
+  if (T.presentedAt === undefined) {
+    if (now < T.start) return (now - T.start) / 1000;
+    T.presentedAt = now;
+    T.clockP = 0;
+    T.clockLast = now;
+    return 0;
+  }
+  const next = advancePresentedClock(T.clockP ?? 0, T.clockLast ?? now, now);
+  T.clockP = next.t;
+  T.clockLast = next.last;
+  return next.t;
+}
 
 /** How long each effect stays on screen (ms): the hand-end hold waits these out. wheelsCar is released by the car itself. */
 const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
@@ -74,6 +134,11 @@ class FxBus {
   getNuke = () => this.prefs.nuke;
   /** 3D blast impulse (cards lifted / blown outward, then settle), read by every Card3D each frame. `mega` = the both-Jokers run tier: the sweep reaches farther. */
   blast: { start: number; hand: boolean; mega?: boolean } | null = null;
+  /** The running blast's presented time in seconds (Nuke3D publishes it every
+   *  frame; null when no blast is running). The blown cards read the SAME
+   *  presented clock as the fireball, so a mid-show stall stretches the
+   *  cards' flight with the show instead of the cards leaping on wall time. */
+  nukeT: number | null = null;
   /**
    * 'Run it!' tornado, read by every Card3D (cards pulled into the funnel, spun, flung away), the funnel itself and the
    * camera sway. `start` is when the funnel starts pulling (after the claimer's cards slam down).

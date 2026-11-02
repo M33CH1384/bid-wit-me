@@ -55,15 +55,19 @@ const TABLE_RAIL = 0.2;
 
 /**
  * The demand-loop blast is stuck on the white flash when the rendered clock stops between watchdog
- * samples. A live clock moves with wall time. A hitch that then paints again jumps the clock
- * (`performance.now()`), so it is not a stall. `rendered` is null when the blast has never drawn.
+ * samples. `rendered` is null when the blast has never drawn. The clock is PRESENTED time
+ * (fx.ts advancePresentedClock): it advances only on frames that actually paint, at most
+ * PRESENTED_DT_CLAMP_S (0.1 s) per frame — so a hitch that then paints again does NOT jump it:
+ * one painted frame in the watchdog's 800 ms window advances it by up to 0.1 s, and anything
+ * above the 0.05 movement floor is a live, if slow, show (it stretches; it must not be bailed).
+ * Only a clock that gains less than one clamped frame across the whole window is frozen.
  */
 export function nukeClockStalled(prev: number | null, rendered: number | null, dtMs: number, len = 3.6): boolean {
   if (dtMs < 700) return false;
   if (rendered === null) return true;
   if (prev === null) return false;
   // still inside the blast (3.6 s nuke, 4.4 s mega), but the clock barely moved
-  return rendered < len - 0.2 && rendered - prev < 0.2;
+  return rendered < len - 0.2 && rendered - prev < 0.05;
 }
 
 /* ------------------------------------------------------------------ *

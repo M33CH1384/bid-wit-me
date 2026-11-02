@@ -9,7 +9,7 @@ import { CH, CT, CW, FACE_CAP_GAP, type Xform } from './layout';
 import { type Sfx, sound } from '../audio';
 import { blastPose } from './blastSweep';
 import { releaseTornadoCard, sweepParamsFor, sweepPoseAt, type SweepCardParams } from './tornadoSweep';
-import { fireCue, fx } from '../fx';
+import { fireCue, fx, tornadoPresentedT } from '../fx';
 import { restingFlightWait } from '../trickTiming';
 import { dealHoldStale, openingFlight } from './dealFlight';
 import { retainFrontTexture } from './cardFace';
@@ -471,7 +471,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const ig = inner.current, B = fx.blast, st = bl.current;
     if (!ig) return;
     if (B && st.stamp !== B.start) { st.stamp = B.start; st.on = false; st.flung = false; }
-    const u = B && (blast === 'table' || B.hand) ? (fx.warp !== null ? fx.warp - 0.3 : (performance.now() - B.start) / 1000) : -1;
+    // the cards ride the blast's PRESENTED clock (fx.nukeT, published by Nuke3D
+    // every frame): a mid-show stall stretches the blow-away with the fireball
+    // instead of the cards leaping on wall time. The wall read remains only as
+    // a fallback for a blast whose run has not published yet (its first frame).
+    const u = B && (blast === 'table' || B.hand) ? (fx.warp !== null ? fx.warp - 0.3 : fx.nukeT !== null ? fx.nukeT - 0.3 : (performance.now() - B.start) / 1000) : -1;
     const pose = blastPose(u, blast === 'hand' ? 'hand' : 'table', B?.mega === true);
     // A table card that has left stays off the cloth when the cloud ends. Coming back reads as a miss.
     if (!pose) {
@@ -507,10 +511,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (!ig) return false;
     // Already flung. A later frame must not put this mesh back on the trick or in the hand.
     if (st.gone) { ig.visible = false; return true; }
-    // the cards ride the funnel's presented clock (Tornado3D stamps presentedAt on
-    // its first frame at/after the scheduled start; whoever renders first stamps it)
-    if (T && T.presentedAt === undefined && performance.now() >= T.start) T.presentedAt = performance.now();
-    const u = T ? (fx.warp !== null ? fx.warp : (performance.now() - (T.presentedAt ?? T.start)) / 1000) : -1;
+    // the cards ride the funnel's presented clock (fx.tornadoPresentedT: stamped
+    // at the first frame at/after the scheduled start by whoever renders first,
+    // then integrated from presented frames — a stall stretches the sweep
+    // instead of skipping it)
+    const u = T ? (fx.warp !== null ? fx.warp : tornadoPresentedT(T, performance.now())) : -1;
     if (!T || u < 0) {
       const next = releaseTornadoCard({ taken: st.on, gone: st.gone, visible: ig.visible });
       st.gone = next.gone;

@@ -2282,14 +2282,35 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // doesn't go off until every card is played, in every trick (Demetrius 2026-10-20). No landing
   // cue fires it anymore — this watchdog is the only detonation path, which also covers a stalled
   // renderer (Safari compiling shaders, a backgrounded tab).
+  // PRESENTATION BINDING (owner 2026-11-01: a nuke went off with only 3 cards on the table):
+  // state completion + the 1100 ms timer below is the SCHEDULE, not the presentation. The
+  // completing card flies on the frame clock (sweepGate.ts), so on a starved canvas it can
+  // still be in the air when the wall timer elapses. The detonation therefore also waits for
+  // Scene to certify — on that same frame clock — that the trick on display IS this trick
+  // with every card down (onNukePresented, the turnKey certification's sibling). On a healthy
+  // table the card rests hundreds of ms before the timer elapses and nothing changes; the
+  // schedule itself (1100 ms, the nukeWatch hold) is untouched.
   const nukeKey = pause && clientSeesNuke(shownTrick.plays, !!display.slam) ? `${st.seed}:${st.handNo}:${shownTrick.plays.map((p) => p.card).join('')}` : null;
   const nukeAtMount = useRef(nukeKey); // a resumed save already showing a nuked trick doesn't re-fire
+  const [nukeDueKey, setNukeDueKey] = useState<string | null>(null); // the watchdog timer has elapsed for this key
+  const [nukeShownKey, setNukeShownKey] = useState<string | null>(null); // Scene certified this key's trick is on display, all cards down
+  const onNukePresented = useCallback((key: string) => setNukeShownKey(key), []);
+  const nukeFiredFor = useRef<string | null>(null);
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;
     const release = fx.hold(1300, 'nukeWatch'); // the hand end waits for the blast (the blast holds itself once it fires)
-    const t = window.setTimeout(() => { fireCue('nuke'); release(); }, 1100);
+    const t = window.setTimeout(() => { setNukeDueKey(nukeKey); release(); }, 1100);
     return () => { clearTimeout(t); release(); };
   }, [nukeKey]);
+  useEffect(() => {
+    if (!nukeKey || nukeDueKey !== nukeKey || nukeFiredFor.current === nukeKey) return;
+    // a 3D blast binds to the display certification; the off path (banner + boom, no 3D run)
+    // and warp captures keep the plain schedule, exactly as before
+    const gated = fx.nukeMode !== 'off' && fx.warp === null;
+    if (gated && nukeShownKey !== nukeKey) return;
+    nukeFiredFor.current = nukeKey;
+    fireCue('nuke');
+  }, [nukeKey, nukeDueKey, nukeShownKey]);
   const winBuzzed = useRef(false);
   useEffect(() => { if (st.phase !== 'gameOver') winBuzzed.current = false; }, [st.phase]);
   // Game-over celebration dismiss (owner rule: transient reveals clear
@@ -2953,6 +2974,8 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           legal={runFx ? [] : humanExchanging && hand ? hand : legal}
           turnKey={turnKey}
           onTurnPresented={onTurnPresented}
+          nukeKey={nukeKey}
+          onNukePresented={onNukePresented}
           selected={runFx ? null : selected}
           turnSeat={actor === HUMAN && !spectating ? actor : null}
           activeSeat={actor}

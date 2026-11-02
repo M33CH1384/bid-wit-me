@@ -33,7 +33,7 @@ import { cardShowsFace, flatFanHidden, handLatched, latchHand, resumeDrawList, s
 import { openingTrickKeys, trickCardLaunches, trickPlayFrom } from './trickFacing';
 import { lastRestFrameSec, playRestFrameSec, presentationCaughtUp, reviewDelaySec, serializedPlayDelaySec, spacedPlayDelaySec, sweepEndFrameSec, SEQUENCE_FRAME_SLACK_SEC } from './sweepGate';
 import { type Sfx, sound } from '../audio';
-import { fx } from '../fx';
+import { fx, tornadoPresentedT } from '../fx';
 import { backTexture, faceTexture, logoTexture, peekFaceTexture, refreshFacesGradually } from './cardTextures';
 import { loadTableImage, prefetchTableTextures, tableTextureUrls } from '../tableAssets';
 import { ClassicHall } from './hallEnv';
@@ -112,6 +112,15 @@ export interface SceneProps {
   turnKey?: string;
   /** Presentation certification for turnKey (see above). Fired once per key. */
   onTurnPresented?: (key: string) => void;
+  /** Identity of the nuked trick the Table watchdog has scheduled a blast for
+   *  (Table's nukeKey: seed:hand:cards), or null. The blast must not PRESENT
+   *  over any other display (owner 2026-11-01: a nuke went off with only 3
+   *  cards on the table): Scene calls onNukePresented with this key once the
+   *  trick on display IS that trick and every one of its plays has rested on
+   *  the frame clock, and Table holds the detonation until then. */
+  nukeKey?: string | null;
+  /** Presentation certification for nukeKey (see above). Fired once per key. */
+  onNukePresented?: (key: string) => void;
   selected: Card | null;
   turnSeat: number | null;
   /** The seat to act right now (bidding, playing or exchange), in table seat
@@ -449,7 +458,7 @@ function FxShake({ table }: { table: RefObject<Group | null> }) {
     // 'Run it!': a slow camera sway while the funnel spins (none under Reduce effects)
     const T = fx.tornado;
     if (T && !T.reduced) {
-      const u = (fx.warp !== null ? fx.warp : (performance.now() - T.start) / 1000) + 0.4;
+      const u = (fx.warp !== null ? fx.warp : tornadoPresentedT(T, performance.now())) + 0.4;
       if (u > 0 && u < 2.6) {
         const o = swayOffset(u);
         a.y += o.y;
@@ -856,6 +865,10 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // highlight back until the key it derived `legal` from is certified, so
   // the highlight arrives with the table instead of with the state.
   const certifiedTurn = useRef<string | null>(null);
+  // Nuke presentation certification (same frame clock): the last nukeKey this
+  // scene has certified as fully presented — the displayed trick is the nuked
+  // trick and all its cards are down. Table holds the blast until then.
+  const certifiedNuke = useRef<string | null>(null);
   const onDealDone = props.onDealDone;
   const dealArmed = intro && !held0;
   useFrame((_, rawDt) => {
@@ -867,6 +880,20 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
         certifiedTurn.current = tk;
         props.onTurnPresented(tk);
       } else invalidate();
+    }
+    const nk = props.nukeKey;
+    if (nk && props.onNukePresented && certifiedNuke.current !== nk) {
+      // the displayed trick must BE the nuked trick (the key's card string is
+      // its plays in order) with every card down: rests only, no sweep term —
+      // the blast itself does this trick's collecting.
+      const cards = nk.slice(nk.lastIndexOf(':') + 1);
+      if (shownTrick.map((pl) => pl.card).join('') === cards) {
+        const rests = shownTrick.map((pl) => playRests.current.rests.get(`${handNo}-${pl.card}`));
+        if (presentationCaughtUp({ rests, sweepUntilFrameSec: 0, nowFrameSec: seqClock.current })) {
+          certifiedNuke.current = nk;
+          props.onNukePresented(nk);
+        } else invalidate();
+      }
     }
     const c = dealClock.current;
     if (!dealArmed) return;

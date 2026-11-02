@@ -1,7 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import { AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CircleGeometry, CylinderGeometry, DataTexture, ExtrudeGeometry, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, Points, PointsMaterial, SRGBColorSpace, ShaderMaterial, Shape, SphereGeometry, Vector3, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
-import { fx } from '../fx';
+import { fx, tornadoPresentedT } from '../fx';
 import { HAPTIC, cancelHaptics, haptic } from '../haptics';
 import { COW_SPEC, cowLegFoot, cowPatch, cowPose } from './cowPath';
 import { FELT } from './layout';
@@ -417,12 +417,13 @@ export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
     }
     // starts winding up ~0.4 s before the pull, flings at 1.25 s, gone by ~1.9 s
     // u = 0 is the spin-up; u = 1.65 is the fling (t = 1.25s). Patterns fire as those marks are crossed.
-    // The clock runs from the first frame PRESENTED at/after the scheduled start
-    // (T.presentedAt, stamped here): a blocked frame delays the spin-up instead of
-    // eating it — the same presentation anchoring as the nuke's clock.
+    // The clock runs on PRESENTED time from the first frame presented at/after
+    // the scheduled start (fx.tornadoPresentedT stamps T.presentedAt there):
+    // a blocked frame delays the spin-up instead of eating it, and a mid-show
+    // stall stretches the funnel instead of skipping it — the same presented
+    // clock as the nuke's (round 2, 2026-11-01).
     const now = performance.now();
-    if (T.presentedAt === undefined && now >= T.start) T.presentedAt = now;
-    const u = (fx.warp !== null ? fx.warp : (now - (T.presentedAt ?? T.start)) / 1000) + 0.4;
+    const u = (fx.warp !== null ? fx.warp : tornadoPresentedT(T, now)) + 0.4;
     if (!spun.current && u >= 0) { spun.current = true; haptic(HAPTIC.tornadoSpin, 'tornado-spin'); }
     if (!hit.current && u >= 1.65) { hit.current = true; haptic(HAPTIC.tornadoImpact, 'tornado-impact'); }
     // the ladder: this funnel blends from the previous rung to its claimed

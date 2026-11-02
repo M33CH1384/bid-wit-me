@@ -98,12 +98,15 @@ describe('last-trick nuke on iPhone Safari', () => {
     expect(nukeProfile('low', desktop).post).toBe(false);
   });
 
-  it('a clock stuck on the white flash is a stall; a clock that jumps after a hitch is not', () => {
+  it('a clock stuck on the white flash is a stall; a presented clock that keeps creeping is not', () => {
     expect(nukeClockStalled(null, null, 800)).toBe(true); // mounted, never drew
     expect(nukeClockStalled(null, 0.3, 400)).toBe(false); // still inside the grace
     expect(nukeClockStalled(0.3, 0.3, 800)).toBe(true); // frozen at the flash
     expect(nukeClockStalled(0.3, 1.1, 800)).toBe(false); // advanced
-    expect(nukeClockStalled(0.2, 2.4, 2200)).toBe(false); // hitch, then one frame catches up via performance.now()
+    expect(nukeClockStalled(0.2, 2.4, 2200)).toBe(false); // blocked samples, but the presented clock kept advancing across the window
+    // presented-time clock (round 2): one clamped frame (0.1 s) of progress in the window is a live, slow show — never bailed
+    expect(nukeClockStalled(0.3, 0.42, 800)).toBe(false); // ~7 fps and presenting: stretches, survives
+    expect(nukeClockStalled(0.3, 0.33, 800)).toBe(true); // less than one clamped frame in 800 ms: frozen
     expect(nukeClockStalled(3.5, 3.5, 800)).toBe(false); // blast already over
     // ☢☢ the mega blast runs 4.4 s: a clock frozen at 3.9 s is still mid-blast for it…
     expect(nukeClockStalled(3.9, 3.9, 800, 4.4)).toBe(true);

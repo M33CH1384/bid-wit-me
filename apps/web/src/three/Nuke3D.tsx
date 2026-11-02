@@ -6,7 +6,7 @@ import {
   AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, type PerspectiveCamera,
   PlaneGeometry, Points, type PointLight, RingGeometry, Scene, ShaderMaterial, SphereGeometry, TorusGeometry, Vector2, Vector3, WebGLRenderTarget, type Camera, type Material, type WebGLRenderer,
 } from 'three';
-import { fx } from '../fx';
+import { advancePresentedClock, fx } from '../fx';
 import {
   ARMED_GLOW_RADIUS, DEBRIS_RAIN_Y, NUKE_MEGA_STAGE2_S, armedEmberPulse, capCoverRadius, cloudCardCount, cloudCardPose,
   currentNukeDevice, nukeChoreography, nukeClockStalled, nukeProfile, particleBudget,
@@ -241,19 +241,17 @@ export function Nuke3D({ quality }: { quality: 'high' | 'low' }) {
     setRun({ id: e.id, start: performance.now(), full: mode === 'full', mega, len: mega ? MEGA_LEN : NUKE_LEN });
   }), []);
   // when the blast's first frame actually presented (0 = not yet). The run's clock,
-  // its end timer, its boom (fx.heroPresented) and the stall watchdog all key off
-  // this — never off the emit — so a slow first frame delays the show instead of
-  // eating it (owner report 2026-10-29: freeze, boom, flash to collection, no show).
+  // its boom (fx.heroPresented) and the stall watchdog all key off this — never
+  // off the emit — so a slow first frame delays the show instead of eating it
+  // (owner report 2026-10-29: freeze, boom, flash to collection, no show).
+  // The run now ends ITSELF when its presented clock passes its length (see
+  // NukeRun), so no wall-clock end timer can cut a stretched show either
+  // (round 2, owner 2026-11-01).
   const firstFrameAt = useRef(0);
-  const presentedEnd = useRef(0);
   const handleFirstFrame = useCallback(() => {
     firstFrameAt.current = performance.now();
     fx.heroPresented();
-    if (fx.warp === null && run) {
-      clearTimeout(presentedEnd.current);
-      presentedEnd.current = window.setTimeout(() => setRun(null), run.len * 1000 + 250);
-    }
-  }, [run]);
+  }, []);
   // tap anywhere to skip
   useEffect(() => {
     if (!run) return;
@@ -261,12 +259,12 @@ export function Nuke3D({ quality }: { quality: 'high' | 'low' }) {
     const t = window.setTimeout(() => window.addEventListener('pointerdown', skip, { once: true }), 400);
     firstFrameAt.current = 0;
     // backstop only: if no frame ever presents (context loss), the run still clears —
-    // the real end timer is armed by handleFirstFrame at len + 250 from presentation
+    // a presenting run ends itself on its presented clock (see NukeRun)
     const end = fx.warp === null ? window.setTimeout(() => setRun(null), run.len * 1000 + 6000) : 0;
     const w = window as unknown as { __bwmNuke?: unknown; __bwmNukeT?: number | null };
     w.__bwmNuke = { active: true, start: run.start };
     w.__bwmNukeT = null; // a previous blast's clock must not look like this one is advancing
-    return () => { clearTimeout(t); clearTimeout(end); clearTimeout(presentedEnd.current); window.removeEventListener('pointerdown', skip); w.__bwmNuke = { active: false }; };
+    return () => { clearTimeout(t); clearTimeout(end); window.removeEventListener('pointerdown', skip); w.__bwmNuke = { active: false }; };
   }, [run]);
   // Demand-mode safety: if frames stop while the clock is still in the blast, tear the point light down
   // so the table can paint and the hand can finish. A backgrounded tab is not a stall.
@@ -566,7 +564,7 @@ function NukeRun({ start, full, mega, len, detail, post, octaves, screen, onBail
   // wall-clock timer that a blocked mount could fire late or early)
   useEffect(() => {
     const fov0 = baseFov.current;
-    return () => { cam.fov = fov0; cam.updateProjectionMatrix(); fx.blast = null; document.querySelector('.table-screen')?.classList.remove('nuke-blow'); invalidate(); };
+    return () => { cam.fov = fov0; cam.updateProjectionMatrix(); fx.blast = null; fx.nukeT = null; document.querySelector('.table-screen')?.classList.remove('nuke-blow'); invalidate(); };
   }, [cam, invalidate]);
 
   // frameloop is 'demand'. Keep asking for frames from a timer, not only from useFrame: a setState
@@ -587,21 +585,36 @@ function NukeRun({ start, full, mega, len, detail, post, octaves, screen, onBail
     // unmount on the next turn — tearing the tree down inside the subscriber loop wedges the demand loop
     window.setTimeout(() => bailRef.current(), 0);
   };
-  // The blast's clock is anchored at its first PRESENTED frame, not at the emit:
-  // a hiccup (shader compile, a busy main thread) delays the show instead of
-  // consuming it. Warp captures still pin the clock exactly as before.
-  const clockStart = useRef<number | null>(null);
+  // The blast's clock runs on PRESENTED time (fx.ts advancePresentedClock):
+  // anchored at the first presented frame (round 1) and integrated from
+  // presented frames for the whole run (round 2 — owner 2026-11-01: with a
+  // wall clock the show "pauses, then skips ahead": a stall froze the picture
+  // while the timeline kept running, and the next frame leapt). A stall now
+  // stretches the show instead of eating it, and the run ends when the
+  // PRESENTED clock passes its length — the whole timeline is presented.
+  // Warp captures still pin the clock exactly as before.
+  const presentedT = useRef(0);
+  const lastFrameAt = useRef<number | null>(null);
   const presented = useRef(false);
   const blasted = useRef(false);
+  const ended = useRef(false);
   useFrame(() => {
    try {
     const now = performance.now();
-    if (clockStart.current === null) {
-      clockStart.current = now;
+    if (fx.warp === null) {
+      const adv = advancePresentedClock(presentedT.current, lastFrameAt.current, now);
+      presentedT.current = adv.t;
+      lastFrameAt.current = adv.last;
       if (!presented.current) { presented.current = true; onFirstFrame(); }
     }
-    const T = fx.warp ?? (now - clockStart.current) / 1000;
+    const T = fx.warp ?? presentedT.current;
+    fx.nukeT = T;
     (window as unknown as { __bwmNukeT?: number }).__bwmNukeT = T;
+    if (fx.warp === null && !ended.current && T >= len + 0.25) {
+      ended.current = true;
+      // unmount on the next turn, like fail() — never inside the frame loop
+      window.setTimeout(() => bailRef.current(), 0);
+    }
     invalidate();
     // blast impulse for the cards + Full Nuke HUD blow-away, fired on the presented
     // clock at the flash (Card3D reads fx.blast on the same presented timeline)
