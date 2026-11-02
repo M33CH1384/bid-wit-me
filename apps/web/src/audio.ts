@@ -278,10 +278,9 @@ export const TRACKS: Track[] = [
   // me." This set is the hip-hop answer, approved 2026-11-02 ("Music
   // sounds good for rooftop"). They join the rooftop pin in spatial.ts;
   // appended last so every existing track index keeps its meaning,
-  // exactly like the sets above. "Jazz For The Rain" and "Vision 2"
-  // stay out — auditioned as the bench and held out unplayed, exactly
-  // like "Off Days" above; this is the closed rotation the owner
-  // actually picked.
+  // exactly like the sets above. "Vision 2" and the audition's other
+  // bench track stay out — held out unplayed, exactly like "Off Days"
+  // above; this is the closed rotation the owner actually picked.
   { file: 'tide-turns', title: 'Tide Turns', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/tide-turns/', credit: '"Tide Turns" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'feeling', title: 'Feeling', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/feeling-1/', credit: '"Feeling" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
   { file: 'the-road', title: 'The Road', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/the-road-1/', credit: '"The Road" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },

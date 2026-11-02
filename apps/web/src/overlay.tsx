@@ -13,15 +13,16 @@ export function TickNumber({ value, className = '' }: { value: number; className
     const t0 = performance.now();
     const dur = 900;
     let raf = 0;
+    let clear = 0; // the flash-off timer: cleared on unmount/change so it never fires into a torn-down tree
     const step = (now: number) => {
       const k = Math.min(1, (now - t0) / dur);
       const e = 1 - (1 - k) ** 3;
       setShown(Math.round(start + (value - start) * e));
       if (k < 1) raf = requestAnimationFrame(step);
-      else { from.current = value; setTimeout(() => setFlash(''), 400); }
+      else { from.current = value; clear = window.setTimeout(() => setFlash(''), 400); }
     };
     raf = requestAnimationFrame(step);
-    return () => { cancelAnimationFrame(raf); from.current = value; };
+    return () => { cancelAnimationFrame(raf); window.clearTimeout(clear); from.current = value; };
   }, [value]);
   return <span className={`tick ${flash} ${className}`}>{shown}</span>;
 }
