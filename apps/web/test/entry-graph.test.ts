@@ -50,7 +50,9 @@ describe('first script on a reload', () => {
         queue.push(next);
       }
     }
-    const heavy = [...pkgs].filter((p) => p === 'three' || p.startsWith('@react-three') || p === 'postprocessing');
+    const heavy = [...pkgs].filter((p) => p === 'three' || p.startsWith('three/') || p.startsWith('@react-three') || p === 'postprocessing');
     expect(heavy).toEqual([]);
+    // story 3D characters (three + GLTFLoader + meshopt) are reached only through React.lazy in ScriptPlayer
+    expect([...seen].filter((p) => p.includes('/three/characters/'))).toEqual([]);
   });
 });
