@@ -8,8 +8,9 @@
  * keyline frame, true pip layouts around a portrait art window for number
  * cards, court/ace/deuce/joker field treatments, and a nameplate band
  * whose ink can never vanish into the face. These tests pin: the new
- * anatomy (pip map for every rank 3–10, no interactive controls inside
- * the card, nameplate contrast), the back's stats in their patterned
+ * anatomy (pip map for every rank 3–10, the badge seals as the card's
+ * only interactive controls, nameplate contrast), the back's stats in
+ * their patterned
  * card back, the honest zero-record back, the editor's save round-trip
  * and caps, and the ProfileView wiring (card when the payload carries
  * one, the legacy identity header when it doesn't).
@@ -19,7 +20,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlayerCard, PIP_LAYOUTS, type PlayerCardData } from '../src/profile/PlayerCard';
+import { PlayerCard, PIP_LAYOUTS, badgeDisplay, type PlayerCardData } from '../src/profile/PlayerCard';
+import { ACHIEVEMENT_ART } from '../src/achievementArt';
 import { CardEditor } from '../src/profile/CardEditor';
 import { ProfileView } from '../src/profile/ProfileView';
 import { loadAccount } from '../src/account/api';
@@ -127,20 +129,28 @@ describe('the playing-card front', () => {
     }
   });
 
-  it('showcased badges are medal seals in the nameplate — glyph only, name on the title', async () => {
+  it('showcased badges are medal seals in the nameplate — each with its OWN glyph, name on the title', async () => {
     await render(createElement(PlayerCard, { data: cardBase() }));
     const seals = qa('[data-testid="pcard-showcase"] .pcard-seal');
     expect(seals).toHaveLength(2);
     expect(seals[0]!.textContent).toBe('🎓');
     expect(seals[0]!.getAttribute('title')).toBe('Porch Graduate');
+    // the achievement carries its own medallion glyph from the client
+    // catalog — never the generic 🏅 the server leaves icon-less
+    expect(seals[1]!.textContent).toBe('🙌');
     expect(seals[1]!.getAttribute('title')).toBe('First Dub');
     expect(q('[data-testid="pcard-front"] .pcard-plate')!.contains(seals[0]!)).toBe(true);
   });
 
-  it('NO interactive controls inside the card element — edit + flip live below it', async () => {
+  it('the ONLY interactive controls inside the card are its badge seals — edit + flip live below it', async () => {
+    // Revised 2026-11-01 (owner): the seals became buttons so a tap opens
+    // the badge's own info in place — "I don't know what these badges
+    // are." Everything else interactive still lives below the card.
     await render(createElement(PlayerCard, { data: cardBase(), self: true, onEditCard: () => {} }));
     const card = q('[data-testid="player-card"]')!;
-    expect(card.querySelectorAll('button, a, input, [role="button"]')).toHaveLength(0);
+    const controls = [...card.querySelectorAll('button, a, input, [role="button"]')];
+    expect(controls.length).toBeGreaterThan(0);
+    for (const c of controls) expect(c.classList.contains('pcard-seal')).toBe(true);
     expect(q('[data-testid="card-edit"]')).not.toBeNull();
     expect(q('[data-testid="pcard-flip"]')).not.toBeNull();
     expect(card.contains(q('[data-testid="card-edit"]'))).toBe(false);
@@ -904,15 +914,38 @@ describe('flip culling: the turned-away face can never paint (iOS bleed fix)', (
     expect(rule).toContain('-webkit-backface-visibility: hidden');
   });
 
-  it('settled states are deterministic: the turned-away face is visibility:hidden', () => {
-    expect(block('.plcard .pcard-back')).toContain('visibility: hidden');
-    expect(css).toContain('.pcard-inner.flipped .pcard-front { visibility: hidden; }');
-    expect(css).toContain('.pcard-inner.flipped .pcard-back { visibility: visible; }');
-    /* the swap lands mid-flip, when both faces are edge-on — not at the tap */
-    expect(block('.plcard .pcard-face')).toContain('transition: visibility 0s linear .28s');
-    /* reduced motion makes the swap instant with the class */
+  it('the flip is ONE continuous rotation — the visibility swap is retired (owner, 2026-11-01)', () => {
+    /* The 2026-10-23 swap fired at .28s while the old ease crossed
+     * edge-on at ~.09s: neither face painted in between and the
+     * incoming face popped in near-flat — the owner's "flashes from
+     * front to back." Culling alone decides which face paints now. */
+    expect(css).not.toContain('transition: visibility');
+    expect(block('.plcard .pcard-back')).not.toContain('visibility: hidden');
+    expect(css).not.toContain('.pcard-inner.flipped .pcard-front');
+    expect(css).not.toContain('.pcard-inner.flipped .pcard-back');
+    expect(block('.plcard .pcard-face')).not.toContain('transition:');
+    /* one continuous turn on a symmetric ease: the rotation runs
+     * fastest AT the edge, which lands at the .62s turn's midpoint */
+    expect(block('.plcard .pcard-inner')).toContain('transition: transform .62s cubic-bezier(.7, 0, .3, 1)');
+    /* reduced motion: no turn and no lift — the class swap is instant */
     const rm = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
-    expect(rm).toContain('.pcard-face { transition: none; }');
+    expect(rm).toContain('.pcard-inner { transition: none; }');
+    expect(rm).toContain('.pcard-inner { animation: none; }');
+  });
+
+  it('a flipped card breathes at mid-turn — and only once it has been flipped', () => {
+    expect(css).toContain('@keyframes pcard-flip-lift-a');
+    expect(css).toContain('@keyframes pcard-flip-lift-b');
+    expect(css).toContain('.pcard-inner[data-flip-seen="1"].flipped { animation-name: pcard-flip-lift-b; }');
+    /* the lift rides the standalone scale property, never a transform —
+     * the settled-footprint pin above (no scale() anywhere) still holds */
+    const lift = css.slice(css.indexOf('@keyframes pcard-flip-lift-a'), css.indexOf('@keyframes pcard-flip-lift-b'));
+    expect(lift).toContain('scale: 1.03');
+    expect(lift).not.toContain('transform');
+    /* the component arms the lift on the first flip, and only then */
+    const tsx = read('../src/profile/PlayerCard.tsx');
+    expect(tsx).toContain("data-flip-seen={flipSeen ? '1' : undefined}");
+    expect(tsx).toContain('const flip = () => { setFlipSeen(true); setFlipped((f) => !f); };');
   });
 
   it('no will-change in the sheet (no extra promoted layers to punch through)', () => {
@@ -1004,5 +1037,113 @@ describe('back fit pass: the table fits its frame at every card size', () => {
     expect(css).toMatch(/\.plcard \.pcard-stats th, \.plcard \.pcard-stats td \{[^}]*padding: 4\.8cqw \.6cqw/);
     expect(block('.plcard .pcard-back-story')).toContain('margin: auto 0 0');
     expect(block('.plcard .pcard-nogames')).toContain('margin: auto 0');
+  });
+});
+
+
+/* --------------------- badge seals: legible + inspectable (owner, 2026-11-01) */
+/* The owner's card showed THREE IDENTICAL 🏅 medals: "I don't know what
+ * these badges are." The server ships icon: null for every Rep
+ * achievement, so the card fell back to one generic glyph for all of
+ * them. The fix: a client catalog gives every achievement its own
+ * medallion glyph, and each seal is a button that opens the badge's
+ * real info over the card — name, kind, what it was earned for, and
+ * the earned date when the payload carries one — without flipping the
+ * card or navigating anywhere. */
+describe('badge seals: each medal is its own badge, tappable in place', () => {
+  const OWNER_THREE = [
+    { kind: 'achievement' as const, id: 'world-traveler', name: 'World Traveler', icon: null, earnedAt: 1793569204640 },
+    { kind: 'achievement' as const, id: 'no-baggage', name: 'No Baggage', icon: null, earnedAt: 1792461943461 },
+    { kind: 'achievement' as const, id: 'wheels-up', name: 'Wheels Up', icon: null, earnedAt: 1792461943461 },
+  ];
+
+  it('the owner’s three achievements render three DISTINCT medallions — none of them the generic 🏅', async () => {
+    await render(createElement(PlayerCard, { data: cardBase({ showcase: OWNER_THREE, badges: OWNER_THREE }) }));
+    const seals = qa('[data-testid="pcard-showcase"] .pcard-seal');
+    expect(seals).toHaveLength(3);
+    expect(seals.map((s) => s.textContent)).toEqual(['🌍', '🪶', '🛞']);
+    expect(seals.map((s) => s.getAttribute('title'))).toEqual(['World Traveler', 'No Baggage', 'Wheels Up']);
+    expect(new Set(seals.map((s) => s.textContent)).size).toBe(3);
+    for (const s of seals) expect(s.textContent).not.toBe('🏅');
+  });
+
+  it('every Rep achievement owns a distinct catalog glyph — the 🏅 fallback never fires for a known id', () => {
+    const icons = Object.values(ACHIEVEMENT_ART).map((a) => a.icon);
+    expect(icons.length).toBeGreaterThanOrEqual(18);
+    expect(new Set(icons).size).toBe(icons.length);
+    for (const [id, art] of Object.entries(ACHIEVEMENT_ART)) {
+      const d = badgeDisplay({ kind: 'achievement', id, name: 'X', icon: null, earnedAt: 1 });
+      expect(d.icon, id).toBe(art.icon);
+      expect(d.icon, id).not.toBe('🏅');
+      expect(art.about.length, id).toBeGreaterThan(0);
+    }
+  });
+
+  it('tapping an achievement seal opens its real info over the card — and does NOT flip the card', async () => {
+    await render(createElement(PlayerCard, { data: cardBase() }));
+    expect(q('[data-testid="pcard-badge-detail"]')).toBeNull();
+    const seal = q('[data-testid="pcard-seal-achievement:first-dub"]') as HTMLButtonElement;
+    expect(seal).not.toBeNull();
+    await act(async () => { seal.click(); });
+    const pop = q('[data-testid="pcard-badge-detail"]')!;
+    expect(pop).not.toBeNull();
+    expect(pop.textContent).toContain('First Dub');
+    expect(pop.textContent).toContain('Rep achievement');
+    expect(pop.textContent).toContain('Win your first game');
+    const earned = new Date(1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    expect(pop.textContent).toContain(`Earned ${earned}`);
+    // the pool (3) outruns the showcase (2): the sheet points at the rest
+    expect(pop.textContent).toContain('+1 more earned');
+    expect(pop.textContent).toContain('Achievements tab');
+    // the card itself never turned
+    expect(q('.pcard-inner')!.className).not.toContain('flipped');
+    expect(seal.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('tapping a story seal shows the story badge’s own info — and no invented earned date', async () => {
+    await render(createElement(PlayerCard, { data: cardBase() }));
+    const seal = q('[data-testid="pcard-seal-story:porch-graduate"]') as HTMLButtonElement;
+    await act(async () => { seal.click(); });
+    const pop = q('[data-testid="pcard-badge-detail"]')!;
+    expect(pop.textContent).toContain('Porch Graduate');
+    expect(pop.textContent).toContain('Story badge');
+    expect(pop.textContent).toContain('Porch');
+    // story badges carry earnedAt: null in the payload — the sheet must
+    // not fabricate a date for them
+    expect(pop.textContent).not.toContain('Earned ');
+  });
+
+  it('the sheet dismisses on the scrim, on ✕, and by tapping the same seal again; another seal switches it', async () => {
+    await render(createElement(PlayerCard, { data: cardBase() }));
+    const ach = q('[data-testid="pcard-seal-achievement:first-dub"]') as HTMLButtonElement;
+    const story = q('[data-testid="pcard-seal-story:porch-graduate"]') as HTMLButtonElement;
+
+    await act(async () => { ach.click(); });
+    expect(q('[data-testid="pcard-badge-detail"]')).not.toBeNull();
+    await act(async () => { (q('[data-testid="pcard-badge-scrim"]') as HTMLElement).click(); });
+    expect(q('[data-testid="pcard-badge-detail"]')).toBeNull();
+
+    await act(async () => { ach.click(); });
+    expect(q('[data-testid="pcard-badge-detail"]')).not.toBeNull();
+    await act(async () => { (q('[data-testid="pcard-badge-detail-close"]') as HTMLButtonElement).click(); });
+    expect(q('[data-testid="pcard-badge-detail"]')).toBeNull();
+
+    await act(async () => { ach.click(); });
+    await act(async () => { ach.click(); });
+    expect(q('[data-testid="pcard-badge-detail"]')).toBeNull();
+
+    await act(async () => { ach.click(); });
+    expect(q('[data-testid="pcard-badge-detail"]')!.textContent).toContain('First Dub');
+    await act(async () => { story.click(); });
+    expect(q('[data-testid="pcard-badge-detail"]')!.textContent).toContain('Porch Graduate');
+    expect(q('.pcard-inner')!.className).not.toContain('flipped');
+  });
+
+  it('the inspect sheet + medallion seals are styled in the sheet (source pins)', () => {
+    const css = read('../src/profile/playercard.css');
+    expect(css).toContain('.pcard-badge-pop');
+    expect(css).toContain('.pcard-badge-scrim');
+    expect(css).toContain('.plcard .pcard-seal-glyph');
+    expect(css).toContain('.pcard-badge-pop-medal');
   });
 });

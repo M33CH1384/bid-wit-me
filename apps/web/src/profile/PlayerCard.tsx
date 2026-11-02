@@ -11,6 +11,11 @@
  * field with JOKER lettered down the edge. The display name + @handle sit
  * on a nameplate band worked into the bottom of the frame, with the
  * showcased badges as medal seals in the band — never UI on the face. The
+ * seals are the one tappable anatomy (owner, 2026-11-01: three identical
+ * 🏅 fallbacks told him nothing about his own badges): each seal is a
+ * real medallion carrying its OWN badge's glyph, and tapping it opens
+ * that badge's info over the card — earned things stay inspectable in
+ * place. The
  * flair that isn't card anatomy (status, partner tags, the story ribbon)
  * renders BELOW the card as profile content, with the Edit card button and
  * the flip hint. The BACK is the scouting report — ratings, record, win%,
@@ -30,11 +35,15 @@
  * Flip fix + stat table (owner, 2026-10-23): on iOS the flipped card
  * painted the front's children mirrored over the back — WebKit culls
  * per composited layer under preserve-3d, and every layer-forming
- * child of the front kept the default visible backface. The CSS now
- * culls every layer inside a face and makes the settled states
- * deterministic (the turned-away face is visibility:hidden, swapped
- * mid-flip); both faces share one box, so the footprint never changes
- * across the flip. The back's line is a baseball-card stat table:
+ * child of the front kept the default visible backface. The CSS
+ * culls every layer inside a face; both faces share one box, so the
+ * footprint never changes across the flip. (The visibility swap that
+ * fix first shipped was retired 2026-11-01 — it fired at .28s while
+ * the old ease crossed edge-on at ~.09s, blanking the turn and
+ * popping the incoming face in near-flat: the owner's "flashes from
+ * front to back." The flip is now one continuous rotation on a
+ * symmetric ease, culling alone deciding which face paints; see the
+ * REALISTIC FLIP note in playercard.css.) The back's line is a baseball-card stat table:
  * ruled rows for Partnership, Cutthroat and the Career totals in
  * straight tabular columns, honest "No games yet" rows for unplayed
  * modes.
@@ -71,7 +80,9 @@
  * fabricated zeroes dressed up as stats.
  */
 import { useState } from 'react';
+import { STORY_BADGE_DEFS } from '@spades/bots';
 import { faceOf } from '../avatar';
+import { ACHIEVEMENT_ART } from '../achievementArt';
 import { BADGES } from '../badges';
 import { TaglineText } from '../tagline';
 import './playercard.css';
@@ -132,15 +143,39 @@ export const badgeKeyOf = (b: { kind: CardBadgeKind; id: string }): string => `$
 
 /** Display name/glyph for a badge summary: the server's name wins, then the
  *  local badge catalog (the same fallback the profile's badge chips use),
- *  then a per-kind medal. */
+ *  then a per-kind medal. The glyph resolves the same way — the payload's
+ *  own icon (story defs carry theirs), then the achievement art catalog
+ *  (the server sends icon: null for achievements by design; until the
+ *  catalog existed every achievement fell through to the same 🏅, which
+ *  is how the owner's card showed three identical medals for World
+ *  Traveler, No Baggage and Wheels Up), then the local catalog. */
 export function badgeDisplay(b: CardBadge): { name: string; icon: string } {
   return {
     name: b.name ?? BADGES[b.id]?.name ?? b.id,
-    icon: b.icon ?? BADGES[b.id]?.icon ?? (b.kind === 'achievement' ? '🏅' : '🎖️'),
+    icon: b.icon ?? ACHIEVEMENT_ART[b.id]?.icon ?? BADGES[b.id]?.icon ?? (b.kind === 'achievement' ? '🏅' : '🎖️'),
   };
 }
 
+/** The kind line on the badge inspect sheet. */
+export const BADGE_KIND_LABEL: Record<CardBadgeKind, string> = {
+  achievement: 'Rep achievement',
+  story: 'Story badge',
+  badge: 'Badge',
+};
+
+/** What a badge was earned for, from the same client catalogs that carry
+ *  its art: the achievement catalog (mirroring the server defs' hints),
+ *  the story badge defs' own about lines, the local badge catalog's
+ *  descriptions. Null when no catalog knows the id — the sheet then shows
+ *  the name alone rather than an invented reason. */
+export function badgeAbout(b: CardBadge): string | null {
+  if (b.kind === 'achievement') return ACHIEVEMENT_ART[b.id]?.about ?? null;
+  if (b.kind === 'story') return STORY_BADGE_DEFS.find((d) => d.id === b.id)?.about ?? null;
+  return BADGES[b.id]?.desc ?? null;
+}
+
 const monthYear = (ts: number) => new Date(ts).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+const fullDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 /* ------------------------------------------------------------ pip layouts */
 
@@ -258,9 +293,16 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
   statusPlacement?: 'above' | 'below';
 }) {
   const [flipped, setFlipped] = useState(false);
+  /* Arms the mid-flip lift in playercard.css: the lift animation keys
+   * off data-flip-seen so a freshly mounted card never stirs — only a
+   * card that has actually been flipped lifts, on every flip. */
+  const [flipSeen, setFlipSeen] = useState(false);
+  const [openBadge, setOpenBadge] = useState<string | null>(null);
   const shownPic = pic !== undefined ? pic : data.avatar;
   const s = data.stats;
-  const flip = () => setFlipped((f) => !f);
+  const flip = () => { setFlipSeen(true); setFlipped((f) => !f); };
+  const shownSeals = data.showcase.slice(0, 3);
+  const openBadgeData = shownSeals.find((b) => badgeKeyOf(b) === openBadge) ?? null;
 
   /* The front is a playing-card face for the rank card the payload carries.
    * Treatment is data-driven from {rank, suit, symbol} alone — no per-rank
@@ -324,7 +366,7 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
         data-suit={r.suit ?? 'joker'} data-treatment={treatment}
         onClick={flip}
         role="group" aria-label={`Player card for ${data.name} — ${r.rankName} — tap to flip`}>
-        <div className={`pcard-inner${flipped ? ' flipped' : ''}`}>
+        <div className={`pcard-inner${flipped ? ' flipped' : ''}`} data-flip-seen={flipSeen ? '1' : undefined}>
           {/* ------------------------------------------------------ FRONT */}
           <section className="pcard-face pcard-front" aria-hidden={flipped} data-testid="pcard-front">
             <div className="pcard-corner tl" aria-hidden>
@@ -346,11 +388,19 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
                 </h3>
                 <p className="pcard-handle">@{data.name}</p>
               </div>
-              {data.showcase.length > 0 && (
+              {shownSeals.length > 0 && (
                 <div className="pcard-seals" data-testid="pcard-showcase">
-                  {data.showcase.slice(0, 3).map((b) => {
+                  {shownSeals.map((b) => {
                     const d = badgeDisplay(b);
-                    return <span key={badgeKeyOf(b)} className="pcard-seal" title={d.name} role="img" aria-label={d.name}>{d.icon}</span>;
+                    const k = badgeKeyOf(b);
+                    return (
+                      <button key={k} type="button" className={`pcard-seal${openBadge === k ? ' open' : ''}`}
+                        data-testid={`pcard-seal-${k}`} title={d.name}
+                        aria-label={`${d.name} — badge details`} aria-expanded={openBadge === k}
+                        onClick={(e) => { e.stopPropagation(); setOpenBadge(openBadge === k ? null : k); }}>
+                        <span className="pcard-seal-glyph" aria-hidden>{d.icon}</span>
+                      </button>
+                    );
                   })}
                 </div>
               )}
@@ -417,6 +467,36 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
           </section>
         </div>
       </div>
+
+      {/* The badge inspect sheet (owner, 2026-11-01): opened by tapping a
+          nameplate seal, it floats over the card INSIDE the wrap — never
+          navigates away, never rides the flip — and closes on the scrim,
+          the ✕, or a second tap on the same seal. Every line is payload
+          or catalog fact: the badge's name, its kind, what it was earned
+          for, and its earned date when the payload carries one (story
+          badges honestly carry none and show no date). */}
+      {openBadgeData && (() => {
+        const b = openBadgeData;
+        const d = badgeDisplay(b);
+        const about = badgeAbout(b);
+        const more = data.badges.length - shownSeals.length;
+        return (
+          <>
+            <div className="pcard-badge-scrim" data-testid="pcard-badge-scrim" onClick={() => setOpenBadge(null)} />
+            <div className="pcard-badge-pop" data-testid="pcard-badge-detail" role="dialog" aria-label={`${d.name} — badge details`}>
+              <span className="pcard-badge-pop-medal" aria-hidden><span className="pcard-badge-pop-glyph">{d.icon}</span></span>
+              <div className="pcard-badge-pop-body">
+                <p className="pcard-badge-pop-name">{d.name}</p>
+                <p className="pcard-badge-pop-kind">{BADGE_KIND_LABEL[b.kind]}</p>
+                {about && <p className="pcard-badge-pop-about">{about}</p>}
+                {b.earnedAt != null && <p className="pcard-badge-pop-earned">Earned {fullDate(b.earnedAt)}</p>}
+                {more > 0 && <p className="pcard-badge-pop-more">+{more} more earned — the whole collection lives in the Achievements tab.</p>}
+              </div>
+              <button type="button" className="pcard-badge-pop-x" data-testid="pcard-badge-detail-close" aria-label="Close badge details" onClick={() => setOpenBadge(null)}>✕</button>
+            </div>
+          </>
+        );
+      })()}
 
       {/* --------------------------------------- below the card (profile) */}
       <div className="pcard-below">

@@ -58,6 +58,7 @@
 
 .pcard-wrap {
   --cardw: min(300px, 84vw, 100%);
+  position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
 .pcard-wrap[data-variant="deck"] { --cardw: min(272px, 76vw, 100%); }
@@ -109,30 +110,62 @@ html[data-theme="neon"] .plcard.pcard {
  * field / keyline / plate) as an independent layer in the shared 3D
  * context, and backface-visibility is evaluated per layer there, so
  * the children kept the default `visible` and painted mirrored once
- * the flipper passed 90°. Two guarantees now stack: (1) EVERY layer
+ * the flipper passed 90°. The guarantee: EVERY layer
  * inside a face — descendants and the faces' keyline pseudos alike —
  * carries backface culling in both spellings, so no child layer can
- * show its back; (2) the settled states are deterministic: the
- * turned-away face is visibility:hidden, swapped at the flip's
- * midpoint (both faces edge-on at ~half the .55s turn), so no
- * compositor behaviour can paint the wrong face at rest. In-plane 2D
+ * show its back. In-plane 2D
  * transforms (inverted pips, the rotated bottom corner) never change
  * which way a layer faces, so they keep working untouched. Both faces
  * share ONE box (the .pcard-face rule below), so the footprint is
  * identical in both states — the lattice belongs to the back face's
  * full outline, never to a smaller content box. */
+/* REALISTIC FLIP (owner on-device verdict, 2026-11-01): the flip
+ * "flashes from front to back instead of animating in a realistic
+ * way." The 2026-10-23 fix above had stacked a second mechanism on
+ * the culling: a visibility swap at a fixed .28s delay, on the
+ * premise that both faces are edge-on at the turn's midpoint. They
+ * were not — the old ease (cubic-bezier(.2,.7,.3,1)) front-loads the
+ * rotation and crosses edge-on at ~.09s, so from there to .28s
+ * NEITHER face painted (the front backface-culled, the back still
+ * visibility:hidden), and the incoming face then popped in at
+ * ~150-157°, nearly flat. A blank gap plus a near-flat pop-in is
+ * exactly the flash. The swap is retired: culling (kept verbatim
+ * above) is what stops the mirror bleed, and the turn is now ONE
+ * continuous rotation on a symmetric ease — cubic-bezier(.7,0,.3,1)
+ * over .62s — that accelerates toward the edge, crosses it at the
+ * true midpoint, and settles out, so one face or the other paints at
+ * every angle of the turn. A whisper of lift rides the turn (the
+ * rules below); the settled footprint never changes. */
 .plcard .pcard-inner {
   display: grid; height: 100%;
   transform-style: preserve-3d;
-  transition: transform .55s cubic-bezier(.2, .7, .3, 1);
+  transition: transform .62s cubic-bezier(.7, 0, .3, 1);
 }
 .plcard .pcard-inner.flipped { transform: rotateY(180deg); }
+/* The mid-flip lift: armed only once the card has been flipped at
+ * least once (data-flip-seen, set by the component on the first
+ * flip), so a freshly mounted card never stirs. Each direction runs
+ * its own keyframe twin so every flip restarts the breath. scale and
+ * translate are standalone properties here, so the lift composes
+ * with the rotateY transition instead of overriding it — no
+ * transform, and no scaling function, is involved. */
+.plcard .pcard-inner[data-flip-seen="1"] { animation: pcard-flip-lift-a .62s cubic-bezier(.7, 0, .3, 1); }
+.plcard .pcard-inner[data-flip-seen="1"].flipped { animation-name: pcard-flip-lift-b; }
+@keyframes pcard-flip-lift-a {
+  0% { scale: 1; translate: 0 0; }
+  50% { scale: 1.03; translate: 0 -1.2%; }
+  100% { scale: 1; translate: 0 0; }
+}
+@keyframes pcard-flip-lift-b {
+  0% { scale: 1; translate: 0 0; }
+  50% { scale: 1.03; translate: 0 -1.2%; }
+  100% { scale: 1; translate: 0 0; }
+}
 .plcard .pcard-face {
   grid-area: 1 / 1; width: 100%; height: 100%; min-width: 0;
   position: relative; overflow: hidden; border-radius: 13px;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  transition: visibility 0s linear .28s;
 }
 /* Every layer inside a face is culled with its face (fix note above). */
 .plcard .pcard-face *,
@@ -141,15 +174,13 @@ html[data-theme="neon"] .plcard.pcard {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
-/* The settled-state guarantee: the back starts unpainted, and the
- * flipped class swaps both faces' visibility at the midpoint delay
- * carried by the .pcard-face transition above. */
-.plcard .pcard-back { transform: rotateY(180deg); visibility: hidden; }
-.plcard .pcard-inner.flipped .pcard-front { visibility: hidden; }
-.plcard .pcard-inner.flipped .pcard-back { visibility: visible; }
+/* The back face rides pre-rotated; backface culling alone decides
+ * which face paints at every angle of the turn — there is no
+ * visibility swap (REALISTIC FLIP note above). */
+.plcard .pcard-back { transform: rotateY(180deg); }
 @media (prefers-reduced-motion: reduce) {
   .plcard .pcard-inner { transition: none; }
-  .plcard .pcard-face { transition: none; }
+  .plcard .pcard-inner { animation: none; }
 }
 
 /* ------------------------------------------------- front: the card face */
@@ -377,19 +408,84 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard[data-treatment="big-joker"] .pcard-name { color: #171106; }
 .plcard .pcard-handle { margin: 1px 0 0; font-size: 11.5px; font-size: 3.8cqw; color: #bdb2dd; }
 .plcard[data-treatment="big-joker"] .pcard-handle { color: #54400c; }
-/* Showcased badges ride the band as medal seals — a glyph in a ringed
- * disc, the badge's name on its title, never a text pill. */
+/* Showcased badges ride the band as medal seals — never a text pill.
+ * Each seal is a real medallion for its own badge (owner, 2026-11-01:
+ * three identical 🏅 told him nothing): gold ring + dark disc + the
+ * badge's own glyph — the .story-medal construction at nameplate scale.
+ * And each seal is a BUTTON: tapping it opens that badge's info over
+ * the card (the inspect sheet below), so the one tappable piece of
+ * card anatomy is the earned thing itself. */
 .plcard .pcard-seals { display: flex; gap: 5px; gap: 1.7cqw; flex: none; }
 .plcard .pcard-seal {
   width: 27px; width: 9cqw; height: 27px; height: 9cqw; border-radius: 50%;
+  position: relative; overflow: hidden; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; cursor: pointer; font: inherit; -webkit-tap-highlight-color: transparent;
   font-size: 14px; font-size: 4.7cqw; line-height: 1;
-  background: radial-gradient(circle at 35% 30%, rgba(var(--gold-rgb), .5), rgba(var(--gold-rgb), .16));
-  border: 1.5px solid rgba(var(--gold-rgb), .85);
+  background: radial-gradient(circle at 34% 28%, #f4dc8e, #c9a227 58%, #8a6a14);
+  border: 1.5px solid rgba(255, 246, 214, .65);
+  box-shadow: inset 0 0 0 1.5px rgba(90, 60, 0, .35), 0 2px 5px rgba(15, 8, 34, .35);
+}
+.plcard .pcard-seal::before {
+  content: ''; position: absolute; inset: 2.5px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #3a2c10, #191204 72%);
+  box-shadow: inset 0 0 0 1px rgba(238, 201, 106, .5);
+}
+.plcard .pcard-seal-glyph { position: relative; z-index: 1; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .65)); }
+.plcard .pcard-seal.open {
+  box-shadow: inset 0 0 0 1.5px rgba(90, 60, 0, .35), 0 0 0 2px rgba(var(--gold-rgb), .85), 0 2px 5px rgba(15, 8, 34, .35);
 }
 .plcard[data-treatment="big-joker"] .pcard-seal {
   border-color: rgba(70, 50, 4, .7);
-  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .55), rgba(70, 50, 4, .18));
+}
+
+/* -------------------------------------------- the badge inspect sheet */
+/* Tapping a nameplate seal opens its badge's real info over the card
+ * (owner, 2026-11-01) — name, kind, what it was earned for, and the
+ * earned date when the payload carries one. The sheet lives in the
+ * wrap, outside the flipping card, so it never rides the flip; the
+ * scrim takes the dismiss tap (tapping outside closes it — the app's
+ * standing interaction rule). Theme parity: the sheet wears the
+ * nameplate's own deep-band pairing in both themes. */
+.pcard-badge-scrim {
+  position: absolute; inset: 0; z-index: 30;
+  background: rgba(10, 6, 24, .38); border-radius: 6px;
+}
+.pcard-badge-pop {
+  position: absolute; z-index: 31; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(272px, 88%);
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 36px 14px 14px; border-radius: 12px;
+  background: linear-gradient(180deg, #201a3d, #131022);
+  color: #f7f1de; text-align: left;
+  box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb), .55), 0 10px 30px rgba(5, 2, 16, .55);
+}
+.pcard-badge-pop-medal {
+  width: 52px; height: 52px; flex: none; border-radius: 50%;
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 34% 28%, #f4dc8e, #c9a227 58%, #8a6a14);
+  border: 1.5px solid rgba(255, 246, 214, .65);
+  box-shadow: inset 0 0 0 1.5px rgba(90, 60, 0, .35), 0 3px 8px rgba(0, 0, 0, .4);
+}
+.pcard-badge-pop-medal::before {
+  content: ''; position: absolute; inset: 4px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #3a2c10, #191204 72%);
+  box-shadow: inset 0 0 0 1px rgba(238, 201, 106, .5);
+}
+.pcard-badge-pop-glyph { position: relative; z-index: 1; font-size: 24px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .65)); }
+.pcard-badge-pop-body { min-width: 0; flex: 1; }
+.pcard-badge-pop-name { margin: 0; font-family: var(--display); font-weight: 800; font-size: 17px; line-height: 1.15; overflow-wrap: anywhere; }
+.pcard-badge-pop-kind { margin: 2px 0 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #e8c96a; }
+.pcard-badge-pop-about { margin: 6px 0 0; font-size: 13px; line-height: 1.35; color: #e9e2cf; }
+.pcard-badge-pop-earned { margin: 6px 0 0; font-size: 12px; color: #bdb49a; }
+.pcard-badge-pop-more { margin: 6px 0 0; font-size: 12px; color: #bdb49a; }
+.pcard-badge-pop-x {
+  position: absolute; top: 6px; right: 6px;
+  width: 26px; height: 26px; border-radius: 50%;
+  border: none; background: rgba(255, 255, 255, .08);
+  color: #f7f1de; font-size: 12px; line-height: 1; cursor: pointer;
 }
 
 /* ------------------------------------------- above the card (v4) */
