@@ -4,7 +4,7 @@ import { holdIfGuest } from './pendingClaim';
 import { HAPTIC, haptic } from './haptics';
 import { offlineTalk } from './offlineTalk';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Action, type GameHandLog, type GameState, type TableRules, HandLogBuilder, applyAction, botPaceDelayMs, canRunIt, isJoker, isNukeTrick, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
+import { type Action, type GameHandLog, type GameState, type TableRules, HandLogBuilder, applyAction, botPaceDelayMs, canRunIt, isJoker, isNukeTrick, lastCardDropOpen, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
 import { misdealSequenceMs } from './misdeal';
@@ -176,6 +176,27 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       if (claimer !== undefined) {
         const tc = setTimeout(() => apply({ type: 'runIt', seat: claimer }), 600 * k);
         return () => clearTimeout(tc);
+      }
+    }
+    // Last-card free drop (Demetrius 2026-11-02): a bot holding exactly one card throws
+    // it in without waiting for its turn — the same rule the engine enforces for the
+    // human (mirrors the server room). The wait draws from the same seeded pacing band
+    // as a bot play, so the drop lands after a short human-like beat, never
+    // frame-instant. The card is forced: at fire time a fresh view's single legal
+    // card IS the drop — no brain consult, nothing to choose.
+    if (st.phase === 'playing') {
+      const dropper = Array.from({ length: st.rules.playerCount }, (_, i) => i).find((i) => i !== HUMAN && i !== st.turn && lastCardDropOpen(st, i));
+      if (dropper !== undefined) {
+        const delay = botPaceDelayMs({
+          seed: st.seed, handNo: st.handNo, trickNo: st.tricks.length, seat: dropper,
+          position: st.trick.plays.length, playerCount: st.rules.playerCount, kind: 'play',
+          baseMs: BOT_PLAY_MS,
+        }) * k;
+        const td = setTimeout(() => {
+          const v = viewFor(stRef.current, dropper);
+          if (v.legal.length === 1) apply({ type: 'play', seat: dropper, card: v.legal[0]! });
+        }, delay);
+        return () => clearTimeout(td);
       }
     }
     const turn = pendingTurn(st);

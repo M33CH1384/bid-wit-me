@@ -48,22 +48,22 @@ export function turnStateKey(st: Pick<GameState, 'handNo' | 'tricks' | 'trick'>,
 
 /**
  * The gated highlight set. `presented` is the Scene's certification for the
- * current turnStateKey; `myTurn` / `throwInOpen` are Table's existing turn
- * derivations (actingSeat and the client mirror of the engine's throw-in
- * window). The view's legal set itself is already turn-exact (the engine's
- * playableCards) — this gate only decides WHEN it may be shown.
+ * current turnStateKey; `myTurn` / `dropOpen` are Table's existing turn
+ * derivations (actingSeat and the client mirror of the engine's last-card
+ * free-drop window). The view's legal set itself is already turn-exact (the
+ * engine's playableCards) — this gate only decides WHEN it may be shown.
  */
 export function highlightLegal(o: {
   myTurn: boolean;
-  throwInOpen: boolean;
+  dropOpen: boolean;
   phase: string;
   presented: boolean;
   viewLegal: readonly Card[];
   hand: readonly Card[] | null;
 }): Card[] {
   if (o.phase !== 'playing') return [];
-  if (!o.myTurn && !o.throwInOpen) return [];
-  // His turn waits for the table to reach it. The throw-in does not: it is
+  if (!o.myTurn && !o.dropOpen) return [];
+  // His turn waits for the table to reach it. The free drop does not: it is
   // defined by the plays still landing.
   if (o.myTurn && !o.presented) return [];
   const hand = o.hand ?? [];

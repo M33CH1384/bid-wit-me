@@ -22,12 +22,11 @@ import { presentationCaughtUp } from '../src/three/sweepGate';
 
 const HUMAN = 0;
 
-/** Table's client mirror of the engine's throw-in window (Table.tsx). */
-function throwInOpenView(st: GameState): boolean {
+/** Table's client mirror of the engine's last-card free-drop window (Table.tsx). */
+function dropOpenView(st: GameState): boolean {
   const view = viewFor(st, HUMAN);
   return st.phase === 'playing'
     && (view.hand ?? []).length === 1
-    && view.handCounts.every((c) => c <= 1)
     && view.trick.plays.every((p) => p.seat !== HUMAN);
 }
 
@@ -36,7 +35,7 @@ function tableLegal(st: GameState, presented: boolean) {
   const view = viewFor(st, HUMAN);
   return highlightLegal({
     myTurn: st.phase === 'playing' && st.turn === HUMAN,
-    throwInOpen: throwInOpenView(st),
+    dropOpen: dropOpenView(st),
     phase: st.phase,
     presented,
     viewLegal: view.legal,
@@ -59,9 +58,11 @@ function dealAndBid(seed: string): GameState {
 
 describe('the playable highlight waits for the table', () => {
   it('across a full hand of rotations: present exactly on his turn (with the exact legal set), absent on all other turns', () => {
-    // Several seeds: who leads the final trick varies, and the throw-in
-    // window only opens out-of-turn when a bot acts there before him.
-    let throwInStates = 0;
+    // Several seeds: who leads the final trick varies, and the free-drop
+    // window only opens out-of-turn when a bot acts there before him (in a
+    // dealt hand his one-card moment is the final trick — the throw-in's old
+    // home; the mid-hand case is crafted in the test below).
+    let dropStates = 0;
     for (const seed of ['offturn-rotation', 'offturn-rotation-2', 'offturn-rotation-3', 'offturn-rotation-4']) {
       let st = dealAndBid(seed);
       expect(st.phase).toBe('playing');
@@ -79,9 +80,9 @@ describe('the playable highlight waits for the table', () => {
           expect(shown).toEqual(legalPlays(st, HUMAN));
           // The owner's shape: same state, presentation still pending -> nothing lit.
           expect(tableLegal(st, false)).toEqual([]);
-        } else if (throwInOpenView(st)) {
-          throwInStates++;
-          // The deliberate exception: the final-trick throw-in is turn-free by
+        } else if (dropOpenView(st)) {
+          dropStates++;
+          // The deliberate exception: the last-card free drop is turn-free by
           // design (his last card, while the trick is still landing).
           expect(throwInOpen(st)).toBe(true);
           expect(shown).toEqual(view.legal.filter((c) => (view.hand ?? []).includes(c)));
@@ -97,7 +98,33 @@ describe('the playable highlight waits for the table', () => {
       expect(states).toBe(52);
       expect(hisTurns).toBe(13);
     }
-    expect(throwInStates).toBeGreaterThan(0);
+    expect(dropStates).toBeGreaterThan(0);
+  });
+
+  it('mid-hand: his single card lights up out of turn, at full strength, the moment the trick is open — two cards never do', () => {
+    // Dealt hands are uniform, so a mid-hand one-card seat is crafted onto a
+    // dealt state (the rules suite pins the engine's acceptance of the drop).
+    const dealt = dealAndBid('offturn-drop');
+    const craft = (humanHand: string[]): GameState => ({
+      ...dealt,
+      hands: [humanHand, dealt.hands[1]!.slice(0, 3), dealt.hands[2]!.slice(0, 2), dealt.hands[3]!.slice(0, 3)] as GameState['hands'],
+      trick: { leader: 1, plays: [], winner: null },
+      turn: 1,
+      tricks: Array.from({ length: 5 }, () => ({ leader: 0, plays: [], winner: 0 })),
+      tricksWon: [0, 0, 0, 0],
+      spadesBroken: true,
+    });
+    const one = craft(['7H']);
+    expect(viewFor(one, HUMAN).legal).toEqual(['7H']);
+    // Not his turn and the table has NOT certified presentation — the drop is
+    // exempt by design: it reads available instantly, not after the last play lands.
+    expect(tableLegal(one, false)).toEqual(['7H']);
+    expect(tableLegal(one, true)).toEqual(['7H']);
+    // Two cards: no drop, no highlight, presented or not.
+    const two = craft(['7H', '8H']);
+    expect(viewFor(two, HUMAN).legal).toEqual([]);
+    expect(tableLegal(two, false)).toEqual([]);
+    expect(tableLegal(two, true)).toEqual([]);
   });
 
   it('the owner’s exact timing shape: state advanced to his turn, the advancing play still presenting', () => {
@@ -150,13 +177,13 @@ describe('the playable highlight waits for the table', () => {
     const rules = makeRules('joker', { firstHandBidsItself: false });
     const st = newGame(rules, 'offturn-phases', { dealer: 0 });
     const view = viewFor(st, HUMAN);
-    expect(highlightLegal({ myTurn: true, throwInOpen: false, phase: st.phase, presented: true, viewLegal: view.legal, hand: view.hand })).toEqual([]);
-    expect(highlightLegal({ myTurn: true, throwInOpen: false, phase: 'exchange', presented: true, viewLegal: view.legal, hand: view.hand })).toEqual([]);
+    expect(highlightLegal({ myTurn: true, dropOpen: false, phase: st.phase, presented: true, viewLegal: view.legal, hand: view.hand })).toEqual([]);
+    expect(highlightLegal({ myTurn: true, dropOpen: false, phase: 'exchange', presented: true, viewLegal: view.legal, hand: view.hand })).toEqual([]);
   });
 
   it('the wiring is in place: Table gates on the certification the Scene issues', () => {
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
-    expect(table).toContain('highlightLegal({ myTurn, throwInOpen: throwInOpenView, phase: st.phase, presented, viewLegal: view.legal, hand })');
+    expect(table).toContain('highlightLegal({ myTurn, dropOpen: dropOpenView, phase: st.phase, presented, viewLegal: view.legal, hand })');
     expect(table).toContain('turnKey={turnKey}');
     expect(table).toContain('onTurnPresented={onTurnPresented}');
     const scene = readFileSync(new URL('../src/three/Scene.tsx', import.meta.url), 'utf8');
