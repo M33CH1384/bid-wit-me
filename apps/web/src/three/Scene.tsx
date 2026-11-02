@@ -2439,7 +2439,7 @@ function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low';
     const mount = gl.domElement.parentElement;
     if (!mount) return;
     let stop: (() => void) | null = null, alive = true;
-    void import('../photoreal/host').then((m) => { if (alive) stop = m.startPhotoreal(mount); }, () => {});
+    void importChunk(() => import('../photoreal/host')).then((m) => { if (alive) stop = m.startPhotoreal(mount); }, () => {});
     return () => { alive = false; stop?.(); };
   }, [tableUp, gl]);
   if (!nuke && !tornado && !wheels) return null;

@@ -17,6 +17,7 @@
  */
 import { advancePresentedClock, fx, type FxEvent } from '../fx';
 import { currentNukeDevice, isIosWebKit } from '../three/nukeVisual';
+import { importChunk } from '../chunkLoad';
 import { loadSettings } from '../settings';
 import type { PhotorealFxInstance, PhotorealFxOpts } from './modules/modules';
 
@@ -113,7 +114,7 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
         if (!flashed && T >= NUKE_FLASH_T) {
           flashed = true;
           fx.blast = { start: performance.now(), hand: !!opts.full, ...(opts.mega ? { mega: true as const } : {}) };
-          if (opts.full && opts.at === undefined) void import('../three/Nuke3D').then((m) => m.blowHud(), () => {});
+          if (opts.full && opts.at === undefined) void importChunk(() => import('../three/Nuke3D')).then((m) => m.blowHud(), () => {});
         }
       }
       if (opts.at !== undefined) return; // a pinned capture frame stays up until the next call
