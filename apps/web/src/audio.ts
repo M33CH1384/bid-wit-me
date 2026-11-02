@@ -269,6 +269,23 @@ export const TRACKS: Track[] = [
   // sets above. "Off Days" stays out — auditioned as an optional fourth and
   // never picked; this is the fourth track the owner actually named.
   { file: 'saviour-above', title: 'Saviour Above', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/saviour-above/', credit: '"Saviour Above" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  // The Rooftop rotation (owner, 2026-11-02): three Ketsa hip-hop
+  // instrumentals (CC BY 4.0, via Free Music Archive) plus HoliznaCC0's
+  // "Roof Tops" (CC0) as the hushed floor. The owner's first Rooftop
+  // audition — an ambient/downtempo set (Rødland's "Night Music",
+  // Lobo Loco's "When the Dinosaurs Was Still Young" and more) — was
+  // rejected the same day it was offered: "It's not hip hop enough for
+  // me." This set is the hip-hop answer, approved 2026-11-02 ("Music
+  // sounds good for rooftop"). They join the rooftop pin in spatial.ts;
+  // appended last so every existing track index keeps its meaning,
+  // exactly like the sets above. "Jazz For The Rain" and "Vision 2"
+  // stay out — auditioned as the bench and held out unplayed, exactly
+  // like "Off Days" above; this is the closed rotation the owner
+  // actually picked.
+  { file: 'tide-turns', title: 'Tide Turns', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/tide-turns/', credit: '"Tide Turns" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'feeling', title: 'Feeling', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/feeling-1/', credit: '"Feeling" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'the-road', title: 'The Road', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/the-road-1/', credit: '"The Road" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  { file: 'roof-tops', title: 'Roof Tops', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/summer-air-lo-fi/roof-tops/' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -641,14 +658,46 @@ const CHU_EVENT_GAIN = 4.73;
  *  0.003, sits far below the material's own step noise, p99 0.063). */
 const CHU_BED_LEAD_S = 1105 / 44100;
 const CHU_BED_SECONDS = 64;
+/** The Rooftop's recorded bed (owner sample pick, 2026-11-02): a
+ *  64.000 s seamless loop of night-roof recordings — a real wind body
+ *  (Jim Cook's bluster take, SSE Library, CC0) with a roof-edge whistle
+ *  breathing over it, the city's traffic rumble low-passed to a murmur
+ *  far below (SSE Library, CC0) and a faint night-air sheen over
+ *  everything: a hushed bed for the route's deliberate slow stop, kept
+ *  low so the stop's sparse story score — and the table talk — stay in
+ *  front of it. Four recorded roof one-shots ride over it as scheduled
+ *  events: a gust front leaning on the roof, the heavy roof-access door,
+ *  footsteps crossing the roof, and a loose sign or fixture ticking in
+ *  the wind — at the sparsest densities in the program, tied with the
+ *  Church Basement's: this room's life is felt more than heard. */
+const ROO_BED_URL = '/audio/ambience/rooftop-bed.mp3';
+const ROO_EVENT_URLS = {
+  gustFront: ['/audio/ambience/rooftop-event-gust-front.mp3'],
+  roofDoor: ['/audio/ambience/rooftop-event-roof-door.mp3'],
+  footsteps: ['/audio/ambience/rooftop-event-footsteps.mp3'],
+  looseMetal: ['/audio/ambience/rooftop-event-loose-metal.mp3'],
+} as const;
+/** Event staging gain, same construction as CHU_EVENT_GAIN: the bed file
+ *  is the −16 LUFS master; the event clips keep their premaster staging,
+ *  so they play through this gain to hold the approved demo balance (the
+ *  bed's encode settled it −1.34 dB under its premaster — measured RMS
+ *  on the shipped files). */
+const ROO_EVENT_GAIN = 0.86;
+/** The bed's MP3 loop trim, from the shipped file's own measured offsets:
+ *  1105 samples of encoder delay at 44.1 kHz ahead of exactly 64.000 s of
+ *  content — same encoder settings as The Pj's, Speakeasy, Barbershop,
+ *  Grandma's, Cookout and Church beds (the shipped file's measured seam
+ *  step, 0.036, sits below the material's own step noise, p99 0.045). */
+const ROO_BED_LEAD_S = 1105 / 44100;
+const ROO_BED_SECONDS = 64;
 /** Every recorded venue's ambience-cache footprint: the bed's cache key
  *  plus every event URL the venue lazy-loads. The engine binds its decode
  *  cache to the CURRENT venue (bindAmbienceToVenue, crash-2 lane
- *  2026-11-01): six recorded 64 s beds decode to ~23–25 MB each and the
+ *  2026-11-01): seven recorded 64 s beds decode to ~23–25 MB each and the
  *  event one-shots add ~15–25 MB across venues, and the cache used to
  *  keep ALL of it for the life of the context — up to ~150–175 MB of
  *  decoded audio accumulating in exactly the table-hopping pattern that
- *  feeds iOS process death. Synthesized beds (mansion, rooftop,
+ *  feeds iOS process death. Synthesized beds (mansion,
  *  casino, beach, yacht, rec, porch) decode nothing and map to no entry:
  *  switching to one evicts every recorded buffer. */
 const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readonly string[] }>> = {
@@ -658,6 +707,7 @@ const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readon
   kitchen: { bedKey: 'gma-bed', urls: [GMA_BED_URL, ...Object.values(GMA_EVENT_URLS).flat()] },
   cookout: { bedKey: 'ctt-bed', urls: [CTT_BED_URL, ...Object.values(CTT_EVENT_URLS).flat()] },
   basement: { bedKey: 'chu-bed', urls: [CHU_BED_URL, ...Object.values(CHU_EVENT_URLS).flat()] },
+  rooftop: { bedKey: 'roo-bed', urls: [ROO_BED_URL, ...Object.values(ROO_EVENT_URLS).flat()] },
 };
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
@@ -3750,6 +3800,74 @@ class Engine {
     arm('spoonCup', 180, 300, true);
   }
 
+  private startRooftopBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('roo-bed', ROO_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, ROO_BED_LEAD_S, ROO_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...ROO_EVENT_URLS.gustFront, ...ROO_EVENT_URLS.roofDoor, ...ROO_EVENT_URLS.footsteps, ...ROO_EVENT_URLS.looseMetal]) void this.loadAmbience(url, url);
+    this.scheduleRooftopEvents();
+  }
+
+  /** Roof life over the recorded bed: four independent randomized
+   *  timers — a gust front every 120–240 s, the roof-access door every
+   *  150–300 s, footsteps crossing the roof and a loose fixture ticking
+   *  in the wind every 180–300 s (samples-lane densities, 2026-11-02) —
+   *  sharing one busy gate, so an event never talks over another (the
+   *  street pattern). These tie the Church Basement's as the sparsest
+   *  densities in the program: the Rooftop is a deliberate slow stop,
+   *  and its life should be felt more than heard. Each kind has a
+   *  single recording, so there is no variant to rotate; the spacing
+   *  itself is the variety. The timers live in venueTimers, so leaving
+   *  the venue silences the roof, and the first fire comes a
+   *  half-interval in, once the table settles. */
+  private scheduleRooftopEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the roof
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = ROO_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof ROO_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(ROO_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('gustFront', 120, 240, true);
+    arm('roofDoor', 150, 300, true);
+    arm('footsteps', 180, 300, true);
+    arm('looseMetal', 180, 300, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -3822,16 +3940,27 @@ class Engine {
         this.startChurchBed();
         break;
       }
-      case 'rooftop':
-        this.vNoise('lowpass', 520, 0.6, 0.06, 0.07, 0.7); // wind
-        this.vNoise('lowpass', 140, 0.5, 0.06, 0.05, 0.3); // traffic rumble
-        this.vEvery(14, 32, (t) => { this.tone(t, 392, 0.35, 'sawtooth', 0.008, { filter: 600, dest: B }); this.tone(t + 0.45, 349.23, 0.5, 'sawtooth', 0.008, { filter: 600, dest: B }); }); // distant horn
-        // Story Audio Pass: gusts that lean on the mic a little, a wind chime two roofs over,
-        // and the city breathing far below (a siren that never gets close).
-        this.vNoise('bandpass', 300, 0.6, 0.02, 0.045, 0.9); // gust layer
-        this.vEvery(15, 34, (t) => { const penta = [1318.5, 1567.98, 1760, 2093, 2349.3]; const n = 2 + Math.floor(Math.random() * 3); for (let i = 0; i < n; i++) this.tone(t + i * (0.2 + Math.random() * 0.22), penta[Math.floor(Math.random() * penta.length)]!, 0.8, 'sine', 0.004, { dest: B }); }); // wind chime
-        this.vEvery(38, 85, (t) => { this.tone(t, 622, 1.1, 'sine', 0.004, { glideTo: 830, dest: B }); this.tone(t + 1.2, 622, 1.1, 'sine', 0.0035, { glideTo: 830, dest: B }); }); // far siren
+      case 'rooftop': {
+        // The Rooftop's bed is a RECORDING now (owner sample pick,
+        // 2026-11-02), replacing the synthesized stand-in (filtered-noise
+        // wind and traffic rumble, sawtooth horn tones, a bandpass gust
+        // layer, a sine wind chime two roofs over and a gliding far
+        // siren): a seamless
+        // 64 s night-roof loop — a real wind body with a roof-edge
+        // whistle breathing over it, the city's traffic low-passed to a
+        // rumble far below, and night air over everything, kept hushed:
+        // this is the route's deliberate slow stop. The roof's life
+        // rides over it as one-shot events on their own timers
+        // (startRooftopBed): a gust front leaning on the roof, the
+        // heavy roof-access door, footsteps crossing to the table, a
+        // loose fixture ticking in the wind — the sparsest event pool
+        // in the program, tied with the Church Basement's. Story Stop 7
+        // plays here: its bed and roof life are in the recording (its
+        // music stays the sparse story score — the stop's mood outranks
+        // the venue pin in story context, as at the Church Basement).
+        this.startRooftopBed();
         break;
+      }
       case 'jazz': {
         // The Speakeasy's bed is a RECORDING now (owner sample pick, 2026-10-30),
         // replacing the old synthesized stand-in (a sine-chord loop faking a band,

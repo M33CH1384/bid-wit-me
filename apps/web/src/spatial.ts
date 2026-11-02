@@ -113,7 +113,7 @@ export const ROOM_STYLES: RoomStyle[] = [
   { venue: 'mansion', name: 'Mansion', bed: 'mansion', surface: 'glass', reverb: 'hall', crowd: 'low', music: { lean: ['slowly', 'memories-of-spring', 'chillin-hard'] }, events: [] },
   { venue: 'barbershop', name: 'Barbershop', bed: 'barbershop', surface: 'wood', reverb: 'lively', crowd: 'low', music: { pin: ['funk-trunk', 'soul-sync', 'c-funk'], lean: [] }, events: [] },
   { venue: 'church', name: 'Basement Spades Night', bed: 'basement', surface: 'laminate', reverb: 'tight', crowd: 'low', music: { pin: ['amazing-grace', 'still-dreams', 'with-regards', 'jesu-joy-of-mans-desiring', 'thaxted'], lean: [] }, events: [] },
-  { venue: 'rooftop', name: 'Rooftop', bed: 'rooftop', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['nighttime-stroll', 'late-at-night', 'city'] }, events: [] },
+  { venue: 'rooftop', name: 'Rooftop', bed: 'rooftop', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { pin: ['tide-turns', 'feeling', 'the-road', 'roof-tops'], lean: [] }, events: [] },
   { venue: 'speakeasy', name: 'Speakeasy Lounge', bed: 'jazz', surface: 'felt', reverb: 'lively', crowd: 'low', music: { pin: ['spy-glass', 'night-on-the-docks-sax', 'dances-and-dames', 'covert-affair'], lean: [] }, events: [] },
   { venue: 'vegas', name: 'Vegas High Roller', bed: 'casino', surface: 'felt', reverb: 'hall', crowd: 'arena', music: { lean: ['coins', 'final-level', 'pyro-flow'] }, events: [] },
   { venue: 'beach', name: 'Beach Cabana', bed: 'beach', surface: 'wood', reverb: 'dry-outdoor', crowd: 'low', music: { lean: ['sunset-drive', '2-hour-delay', 'pretty-little-lies'] }, events: [] },

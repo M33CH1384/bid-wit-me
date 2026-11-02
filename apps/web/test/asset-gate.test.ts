@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, PJS_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, PJS_BED_URL, ROO_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomAudioUrls, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -249,6 +249,23 @@ describe('room asset enumeration', () => {
     expect(existsSync(new URL('../public/audio/ambience/church-bed.mp3', import.meta.url))).toBe(true);
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain(`const CHU_BED_URL = '${CHU_BED_URL}'`);
+  });
+
+  it("the Rooftop's recorded bed rides the gate at High rooftop tables — every story stop, never Low", () => {
+    // Owner, 2026-11-02: the recorded night-roof bed joins the Rooftop
+    // loader gate exactly like the Church Basement's bed (the gate gains
+    // one unit at the regular venue and at story Stop 7, whose
+    // composition mirrors the regular table's; the bed's event one-shots
+    // deliberately do not gate and are not listed here). There is no seam
+    // exception: Stop 7 hears the same 'rooftop' bed in the same room —
+    // the stop carries no bed override in STORY_STOP_AUDIO.
+    expect(roomAudioUrls('rooftop', 'high', null)).toEqual([{ label: expect.any(String), url: ROO_BED_URL }]);
+    expect(roomAudioUrls('rooftop', 'high', 'rooftop')).toEqual([{ label: expect.any(String), url: ROO_BED_URL }]);
+    expect(roomAudioUrls('rooftop', 'low', null)).toEqual([]);
+    expect(roomAudioUrls('rooftop', 'low', 'rooftop')).toEqual([]);
+    expect(existsSync(new URL('../public/audio/ambience/rooftop-bed.mp3', import.meta.url))).toBe(true);
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain(`const ROO_BED_URL = '${ROO_BED_URL}'`);
   });
 
   it('the gate sedan URL is the very file PjsStreetRoom loads', () => {
