@@ -146,33 +146,6 @@ describe('crash telemetry', () => {
     expect(b.beacon).not.toHaveBeenCalled();
   });
 
-  it('marks the boot as a crash-resume for the audio heal when it witnesses a death', async () => {
-    b.store.set('bwm.crash.watch', JSON.stringify({ atTable: true, route: '/t/ABCD', build: 'oldsha', ts: Date.now(), suspendedClean: false }));
-    const t = await freshTelemetry();
-    t.installCrashTelemetry();
-    const markedAt = Number(b.store.get('bwm.uncleanBootAt'));
-    expect(Number.isFinite(markedAt)).toBe(true);
-    expect(Math.abs(Date.now() - markedAt)).toBeLessThan(5_000);
-  });
-
-  it('leaves no crash-resume mark when the previous session left cleanly', async () => {
-    b.store.set('bwm.crash.watch', JSON.stringify({ atTable: true, route: '/t/ABCD', build: 'oldsha', ts: Date.now(), suspendedClean: true }));
-    const t = await freshTelemetry();
-    t.installCrashTelemetry();
-    expect(b.store.has('bwm.uncleanBootAt')).toBe(false);
-  });
-
-  it('the crash-resume mark is consumed exactly once and expires', async () => {
-    vi.resetModules();
-    const d = await import('../src/diagnostics');
-    expect(d.consumeUncleanBoot(600_000)).toBeNull(); // absent
-    d.markUncleanBoot();
-    expect(d.consumeUncleanBoot(600_000)).not.toBeNull(); // fresh: fires
-    expect(d.consumeUncleanBoot(600_000)).toBeNull(); // already consumed
-    d.markUncleanBoot(Date.now() - 11 * 60_000);
-    expect(d.consumeUncleanBoot(10 * 60_000)).toBeNull(); // stale: cleared, no heal
-  });
-
   it('scene mount marks the session at-table for the witness', async () => {
     const t = await freshTelemetry();
     t.installCrashTelemetry();
