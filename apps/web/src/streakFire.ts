@@ -38,6 +38,7 @@
  * streak derivation are unchanged from the original build.
  */
 
+import { skipSelfRead } from './account/sessionHint';
 export type FireTier = 0 | 1 | 2 | 3 | 4;
 
 /** Everything the renderer needs to scale a tier, in one auditable row. */
@@ -298,6 +299,7 @@ export function fetchHomeStreak(now = Date.now()): Promise<HomeStreak | null> {
   homeStreakCacheAt = now;
   homeStreakCache = (async () => {
     try {
+      if (await skipSelfRead()) return null; // known guest: no 401
       const r = await fetch('/api/profile/me', { credentials: 'include' });
       if (!r.ok) return null;
       return homeStreakFromProfile(await r.json());

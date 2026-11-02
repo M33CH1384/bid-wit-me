@@ -35,6 +35,7 @@
  * power top, presence, the viewer's own stats — never fabricated; with
  * nothing real to say the bar is absent.
  */
+import { skipSelfRead } from '../account/sessionHint';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { statusLabel } from '@spades/protocol';
 import { fx, useReduceEffects } from '../fx';
@@ -212,7 +213,7 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
       get('/api/social/highlights')
         .then((j) => { if (!stop) setHighlights((j.highlights ?? []) as LiveHighlight[]); })
         .catch(() => { /* same — the endpoint lands with the highlights feed */ });
-      get('/api/social/me/stats')
+      skipSelfRead().then((guest) => (guest ? Promise.reject(new Error('guest')) : get('/api/social/me/stats')))
         .then((j) => {
           if (stop) return;
           const m = j as TickerMine;

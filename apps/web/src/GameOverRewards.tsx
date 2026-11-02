@@ -1,3 +1,4 @@
+import { skipSelfRead } from './account/sessionHint';
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { CoinIcon } from './RepBlock';
@@ -235,7 +236,7 @@ async function api<T>(path: string): Promise<T> {
 }
 
 export function fetchRewardsProfile(): Promise<RewardsProfile | null> {
-  return api<RewardsProfile>('/api/profile/me').catch(() => null);
+  return skipSelfRead().then((guest) => (guest ? null : api<RewardsProfile>('/api/profile/me'))).catch(() => null);
 }
 
 // ── Before-snapshot pinning (owner-approved fix, 2026-10-20) ───────────────
