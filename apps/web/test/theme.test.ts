@@ -101,13 +101,14 @@ describe('theme store', () => {
 describe('theme plumbing pins', () => {
   const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
-  it('index.html carries the pre-paint snippet keyed to the same storage key', () => {
-    const html = read('../index.html');
-    expect(html).toContain(`localStorage.getItem('${KEY}')`);
-    expect(html).toContain("document.documentElement.dataset.theme = 'neon'");
-    expect(html).toContain('#070914');
-    // the snippet sits in <head>, before the module script that boots the app
-    expect(html.indexOf('dataset.theme')).toBeLessThan(html.indexOf('/src/main.tsx'));
+  it('the pre-paint snippet (public/theme-boot.js, loaded from index.html <head>) is keyed to the same storage key', () => {
+    const html = read('../index.html'), boot = read('../public/theme-boot.js');
+    expect(boot).toContain(`localStorage.getItem('${KEY}')`);
+    expect(boot).toContain("document.documentElement.dataset.theme = 'neon'");
+    expect(boot).toContain('#070914');
+    // a classic blocking script in <head>, before the module script that boots the app (CSP: script-src 'self', no inline)
+    expect(html.indexOf('<script src="/theme-boot.js"></script>')).toBeGreaterThan(0);
+    expect(html.indexOf('/theme-boot.js')).toBeLessThan(html.indexOf('/src/main.tsx'));
   });
 
   it('the toggle lives in Account (Appearance) and is mirrored in MoreOptions', () => {

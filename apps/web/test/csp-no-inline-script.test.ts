@@ -1,11 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // CSP is script-src 'self' (no 'unsafe-inline'): every <script> in the HTML entry points must load from a file.
 const root = resolve(__dirname, '..');
 describe('no inline scripts (CSP script-src self)', () => {
-  for (const f of ['index.html', 'xr.html']) {
+  for (const f of ['index.html', 'xr.html', ...(existsSync(resolve(root, 'dist/index.html')) ? ['dist/index.html'] : [])]) {
     it(`${f} has only src= scripts`, () => {
       const html = readFileSync(resolve(root, f), 'utf8');
       const tags = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)];
