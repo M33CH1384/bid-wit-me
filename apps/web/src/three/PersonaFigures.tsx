@@ -83,8 +83,14 @@ const FLOOR_Y = -0.9;
  *  Round 2 (owner 2026-10-30 13:16: "still need to be a bit
  *  bigger"): 1.10 → 1.20, judged from player-seat renders — the
  *  added torso height also lifts every head relative to the held
- *  fan, which the face-over-fan composition needed. */
-const FIGURE_SCALE = 1.20;
+ *  fan, which the face-over-fan composition needed.
+ *  Round 3 (owner 2026-11-01: partner's face still covered at the
+ *  north seat): 1.20 → 1.33 — the head sits ~5cm higher and the
+ *  near-1:1 sightline lever over the fan (the head is just behind
+ *  the fan plane) turns that into real screen margin; with the
+ *  fan's own move (layout.ts OPP_FAN_BASE_Y / BASE_OUT) the chin
+ *  and eyes clear the open fan at the desktop sitting camera. */
+const FIGURE_SCALE = 1.33;
 /** Head-clearance floor (metres) the placement keeps between the
  *  head's bounding sphere and the held fan's volume, in the open and
  *  full-rest fan poses (see the placement settle). Covers the frame
@@ -96,7 +102,7 @@ const HEAD_CLEAR_MIN = 0.025;
  *  passed it. */
 const CHIN_CLEAR_MIN = 0.015;
 const HIP_OFF = 0.05;      // hip-joint centre above the seat surface
-const HIP_BACK = -0.12;    // hip-joint offset from chair centre, away from the table (seat frame). Round 2: -0.02 -> -0.12 — figures sit deeper in their chairs, heads off the held fan's plane (the partner-seat face/fan failure was depth as much as height); the reach settle re-spends scoot only where grips actually demand it, so the depth persists where it is needed.
+const HIP_BACK = -0.16;    // hip-joint offset from chair centre, away from the table (seat frame). Round 2: -0.02 -> -0.12 — figures sit deeper in their chairs, heads off the held fan's plane (the partner-seat face/fan failure was depth as much as height); the reach settle re-spends scoot only where grips actually demand it, so the depth persists where it is needed. Round 3: -0.12 -> -0.16, the same depth lever one notch further for the north-seat sightline.
 const ANKLE_FWD = 0.38;    // ankle target forward of the hip joint (seat frame)
 
 /* Grip calibration against the production opponent fan (opponentFan's
@@ -170,6 +176,29 @@ const REACH_LEAN = 0.40;
 /** Chair-spot index per seat position (both layouts below are
  *  stored in this order: top, bottom, left, right). */
 const SPOT_INDEX: Record<SeatPos, number> = { top: 0, bottom: 1, left: 2, right: 3 };
+
+/* Round 3 probe plumbing: every scr sample also lands in a capped
+ * window.__bwmScrLog (so a reader can pick the sample taken in the
+ * pose it cares about — the fixed 1.5 s/5 s samples can lag a turn
+ * change and report the previous pose's fan), and each figure's
+ * sampler registers for on-demand reads via window.__bwmSampleNow(). */
+interface ScrSample { margin: number; marginEye: number; pose: [number, number] }
+function publishScrSample(id: string, active: boolean, scr: ScrSample | null, sample: () => void): void {
+  const w = window as unknown as {
+    __bwmScrLog?: { t: number; id: string; active: boolean; margin: number; marginEye: number; pose: [number, number] }[];
+    __bwmSampleFns?: Record<string, () => void>;
+    __bwmSampleNow?: () => void;
+  };
+  if (scr) {
+    (w.__bwmScrLog ??= []).push({ t: Date.now(), id, active, margin: scr.margin, marginEye: scr.marginEye, pose: scr.pose });
+    if (w.__bwmScrLog.length > 90) w.__bwmScrLog.splice(0, w.__bwmScrLog.length - 90);
+  }
+  (w.__bwmSampleFns ??= {})[id] = sample;
+  w.__bwmSampleNow ??= () => {
+    const fns = w.__bwmSampleFns ?? {};
+    for (const k of Object.keys(fns)) { try { fns[k]!(); } catch { /* one bad sample must not stop the rest */ } }
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /* Per-venue seat geometry (measured from the room sources; pinned   */
@@ -978,6 +1007,10 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
         };
         const faceW = seatDir(seatPos, n).negate();
         const chin = hp.clone().add(new Vector3(0, -0.105, 0)).addScaledVector(faceW, 0.055);
+        /* Round 3: the eye line too — the chin can clear while the
+         * eyes are already behind the fan, and the owner's verdict
+         * ("only hair/forehead show") is an eye-line read. */
+        const eye = hp.clone().add(new Vector3(0, 0.035, 0)).addScaledVector(faceW, 0.088);
         const crown = hp.clone().add(new Vector3(0, 0.13, 0));
         const right = new Vector3(1, 0, 0).applyQuaternion(fanQ);
         const up = new Vector3(0, 1, 0).applyQuaternion(fanQ);
@@ -985,10 +1018,13 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
         const tl = fanC.clone().addScaledVector(right, -halfW).addScaledVector(up, 0.175);
         const tr = fanC.clone().addScaledVector(right, halfW).addScaledVector(up, 0.175);
         const [hx, hy] = px(hp); const [cx, cy] = px(chin); const [, cry] = px(crown);
+        const [ex, ey] = px(eye);
         const [lx, ly] = px(tl); const [rx, ry] = px(tr);
         const t = rx === lx ? 0 : Math.max(0, Math.min(1, (cx - lx) / (rx - lx)));
         const fanTop = Math.round(ly + (ry - ly) * t);
-        return { head: [hx, hy], chin: [cx, cy], crownY: cry, fanTop, margin: fanTop - cy };
+        const te = rx === lx ? 0 : Math.max(0, Math.min(1, (ex - lx) / (rx - lx)));
+        const fanTopEye = Math.round(ly + (ry - ly) * te);
+        return { head: [hx, hy], chin: [cx, cy], eye: [ex, ey], crownY: cry, fanTop, margin: fanTop - cy, fanTopEye, marginEye: fanTopEye - ey, pose: [target.drop, target.pinch] as [number, number], count };
       };
       const dist = (nm: string, tgt: Vector3 | null) => {
         const p = wp(nm);
@@ -1010,6 +1046,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       const w = window as unknown as { __bwmPersonaFigures?: { gates?: Record<string, unknown> } };
       w.__bwmPersonaFigures ??= { mounted: [], failed: [] } as never;
       (w.__bwmPersonaFigures as { gates?: Record<string, unknown> }).gates ??= {};
+      const scrNow = scr();
       (w.__bwmPersonaFigures as { gates?: Record<string, unknown> }).gates![id] = {
         hipY: y('Hips'), ankleYL: y('LeftFoot'), ankleYR: y('RightFoot'),
         toeYL: y('LeftToeBase'), toeYR: y('RightToeBase'),
@@ -1017,10 +1054,11 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
         fanGapL: tipGap('L'), fanGapR: tipGap('R'),
         headClear: headClear(), chinClear: chinClear(), head: v3(wp('Head') ?? undefined),
         gateCount: placedRef.current.count, placedClear: placedRef.current.clear,
-        auditL: handAudit('L'), auditR: handAudit('R'), scr: scr(),
+        auditL: handAudit('L'), auditR: handAudit('R'), scr: scrNow,
         ankleFlat: Math.round(prep.ankleFlat * 1000) / 1000,
         armL: armInfo('Left'), armR: armInfo('Right'), fanC: v3(fanC ?? undefined),
       };
+      publishScrSample(id, active, scrNow, sample);
     };
     const t1 = window.setTimeout(sample, 1500);
     const t2 = window.setTimeout(sample, 5000);

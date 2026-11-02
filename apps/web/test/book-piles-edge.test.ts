@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   CT, CW, CH, FELT, RAIL, edgePoint, pileEdgePoint, pileRise, pileSpot, seatDir, trickSpot,
-  PILE_STEP, PILE_STEP_LATE, PILE_STEP_KNEE, RAIL_TOP_Y, type SeatPos, type Xform,
+  PILE_EDGE_INSET, PILE_EDGE_INSET_SIDE, PILE_STEP, PILE_STEP_LATE, PILE_STEP_KNEE, RAIL_TOP_Y, type SeatPos, type Xform,
 } from '../src/three/layout';
 
 const SEATS4: SeatPos[] = ['bottom', 'left', 'top', 'right'];
@@ -26,17 +26,27 @@ function overlaps(a: ReturnType<typeof rect>, b: ReturnType<typeof rect>): boole
 }
 
 describe('book piles live on the table rim, in a side-by-side row per player', () => {
-  it('pile centre is on the rail band (just beyond the felt edge, inside the outer rail), from real geometry', () => {
+  it('pile centre sits at the round-3 down-table anchor inside the felt edge, from real geometry', () => {
     for (const [n, seats] of [[4, SEATS4], [3, SEATS3]] as const) {
       for (const pos of seats) {
         const d = seatDir(pos, n);
         const feltEdge = edgePoint(d, 0);
         const p = pileEdgePoint(pos, n);
         const radial = (v: Vector3) => v.x * d.x + v.z * d.z;
-        // straddling the rim line: centre a hair inside the felt edge (portrait fit),
-        // outer edge of the card over the rail, never beyond the outer rail edge
-        expect(radial(p)).toBeGreaterThan(radial(feltEdge) - 0.15); // row centre inset for portrait fit (vertical books reach the rim line)
-        expect(radial(p)).toBeLessThanOrEqual(radial(feltEdge) + 1e-9);
+        // Round 3 anchor (owner 2026-11-01: the piles poked through the
+        // players' hands at the rim anchor and move further down the
+        // table): the row centre sits exactly PILE_EDGE_INSET inside
+        // the felt edge (side seats: PILE_EDGE_INSET_SIDE, with the
+        // row also slid along the rim — radial depth unchanged by the
+        // tangent slide). This replaces the #240 portrait-fit rule
+        // (centre within 0.15 of the edge) on the owner's direction.
+        const side = pos === 'left' || pos === 'right';
+        const radialInset = radial(feltEdge) - radial(p);
+        const wantInset = side ? PILE_EDGE_INSET_SIDE : PILE_EDGE_INSET;
+        // exact for the axis-aligned seats; the 3-player diagonals ride
+        // the felt ellipse's corner clamp, worth ~0.002 of radial slack
+        expect(radialInset).toBeGreaterThan(wantInset - 0.005);
+        expect(radialInset).toBeLessThan(wantInset + 0.005);
         // the whole card stays on the table (within the outer rounded rect, slack for corners)
         const r = rect(pileSpot(pos, n, 0, 0, 0));
         for (const sx of [-1, 1]) for (const sy of [-1, 1]) {

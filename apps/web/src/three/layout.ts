@@ -101,10 +101,32 @@ export const FAN_REST_TIGHTEN = 0.36;
  *  when the holder peers over it. The rest drop eased 0.11 → 0.09
  *  with it so the lowered fan's bottom edge keeps its clearance
  *  over the rail. */
-export const OPP_FAN_BASE_Y = 0.165;
+export const OPP_FAN_BASE_Y = 0.156;
 export const OPP_FAN_REST_DROP = 0.09;
-export const OPP_FAN_REST_OUT = 0.05;
+export const OPP_FAN_REST_OUT = 0.15;
 export const OPP_FAN_REST_TIGHTEN = 0.45;
+/** Round 3 (owner 2026-11-01, Mac screenshot: the partner's face
+ *  covered by her fan at the north seat): BASE_Y 0.165 -> 0.156 and
+ *  the open fan's seatward offset 0.12 -> 0.02 (BASE_OUT) at the
+ *  top/bottom seats — the held fan rides lower and further over the
+ *  felt, the way a player leans in over the table; REST_OUT 0.05 ->
+ *  0.15 keeps the RESTED fan at its exact Round-2 spot
+ *  (0.02 + 0.15 = 0.12 + 0.05), so only the open (acting) fan moved.
+ *  The SIDE seats keep their Round-2 offsets (BASE_OUT_SIDE /
+ *  REST_OUT_SIDE): their profile faces already clear their fans
+ *  (the owner's same screenshot), and the inboard move measurably
+ *  stole the side book piles' new clearance (3D SAT sweep). Tilt
+ *  was measured and rejected as a lever: tipping the top edge down
+ *  swings it toward the head plane by the same amount — a wash in
+ *  the sightline. BASE_Y's floor is set by the played-card flight's
+ *  corner law, not the face: below ~0.152 the launch pose's lowest
+ *  corner dips under the felt plane and playFlightPose must lift the
+ *  card at t=0 (a visible pop; flight-pose.test.ts pins endpoints
+ *  exact) — at 0.156 the launch corner clears by ~0.006, so the rest
+ *  of the sightline gain comes from FIGURE_SCALE (1.33). */
+export const OPP_FAN_BASE_OUT = 0.02;
+export const OPP_FAN_BASE_OUT_SIDE = 0.12;
+export const OPP_FAN_REST_OUT_SIDE = 0.05;
 
 const clampRest = (rest: number | undefined): number => (Number.isFinite(rest) && rest! > 0 ? Math.min(1, rest!) : 0);
 
@@ -120,7 +142,7 @@ export function opponentFan(pos: SeatPos, n: number, i: number, count: number, r
   const pc = clampRest(pinch);
   const d = seatDir(pos, n);
   const side = pos === 'left' || pos === 'right';
-  const base = edgePoint(d, side ? 0.3 : 0.05).add(new Vector3(0, OPP_FAN_BASE_Y - OPP_FAN_REST_DROP * r, 0)).add(d.clone().multiplyScalar(0.12 + OPP_FAN_REST_OUT * r));
+  const base = edgePoint(d, side ? 0.3 : 0.05).add(new Vector3(0, OPP_FAN_BASE_Y - OPP_FAN_REST_DROP * r, 0)).add(d.clone().multiplyScalar(side ? OPP_FAN_BASE_OUT_SIDE + OPP_FAN_REST_OUT_SIDE * r : OPP_FAN_BASE_OUT + OPP_FAN_REST_OUT * r));
   const yaw = yawOf(d);
   const off = i - (count - 1) / 2;
   const spread = 0.038 * (1 - OPP_FAN_REST_TIGHTEN * pc);
@@ -192,8 +214,29 @@ export const RAIL_TOP_Y = 0.1; // rail ring's top cap (railGeometry: 0.07 extrud
 export const PILE_STEP = 0.0012;
 export const PILE_STEP_LATE = 0.0002;
 export const PILE_STEP_KNEE = 12;
-export const PILE_EDGE_INSET = 0.14; // row centre inside the felt edge (portrait fit; vertical books still reach the rim line)
-export const PILE_TANGENT = 0.12; // along the rim toward the seat's right-hand corner
+export const PILE_EDGE_INSET = 0.36; // row centre inside the felt edge (top/bottom seats)
+/** Round 3 (owner 2026-11-01: won-trick books "poking thru the
+ *  players hands — move them further down the table"): the piles
+ *  sat at inset 0.14, inside the figures' fan sweep and grip zone
+ *  at every seat (measured: 6/13 slots in the hand zone, open and
+ *  rested). The row now anchors further down-table — 0.36 in from
+ *  the edge at top/bottom, 0.38 at the side seats, whose row also
+ *  slides along the rim toward the seat's right-hand corner
+ *  (PILE_TANGENT_SIDE): the side hand zone spans the seat axis, so
+ *  a purely radial move would need ~0.49 of inset to clear it in
+ *  plan; the slide puts the nearest slot just past the grips with
+ *  the row growing toward the corner. Clearance is judged in plan
+ *  (the camera looks down the table: a book whose footprint meets
+ *  the grip corridor reads as poking through the hands even when
+ *  it floats below them) and confirmed by the 3D SAT sweep against
+ *  the open and rested fans + grip volumes, re-run with the
+ *  round-3 fan. The old portrait-fit anchor (0.14) is superseded
+ *  by the owner's direction; slots stay precomputed and stable,
+ *  and the gather flight target derives from pileSpot, so flights
+ *  follow the row. */
+export const PILE_EDGE_INSET_SIDE = 0.38; // side seats: row centre inside the felt edge
+export const PILE_TANGENT = 0.12; // along the rim toward the seat's right-hand corner (top/bottom)
+export const PILE_TANGENT_SIDE = 0.92; // side seats: slide down the rim, clear of the hand zone
 /** Centre-to-centre distance along the rim between adjacent books. Under a
  * card's short width (0.23 at pile scale), so neighbours always overlap a
  * little -- the woven railroad-tie read. 13 books span ~2.3m this way,
@@ -210,15 +253,17 @@ export function pileRise(globalIdx: number): number {
 }
 
 /** The rim point for a seat's book row (before per-book slots), from the
- * actual felt/rail geometry. Phone-portrait trade-off (measured in #240):
- * a row centred on the rail band itself projects off-screen on narrow
- * portraits, so the centre sits PILE_EDGE_INSET inside the felt edge --
- * books straddle the rim line, clear of every trick landing, on screen. */
+ * actual felt/rail geometry. Round 3: the centre sits PILE_EDGE_INSET
+ * (side seats: PILE_EDGE_INSET_SIDE, plus the PILE_TANGENT_SIDE slide
+ * along the rim) inside the felt edge — down-table of the seats' fans
+ * and hands per the owner's 2026-11-01 direction, clear of every
+ * trick landing, on screen (layout.test guards the projections). */
 export function pileEdgePoint(pos: SeatPos, n: number): Vector3 {
   const d = seatDir(pos, n);
-  const edge = edgePoint(d, PILE_EDGE_INSET);
+  const side = pos === 'left' || pos === 'right';
+  const edge = edgePoint(d, side ? PILE_EDGE_INSET_SIDE : PILE_EDGE_INSET);
   const tangent = new Vector3(d.z, 0, -d.x); // along the rim, toward the seat's right
-  return edge.add(tangent.multiplyScalar(PILE_TANGENT));
+  return edge.add(tangent.multiplyScalar(side ? PILE_TANGENT_SIDE : PILE_TANGENT));
 }
 
 /** Odd books (1st, 3rd, ...): vertical (long edge front-to-back). Even books: horizontal (rotated 90°). The alternating weave. Demetrius 2026-10-19. */
