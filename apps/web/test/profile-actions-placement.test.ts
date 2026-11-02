@@ -181,7 +181,9 @@ describe('unified Rep block: the XP bar rides in the header on every surface', (
     expect(repBlock).toContain('data-testid={`${testid}-xp`}');
   });
   it('both hosts render the one shared ProfileView, which renders the one shared RepBlock — no per-surface Rep markup left', () => {
-    expect(view).toContain("import { RepBlock } from '../RepBlock';");
+    // the view's line also pulls CoinIcon from the same shared module since
+    // the 2026-11-01 claim celebration (the drawn coin affirms a landed claim)
+    expect(view).toContain("import { CoinIcon, RepBlock } from '../RepBlock';");
     expect(modal).toContain("import { RepBlock } from '../RepBlock';");
     expect(view).toContain('testid="profile-rep"');
     expect(social).toContain("import { ProfileView } from '../profile/ProfileView';");
