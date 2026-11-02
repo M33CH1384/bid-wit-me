@@ -154,6 +154,11 @@ export interface FigureResidencySnapshot {
  */
 export class FigureResidency {
   private entries = new Map<string, FigureResidencyEntry>();
+  /** Lean mode (entered on a WebGL context loss — see enterLeanMode):
+   *  the previous-cast retention this registry keeps for fast hop-backs
+   *  is a fair-weather luxury, and shedding it is the cheapest memory
+   *  relief available while the process is demonstrably pressured. */
+  private lean = false;
 
   constructor(
     private budgetBytes: number,
@@ -206,7 +211,7 @@ export class FigureResidency {
       let victim: FigureResidencyEntry | null = null;
       for (const e of this.entries.values()) {
         if (e.refs > 0) continue;
-        if (now - e.lastUsed < this.graceMs) continue;
+        if (!this.lean && now - e.lastUsed < this.graceMs) continue;
         if (!victim || e.lastUsed < victim.lastUsed) victim = e;
       }
       if (!victim) return;
@@ -214,6 +219,27 @@ export class FigureResidency {
       this.fx.dispose(victim);
     }
   }
+
+  /** Enter lean mode for the rest of the session: every UNMOUNTED entry
+   *  is evicted immediately — in-grace and under-budget alike — and the
+   *  release grace stops applying, so later hops keep no previous cast
+   *  resident. Mounted figures are never touched (the seated table keeps
+   *  its people; a hop-back re-decodes behind the portrait fallback,
+   *  the registry's designed path). Called when the WebGL context is
+   *  lost: losses cluster on venue hops and recovery remounts, where
+   *  the retained previous cast (~a full table's textures) rides on top
+   *  of the re-upload spike into an already-pressured process — the
+   *  2026-11-01 crash round that twice ended in process death. */
+  enterLeanMode(): void {
+    this.lean = true;
+    for (const e of [...this.entries.values()]) {
+      if (e.refs > 0) continue;
+      this.entries.delete(e.url);
+      this.fx.dispose(e);
+    }
+  }
+
+  isLeanMode(): boolean { return this.lean; }
 
   snapshot(): FigureResidencySnapshot {
     return {
@@ -250,6 +276,14 @@ export function acquireFigure(url: string, gltf: GLTF): void {
 
 export function releaseFigure(url: string): void {
   registry.release(url);
+  publishResidencyProbe();
+}
+
+/** Shed every unmounted figure's residency for the rest of the session
+ *  (see FigureResidency.enterLeanMode). The scene calls this when the
+ *  WebGL context is lost — memory pressure made visible. */
+export function enterFigureLeanMode(): void {
+  registry.enterLeanMode();
   publishResidencyProbe();
 }
 

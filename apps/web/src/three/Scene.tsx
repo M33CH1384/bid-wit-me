@@ -5,6 +5,7 @@ import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEff
 import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial, createRestCardMaterial } from './Card3D';
+import { enterFigureLeanMode } from './figureResidency';
 import { createBackCardMaterial } from './cardBack';
 import DeuceFxLayer from './DeuceFxLayer';
 import { CUT_FACE_ANGLE, setDeuceCutPose } from './deuceImpact';
@@ -2172,11 +2173,19 @@ export default function Scene(props: SceneProps) {
         // WebGL context loss: memory pressure's canary, and until now
         // completely unobserved — no listener existed anywhere, so a lost
         // context surfaced only as a dead scene or a later boundary bounce.
-        // These listeners only REPORT (no preventDefault, no recovery
-        // change); a restore-handling fix is its own lane.
+        // These listeners REPORT (no preventDefault, no recovery change —
+        // the recovery pair below owns that); the loss listener also sheds
+        // unmounted figure residency, the cheapest pressure relief there is.
         gl.domElement.addEventListener('webglcontextlost', () => {
           noteCrumb('webgl', 'lost');
           reportCrash('webgl-lost', new Error('WebGL context lost'), { venue: def.id, quality: props.quality });
+          // Pressure relief (crash round 3, 2026-11-01): a loss is memory
+          // pressure made visible, and losses cluster on venue hops and
+          // recovery remounts — exactly where the figure registry's
+          // previous-cast retention rides on top of the re-upload spike.
+          // Shed every unmounted figure now and stay lean for the session;
+          // seated figures are never touched (see figureResidency).
+          enterFigureLeanMode();
         });
         gl.domElement.addEventListener('webglcontextrestored', () => {
           noteCrumb('webgl', 'restored');

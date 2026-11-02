@@ -38,7 +38,7 @@
  * and it sends no gameplay PII — the account id is resolved server-side
  * from the session cookie, never sent by the client.
  */
-import { getDiagnostics } from './diagnostics';
+import { getDiagnostics, markUncleanBoot } from './diagnostics';
 import { VERSION } from './version';
 import { feedbackContext } from './feedbackContext';
 
@@ -116,6 +116,11 @@ function witnessPreviousSession(): void {
   setWatch({ atTable: false, route: safePath(), suspendedClean: false });
   if (!prev || !prev.atTable || prev.suspendedClean) return;
   if (Date.now() - prev.ts > 7 * 24 * 3600_000) return; // a stale flag is not evidence
+  // Mark the boot for the audio engine: this page is a crash-resume, and its
+  // first unlock gesture earns one deliberate graph rebuild (the iOS audio
+  // session can be dead after a jetsam kill in a way no in-graph meter can
+  // detect — see audio.ts healCrashResumedAudio).
+  markUncleanBoot();
   reportCrash('unclean-exit', new Error('previous session ended at a table with no clean exit and no pagehide — process death suspected'), {
     prevRoute: prev.route, prevBuild: prev.build, prevAgeSec: Math.round((Date.now() - prev.ts) / 1000),
   });

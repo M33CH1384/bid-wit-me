@@ -14,6 +14,7 @@ import { useSyncExternalStore } from 'react';
 import { Spatializer, STORY_STOP_AUDIO, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos, type StoryMood, type VenueEvent } from './spatial';
 import { audioElementPool } from './audioPool';
 import { RESTORE_HEAL_MS, audioContextAction, cancelActiveSpeech, claimPlaybackSession, recreateDue, settleAudio, soundRestorePending } from './audioSession';
+import { consumeUncleanBoot } from './diagnostics';
 
 /**
  * decodeAudioData completion runs on the main thread. Decoding every stinger and voice sprite in
@@ -710,6 +711,8 @@ class Engine {
   private wakeGen = 0;
   /** Last context rebuild (performance.now ms): rebuilds are rate-limited while an interruption persists. */
   private lastRecreateAt = 0;
+  /** The crash-resume heal (healCrashResumedAudio) fires at most once per page. */
+  private crashHealDone = false;
   /** Self-heal retry timer: runs only while a restore is pending (see publishRestore). */
   private healTimer: number | null = null;
   /** Dropout watchdog: verifies stems against ground truth while sound is
@@ -1310,6 +1313,7 @@ class Engine {
     // instead of a hopeful one (2026-10-30: "most times it never comes back").
     this.startWatchdog();
     this.armVerify();
+    if (kind === 'gesture') this.healCrashResumedAudio();
     if (kind === 'show' && !this.unlocked) return;
     if (kind === 'gesture' && this.unlocked && this.liveState(this.ctx) === 'running') {
       if (this.needsRestore) this.publishRestore();
@@ -1343,6 +1347,10 @@ class Engine {
     // or the test hook could never leave the speaker in its needs-tap state. Publish that state
     // in this same turn: the resume promise settles later, and a rejection must not skip the update.
     const resumePromise = this.testState == null ? settleAudio(this.ctx?.resume()) : Promise.resolve();
+    // The unlocking gesture reaches here with a graph freshly built by
+    // ensure() above — the crash-resume heal's first real chance to fire
+    // (the armVerify-time call still saw a locked, context-less engine).
+    if (kind === 'gesture') this.healCrashResumedAudio();
     this.publishRestore();
     void resumePromise.then(() => {
       if (gen !== this.wakeGen) return;
@@ -1463,6 +1471,31 @@ class Engine {
     const src = this.musicSourceRms();
     if (src >= 0) return src < MUSIC_SILENCE_FLOOR;
     return true;
+  }
+
+  /** Crash-resume heal (2026-11-01 round 3): when telemetry's startup
+   *  witness marked this boot as following a process death, the first
+   *  unlocked gesture forces ONE deliberate graph rebuild. Every other
+   *  detector reads in-graph meters — and a dead iOS OUTPUT (session/route
+   *  residue after a jetsam kill + relaunch) stops no in-graph sample
+   *  flow, so the decks can verifiably "play" into a destination the
+   *  phone no longer sounds while every witness reads healthy. Recreating
+   *  the context rebinds the audio session, which is the only move that
+   *  revives such an output; the pre-witness watchdog used to land it by
+   *  accident on master silence, a coincidence the music witness
+   *  (correctly) vetoes. The mark is consumed only once a graph exists to
+   *  rebuild — an early 'show' wake or the still-locked first gesture
+   *  leaves it for the gesture that actually unlocks. escalateGraph's own
+   *  rate limit still applies: if this same wake already rebuilt, the
+   *  heal is that rebuild and no second one is forced. */
+  private healCrashResumedAudio() {
+    if (this.crashHealDone || !this.unlocked || !this.ctx) return;
+    // No mark (or a stale one, cleared by the consume): nothing to heal,
+    // and the once-flag stays unlatched — the mark is written at boot,
+    // before any wake, so the first mark-bearing wake is the heal.
+    if (consumeUncleanBoot(10 * 60_000) === null) return;
+    this.crashHealDone = true;
+    this.escalateGraph();
   }
 
   /** Rebuild the context through the same rate limit as the interruption
