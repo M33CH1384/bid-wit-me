@@ -13,6 +13,8 @@ import { expressionForBeat } from './expressions';
 import type { CharacterHandle } from './loader';
 
 export interface Stage3DStats { figures: string[]; triangles: number; calls: number; failed: string[]; reason?: string }
+/** Figure height in slot-heights (head at the slot top; legs run off the stage's bottom edge). */
+const BUST_SPAN = 2.1;
 const publish = (s: Stage3DStats) => { (window as unknown as { __bwmStage3D?: Stage3DStats }).__bwmStage3D = s; };
 
 function webglOk(): boolean {
@@ -70,7 +72,7 @@ export default function StageCharacters3D({ stagePair, beat }: { stagePair: stri
           if (slot !== 'dee') return r ? { x: r.left - sr.left, y: r.top - sr.top, w: r.width, h: r.height } : null;
           // Dee: centre-front between the pair, a touch smaller (she guides, she is not seated)
           const w = (r?.width ?? sr.width * 0.3) * 0.86, h = (r?.height ?? sr.height * 0.5) * 0.86;
-          return { x: (sr.width - w) / 2, y: sr.height - h, w, h };
+          return { x: (sr.width - w) / 2, y: sr.height - h * 0.82, w, h };
         };
         const layout = () => {
           const sr = stage.getBoundingClientRect();
@@ -82,9 +84,11 @@ export default function StageCharacters3D({ stagePair, beat }: { stagePair: stri
           for (const p of placed) {
             const r = slotRect(p.slot, sr);
             if (!r) continue;
-            const s = (r.h * wpp) / p.base; // figure height = its slot's height
-            p.h.root.scale.setScalar(s);
-            p.h.root.position.set((r.x + r.w / 2 - sr.width / 2) * wpp, (sr.height / 2 - (r.y + r.h)) * wpp, p.slot === 'dee' ? 0.5 : 0);
+            // Bust framing like the 2D portrait it replaces: the head sits at the slot's top and the figure runs on
+            // past the stage's bottom edge (BUST_SPAN slot-heights tall), so faces read at phone size.
+            const H = r.h * BUST_SPAN * wpp;
+            p.h.root.scale.setScalar(H / p.base);
+            p.h.root.position.set((r.x + r.w / 2 - sr.width / 2) * wpp, (sr.height / 2 - r.y) * wpp - H, p.slot === 'dee' ? 0.5 : 0);
           }
         };
         const ro = new ResizeObserver(layout); ro.observe(stage);
