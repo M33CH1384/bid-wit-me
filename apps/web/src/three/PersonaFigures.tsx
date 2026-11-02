@@ -67,6 +67,7 @@ import { useFigureResidency } from './figureResidency';
 import { CHAIR_SPOTS } from './classicStudioLayout';
 import { opponentFan, seatDir, type SeatPos } from './layout';
 import { fanRestTarget } from './fanRest';
+import { SEAT_FILL_GROUND, SEAT_FILL_INTENSITY, SEAT_FILL_SKY, SEAT_KEY_INTENSITY, SEAT_RIM_INTENSITY, rimColor, seatRig, tuneFor } from './seatLights';
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -460,20 +461,9 @@ const FIGURE_URLS: Record<string, string> = Object.fromEntries(
   PERSONA_FIGURE_KEYS.map((k) => [k, `/assets/figures/personas/${k}.glb`]),
 );
 
-/* Figure fill (owner verdict 2026-10-29: the seated cast read "very
- * dark" on device — the left seat measured ~39 luminance against the
- * felt's ~170 in the pilot's own captures: the porch key rakes in
- * from the player's right and the side seats sit in silhouette).
- * Each seated figure gets ONE small warm point light just off its
- * chest on the table side: it lights the PERSON — short range and
- * inverse-square falloff keep the room's golden-hour mood and the
- * felt's exposure as they were. The fills mount inside this module,
- * so they exist exactly where the figures do (solo Porch story,
- * High) and nowhere else. */
-const FIGURE_FILL_DIST = 0.55;   // metres off the chair spot, toward the table
-const FIGURE_FILL_Y = 0.40;      // ~chest/head height (the gaze anchors' head line)
-const FIGURE_FILL_RANGE = 2.4;   // hard range cap: the room beyond stays unlit by it
-const FIGURE_FILL_INTENSITY = 1.8;
+/* Figure fill → seatLights.ts (2026-11-02). The 2026-10-29 fix was ONE warm point per figure at chest height
+ * (left seat measured ~39 luma vs the felt's ~170); it lit faces from under the chin with no direction. The
+ * per-seat key/rim rig below replaces it. */
 
 /* ------------------------------------------------------------------ */
 /* UniRig adapter (sandbox port): roles are DETECTED from the bind     */
@@ -1541,21 +1531,9 @@ export default function PersonaFigures({ seats, positions, n, handCounts, active
   }, [seats, positions, geo]);
   return (
     <>
-      {seats.map((id, seat) => {
-        if (!id) return null;
-        const spot = geo.spots[SPOT_INDEX[positions[seat]!]]!;
-        const d = seatDir(positions[seat]!, n);
-        return (
-          <pointLight
-            key={`fill-${seat}`}
-            position={[spot.x - d.x * FIGURE_FILL_DIST, FIGURE_FILL_Y, spot.z - d.z * FIGURE_FILL_DIST]}
-            color="#ffd9ae"
-            intensity={FIGURE_FILL_INTENSITY}
-            distance={FIGURE_FILL_RANGE}
-            decay={2}
-          />
-        );
-      })}
+      {/* seated-player lighting (seatLights.ts, SPEC §1): per-seat key (+ rim at the side seats) aimed at the head,
+          one cool hemisphere fill — replaces the old chest-height warm point (uplight, no direction). */}
+      <SeatLights seats={seats} positions={positions} n={n} geo={geo} venue={venue} />
       {seats.map((id, seat) => {
         if (!id) return null;
         const reg = FIGURE_REGISTERS[id];
@@ -1584,6 +1562,46 @@ export default function PersonaFigures({ seats, positions, n, handCounts, active
           </FigureBoundary>
         );
       })}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Seated-player lights (seatLights.ts). Positions follow the camera   */
+/* (view changes, landscape/portrait), re-solved each frame — 3 seats. */
+/* ------------------------------------------------------------------ */
+function SeatLights({ seats, positions, n, geo, venue }: {
+  seats: readonly (string | null)[]; positions: readonly SeatPos[]; n: number; geo: VenueSeatGeometry; venue: string;
+}) {
+  const camera = useThree((st) => st.camera);
+  const tune = tuneFor(venue);
+  const rim = useMemo(() => rimColor(tune), [tune]);
+  const lit = seats.map((id, seat) => (id ? seat : -1)).filter((s) => s >= 0);
+  const keys = useRef<(import('three').SpotLight | null)[]>([]);
+  const rims = useRef<(import('three').SpotLight | null)[]>([]);
+  const camRight = useMemo(() => new Vector3(), []);
+  useFrame(() => {
+    camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    for (const seat of lit) {
+      const pos = positions[seat]!;
+      const spot = geo.spots[SPOT_INDEX[pos]]!;
+      const r = seatRig(spot, seatDir(pos, n), camera.position, camRight, tune.steep);
+      const k = keys.current[seat], m = rims.current[seat];
+      if (k) { k.position.copy(r.key); k.target.position.copy(r.head); k.target.updateMatrixWorld(); }
+      if (m) { m.position.copy(r.rim); m.target.position.copy(r.head); m.target.updateMatrixWorld(); }
+    }
+  });
+  return (
+    <>
+      <hemisphereLight args={[SEAT_FILL_SKY, SEAT_FILL_GROUND, SEAT_FILL_INTENSITY * tune.fill]} />
+      {lit.map((seat) => (
+        <spotLight key={`key-${seat}`} ref={(l) => { keys.current[seat] = l; }}
+          color={tune.keyColor} intensity={SEAT_KEY_INTENSITY * tune.key} angle={0.5} penumbra={0.9} distance={3.2} decay={2} />
+      ))}
+      {lit.filter((seat) => positions[seat] === 'left' || positions[seat] === 'right').map((seat) => (
+        <spotLight key={`rim-${seat}`} ref={(l) => { rims.current[seat] = l; }}
+          color={rim} intensity={SEAT_RIM_INTENSITY * tune.rimK} angle={0.6} penumbra={0.7} distance={3} decay={2} />
+      ))}
     </>
   );
 }

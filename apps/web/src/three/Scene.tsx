@@ -1,4 +1,5 @@
 import { RUN_SLAM_MS } from '../runIt';
+import { FELT_KEY_SEATED } from './seatLights';
 import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -1647,7 +1648,10 @@ function HandFill() {
 }
 const _up = new Vector3(0, 0.25, 0);
 
-function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: VenueDef; shadowSize: number }) {
+/** `seated`: persona figures are at the table (they bring their own per-seat key/rim, seatLights.ts), so the felt
+ *  spot drops 70 → 45 (the felt stopped out-shining the faces) and the fixed back rim goes (the side seats get
+ *  their own rims). */
+function Lights({ quality, def, shadowSize, seated = false }: { quality: 'high' | 'low'; def: VenueDef; shadowSize: number; seated?: boolean }) {
   const hi = quality === 'high';
   const cast = hi && shadowSize > 0;
   return (
@@ -1658,7 +1662,7 @@ function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: Ve
         position={[0.4, 5.2, 1.2]}
         angle={0.62}
         penumbra={0.85}
-        intensity={(hi ? 70 : 55) * def.keyK}
+        intensity={(hi ? (seated ? FELT_KEY_SEATED : 70) : 55) * def.keyK}
         decay={2}
         color={def.key}
         castShadow={cast}
@@ -1671,7 +1675,7 @@ function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: Ve
           rendered grey while the quick-load cards stayed white. Every venue gets the fill. */}
       <HandFill />
       {/* purple rim from behind the table, for the stream-studio vibe */}
-      <pointLight position={[0, 1.6, -4.2]} intensity={(hi ? 9 : 6) * (def.id === 'classic' ? 1 : 0.6)} color={def.rim} distance={9} />
+      {!seated && <pointLight position={[0, 1.6, -4.2]} intensity={(hi ? 9 : 6) * (def.id === 'classic' ? 1 : 0.6)} color={def.rim} distance={9} />}
     </>
   );
 }
@@ -2279,7 +2283,7 @@ export default function Scene(props: SceneProps) {
       <OwnChairHiddenContext.Provider value={!props.spectator}>
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
-      <Lights quality={props.quality} def={def} shadowSize={shadowSize} />
+      <Lights quality={props.quality} def={def} shadowSize={shadowSize} seated={personaFiguresActive} />
       {/* The hall is filtered one mip per frame, and only after the cloth maps are on the table.
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
