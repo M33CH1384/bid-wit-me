@@ -202,7 +202,7 @@ export function flatRest(x: number, z: number, spin: number, order: number, scal
  *   even books (2nd, 4th...) lie HORIZONTAL (rotated 90 degrees),
  *   adjacent books overlap slightly (BOOK_STEP is well under a card width).
  * Slots are precomputed for a full hand of books (13 in a 4-player hand, 17
- * in a 3-player hand at a tighter step), centred on the rim point, so a book
+ * in a 3-player hand at a tighter step), anchored at a fixed start point on the rim path, so a book
  * never moves when later books arrive; the gather animation lands each new
  * book straight into its slot with its odd/even orientation.
  *
@@ -217,29 +217,183 @@ export const RAIL_TOP_Y = 0.1; // rail ring's top cap (railGeometry: 0.07 extrud
 export const PILE_STEP = 0.0012;
 export const PILE_STEP_LATE = 0.0002;
 export const PILE_STEP_KNEE = 12;
-export const PILE_EDGE_INSET = 0.36; // row centre inside the felt edge (top/bottom seats)
-/** Round 3 (owner 2026-11-01: won-trick books "poking thru the
- *  players hands — move them further down the table"): the piles
- *  sat at inset 0.14, inside the figures' fan sweep and grip zone
- *  at every seat (measured: 6/13 slots in the hand zone, open and
- *  rested). The row now anchors further down-table — 0.36 in from
- *  the edge at top/bottom, 0.38 at the side seats, whose row also
- *  slides along the rim toward the seat's right-hand corner
- *  (PILE_TANGENT_SIDE): the side hand zone spans the seat axis, so
- *  a purely radial move would need ~0.49 of inset to clear it in
- *  plan; the slide puts the nearest slot just past the grips with
- *  the row growing toward the corner. Clearance is judged in plan
- *  (the camera looks down the table: a book whose footprint meets
- *  the grip corridor reads as poking through the hands even when
- *  it floats below them) and confirmed by the 3D SAT sweep against
- *  the open and rested fans + grip volumes, re-run with the
- *  round-3 fan. The old portrait-fit anchor (0.14) is superseded
- *  by the owner's direction; slots stay precomputed and stable,
- *  and the gather flight target derives from pileSpot, so flights
- *  follow the row. */
-export const PILE_EDGE_INSET_SIDE = 0.38; // side seats: row centre inside the felt edge
-export const PILE_TANGENT = 0.12; // along the rim toward the seat's right-hand corner (top/bottom)
-export const PILE_TANGENT_SIDE = 0.92; // side seats: slide down the rim, clear of the hand zone
+/** Rim-path piles (owner 2026-11-01, two reports the same day: first the
+ *  books "poking thru the players hands", then — after round 3 moved the
+ *  rows down-table to inset 0.36/0.38 — "Now the collected books are in
+ *  the way of the played cards instead of being on the edge of the
+ *  table"). The two rules together leave no straight row anywhere: the
+ *  rim strip's middle is each fan's swing zone (the open fan penetrates
+ *  rim-depth books by 0.06–0.135 in the 3D SAT sweep), the landing zone
+ *  (fixed trick spots, the Run It scatter and cascade) reaches to within
+ *  ~0.16 of the felt edge, and a straight row long enough for 13 books
+ *  runs off the rail's rounded corners. So the books now ride the rim
+ *  itself: centres on the felt/rail seam (the rounded-rect felt
+ *  boundary), in clusters that start just past each seat's fan swing
+ *  and follow the rim from there (PILE_CLUSTERS). Verified by the
+ *  four-zone sweep — hands (3D SAT vs open+rested fans, grips and the
+ *  human hand fan, own and cross-seat, with slot k judged against the
+ *  12-k cards each fan actually holds when book k lands), landing
+ *  (plan vs the fixed spots, the sampled Run It scatter union and the
+ *  cascade rows), rim (rounded-rect containment) and frame (the
+ *  layout.test projection rule): every 4-player slot clears every
+ *  zone with the books fully on the table. Two documented residuals:
+ *  the left seat's late books (slots 6–12, toward the SW corner) ride
+ *  the near-west rim the canonical portrait frame crops — they sit on
+ *  the edge, clear of everything, but their outer edge can leave a
+ *  narrow phone frame; and in 3-player games the left diagonal's row
+ *  shares that near-west stretch from its first slot, and the extreme
+ *  tail of the Run It scatter can pass under a west-rim book's rail
+ *  overhang in plan (≤0.043, height-separated: book underside at rail
+ *  height 0.10 vs card top ~0.03), which no rim placement on that
+ *  straight can avoid. Slots stay precomputed and stable; the gather
+ *  flight target derives from pileSpot, so flights follow the row. */
+/** Where each seat's books sit on the rim path, as clusters of slots:
+ *  `from` is the signed path offset of the cluster's first slot from the
+ *  seat's rim axis point (positive = toward the seat's right-hand
+ *  corner, the rim loop's forward direction), `dir` the direction the
+ *  cluster grows, `count` its slots. Derived from the measured zones
+ *  (see the design note above): every cluster starts just past its
+ *  seat's fan swing; the top seat's second cluster fills TOWARD its
+ *  axis, which is safe because slot k only fills after trick k+1, when
+ *  every fan at the table is down to 12-k cards and the swing has
+ *  shrunk past it. The two far corners are shared end-to-end: the top
+ *  row's last west book and the left row's first north book meet at
+ *  weave spacing (0.10) on the NW arc, likewise NE. */
+interface PileCluster { from: number; dir: 1 | -1; count: number }
+const PILE_CLUSTERS: Record<string, PileCluster[]> = {
+  // the human's books flank his fan on the two near arcs (both in frame)
+  'bottom:4': [{ from: 0.62, dir: 1, count: 7 }, { from: -0.62, dir: -1, count: 6 }],
+  // north cluster on the west rim's frame-safe north stretch, the rest
+  // toward its right-hand (SW) corner
+  'left:4': [{ from: -0.61, dir: -1, count: 7 }, { from: 0.7, dir: 1, count: 6 }],
+  // main row west along the north rim; late books east, filling toward
+  // the axis as the fan empties
+  'top:4': [{ from: 0.86, dir: 1, count: 8 }, { from: -0.78, dir: 1, count: 5 }],
+  'right:4': [{ from: 0.78, dir: 1, count: 13 }],
+  'bottom:3': [{ from: 0.62, dir: 1, count: 9 }, { from: -0.62, dir: -1, count: 8 }],
+  // 3-player diagonals: one row each — left heads south down the west
+  // rim, right heads north-west along the north rim
+  'left:3': [{ from: 1.46, dir: 1, count: 17 }],
+  'right:3': [{ from: 1.46, dir: 1, count: 17 }],
+};
+
+/** Rim-path arclength of a book slot: the seat's axis point plus the
+ *  cluster offset for that slot. */
+function pileSlotS(pos: SeatPos, n: number, trickIdx: number): number {
+  const step = n === 3 ? BOOK_STEP_3P : BOOK_STEP;
+  const clusters = PILE_CLUSTERS[`${pos}:${n}`] ?? PILE_CLUSTERS[`${pos}:4`]!;
+  let k = trickIdx;
+  for (const c of clusters) {
+    if (k < c.count) return rimAxisS(pos, n) + c.from + k * c.dir * step;
+    k -= c.count;
+  }
+  const last = clusters[clusters.length - 1]!;
+  return rimAxisS(pos, n) + last.from + (last.count + k) * last.dir * step;
+}
+
+/** The felt boundary as a walkable loop: 4 straights + 4 corner arcs,
+ *  traversed N→W→S→E (from the north axis point, west first) — the
+ *  direction in which every seat's right-hand corner lies. */
+type RimSeg =
+  | { kind: 'line'; ax: number; az: number; bx: number; bz: number; len: number; s0: number }
+  | { kind: 'arc'; cx: number; cz: number; r: number; a0: number; a1: number; len: number; s0: number };
+const RIM_SEGS: RimSeg[] = (() => {
+  const hx = FELT.hx, hz = FELT.hz, r = FELT.r;
+  const out: RimSeg[] = [];
+  let s0 = 0;
+  const line = (ax: number, az: number, bx: number, bz: number) => {
+    const len = Math.hypot(bx - ax, bz - az);
+    out.push({ kind: 'line', ax, az, bx, bz, len, s0 }); s0 += len;
+  };
+  const arc = (cx: number, cz: number, a0: number, a1: number) => {
+    const len = Math.abs(a1 - a0) * r;
+    out.push({ kind: 'arc', cx, cz, r, a0, a1, len, s0 }); s0 += len;
+  };
+  line(0, -hz, -(hx - r), -hz); // north straight, west half
+  arc(-(hx - r), -(hz - r), -Math.PI / 2, -Math.PI); // NW corner
+  line(-hx, -(hz - r), -hx, hz - r); // west straight
+  arc(-(hx - r), hz - r, Math.PI, Math.PI / 2); // SW corner
+  line(-(hx - r), hz, hx - r, hz); // south straight
+  arc(hx - r, hz - r, Math.PI / 2, 0); // SE corner
+  line(hx, hz - r, hx, -(hz - r)); // east straight
+  arc(hx - r, -(hz - r), 0, -Math.PI / 2); // NE corner
+  line(hx - r, -hz, 0, -hz); // north straight, east half
+  return out;
+})();
+export const RIM_PATH_LEN = RIM_SEGS.reduce((a, s) => a + s.len, 0);
+
+/** Point + frame at path distance sAbs along the rim loop. The outward
+ *  normal (away from table centre) is (-tz, tx) for this direction. */
+function rimFrameAt(sAbs: number): { p: Vector3; normal: Vector3 } {
+  let s = ((sAbs % RIM_PATH_LEN) + RIM_PATH_LEN) % RIM_PATH_LEN;
+  for (const seg of RIM_SEGS) {
+    const local = Math.min(seg.len, Math.max(0, s - seg.s0));
+    if (s <= seg.s0 + seg.len || seg === RIM_SEGS[RIM_SEGS.length - 1]) {
+      if (seg.kind === 'line') {
+        const t = seg.len ? local / seg.len : 0;
+        const dx = seg.bx - seg.ax, dz = seg.bz - seg.az;
+        const dl = Math.hypot(dx, dz) || 1;
+        return {
+          p: new Vector3(seg.ax + dx * t, 0, seg.az + dz * t),
+          normal: new Vector3(-(dz / dl), 0, dx / dl),
+        };
+      }
+      const dir = Math.sign(seg.a1 - seg.a0);
+      const a = seg.a0 + (dir * local) / seg.r;
+      const tx = -Math.sin(a) * dir, tz = Math.cos(a) * dir;
+      return {
+        p: new Vector3(seg.cx + seg.r * Math.cos(a), 0, seg.cz + seg.r * Math.sin(a)),
+        normal: new Vector3(-tz, 0, tx),
+      };
+    }
+  }
+  return { p: new Vector3(0, 0, -FELT.hz), normal: new Vector3(0, 0, -1) };
+}
+
+/** Arclength of the rim point facing the seat (the support point of the
+ *  felt boundary in the seat's direction; ties on a straight resolve to
+ *  the point nearest the seat's axis line). */
+function rimAxisS(pos: SeatPos, n: number): number {
+  const d = seatDir(pos, n);
+  const cross = (ux: number, uz: number, vx: number, vz: number) => ux * vz - uz * vx;
+  let bestS = 0, bestDot = -Infinity, bestPerp = Infinity;
+  const consider = (x: number, z: number, s: number) => {
+    const dot = x * d.x + z * d.z;
+    const perp = Math.abs(cross(x, z, d.x, d.z));
+    if (dot > bestDot + 1e-9 || (Math.abs(dot - bestDot) <= 1e-9 && perp < bestPerp)) {
+      bestDot = dot; bestPerp = perp; bestS = s;
+    }
+  };
+  for (const seg of RIM_SEGS) {
+    if (seg.kind === 'line') {
+      const dx = seg.bx - seg.ax, dz = seg.bz - seg.az;
+      const along = dx * d.x + dz * d.z;
+      if (Math.abs(along) < 1e-9) {
+        const cd = cross(dx, dz, d.x, d.z);
+        let t = cd !== 0 ? -cross(seg.ax, seg.az, d.x, d.z) / cd : 0;
+        t = Math.min(1, Math.max(0, t));
+        consider(seg.ax + dx * t, seg.az + dz * t, seg.s0 + t * seg.len);
+      } else {
+        const t = along > 0 ? 1 : 0;
+        consider(seg.ax + dx * t, seg.az + dz * t, seg.s0 + t * seg.len);
+      }
+    } else {
+      for (const a of [seg.a0, seg.a1]) {
+        consider(seg.cx + seg.r * Math.cos(a), seg.cz + seg.r * Math.sin(a), seg.s0 + Math.abs(a - seg.a0) * seg.r);
+      }
+      let th = Math.atan2(d.z, d.x);
+      const lo = Math.min(seg.a0, seg.a1), hi = Math.max(seg.a0, seg.a1);
+      while (th < lo - Math.PI) th += 2 * Math.PI;
+      while (th > hi + Math.PI) th -= 2 * Math.PI;
+      if (th >= lo && th <= hi) {
+        consider(seg.cx + seg.r * d.x, seg.cz + seg.r * d.z, seg.s0 + Math.abs(th - seg.a0) * seg.r);
+      }
+    }
+  }
+  return bestS;
+}
+
+
 /** Centre-to-centre distance along the rim between adjacent books. Under a
  * card's short width (0.23 at pile scale), so neighbours always overlap a
  * little -- the woven railroad-tie read. 13 books span ~2.3m this way,
@@ -255,35 +409,27 @@ export function pileRise(globalIdx: number): number {
   return i <= PILE_STEP_KNEE ? i * PILE_STEP : PILE_STEP_KNEE * PILE_STEP + (i - PILE_STEP_KNEE) * PILE_STEP_LATE;
 }
 
-/** The rim point for a seat's book row (before per-book slots), from the
- * actual felt/rail geometry. Round 3: the centre sits PILE_EDGE_INSET
- * (side seats: PILE_EDGE_INSET_SIDE, plus the PILE_TANGENT_SIDE slide
- * along the rim) inside the felt edge — down-table of the seats' fans
- * and hands per the owner's 2026-11-01 direction, clear of every
- * trick landing, on screen (layout.test guards the projections). */
+/** The start point of a seat's book row (slot 0's centre), on the rim
+ * path — clear of the seat's fan, on the felt/rail seam. The full row
+ * follows the rim from here (pileSpot, PILE_CLUSTERS); on screen
+ * (layout.test guards the projections) and clear of every trick
+ * landing (book-piles-edge.test.ts). */
 export function pileEdgePoint(pos: SeatPos, n: number): Vector3 {
-  const d = seatDir(pos, n);
-  const side = pos === 'left' || pos === 'right';
-  const edge = edgePoint(d, side ? PILE_EDGE_INSET_SIDE : PILE_EDGE_INSET);
-  const tangent = new Vector3(d.z, 0, -d.x); // along the rim, toward the seat's right
-  return edge.add(tangent.multiplyScalar(side ? PILE_TANGENT_SIDE : PILE_TANGENT));
+  return rimFrameAt(pileSlotS(pos, n, 0)).p;
 }
 
 /** Odd books (1st, 3rd, ...): vertical (long edge front-to-back). Even books: horizontal (rotated 90°). The alternating weave. Demetrius 2026-10-19. */
 export const bookIsVertical = (trickIdx: number): boolean => trickIdx % 2 === 0;
 
 export function pileSpot(pos: SeatPos, n: number, trickIdx: number, cardIdx: number, jitter: number): Xform {
-  const d = seatDir(pos, n);
-  const p = pileEdgePoint(pos, n);
-  const tangent = new Vector3(d.z, 0, -d.x); // along the rim, toward the seat's right
-  const slots = n === 3 ? 17 : BOOKS_PER_HAND;
-  const step = n === 3 ? BOOK_STEP_3P : BOOK_STEP;
-  const along = (trickIdx - (slots - 1) / 2) * step;
-  const c = p.clone().add(tangent.multiplyScalar(along));
-  // Odd (vertical) books: long axis radial (front-to-back, the player's
-  // facing). Even (horizontal) books: rotated 90 degrees, long axis along
-  // the rim. The old single-stack yaw was the horizontal one for everyone.
-  const yaw = yawOf(d) + (bookIsVertical(trickIdx) ? 0 : Math.PI / 2);
+  const frame = rimFrameAt(pileSlotS(pos, n, trickIdx));
+  const c = frame.p;
+  // Odd (vertical) books: long axis radial (front-to-back, across the
+  // rim). Even (horizontal) books: rotated 90 degrees, long axis along
+  // the rim. The frame is the rim's local frame, so the weave follows
+  // the rim around the corners. The old single-stack yaw was the
+  // horizontal one for everyone.
+  const yaw = yawOf(frame.normal) + (bookIsVertical(trickIdx) ? 0 : Math.PI / 2);
   // Even (horizontal) books sit higher so they layer cleanly over odd (vertical) books in the weave. Demetrius 2026-10-19.
   const weaveLift = bookIsVertical(trickIdx) ? 0 : 0.008;
   return xf(
