@@ -3126,6 +3126,26 @@ button.mode-pick::after, button.quiet-row::after { content: ''; position: absolu
 .ch-bar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
 .ch-main small { color: var(--muted); font-size: 12px; }
 .ch-claimed { color: var(--gold); font-size: 13px; font-weight: 700; }
+/* Claim celebration (owner, 2026-11-01): a claim lands IN PLACE — the row
+   swells gold and settles into its Claimed state, the reward line affirms
+   (gold, with the drawn coin beside the figure), the Claimed label pops
+   in — and nothing on the page moves or reloads. Signature pacing, not
+   snappy; reduced motion settles instantly with no animation at all. */
+.challenge.just-claimed { animation: ch-celebrate 1.5s ease-out; }
+.challenge .ch-main small.affirm { color: var(--gold); font-weight: 700; }
+.ch-claimed.in { animation: ch-claimed-in .45s ease-out; }
+@keyframes ch-celebrate {
+  0% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb), 0); }
+  25% { box-shadow: 0 0 18px 2px rgba(var(--gold-rgb), .45); background: rgba(var(--gold-rgb), .22); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb), 0); }
+}
+@keyframes ch-claimed-in {
+  from { opacity: 0; transform: translateX(6px) scale(.9); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .challenge.just-claimed, .ch-claimed.in { animation: none; }
+}
 /* ESPN-style stat table (owner, 2026-10-20): dense label/value rows, subtle
    striping, numbers right-aligned and tabular. Replaces the tile grids. */
 .stat-table { border: 1px solid rgba(255,255,255,.08); border-radius: 10px; overflow: hidden; margin-bottom: 6px; }

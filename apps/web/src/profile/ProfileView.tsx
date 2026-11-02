@@ -75,7 +75,7 @@ import { noteDailyBonus } from '../dailyBonus';
 import { accountUidOf, AvatarCircle, compressAvatarFile, forgetAvatar, useAvatar, validateAvatarDataUrl } from '../avatar';
 import { BADGES } from '../badges';
 import { offlineStats } from '../offlineStats';
-import { RepBlock } from '../RepBlock';
+import { CoinIcon, RepBlock } from '../RepBlock';
 import { PlayerCard, type PlayerCardData } from './PlayerCard';
 import { CardEditor } from './CardEditor';
 import { TaglineText } from '../tagline';
@@ -283,18 +283,32 @@ function RankCard({ title, rank }: { title: string; rank: SeasonRank }) {
   );
 }
 
-function ChallengeRow({ c, onClaim }: { c: Challenge; onClaim: (id: string) => void }) {
+function ChallengeRow({ c, onClaim, busy = false, celebrating = false }: {
+  c: Challenge;
+  onClaim: (id: string) => void;
+  /** this row's claim POST is in flight — the button stays pressed and
+   *  disabled, so the row can't be double-claimed (the server remains
+   *  authoritative either way) */
+  busy?: boolean;
+  /** the claim just landed: the row celebrates briefly, then reads exactly
+   *  like every other Claimed row */
+  celebrating?: boolean;
+}) {
   const done = c.progress >= c.target;
   const pct = Math.min(100, Math.round((c.progress / Math.max(1, c.target)) * 100));
   return (
-    <div className={`challenge ${done ? 'done' : ''}`}>
+    <div className={`challenge ${done ? 'done' : ''}${celebrating ? ' just-claimed' : ''}`} data-cid={c.id}>
       <div className="ch-main">
         <b>{c.title}</b>
         <div className="ch-bar"><i style={{ width: `${pct}%` }} /></div>
-        <small>{Math.min(c.progress, c.target)}/{c.target} · +{c.xp} XP{c.coins ? ` · +${c.coins} coins` : ''}</small>
+        <small className={celebrating ? 'affirm' : undefined}>{Math.min(c.progress, c.target)}/{c.target} · +{c.xp} XP{c.coins ? <> · +{c.coins} coins{celebrating && <> <CoinIcon size={12} /></>}</> : ''}</small>
       </div>
-      {done && !c.claimed && <button type="button" className="primary small" onClick={() => onClaim(c.id)}>Claim</button>}
-      {c.claimed && <span className="ch-claimed">Claimed</span>}
+      {done && !c.claimed && (
+        <button type="button" className="primary small" disabled={busy} onClick={() => onClaim(c.id)}>
+          {busy ? 'Claiming…' : 'Claim'}
+        </button>
+      )}
+      {c.claimed && <span className={`ch-claimed${celebrating ? ' in' : ''}`}>Claimed</span>}
     </div>
   );
 }
@@ -306,7 +320,12 @@ function ChallengeRow({ c, onClaim }: { c: Challenge; onClaim: (id: string) => v
  *  Everyone else sees pure content. Copy stays truthful by construction:
  *  the server derives `active` (earn season counts, a completed set
  *  lights it, a lapsed one darkens it) and this renders its verdict. */
-function SeasonSection({ season, onClaim }: { season: SeasonChallenges; onClaim: (id: string) => void }) {
+function SeasonSection({ season, onClaim, claimingIds, justClaimedIds }: {
+  season: SeasonChallenges;
+  onClaim: (id: string) => void;
+  claimingIds?: ReadonlySet<string>;
+  justClaimedIds?: ReadonlySet<string>;
+}) {
   const daysLeft = season.endsAt != null ? Math.max(0, Math.ceil((season.endsAt - Date.now()) / 86_400_000)) : null;
   const bj = season.bigJoker ?? null;
   return (
@@ -321,7 +340,7 @@ function SeasonSection({ season, onClaim }: { season: SeasonChallenges; onClaim:
             : <>👑 <b>Big Joker</b> — crown's dark. Finish this season's set to light it back up.</>}
         </p>
       )}
-      {season.challenges.map((c) => <ChallengeRow key={c.id} c={c} onClaim={onClaim} />)}
+      {season.challenges.map((c) => <ChallengeRow key={c.id} c={c} onClaim={onClaim} busy={claimingIds?.has(c.id)} celebrating={justClaimedIds?.has(c.id)} />)}
     </section>
   );
 }
@@ -430,10 +449,23 @@ export function ProfileView({ host, name, id }: {
   const [p, setP] = useState<SocialProfileData | null | 'missing'>(null);
   const [cred, setCred] = useState<CredData | null>(null);
   const [credErr, setCredErr] = useState<string | null>(null);
-  const [claiming, setClaiming] = useState<string | null>(null);
+  /* Claims are per-row state now (owner, 2026-11-01: claiming a reward
+   *  "looks like the whole page refreshes" and the scroll jumped back to
+   *  the top — the old claim ran reload(), whose reloadTick nulled the
+   *  social payload and swapped this whole view for its Loading stub).
+   *  A claim now updates its own row in place; see claim() below. */
+  const [claimingIds, setClaimingIds] = useState<ReadonlySet<string>>(new Set());
+  /** Rows inside their brief post-claim celebration beat. */
+  const [justClaimedIds, setJustClaimedIds] = useState<ReadonlySet<string>>(new Set());
+  const claimsInFlight = useRef(0);
+  /** Synchronous twin of claimingIds: a second tap in the same tick (before
+   *  the disabled state renders) still meets the guard. */
+  const claimingRef = useRef<Set<string>>(new Set());
+  const celebrateTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [claimErr, setClaimErr] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const reload = () => setReloadTick((t) => t + 1);
+  useEffect(() => () => { celebrateTimers.current.forEach((t) => clearTimeout(t)); }, []);
   // Profile picture (Demetrius 2026-10-19): upload stands in for the camera at the table.
   const [uploading, setUploading] = useState(false);
   const [picBusy, setPicBusy] = useState(false);
@@ -608,12 +640,98 @@ export function ProfileView({ host, name, id }: {
     } catch (e) { setRegionErr((e as Error).message); } finally { setRegionBusy(false); }
   };
 
-  const claim = async (cid: string) => {
-    setClaiming(cid); setClaimErr(null);
+  /** Fold one landed claim into the local payload: the row flips to
+   *  claimed and the header numbers (XP total + into-level, coin balance)
+   *  gain the grant the server just confirmed. This is what the player
+   *  sees the instant the claim lands; the exact server-derived figures
+   *  (level-ups, the earn multiplier) arrive with the quiet reconcile
+   *  below. Monotonic by construction — a challenge never un-claims here
+   *  and the balances never step backwards. */
+  const applyClaimLocally = (cid: string, grant: { xp: number; coins: number }) => {
+    setCred((prev) => {
+      if (!prev?.challenges) return prev;
+      const mark = (list: Challenge[]) => list.map((c) => (c.id === cid && !c.claimed ? { ...c, claimed: true } : c));
+      return {
+        ...prev,
+        challenges: {
+          ...prev.challenges,
+          daily: mark(prev.challenges.daily),
+          weekly: mark(prev.challenges.weekly),
+          season: prev.challenges.season
+            ? { ...prev.challenges.season, challenges: mark(prev.challenges.season.challenges) }
+            : prev.challenges.season,
+        },
+        level: { ...prev.level, xp: prev.level.xp + grant.xp, xpIntoLevel: prev.level.xpIntoLevel + grant.xp },
+        coins: { balance: prev.coins.balance + grant.coins },
+      };
+    });
+  };
+
+  /** Quiet reconcile after a burst of claims settles: refetch ONLY the
+   *  cred payload and apply it in place. Nothing is nulled and the tree's
+   *  shape and keys never change, so the scroller — and the player's
+   *  place in the list — are untouched (the old reload() bumped
+   *  reloadTick, which nulled the social payload and remounted this
+   *  whole view at scrollTop 0). A read issued before a just-landed
+   *  claim can lag it, so a locally-claimed row is never un-claimed by
+   *  the merge and the header numbers never step backwards. Silent on
+   *  failure: local state already reflects the server's verdict, and
+   *  the next natural load reconciles. */
+  const reconcileCred = async () => {
     try {
-      await api<{ ok: boolean }>('/api/challenges/' + cid + '/claim', { method: 'POST' });
-      reload();
-    } catch (e) { setClaimErr((e as Error).message); } finally { setClaiming(null); }
+      const fresh = await api<CredData>('/api/profile/me');
+      setCred((prev) => {
+        if (!prev || fresh.user.id !== prev.user.id) return prev;
+        if (!fresh.challenges || !prev.challenges) return fresh;
+        const keepClaimed = (freshList: Challenge[], localList: Challenge[]) =>
+          freshList.map((c) => {
+            const local = localList.find((l) => l.id === c.id);
+            return local?.claimed && !c.claimed ? { ...c, claimed: true } : c;
+          });
+        return {
+          ...fresh,
+          challenges: {
+            ...fresh.challenges,
+            daily: keepClaimed(fresh.challenges.daily, prev.challenges.daily),
+            weekly: keepClaimed(fresh.challenges.weekly, prev.challenges.weekly),
+            season: fresh.challenges.season && prev.challenges.season
+              ? { ...fresh.challenges.season, challenges: keepClaimed(fresh.challenges.season.challenges, prev.challenges.season.challenges) }
+              : fresh.challenges.season,
+          },
+          level: { ...fresh.level, xp: Math.max(fresh.level.xp, prev.level.xp), xpIntoLevel: Math.max(fresh.level.xpIntoLevel, prev.level.xpIntoLevel) },
+          coins: { balance: Math.max(fresh.coins.balance, prev.coins.balance) },
+        };
+      });
+    } catch { /* silent by design — see above */ }
+  };
+
+  /** Claim one challenge reward IN PLACE (owner, 2026-11-01): the row
+   *  celebrates into its Claimed state, the balances tick up, and the
+   *  page never reloads or gives up the player's scroll position — so
+   *  several rewards can be claimed in a row, top to bottom. A failure
+   *  stays inline in the tab and leaves the row claimable. */
+  const claim = async (cid: string) => {
+    if (claimingRef.current.has(cid)) return;
+    claimingRef.current.add(cid);
+    setClaimErr(null);
+    claimsInFlight.current += 1;
+    setClaimingIds((prev) => new Set(prev).add(cid));
+    try {
+      const grant = await api<{ ok: boolean; xp: number; coins: number }>('/api/challenges/' + cid + '/claim', { method: 'POST' });
+      applyClaimLocally(cid, grant);
+      setJustClaimedIds((prev) => new Set(prev).add(cid));
+      celebrateTimers.current.set(cid, setTimeout(() => {
+        celebrateTimers.current.delete(cid);
+        setJustClaimedIds((prev) => { const next = new Set(prev); next.delete(cid); return next; });
+      }, 1600));
+    } catch (e) {
+      setClaimErr((e as Error).message);
+    } finally {
+      claimingRef.current.delete(cid);
+      claimsInFlight.current -= 1;
+      setClaimingIds((prev) => { const next = new Set(prev); next.delete(cid); return next; });
+      if (claimsInFlight.current === 0) void reconcileCred();
+    }
   };
 
   /* ------------------------------------------------------------ states */
@@ -812,11 +930,10 @@ export function ProfileView({ host, name, id }: {
                 <p className="ch-earned" data-testid="challenges-earned">Earned: <b>{earnedXp} XP</b>{earnedCoins > 0 && <> · <b>{earnedCoins} coins</b></>}</p>
               )}
               <h3>Daily</h3>
-              {cred.challenges.daily.map((c) => <ChallengeRow key={c.id} c={c} onClaim={claim} />)}
+              {cred.challenges.daily.map((c) => <ChallengeRow key={c.id} c={c} onClaim={claim} busy={claimingIds.has(c.id)} celebrating={justClaimedIds.has(c.id)} />)}
               <h3>Weekly</h3>
-              {cred.challenges.weekly.map((c) => <ChallengeRow key={c.id} c={c} onClaim={claim} />)}
-              {cred.challenges.season && <SeasonSection season={cred.challenges.season} onClaim={claim} />}
-              {claiming && <p className="ch-claiming">Claiming…</p>}
+              {cred.challenges.weekly.map((c) => <ChallengeRow key={c.id} c={c} onClaim={claim} busy={claimingIds.has(c.id)} celebrating={justClaimedIds.has(c.id)} />)}
+              {cred.challenges.season && <SeasonSection season={cred.challenges.season} onClaim={claim} claimingIds={claimingIds} justClaimedIds={justClaimedIds} />}
               {claimErr && <span className="prof-pic-err" role="alert">{claimErr}</span>}
             </>
           );
