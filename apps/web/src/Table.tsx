@@ -2527,7 +2527,9 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
   // `legal` is empty while the play is in flight. The badge still needs the cards that were legal.
   // While the presentation gate holds (his turn in state, the table not there yet), the count
   // stays 0: the YOUR TURN badge and the lit cards arrive together, never one before the other.
-  const playableCount = st.phase === 'playing' ? (presented ? view.legal.filter((c) => (hand ?? []).includes(c)).length : 0) : legal.length;
+  // The one-card free drop is exempt from that gate (turnPresentation.ts), so its count follows
+  // the same exemption: the badge arrives with the lit card, not a beat behind it.
+  const playableCount = st.phase === 'playing' ? ((presented || dropOpenView) ? view.legal.filter((c) => (hand ?? []).includes(c)).length : 0) : legal.length;
   const live = turnView({
     turn: localTurn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx,
     viewerSeat: HUMAN, spectating, legalCount: playableCount, selected: !!selected,

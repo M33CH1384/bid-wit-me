@@ -27,11 +27,20 @@ import type { Card, GameState } from '@spades/rules';
  * highlightLegal. Every surface (3D fan, felt hand, accessible hand,
  * drag/tap input) consumes that one gated set, so they can never disagree.
  *
- * The final-trick throw-in is the one deliberate exception: it is the
- * owner's own turn-free window (2026-10-19) — throw your last card in
- * WHILE the trick is landing — so an out-of-turn throw-in set is never
- * held back by presentation. A player who is the turn seat in that same
- * window waits for presentation like any other turn.
+ * The last-card free drop is the one deliberate exception: it is the
+ * owner's own turn-free window (2026-10-19, generalized 2026-11-02 to
+ * every trick) — throw your last card in WHILE the table is catching
+ * up — so a one-card set is never held back by presentation. The
+ * exemption follows the seat's one-card eligibility, not the turn
+ * pointer (owner device report, 2026-11-03: "I'm still having to wait
+ * to throw out the last card but the bots can go out of order"): the
+ * first cut exempted only the out-of-turn case, so the moment the
+ * pointer reached the one-card player — leading the final trick at
+ * trick open, or a bot's drop advancing the turn while its card was
+ * still flying — the highlight collapsed until certification, while
+ * bot drops (which never consult this gate) landed in state inside
+ * that same window. A multi-card turn is untouched: it still waits
+ * for presentation like any other turn.
  */
 
 /**
@@ -64,8 +73,9 @@ export function highlightLegal(o: {
   if (o.phase !== 'playing') return [];
   if (!o.myTurn && !o.dropOpen) return [];
   // His turn waits for the table to reach it. The free drop does not: it is
-  // defined by the plays still landing.
-  if (o.myTurn && !o.presented) return [];
+  // defined by the plays still landing — and the exemption holds whether
+  // or not the pointer has reached the one-card seat yet (2026-11-03).
+  if (o.myTurn && !o.presented && !o.dropOpen) return [];
   const hand = o.hand ?? [];
   return o.viewLegal.filter((c) => hand.includes(c));
 }

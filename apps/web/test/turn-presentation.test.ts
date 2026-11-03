@@ -78,8 +78,15 @@ describe('the playable highlight waits for the table', () => {
           hisTurns++;
           // Presented and his turn: exactly the engine's legal plays for him.
           expect(shown).toEqual(legalPlays(st, HUMAN));
-          // The owner's shape: same state, presentation still pending -> nothing lit.
-          expect(tableLegal(st, false)).toEqual([]);
+          if (dropOpenView(st)) {
+            // Owner, 2026-11-03: the one-card seat is exempt even when the
+            // pointer is on him — the drop window follows the seat, not
+            // the turn, so his last card is live before presentation too.
+            expect(tableLegal(st, false)).toEqual(shown);
+          } else {
+            // The owner's shape: same state, presentation still pending -> nothing lit.
+            expect(tableLegal(st, false)).toEqual([]);
+          }
         } else if (dropOpenView(st)) {
           dropStates++;
           // The deliberate exception: the last-card free drop is turn-free by
@@ -125,6 +132,63 @@ describe('the playable highlight waits for the table', () => {
     expect(viewFor(two, HUMAN).legal).toEqual([]);
     expect(tableLegal(two, false)).toEqual([]);
     expect(tableLegal(two, true)).toEqual([]);
+  });
+
+  it('the 2026-11-03 defect: the one-card TURN seat is live before presentation too — a two-card turn seat still waits', () => {
+    // The owner's device report: down to one card as the turn reaches him
+    // (final-trick lead, or a bot's drop advancing the pointer while its
+    // card is still flying), his card stayed dark until the Scene
+    // certified, while the bots' drops landed in state in that window.
+    const dealt = dealAndBid('offturn-drop-turn');
+    const craftTurn = (humanHand: string[]): GameState => ({
+      ...dealt,
+      hands: [humanHand, dealt.hands[1]!.slice(0, 3), dealt.hands[2]!.slice(0, 2), dealt.hands[3]!.slice(0, 3)] as GameState['hands'],
+      trick: { leader: 0, plays: [], winner: null },
+      turn: 0,
+      tricks: Array.from({ length: 5 }, () => ({ leader: 0, plays: [], winner: 0 })),
+      tricksWon: [0, 0, 0, 0],
+      spadesBroken: true,
+    });
+    const one = craftTurn(['7H']);
+    expect(dropOpenView(one)).toBe(true);
+    expect(viewFor(one, HUMAN).legal).toEqual(['7H']);
+    // His turn, presentation NOT certified: the card is lit anyway.
+    expect(tableLegal(one, false)).toEqual(['7H']);
+    expect(tableLegal(one, true)).toEqual(['7H']);
+    // Two cards on his turn: the 2026-10-30 gate keeps its full force.
+    const two = craftTurn(['7H', '8H']);
+    expect(dropOpenView(two)).toBe(false);
+    expect(viewFor(two, HUMAN).legal).toEqual(['7H', '8H']);
+    expect(tableLegal(two, false)).toEqual([]);
+    expect(tableLegal(two, true)).toEqual(['7H', '8H']);
+  });
+
+  it('final trick of a dealt hand: his lead card is live at trick open, before the sweep certifies', () => {
+    // Drive dealt hands until the human leads (or is reached on) the final
+    // trick holding exactly one card, with the previous trick's collection
+    // still presenting — the exact frame of the owner's report.
+    let found = 0;
+    for (const seed of ['offturn-final-1', 'offturn-final-2', 'offturn-final-3', 'offturn-final-4', 'offturn-final-5', 'offturn-final-6']) {
+      let st = dealAndBid(seed);
+      let guard = 0;
+      while (st.phase === 'playing') {
+        if (++guard > 60) throw new Error('hand did not finish');
+        if (st.tricks.length === 12 && st.turn === HUMAN) {
+          found++;
+          expect((viewFor(st, HUMAN).hand ?? []).length).toBe(1);
+          expect(dropOpenView(st)).toBe(true);
+          const card = legalPlays(st, HUMAN);
+          expect(card.length).toBe(1);
+          // Presentation pending (pause just released, sweep still
+          // running): the card is already his to throw.
+          expect(tableLegal(st, false)).toEqual(card);
+          expect(tableLegal(st, true)).toEqual(card);
+        }
+        const seat = st.turn!;
+        st = applyAction(st, { type: 'play', seat, card: legalPlays(st, seat)[0]! });
+      }
+    }
+    expect(found).toBeGreaterThan(0);
   });
 
   it('the owner’s exact timing shape: state advanced to his turn, the advancing play still presenting', () => {
