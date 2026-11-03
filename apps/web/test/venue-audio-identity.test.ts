@@ -38,7 +38,7 @@ describe('venue audio identity', () => {
     for (const v of VENUES) expect(VENUE_DEFS[v].bed, v).toBe(audioIdentityForVenue(v)!.bed);
   });
 
-  it("only The Pj's, the Speakeasy, the Barbershop, Grandma's Kitchen, the Backyard Cookout, the Church Basement, the Rooftop, the Yacht and the Beach pin their music, and their tracks are real", () => {
+  it("only The Pj's, the Speakeasy, the Barbershop, Grandma's Kitchen, the Backyard Cookout, the Church Basement, the Rooftop, the Yacht, the Beach and the Mansion pin their music, and their tracks are real", () => {
     for (const v of VENUES) {
       const id = audioIdentityForVenue(v)!;
       // The Pj's pin is a closed rotation of five (the original four of
@@ -47,9 +47,10 @@ describe('venue audio identity', () => {
       // Barbershop's and Grandma's are closed rotations of three; the
       // Church Basement's is a closed rotation of five; the Rooftop's is
       // a closed rotation of four; the Yacht's and the Beach's are
-      // closed rotations of six (owner, 2026-10-30 / 2026-10-31 /
-      // 2026-11-01 / 2026-11-02 / 2026-11-03): the venue plays these
-      // at random and never draws from the general pool.
+      // closed rotations of six; the Mansion's is a closed rotation of
+      // five (owner, 2026-10-30 / 2026-10-31 / 2026-11-01 / 2026-11-02 /
+      // 2026-11-03): the venue plays these at random and never draws
+      // from the general pool.
       if (v === 'blockAfterDark') expect(id.music.pin).toEqual(['soul-epic', 'overreach', 'no-quit', 'busted-jazz', 'my-deal']);
       else if (v === 'speakeasy') expect(id.music.pin).toEqual(['spy-glass', 'night-on-the-docks-sax', 'dances-and-dames', 'covert-affair']);
       else if (v === 'barbershop') expect(id.music.pin).toEqual(['funk-trunk', 'soul-sync', 'c-funk']);
@@ -59,6 +60,7 @@ describe('venue audio identity', () => {
       else if (v === 'rooftop') expect(id.music.pin).toEqual(['tide-turns', 'feeling', 'the-road', 'roof-tops']);
       else if (v === 'yacht') expect(id.music.pin).toEqual(['west-coast', 'put-me-down', 'all-out', 'ocean-memory', 'tetrapod', 'ocean-breeze']);
       else if (v === 'beach') expect(id.music.pin).toEqual(['before-everything', 'down-time', 'yet-again', 'the-best-of-times', 'waiting-around', 'jazz-for-the-solstice']);
+      else if (v === 'mansion') expect(id.music.pin).toEqual(['ghost-town', 'backbay-lounge', 'thief-in-the-night', 'hard-boiled', 'phonk-ish']);
       else expect(id.music.pin, v).toBeUndefined();
     }
   });

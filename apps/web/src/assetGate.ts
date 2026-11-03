@@ -271,6 +271,22 @@ export const YACHT_BED_URL = '/audio/ambience/yacht-bed.mp3';
  * lazily by the engine after the bed starts.
  */
 export const BEACH_BED_URL = '/audio/ambience/beach-bed.mp3';
+/**
+ * The Mansion's recorded night bed (owner, 2026-11-03): gated exactly
+ * like the Church Basement's bed — ONE shared unit for both surfaces
+ * the bed serves: the engine fetches it at every Mansion table, the
+ * regular venue and story Stop 8 alike (the High-Rise stop plays the
+ * same 'mansion' bed in the same penthouse room — the penthouse
+ * mounts for every mansion table at High — and the stop carries no
+ * bed override in STORY_STOP_AUDIO, only its 'danger' mood), so at
+ * High the loader's promise covers it on both compositions; at Low
+ * it streams in behind the loader as music always has. There is no
+ * seam exception: Stop 8 mounts the Mansion's own room and hears the
+ * same bed. The bed's event one-shots (ice in a glass, glass clink,
+ * pour, elevator doors, footsteps) deliberately do NOT gate:
+ * optional life, loaded lazily by the engine after the bed starts.
+ */
+export const MAN_BED_URL = '/audio/ambience/mansion-bed.mp3';
 export function roomAudioUrls(
   venue: string,
   quality: 'high' | 'low',
@@ -286,6 +302,7 @@ export function roomAudioUrls(
   if (venue === 'rooftop') return [{ label: 'ambience bed (Rooftop)', url: ROO_BED_URL }];
   if (venue === 'yacht') return [{ label: 'ambience bed (Yacht)', url: YACHT_BED_URL }];
   if (venue === 'beach') return [{ label: 'ambience bed (Beach)', url: BEACH_BED_URL }];
+  if (venue === 'mansion') return [{ label: 'ambience bed (Mansion)', url: MAN_BED_URL }];
   return [];
 }
 

@@ -323,6 +323,28 @@ export const TRACKS: Track[] = [
   { file: 'the-best-of-times', title: 'The Best Of Times', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/the-best-of-times-lofi-relaxing-mp3/' },
   { file: 'waiting-around', title: 'Waiting Around', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/waiting-around-lofi-calm/' },
   { file: 'jazz-for-the-solstice', title: 'Jazz for the Solstice', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/jazz-for-the-solstice/', credit: '"Jazz for the Solstice" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
+  // The Mansion rotation (owner, 2026-11-03): HoliznaCC0's "Ghost
+  // Town" (CC0) — dark lofi, the hushed pole — as the identity pick
+  // (the audition's named identity alternate, stepped up when the
+  // owner voted the first identity pick out), three Kevin MacLeod
+  // noir-jazz instrumentals (CC BY 4.0, via incompetech) — "Backbay
+  // Lounge" the jazz anchor, "Thief in the Night" the story
+  // register (quiet menace for Velvet & The Accountant's table),
+  // "Hard Boiled" its late-night sibling — and HoliznaCC0's
+  // "Phonk-ish" (CC0), a tight dry phonk groove, as the second
+  // hip-hop pole keeping the rotation hip-hop-forward at the back
+  // end. They join the mansion pin in spatial.ts; appended last so
+  // every existing track index keeps its meaning, exactly like the
+  // sets above. "Pantheon" stays out — the owner voted it out —
+  // and "Only Human", "Tengu", "Airport Lounge" and "Hustle" stay
+  // out as the audition's alternates, held out unplayed, exactly
+  // like "Off Days" above; this is the closed rotation the owner
+  // actually picked.
+  { file: 'ghost-town', title: 'Ghost Town', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/ghost-town-1/' },
+  { file: 'backbay-lounge', title: 'Backbay Lounge', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Backbay%20Lounge.mp3', credit: '"Backbay Lounge" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'thief-in-the-night', title: 'Thief in the Night', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Thief%20in%20the%20Night.mp3', credit: '"Thief in the Night" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'hard-boiled', title: 'Hard Boiled', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Hard%20Boiled.mp3', credit: '"Hard Boiled" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'phonk-ish', title: 'Phonk-ish', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/phonk-aura-farming/phonk-ish/' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -797,16 +819,53 @@ const BEACH_EVENT_GAIN = 2.877;
  *  far below the material's own step noise, p99 0.0231). */
 const BEACH_BED_LEAD_S = 1105 / 44100;
 const BEACH_BED_SECONDS = 64;
+/** The Mansion's recorded bed (owner sample pick, 2026-11-03): a
+ *  64.000 s seamless loop of penthouse recordings — a sealed
+ *  interior's air body, the building alive somewhere far below
+ *  behind walls, and the city's traffic held stories down under
+ *  three sides of glass, so the bed reads NIGHT and hushed,
+ *  matching the cold penthouse it plays under (SSE Library, CC0).
+ *  Deliberately no bright top layer: a sealed hall's top is
+ *  near-silence, and the room's hall reverb adds what air the
+ *  room needs. Five recorded one-shots ride over it as scheduled
+ *  events: ice dropping into a crystal tumbler, two glasses
+ *  meeting, a drink poured, the elevator arriving somewhere
+ *  off-screen, and footsteps crossing the room pushed far —
+ *  sparse, between the league rooms and the slow stops: money
+ *  sitting still, but the house is staffed. */
+const MAN_BED_URL = '/audio/ambience/mansion-bed.mp3';
+const MAN_EVENT_URLS = {
+  iceInGlass: ['/audio/ambience/mansion-event-ice-in-glass.mp3'],
+  glassClink: ['/audio/ambience/mansion-event-glass-clink.mp3'],
+  pour: ['/audio/ambience/mansion-event-pour.mp3'],
+  elevatorDoors: ['/audio/ambience/mansion-event-elevator-doors.mp3'],
+  footsteps: ['/audio/ambience/mansion-event-footsteps.mp3'],
+} as const;
+/** Event staging gain, same construction as CHU_EVENT_GAIN: the bed
+ *  file is the −16 LUFS master; the event clips keep their premaster
+ *  staging, so they play through this gain to hold the approved demo
+ *  balance (the shipped bed sits +12.71 dB over its premaster —
+ *  measured RMS on the shipped files). */
+const MANSION_EVENT_GAIN = 4.318;
+/** The bed's MP3 loop trim, from the shipped file's own measured
+ *  offsets: 1105 samples of encoder delay at 44.1 kHz ahead of
+ *  exactly 64.000 s of content — same encoder settings as The Pj's,
+ *  Speakeasy, Barbershop, Grandma's, Cookout, Church, Rooftop,
+ *  Yacht and Beach beds (the shipped file's measured seam step,
+ *  0.0002, sits far below the material's own step noise,
+ *  p99 0.0111). */
+const MAN_BED_LEAD_S = 1105 / 44100;
+const MAN_BED_SECONDS = 64;
 /** Every recorded venue's ambience-cache footprint: the bed's cache key
  *  plus every event URL the venue lazy-loads. The engine binds its decode
  *  cache to the CURRENT venue (bindAmbienceToVenue, crash-2 lane
- *  2026-11-01): nine recorded 64 s beds decode to ~23–25 MB each and the
+ *  2026-11-01): ten recorded 64 s beds decode to ~23–25 MB each and the
  *  event one-shots add ~15–25 MB across venues, and the cache used to
  *  keep ALL of it for the life of the context — up to ~150–175 MB of
  *  decoded audio accumulating in exactly the table-hopping pattern that
- *  feeds iOS process death. Synthesized beds (mansion,
- *  casino, rec, porch) decode nothing and map to no entry:
- *  switching to one evicts every recorded buffer. */
+ *  feeds iOS process death. Synthesized beds (casino, rec, porch)
+ *  decode nothing and map to no entry: switching to one evicts
+ *  every recorded buffer. */
 const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readonly string[] }>> = {
   street: { bedKey: 'pjs-bed', urls: [PJS_BED_URL, ...Object.values(PJS_EVENT_URLS).flat()] },
   jazz: { bedKey: 'spk-bed', urls: [SPK_BED_URL, ...Object.values(SPK_EVENT_URLS).flat()] },
@@ -817,6 +876,7 @@ const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readon
   rooftop: { bedKey: 'roo-bed', urls: [ROO_BED_URL, ...Object.values(ROO_EVENT_URLS).flat()] },
   yacht: { bedKey: 'yct-bed', urls: [YACHT_BED_URL, ...Object.values(YACHT_EVENT_URLS).flat()] },
   beach: { bedKey: 'bch-bed', urls: [BEACH_BED_URL, ...Object.values(BEACH_EVENT_URLS).flat()] },
+  mansion: { bedKey: 'man-bed', urls: [MAN_BED_URL, ...Object.values(MAN_EVENT_URLS).flat()] },
 };
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
@@ -4117,12 +4177,82 @@ class Engine {
     arm('torchFlare', 150, 300, true);
   }
 
+  private startMansionBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('man-bed', MAN_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, MAN_BED_LEAD_S, MAN_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...MAN_EVENT_URLS.iceInGlass, ...MAN_EVENT_URLS.glassClink, ...MAN_EVENT_URLS.pour, ...MAN_EVENT_URLS.elevatorDoors, ...MAN_EVENT_URLS.footsteps]) void this.loadAmbience(url, url);
+    this.scheduleMansionEvents();
+  }
+
+  /** Mansion life over the recorded bed: five independent randomized
+   *  timers — ice dropping into a crystal tumbler every 90–240 s,
+   *  a drink poured every 150–300 s, footsteps crossing the room
+   *  pushed far every 150–300 s, two glasses meeting every
+   *  180–360 s and the elevator arriving somewhere off-screen
+   *  every 240–480 s (samples-lane densities, 2026-11-03) —
+   *  sharing one busy gate, so an event never talks over another
+   *  (the street pattern). Sparse, between the league rooms and
+   *  the slow stops: the penthouse is hushed private wealth, but
+   *  the house is staffed. Each kind has a single recording, so
+   *  there is no variant to rotate; the spacing itself is the
+   *  variety. The timers live in venueTimers, so leaving the
+   *  venue silences the mansion, and the first fire comes a
+   *  half-interval in, once the table settles. */
+  private scheduleMansionEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the deck
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = MANSION_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof MAN_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(MAN_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('iceInGlass', 90, 240, true);
+    arm('glassClink', 180, 360, true);
+    arm('pour', 150, 300, true);
+    arm('elevatorDoors', 240, 480, true);
+    arm('footsteps', 150, 300, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
     const murmur = (k: number) => { this.vNoise('bandpass', 520, 0.7, 0.05 * k, 0.21, 0.5); this.vNoise('bandpass', 900, 1.2, 0.02 * k, 0.13, 0.6); };
     const room = (k: number) => this.vNoise('lowpass', 260, 0.5, 0.05 * k);
-    const crackle = (min: number, max: number, k = 1) => this.vEvery(min, max, (t) => { for (let i = 0; i < 3; i++) this.vBurst(t + Math.random() * 0.25, 0.012, 'highpass', 2500, 0.05 * k); });
     switch (bed) {
       case 'cookout': {
         // The Cookout's bed is a RECORDING now (owner sample pick,
@@ -4141,15 +4271,28 @@ class Engine {
         this.startCookoutBed();
         break;
       }
-      case 'mansion':
-        room(0.8);
-        this.vEvery(6, 9, (t) => { const ch = [[392, 493.88, 587.33], [349.23, 440, 523.25], [329.63, 415.3, 493.88]][Math.floor(Math.random() * 3)]!; ch.forEach((f, i) => this.tone(t + i * 0.35, f, 3.2, 'sine', 0.012, { attack: 0.6, dest: B })); }); // distant piano-ish
-        // Story Audio Pass (the High-Rise stop lives here): money-quiet — ice in a glass,
-        // a far-off elevator chime, the fireplace working under the piano.
-        crackle(1.4, 3.4, 0.35);
-        this.vEvery(13, 29, (t) => { for (let i = 0; i < 2; i++) this.vBurst(t + Math.random() * 0.22, 0.018, 'bandpass', 3600 + Math.random() * 800, 0.022); }); // ice in glasses
-        this.vEvery(47, 95, (t) => { this.tone(t, 1318.5, 0.7, 'sine', 0.006, { dest: B }); this.tone(t + 0.28, 987.77, 0.9, 'sine', 0.005, { dest: B }); }); // elevator ding, two floors away
+      case 'mansion': {
+        // The Mansion's bed is a RECORDING now (owner sample pick,
+        // 2026-11-03), replacing the synthesized stand-in (room tone,
+        // sine-tone piano triads, a synth crackle bedded under them,
+        // synth ice bursts and a two-tone sine elevator ding — the
+        // piano triads were the tell, and neither room the venue
+        // wears, the night penthouse or the marble hall, holds a
+        // piano): a seamless 64 s penthouse loop — a sealed
+        // interior's air, the building alive somewhere far below
+        // behind walls, the city's traffic held stories down under
+        // three sides of glass. The penthouse's life rides over it
+        // as one-shot events on their own timers (startMansionBed):
+        // ice into a crystal tumbler, two glasses meeting, a drink
+        // poured, the elevator arriving off-screen, footsteps
+        // crossing far. Story Stop 8 (the High-Rise) plays here:
+        // money-quiet in recordings now — its bed and events are
+        // this recording (its music stays the danger score — the
+        // stop's mood outranks the venue pin in story context, as
+        // at the Church Basement).
+        this.startMansionBed();
         break;
+      }
       case 'barbershop': {
         // The Barbershop's bed is a RECORDING now (owner sample pick,
         // 2026-10-30), replacing the synthesized stand-in (murmur wash, mains

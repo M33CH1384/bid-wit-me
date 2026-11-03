@@ -32,11 +32,11 @@ describe('version + feedback context', () => {
 import { existsSync } from 'node:fs';
 import { CC_BY_LINES, TRACKS } from '../src/audio';
 describe('music playlist', () => {
-  it('64 tracks, every file present, every CC BY track carries its attribution line', () => {
-    expect(TRACKS.length).toBe(64);
-    expect(new Set(TRACKS.map((t) => t.file)).size).toBe(64);
+  it('69 tracks, every file present, every CC BY track carries its attribution line', () => {
+    expect(TRACKS.length).toBe(69);
+    expect(new Set(TRACKS.map((t) => t.file)).size).toBe(69);
     for (const t of TRACKS) expect(existsSync(new URL(`../public/audio/music/${t.file}.mp3`, import.meta.url))).toBe(true);
     for (const t of TRACKS.filter((x) => x.license.startsWith('CC BY'))) expect(t.credit).toBeTruthy();
-    expect(CC_BY_LINES.length).toBe(39);
+    expect(CC_BY_LINES.length).toBe(42);
   });
 });
