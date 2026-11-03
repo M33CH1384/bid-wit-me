@@ -302,6 +302,27 @@ export const TRACKS: Track[] = [
   { file: 'ocean-memory', title: 'Ocean Memory', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/ocean-memory-lo-fi-chill/ocean-memory/' },
   { file: 'tetrapod', title: 'Tetrapod', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/tetrapod-lofi-relaxing-mp3/' },
   { file: 'ocean-breeze', title: 'Ocean Breeze', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/ocean-breeze-lofi-ukulele-peaceful-mp3/' },
+  // The Beach rotation (owner, 2026-11-03): five HoliznaCC0 lofi
+  // instrumentals (CC0) — "Before Everything" the hushed floor,
+  // "Down Time" the warm mid, "Yet Again" the hip-hop spine,
+  // "The Best Of Times" the identity pick, a clean boom-bap in the
+  // pocket that carried the Yacht's core, and "Waiting Around" the
+  // firm ceiling — plus Ketsa's "Jazz for the Solstice" (CC BY 4.0,
+  // via Free Music Archive) as the sun colour, the set's one
+  // lighter body, placed last as colour, not centre. The full set
+  // was approved as presented ("Use the tracks for the beach",
+  // 2026-11-03), all six in these roles. They join the beach pin in
+  // spatial.ts; appended last so every existing track index keeps
+  // its meaning, exactly like the sets above. "Skill Test" and
+  // "Kinship" stay out — the audition's alternates, held out
+  // unplayed, exactly like "Off Days" above; this is the closed
+  // rotation the owner actually picked.
+  { file: 'before-everything', title: 'Before Everything', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/before-everything-lofi-nostalgic-mp3/' },
+  { file: 'down-time', title: 'Down Time', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/down-time-lofi-peaceful-mp3/' },
+  { file: 'yet-again', title: 'Yet Again', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/yet-again-lofi-peaceful/' },
+  { file: 'the-best-of-times', title: 'The Best Of Times', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/the-best-of-times-lofi-relaxing-mp3/' },
+  { file: 'waiting-around', title: 'Waiting Around', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/waiting-around-lofi-calm/' },
+  { file: 'jazz-for-the-solstice', title: 'Jazz for the Solstice', artist: 'Ketsa', license: 'CC BY 4.0', source: 'https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/jazz-for-the-solstice/', credit: '"Jazz for the Solstice" by Ketsa, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), via Free Music Archive.' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -741,15 +762,50 @@ const YACHT_EVENT_GAIN = 2.880;
  *  below the material's own step noise, p99 0.0319). */
 const YACHT_BED_LEAD_S = 1105 / 44100;
 const YACHT_BED_SECONDS = 64;
+/** The Beach's recorded bed (owner sample pick, 2026-11-03): a
+ *  64.000 s seamless loop of shoreline recordings — a real surf
+ *  body arriving in sets on a flat beach, a close-up wash fizzing
+ *  over it in the same rhythm family, open-air breeze moving
+ *  through the cabana and the surf's own bright top as the day
+ *  sheen over everything, so the bed reads DAY, matching the
+ *  bright cabana it plays under (SSE Library, CC0). Four recorded
+ *  one-shots ride over it as scheduled events: a bigger set
+ *  arriving and breaking on the sand, gull calls working the
+ *  shoreline, the cabana's shade cloth flapping in a gust, and a
+ *  tiki torch flaring up — mid-sparse densities: a lived-in
+ *  beach, but never talking over the table. The gulls are an
+ *  event, never looped into the bed: the same cries on a 64 s
+ *  loop would repeat on the minute, every minute. */
+const BEACH_BED_URL = '/audio/ambience/beach-bed.mp3';
+const BEACH_EVENT_URLS = {
+  waveSet: ['/audio/ambience/beach-event-wave-set.mp3'],
+  gullCalls: ['/audio/ambience/beach-event-gull-calls.mp3'],
+  clothFlap: ['/audio/ambience/beach-event-cloth-flap.mp3'],
+  torchFlare: ['/audio/ambience/beach-event-torch-flare.mp3'],
+} as const;
+/** Event staging gain, same construction as CHU_EVENT_GAIN: the bed
+ *  file is the −16 LUFS master; the event clips keep their premaster
+ *  staging, so they play through this gain to hold the approved demo
+ *  balance (the shipped bed sits +9.18 dB over its premaster —
+ *  measured RMS on the shipped files). */
+const BEACH_EVENT_GAIN = 2.877;
+/** The bed's MP3 loop trim, from the shipped file's own measured
+ *  offsets: 1105 samples of encoder delay at 44.1 kHz ahead of
+ *  exactly 64.000 s of content — same encoder settings as The Pj's,
+ *  Speakeasy, Barbershop, Grandma's, Cookout, Church, Rooftop and
+ *  Yacht beds (the shipped file's measured seam step, 0.0030, sits
+ *  far below the material's own step noise, p99 0.0231). */
+const BEACH_BED_LEAD_S = 1105 / 44100;
+const BEACH_BED_SECONDS = 64;
 /** Every recorded venue's ambience-cache footprint: the bed's cache key
  *  plus every event URL the venue lazy-loads. The engine binds its decode
  *  cache to the CURRENT venue (bindAmbienceToVenue, crash-2 lane
- *  2026-11-01): eight recorded 64 s beds decode to ~23–25 MB each and the
+ *  2026-11-01): nine recorded 64 s beds decode to ~23–25 MB each and the
  *  event one-shots add ~15–25 MB across venues, and the cache used to
  *  keep ALL of it for the life of the context — up to ~150–175 MB of
  *  decoded audio accumulating in exactly the table-hopping pattern that
  *  feeds iOS process death. Synthesized beds (mansion,
- *  casino, beach, rec, porch) decode nothing and map to no entry:
+ *  casino, rec, porch) decode nothing and map to no entry:
  *  switching to one evicts every recorded buffer. */
 const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readonly string[] }>> = {
   street: { bedKey: 'pjs-bed', urls: [PJS_BED_URL, ...Object.values(PJS_EVENT_URLS).flat()] },
@@ -760,6 +816,7 @@ const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readon
   basement: { bedKey: 'chu-bed', urls: [CHU_BED_URL, ...Object.values(CHU_EVENT_URLS).flat()] },
   rooftop: { bedKey: 'roo-bed', urls: [ROO_BED_URL, ...Object.values(ROO_EVENT_URLS).flat()] },
   yacht: { bedKey: 'yct-bed', urls: [YACHT_BED_URL, ...Object.values(YACHT_EVENT_URLS).flat()] },
+  beach: { bedKey: 'bch-bed', urls: [BEACH_BED_URL, ...Object.values(BEACH_EVENT_URLS).flat()] },
 };
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
@@ -3990,6 +4047,76 @@ class Engine {
     arm('farHorn', 240, 480, true);
   }
 
+  private startBeachBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('bch-bed', BEACH_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, BEACH_BED_LEAD_S, BEACH_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...BEACH_EVENT_URLS.waveSet, ...BEACH_EVENT_URLS.gullCalls, ...BEACH_EVENT_URLS.clothFlap, ...BEACH_EVENT_URLS.torchFlare]) void this.loadAmbience(url, url);
+    this.scheduleBeachEvents();
+  }
+
+  /** Beach life over the recorded bed: four independent randomized
+   *  timers — a bigger set arriving and breaking on the sand every
+   *  75–180 s, gull calls working the shoreline every 120–300 s,
+   *  the cabana's shade cloth flapping in a gust every 90–240 s
+   *  and one of the boardwalk tiki torches flaring up every
+   *  150–300 s (samples-lane densities, 2026-11-03) — sharing one
+   *  busy gate, so an event never talks over another (the street
+   *  pattern). Mid-sparse: the Beach is a regular league room,
+   *  not a slow stop, but the table still owns the room. Each
+   *  kind has a single recording, so there is no variant to
+   *  rotate; the spacing itself is the variety. The timers live
+   *  in venueTimers, so leaving the venue silences the beach,
+   *  and the first fire comes a half-interval in, once the table
+   *  settles. */
+  private scheduleBeachEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the deck
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = BEACH_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof BEACH_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(BEACH_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('waveSet', 75, 180, true);
+    arm('gullCalls', 120, 300, true);
+    arm('clothFlap', 90, 240, true);
+    arm('torchFlare', 150, 300, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -4103,12 +4230,23 @@ class Engine {
         this.vEvery(23, 55, (t) => { const seq = [1567.98, 1318.5, 1567.98, 2093, 1567.98, 2637]; seq.forEach((f, i) => this.tone(t + i * 0.11, f, 0.22, 'triangle', 0.007, { dest: B })); }); // slot payout arpeggio
         this.vEvery(8, 19, (t) => { for (let i = 0; i < 4; i++) this.vBurst(t + i * 0.07, 0.014, 'bandpass', 2100 + Math.random() * 500, 0.02); }); // chips clicking
         break;
-      case 'beach':
-        this.vNoise('lowpass', 700, 0.4, 0.07, 0.085, 0.85); // waves
-        this.vNoise('lowpass', 400, 0.5, 0.03, 0.05, 0.5); // breeze
-        this.vEvery(12, 26, (t) => this.tone(t, 1700, 0.45, 'sine', 0.007, { glideTo: 1150, dest: B })); // gull
-        crackle(0.8, 2.2, 0.5); // torches
+      case 'beach': {
+        // The Beach's bed is a RECORDING now (owner sample pick,
+        // 2026-11-03), replacing the synthesized stand-in (filtered-noise
+        // waves and breeze, a sine-glide tone gull — the synth gull was
+        // the tell — and a synth torch crackle): a seamless 64 s
+        // shoreline loop — real surf arriving in sets on a flat beach,
+        // a close-up wash fizzing over it in the same rhythm, open-air
+        // breeze through the cabana and the surf's own bright top as
+        // the day sheen, so the bed reads day, like the cabana it plays
+        // under. The beach's life rides over it as one-shot events on
+        // their own timers (startBeachBed): a bigger set breaking on
+        // the sand, gulls working the shoreline, the shade cloth
+        // flapping in a gust and a tiki torch flaring up. No story
+        // surface plays here — the Beach is a league venue only.
+        this.startBeachBed();
         break;
+      }
       case 'kitchen': {
         // Grandma's bed is a RECORDING now (owner sample pick, 2026-10-31),
         // replacing the synthesized stand-in (room tone, a mains hum and a

@@ -12,7 +12,8 @@
  * decoded bed + events, returning re-decodes behind the loader gate on
  * the ordinary first-visit path, and a same-venue settings toggle does
  * NOT evict (no re-decode hiccup for flipping venue sound off and on).
- * (Eight recorded beds since the Yacht wire-in, 2026-11-02.)
+ * (Eight recorded beds since the Yacht wire-in, 2026-11-02; nine
+ * since the Beach wire-in, 2026-11-03.)
  *
  * This suite drives the REAL Engine on the watchdog suite's fake-context
  * harness and pins the cache contents across a full venue-hop sequence.
@@ -176,7 +177,7 @@ describe('the ambience cache is bound to the current venue', () => {
     expect(keys().some((k) => k.includes('pjs'))).toBe(false);
   });
 
-  it('barbershop, kitchen, cookout, the church basement, the rooftop and the yacht each hold only their own set', async () => {
+  it('barbershop, kitchen, cookout, the church basement, the rooftop, the yacht and the beach each hold only their own set', async () => {
     sound.setVenueBed('barbershop');
     await settle();
     expect(keys()).toContain('brb-bed');
@@ -201,6 +202,10 @@ describe('the ambience cache is bound to the current venue', () => {
     await settle();
     expect(keys()).toContain('yct-bed');
     expect(keys().every((k) => k === 'yct-bed' || k.includes('yacht-'))).toBe(true);
+    sound.setVenueBed('beach');
+    await settle();
+    expect(keys()).toContain('bch-bed');
+    expect(keys().every((k) => k === 'bch-bed' || k.includes('beach-'))).toBe(true);
   });
 
   it('returning to The Pj\'s re-fetches and re-decodes its bed, which starts', async () => {

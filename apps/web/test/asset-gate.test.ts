@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, PJS_BED_URL, ROO_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, YACHT_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, BEACH_BED_URL, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, PJS_BED_URL, ROO_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, YACHT_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomAudioUrls, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -279,6 +279,19 @@ describe('room asset enumeration', () => {
     expect(existsSync(new URL('../public/audio/ambience/yacht-bed.mp3', import.meta.url))).toBe(true);
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain(`const YACHT_BED_URL = '${YACHT_BED_URL}'`);
+  });
+
+  it("the Beach's recorded bed rides the gate at High beach tables — regular venue only, never Low", () => {
+    // Owner, 2026-11-03: the recorded day bed joins the Beach loader
+    // gate exactly like the Yacht's bed (the gate gains one unit at
+    // the regular venue; the Beach has no story surface, so no stop
+    // composition changes; the bed's event one-shots deliberately do
+    // not gate and are not listed here).
+    expect(roomAudioUrls('beach', 'high', null)).toEqual([{ label: expect.any(String), url: BEACH_BED_URL }]);
+    expect(roomAudioUrls('beach', 'low', null)).toEqual([]);
+    expect(existsSync(new URL('../public/audio/ambience/beach-bed.mp3', import.meta.url))).toBe(true);
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain(`const BEACH_BED_URL = '${BEACH_BED_URL}'`);
   });
 
   it('the gate sedan URL is the very file PjsStreetRoom loads', () => {

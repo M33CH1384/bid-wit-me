@@ -65,9 +65,9 @@ describe('the two new tracks', () => {
     }
   });
 
-  it('never enter the general pool (pool is still the 52 approved tracks)', () => {
+  it('never enter the general pool (pool is still the 58 approved tracks)', () => {
     const pool = generalPool();
-    expect(pool.length).toBe(52);
+    expect(pool.length).toBe(58);
     const files = pool.map((i) => TRACKS[i]!.file);
     expect(files).not.toContain('porch-theme');
     expect(files).not.toContain('menu-soul');
