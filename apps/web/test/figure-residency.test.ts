@@ -157,6 +157,19 @@ describe('lean mode (crash round 3: shed on context loss)', () => {
   });
 });
 
+describe('teardown losses are not crashes (crash round 4)', () => {
+  it('wiring: the loss listener gates the crash report on the scene still being mounted', () => {
+    const scene = readFileSync(join(process.cwd(), 'apps/web', 'src/three/Scene.tsx'), 'utf8');
+    // @react-three/fiber force-loses the departing canvas on every
+    // unmount; that loss files no crash report — it stays a crumb.
+    expect(scene).toContain("if (tornDownRef.current) { noteCrumb('webgl', 'lost-teardown'); return; }");
+    // The scene's own unmount cleanup arms the gate…
+    expect(scene).toContain('tornDownRef.current = true;');
+    // …while a loss on a live scene still reports exactly as shipped.
+    expect(scene).toContain("reportCrash('webgl-lost', new Error('WebGL context lost')");
+  });
+});
+
 describe('estimateGltfTextureBytes', () => {
   it('measures width × height × 4 × mips, deduped across cloned materials', () => {
     const tex = new Texture();

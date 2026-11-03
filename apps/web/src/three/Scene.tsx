@@ -2129,7 +2129,19 @@ export default function Scene(props: SceneProps) {
   // while this table is up. Observation only — no behavior change.
   useEffect(() => {
     noteCrumb('scene-mount', `${def.id} ${props.quality}${props.storyStopId ? ` stop=${props.storyStopId}` : ''}`);
-    return () => { noteCrumb('scene-unmount', def.id); };
+    return () => {
+      noteCrumb('scene-unmount', def.id);
+      tornDownRef.current = true;
+      // Leaving a table sheds unmounted figure residency by design
+      // (crash round 4, 2026-11-03): until now this happened only as a
+      // side effect of the teardown context loss reaching the loss
+      // listener ~100 ms after unmount (round 3's lean mode). Same
+      // shed, honest trigger — and it no longer depends on WebKit
+      // dispatching that event. Seated figures are never touched
+      // (the residency registry's contract); this scene's own figures
+      // become unmounted with it and shed like any previous cast.
+      enterFigureLeanMode();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
@@ -2162,6 +2174,18 @@ export default function Scene(props: SceneProps) {
   // No route change, no reload — game state lives in Table's props
   // and is never touched.
   const [glEpoch, setGlEpoch] = useState(0);
+  // Crash round 4 (2026-11-03): @react-three/fiber's root teardown calls
+  // gl.forceContextLoss() on EVERY Canvas unmount, and WebKit dispatches
+  // webglcontextlost asynchronously — 25–200 ms later on a loaded main
+  // thread, where the reporting listener in onCreated used to file it as
+  // a crash (34 telemetry rows across Oct 30 – Nov 3, with the sessions
+  // verifiably alive across them, hopping to the next table). This flag
+  // separates that framework teardown from a genuine mid-table loss:
+  // the scene's unmount cleanup sets it, and the listener reports only
+  // losses on a scene that is still mounted. A Scene instance never
+  // remounts its Canvas after unmount (the glEpoch remount above keeps
+  // the same Canvas), so the flag never needs resetting.
+  const tornDownRef = useRef(false);
   // Drag-to-play: the card under the finger is drawn by the lifted copy, so its slot in the fan is left open.
   const [dragCard, setDragCard] = useState<Card | null>(null);
   const onTableReady = props.onTableReady;
@@ -2191,17 +2215,28 @@ export default function Scene(props: SceneProps) {
         // completely unobserved — no listener existed anywhere, so a lost
         // context surfaced only as a dead scene or a later boundary bounce.
         // These listeners REPORT (no preventDefault, no recovery change —
-        // the recovery pair below owns that); the loss listener also sheds
-        // unmounted figure residency, the cheapest pressure relief there is.
+        // the recovery pair below owns that); on a live scene the loss
+        // listener also sheds unmounted figure residency, the cheapest
+        // pressure relief there is. Losses on an already-unmounted scene
+        // are the framework's teardown, not pressure — see tornDownRef.
         gl.domElement.addEventListener('webglcontextlost', () => {
+          // Crash round 4 (2026-11-03): if this scene has already
+          // unmounted, the loss is @react-three/fiber's teardown
+          // force-losing the departing canvas (see tornDownRef) — the
+          // session is alive, often already seated at the next table.
+          // It stays a crumb so the sequence reads honestly in later
+          // reports, but it is not a crash and files no report; the
+          // figure shed it used to trigger here now runs deliberately
+          // in the unmount cleanup instead.
+          if (tornDownRef.current) { noteCrumb('webgl', 'lost-teardown'); return; }
           noteCrumb('webgl', 'lost');
           reportCrash('webgl-lost', new Error('WebGL context lost'), { venue: def.id, quality: props.quality });
-          // Pressure relief (crash round 3, 2026-11-01): a loss is memory
-          // pressure made visible, and losses cluster on venue hops and
-          // recovery remounts — exactly where the figure registry's
-          // previous-cast retention rides on top of the re-upload spike.
-          // Shed every unmounted figure now and stay lean for the session;
-          // seated figures are never touched (see figureResidency).
+          // Pressure relief (crash round 3, 2026-11-01): a loss on a
+          // LIVE scene is memory pressure made visible — exactly where
+          // the figure registry's previous-cast retention rides on top
+          // of the re-upload spike. Shed every unmounted figure now and
+          // stay lean for the session; seated figures are never touched
+          // (see figureResidency).
           enterFigureLeanMode();
         });
         gl.domElement.addEventListener('webglcontextrestored', () => {
