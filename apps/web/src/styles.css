@@ -5151,3 +5151,116 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   padding: 6px 10px;
   font-size: 11px;
 }
+
+/* ---------- chrome hit-area repair (owner 2026-11-03: at a landscape table,
+   "I can't hit the menu button at the top left and the audio setting button
+   is hard to hit as well") ----------
+   Measured on the capture rig (932×430 + 844×390, both themes, safe-area
+   insets L/R 47 B 21, 7×7 elementFromPoint grids): the slant clip-path on the
+   chrome icon buttons clips their HIT area too — the top-left and
+   bottom-right corner triangles of every clipped control were dead (menu
+   taps fell through to the 3D canvas; speaker taps landed on the handler-less
+   dock wrapper). The scorebug pair was also simply small: the menu chip is
+   36×38 in short landscape and the in-bug speaker 40×40 — both under the
+   44×44 minimum, so their honest live area was a small island at the extreme
+   screen corner. The repair moves each control's PAINT (glass background,
+   inset ring, slant clip, backdrop blur) onto a pointer-events:none ::before
+   that keeps the exact chip geometry, while the element itself becomes a
+   transparent, UN-clipped hit box of at least 44×44. Negative margins keep
+   every layout footprint identical — the bar, the glyphs and the neighbouring
+   panels do not move a pixel; only the hit geometry grows. */
+
+/* — the scorebug menu button (Table.tsx .menu-wrap > .bug-btn) — */
+.scorebug > .menu-wrap > .bug-btn {
+  position: relative; isolation: isolate;
+  background: transparent; box-shadow: none; clip-path: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  width: 44px; margin-left: -3px; margin-right: -3px; padding: 0 3px;
+}
+.scorebug > .menu-wrap > .bug-btn::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none;
+  left: 3px; right: 3px; top: 0; bottom: 0;
+  background: var(--glass); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+/* short landscape: the chip is 36×38 — grow the box to 44×44 around it
+   (footprint stays 36×38 via the negative margins; the padding re-centres
+   the glyph's content box exactly onto the painted chip) */
+.table-screen.short .scorebug > .menu-wrap > .bug-btn {
+  width: 44px; height: 44px; margin: -3px -4px; padding: 3px 4px;
+}
+.table-screen.short .scorebug > .menu-wrap > .bug-btn::before {
+  left: 4px; right: 4px; top: 3px; bottom: 3px;
+}
+/* narrow phones (chip 32 wide there): same growth, non-short only — in short
+   landscape the 36px width rule outranks the 32px one */
+@media (max-width: 400px) {
+  .table-screen:not(.short) .scorebug > .menu-wrap > .bug-btn {
+    margin-left: -6px; margin-right: -6px; padding: 0 6px;
+  }
+  .table-screen:not(.short) .scorebug > .menu-wrap > .bug-btn::before { left: 6px; right: 6px; }
+}
+
+/* — the sound dock button, every context (fixed float, story/wizard slots) — */
+.dock-btn {
+  background: transparent; box-shadow: none; clip-path: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none; isolation: isolate;
+}
+.dock-btn::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; inset: 0;
+  background: var(--glass-strong); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45);
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+/* dock state rings/glows paint on the chip layer now, not the hit box */
+.dock-btn.muted, .dock-btn.playing, .dock-btn.needs-tap { background: transparent; box-shadow: none; }
+.dock-btn.muted::before { box-shadow: inset 0 0 0 1px rgba(255,77,109,.6); }
+.dock-btn.playing::before { box-shadow: inset 0 0 0 1px var(--gold), 0 0 12px rgba(var(--gold-rgb),.4); }
+.dock-btn.needs-tap::before { background: rgba(255,217,105,.28); box-shadow: inset 0 0 0 2px var(--gold-hi), 0 0 10px rgba(255,217,105,.55); }
+
+/* The scorebug's slot span carries .bug-btn (the SoundDock detects the
+   in-bug seat from that class) — including its slant clip-path, which clips
+   the HIT area (and paint) of everything portaled into it to the slot's own
+   40×38 polygon. The span is visibility:hidden and paints nothing itself;
+   the clip only ever ate the dock's overflow. It must not clip its control. */
+.scorebug .dock-slot { clip-path: none; }
+
+/* — the in-bug speaker (the table's top-right slot): grow 40×40 → 44×44,
+   the painted chip stays 40×40 at the slot's own origin — */
+.sound-dock.slotted.in-bug .dock-btn {
+  background: transparent; box-shadow: none; clip-path: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  width: 44px !important; height: 44px !important;
+  margin: -3px -2px; padding: 3px 2px 1px;
+}
+.sound-dock.slotted.in-bug .dock-btn::before {
+  left: 2px; right: 2px; top: 3px; bottom: 1px;
+  background: var(--glass); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+/* — the wizard cluster (home / lobby top bar): the boxes are already 44×44,
+   only their clipped corners were dead — */
+.wiz-right .dock-btn, .wiz-right .icon-btn.gear {
+  background: transparent; box-shadow: none; clip-path: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+.wiz-right .icon-btn.gear { position: relative; isolation: isolate; }
+.wiz-right .dock-btn::before, .wiz-right .icon-btn.gear::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; inset: 0;
+  background: rgba(20,11,34,.85); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.55);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+/* The wizard Social button lives in social.css, but that file loads BEFORE
+   this one — its de-clip has to sit here, after the cluster rule above, or
+   the cluster's own clip-path wins the cascade back. */
+.wiz-right .social-btn {
+  background: transparent; box-shadow: none; clip-path: none; isolation: isolate;
+}
+.wiz-right .social-btn::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; inset: 0;
+  background: rgba(20,11,34,.85); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.55);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
