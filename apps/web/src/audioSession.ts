@@ -21,6 +21,17 @@ export function soundRestorePending(state: string | null | undefined, unlocked: 
   return state !== 'running';
 }
 
+/**
+ * App-open sting audibility (owner, 2026-11-04): the boot sting obeys the SFX
+ * family's own controls — master switch off, a zeroed master volume or a
+ * zeroed SFX category all mean it never sounds. The engine also consumes its
+ * one-shot latch on a silent verdict: no sting, and no home-reveal fade
+ * waiting on a sound that will not come.
+ */
+export function bootStingAudible(on: boolean, volume: number, sfxCategory: number): boolean {
+  return on && volume > 0 && sfxCategory > 0;
+}
+
 /** Accessible name for the existing header speaker. A suspended context is restored by tapping that icon. */
 export function speakerAriaLabel(needsTap: boolean, muted: boolean): string {
   if (needsTap) return 'Sound paused — tap to restore';

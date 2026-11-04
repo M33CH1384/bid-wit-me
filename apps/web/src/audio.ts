@@ -13,7 +13,7 @@
 import { useSyncExternalStore } from 'react';
 import { Spatializer, STORY_STOP_AUDIO, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos, type StoryMood, type VenueEvent } from './spatial';
 import { audioElementPool } from './audioPool';
-import { RESTORE_HEAL_MS, audioContextAction, cancelActiveSpeech, claimPlaybackSession, recreateDue, settleAudio, soundRestorePending } from './audioSession';
+import { RESTORE_HEAL_MS, audioContextAction, bootStingAudible, cancelActiveSpeech, claimPlaybackSession, recreateDue, settleAudio, soundRestorePending } from './audioSession';
 import { consumeUncleanBoot } from './diagnostics';
 
 /**
@@ -64,6 +64,11 @@ export type Sfx =
   // CREDITS.md) — an extinguisher-blast snap over a large steam burst — played
   // once when another seat breaks a rendered streak fire (animfx streakDeath).
   | 'fireOut'
+  // App-open sting (owner 2026-11-04): a RECORDED card shuffle resolving into
+  // a whole-deck slam (freesound CC0 — CREDITS.md), never synthesized: the
+  // app's signature on the first unlock of a page load, choreographed with
+  // the home reveal (bootReveal.ts). Only the boot latch in wake() calls it.
+  | 'deckSlam'
   // the white sheet unrolling over a scorecard: soft fabric rustle (synthesized, no sample)
   | 'cloth';
 
@@ -592,9 +597,26 @@ const FILES: Record<string, string[]> = {
   // thunder crack for the big over-cut's bolt. Same fetch/decode path, so
   // SFX_COUNT counts it automatically.
   thunder: ['thunder'],
+  // App-open sting (freesound recordings, CC0 — CREDITS.md): the shuffle +
+  // whole-deck slam that signs the app's arrival on first unlock. Same
+  // fetch/decode path, so SFX_COUNT counts it automatically.
+  deckSlam: ['deck-slam'],
 };
 /** Total one-shot SFX buffers a complete load() decodes (the watchdog's readiness bar). */
 const SFX_COUNT = Object.values(FILES).reduce((n, a) => n + a.length, 0);
+
+/** App-open sting sync (owner, 2026-11-04): the deck slam lands 1,219 ms into
+ *  deck-slam.mp3 — measured on the encoded file (its windowed peak argmax IS
+ *  the designed slam position; the build record is in the lane NOTES). The
+ *  home reveal fades for exactly this long and snaps at the slam, so this
+ *  number is the choreography's clock: if the sting is ever re-cut,
+ *  re-measure the new file and move this with it. */
+/** Kept in step with BOOT_STING_EVENT in bootReveal.ts. */
+export const BOOT_SLAM_MS = 1219;
+export const BOOT_STING_EVENT = 'bwm:bootsting';
+/** How long after the context first runs the sting may still chase its
+ *  decoded buffer before the app-open moment is honestly past. */
+const BOOT_STING_WINDOW_MS = 3000;
 
 type Ctx = AudioContext;
 const AC: typeof AudioContext | undefined = typeof window !== 'undefined'
@@ -1068,6 +1090,15 @@ class Engine {
   testState: string | null = null;
   needsRestore = false;
   private unlockInstalled = false;
+  /** App-open sting latch: spent exactly once per page load — when the sting
+   *  fires, and also when the audibility gate rules it silent (a silent open
+   *  never fades the home reveal in wait for a sound that will not come).
+   *  A reload is a new open; a background→foreground resume is not. */
+  private bootStingFired = false;
+  /** When the context first ran after unlock (the buffer-chase window). */
+  private bootReadyAt = 0;
+  /** A load() waiter for the sting's buffer is already chained. */
+  private bootStingWaiting = false;
   private recreating = false;
   private wakeGen = 0;
   /** Last context rebuild (performance.now ms): rebuilds are rate-limited while an interruption persists. */
@@ -1682,6 +1713,10 @@ class Engine {
       // started music (context not ready), and this is the retry path.
       // Demetrius 2026-10-19: music must resume on first tap after swipe-kill.
       this.resyncAll();
+      // The boot sting's second chance: if the unlocking gesture's own
+      // settle block went stale (a faster second tap), the sting still
+      // belongs to the first moment the app can actually be heard.
+      this.maybeBootSting();
       return;
     }
     if (kind === 'gesture') this.unlocked = true;
@@ -1715,9 +1750,50 @@ class Engine {
     this.publishRestore();
     void resumePromise.then(() => {
       if (gen !== this.wakeGen) return;
-      if (this.liveState(this.ctx) === 'running') this.resyncAll();
+      if (this.liveState(this.ctx) === 'running') { this.resyncAll(); this.maybeBootSting(); }
       this.publishRestore();
     });
+  }
+
+  /**
+   * The app-open sting (owner, 2026-11-04): "when the app opens I want to
+   * hear the sound of cards shuffling together and being slammed (whole
+   * deck) down to a table" — choreographed so the home UI fades in slowly
+   * under the shuffle and snaps to full strength at the slam.
+   *
+   * Zero-touch playback is impossible (iOS holds all audio until a user
+   * gesture), so the app-open moment IS the first unlock: the first wake
+   * whose context actually lands running. On firing, the reveal event is
+   * dispatched in the same turn as the sample is scheduled, carrying
+   * BOOT_SLAM_MS, so the fade and the shuffle start together. The latch
+   * spends exactly once per page load: later gestures, 'show' wakes that
+   * find sound already possible, route changes and table entries can never
+   * refire it; a 'show' wake can only ever be the bearer when an earlier
+   * gesture's context never landed (the heal path — the first moment the
+   * sting could honestly be heard at all).
+   */
+  private maybeBootSting() {
+    if (this.bootStingFired || !this.unlocked) return;
+    if (!bootStingAudible(this.settings.on, this.settings.volume, normalizeCategoryVolumes(this.settings.volumes).sfx)) {
+      this.bootStingFired = true; // silent by the family's own controls: no sting, no fade, no retry
+      return;
+    }
+    const c = this.ctx;
+    if (!c || this.liveState(c) !== 'running') return;
+    if (!this.bootReadyAt) this.bootReadyAt = performance.now();
+    if (this.buffers.has('deck-slam')) {
+      this.bootStingFired = true;
+      this.play('deckSlam');
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(BOOT_STING_EVENT, { detail: { slamMs: BOOT_SLAM_MS } }));
+      return;
+    }
+    // The buffer is still decoding (load() started with this same gesture's
+    // ensure()): chase it briefly — long enough to cover a cold fetch,
+    // short enough that the sting still reads as "the app opens".
+    if (performance.now() - this.bootReadyAt > BOOT_STING_WINDOW_MS) { this.bootStingFired = true; return; }
+    if (this.bootStingWaiting) return;
+    this.bootStingWaiting = true;
+    void (this.load() ?? Promise.resolve()).then(() => { this.bootStingWaiting = false; this.maybeBootSting(); });
   }
 
   private blip(c: AudioContext) {
@@ -2231,8 +2307,9 @@ class Engine {
     this.applyGain();
   }
   /** Settings previews that may sound on Home. Chat notifications live here too: a DM must
-   *  ding no matter where in the app you are, not only at a table. */
-  private static readonly UI_SFX: ReadonlySet<string> = new Set(['tap', 'bid', 'dmChime', 'chatBlip']);
+   *  ding no matter where in the app you are, not only at a table. The boot sting lives here
+   *  too — it sounds on the home screen by design; only the wake() latch ever calls it. */
+  private static readonly UI_SFX: ReadonlySet<string> = new Set(['tap', 'bid', 'dmChime', 'chatBlip', 'deckSlam']);
   /** Cut every live voice line (one in serial play, two while a cross-talk overlap runs). */
   stopVoice() {
     const slots = this.voiceSlots; this.voiceSlots = [];
@@ -2512,6 +2589,10 @@ class Engine {
       // bolt's impact frame for a level-3 over-cut (THUNDER_DELAY_S there).
       // Staged like the deuce thump — a hero one-shot, centred (it is the sky).
       case 'thunder': return this.sample('thunder', t, 0.95 * g);
+      // App-open sting: the recorded shuffle + deck slam, centred and staged
+      // like the thunder (a signature, not a seat event). Only the boot
+      // latch in wake() ever calls it — see maybeBootSting.
+      case 'deckSlam': return this.sample('deckSlam', t, 0.95 * g);
       case 'tornado': return this.tornado(t, g);
       case 'runSlam': this.overcutSlam(t, g * 1.2, 3); this.thud(t, g); return this.quake(t + 0.03, g * 0.9); // heavy slow-mo impact + bass hit — gains raised 2026-11-02 with the slam aggression retune (owner: 'isn't aggressive enough')
       case 'runThud': for (let i = 0; i < 4; i++) this.thud(t + i * 0.055, g * (0.42 - i * 0.07)); return;
