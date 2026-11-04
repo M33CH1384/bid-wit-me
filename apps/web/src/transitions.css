@@ -4,6 +4,14 @@
    components); these rules only paint the static pieces. */
 
 /* ------------------------------------------------ The Card Fan -- */
+/* Paint budget (crash-social, 2026-11-04): no layer-retention
+   hints and no blurred shadows anywhere in this section. The fan's
+   nine cards are viewport-sized layers; retaining all of them for
+   the whole episode and blurring a drop shadow over each one is a
+   several-hundred-MB transient compositor footprint on a phone —
+   the process-death class behind the Social open/close crashes.
+   WAAPI promotes the animated properties during play without any
+   hint. Pinned in transitions.test.ts ('paint budget'). */
 .tfan-layer {
   position: fixed;
   inset: 0;
@@ -18,7 +26,6 @@
   position: absolute;
   inset: 0;
   background: #070708;
-  will-change: opacity;
 }
 .tfan-neon .tfan-shade {
   background: #04050e;
@@ -32,10 +39,8 @@
   border: 1px solid rgba(216, 182, 106, 0.55);
   box-shadow:
     inset 0 0 0 5px rgba(10, 14, 26, 0.85),
-    inset 0 0 0 6px rgba(216, 182, 106, 0.28),
-    0 18px 44px rgba(0, 0, 0, 0.5);
+    inset 0 0 0 6px rgba(216, 182, 106, 0.28);
   color: rgba(216, 182, 106, 0.30);
-  will-change: transform, opacity;
 }
 .tfan-neon .tfan-card {
   background:
@@ -44,8 +49,7 @@
   border-color: rgba(128, 84, 255, 0.65);
   box-shadow:
     inset 0 0 0 5px rgba(7, 9, 20, 0.85),
-    inset 0 0 0 6px rgba(91, 223, 255, 0.30),
-    0 18px 44px rgba(0, 0, 0, 0.55);
+    inset 0 0 0 6px rgba(91, 223, 255, 0.30);
   color: rgba(91, 223, 255, 0.34);
 }
 .tfan-mark {
@@ -92,7 +96,6 @@
   width: 42%;
   background: linear-gradient(100deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.32) 50%, rgba(255, 255, 255, 0) 100%);
   transform: translateX(-140%) skewX(-14deg);
-  will-change: transform, opacity;
   pointer-events: none;
 }
 /* ------------------------------------- The Deal + The Book Sweep -- */

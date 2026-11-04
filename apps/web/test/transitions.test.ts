@@ -290,6 +290,24 @@ describe('the Card Fan (stage 2)', () => {
     expect(css).toContain('.tfan-neon .tfan-card');
   });
 
+  it('paint budget: no retained layers, no blurred shadows (crash-social, 2026-11-04)', () => {
+    // Two owner-device process deaths — Social open under load and
+    // Social close on a fresh process — left zero telemetry rows: the
+    // compositor-death class. The fan is the only compositor-heavy
+    // event on either path, and its nine cards are viewport-derived
+    // (~762x1082 CSS px each at 430x932, longer than the screen):
+    // will-change would retain every card/face/sheen/shade layer for
+    // the whole episode, and the 44px-blur drop shadow forces a
+    // per-card offscreen blur pass over ~30 MB of backing store.
+    // WAAPI promotes transform/opacity layers during play without
+    // the hint — the budget keeps the fan from pre-allocating them.
+    const css = read('transitions.css');
+    const fanBlock = css.slice(css.indexOf('The Card Fan'), css.indexOf('The Deal + The Book Sweep'));
+    expect(fanBlock.length).toBeGreaterThan(0);
+    expect(fanBlock).not.toContain('will-change');
+    expect(fanBlock).not.toContain('44px');
+  });
+
   it('coverage: the CARDS alone blanket the whole viewport — corners, top edge, and a fine grid', async () => {
     // Owner, on the first fan: "The fan should cover the whole
     // screen not just the bottom." The first fan's cards topped out
