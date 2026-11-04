@@ -8,7 +8,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { CHAIR_SPOTS, STUDIO } from './classicStudioLayout';
-import { isSouthSeatSpot, useOwnChairHidden } from './ownChair';
+import { isOwnSeatSpot, useOwnChairHidden, useOwnSeatDir } from './ownChair';
 
 /**
  * THE KING'S LOUNGE — story Stop 11's 3D room (The King & The Ringer).
@@ -221,6 +221,7 @@ function ground(obj: Group, floorWorldY: number): void {
 
 function useStudioProps(propsRef: RefObject<Group | null>, fxOn: boolean) {
   const hideOwnChair = useOwnChairHidden();
+  const ownDir = useOwnSeatDir();
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
@@ -238,7 +239,7 @@ function useStudioProps(propsRef: RefObject<Group | null>, fxOn: boolean) {
         if (dead || !propsRef.current) return;
         const host = propsRef.current;
         for (const spot of CHAIR_SPOTS) {
-          if (hideOwnChair && isSouthSeatSpot(spot)) continue;
+          if (hideOwnChair && isOwnSeatSpot(spot, ownDir)) continue;
           const c = chair.clone(true) as Group;
           c.rotation.y = spot.ry;
           c.position.set(spot.x, 0, spot.z);
@@ -281,7 +282,7 @@ function useStudioProps(propsRef: RefObject<Group | null>, fxOn: boolean) {
       }
       ktx2.dispose();
     };
-  }, [gl, invalidate, propsRef, fxOn, hideOwnChair]);
+  }, [gl, invalidate, propsRef, fxOn, hideOwnChair, ownDir]);
 }
 
 /* ------------------------------------------------------------------ */

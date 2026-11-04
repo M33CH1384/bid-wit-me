@@ -489,7 +489,11 @@ export function badgeSpot(pos: SeatPos, n: number): [number, number, number] {
 
 export interface CamSpec { pos: [number, number, number]; look: [number, number, number]; fov: number }
 
-/** Camera from the human seat looking across the table; framing adapts to portrait/landscape. */
+/** Camera from the human seat looking across the table; framing adapts to portrait/landscape.
+ *  The camera is ALWAYS this canonical south view: at online tables the
+ *  per-seat vantage comes from rotating the room layer to the viewer's
+ *  seat (Scene's roomYaw, turnState.roomYawForViewerSeat), never from
+ *  moving the camera — so every framing fit below holds for all seats. */
 /** Demetrius (Sat 7:03am): Sitting needed MORE downward tilt — pitch the seated aim down
  *  exactly this many extra degrees toward the felt, position and fov untouched, so the
  *  trick cards read more face-on. Applied to every Sitting spec (portrait + short landscape). */

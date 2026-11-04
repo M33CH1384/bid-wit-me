@@ -5,15 +5,16 @@ import { isSouthSeatPos, isSouthSeatSpot } from '../src/three/ownChair';
 
 /**
  * THE OWN-CHAIR RULE (owner, 2026-11-02: "I shouldn't see my chair in
- * the frame"). The camera anchors at local seat 0 (south) in every
- * mode; in local play that seat is first-person and never carries a
- * figure, so the chair every room builds at the south spot renders
+ * the frame"). The camera anchors at the local seat in every mode; in
+ * a seated scene that seat is first-person and never carries a figure,
+ * so the chair every room builds at the viewer's own seat renders
  * bare in the lower frame. The fix: rooms consume Scene's
- * OwnChairHiddenContext (provided from Table's spectator flag) and do
- * not build the south chair in a local seated scene; spectator /
- * watch / broadcast surfaces keep all four chairs (the anchor seat
- * there is a real participant — a bot seated at south carries a
- * figure that needs its chair).
+ * OwnChairHiddenContext (provided from Table's spectator flag and,
+ * since the 2026-11-03 room-vantage fix, the viewer's seat direction)
+ * and do not build the viewer's own chair in a seated scene;
+ * spectator / watch / broadcast surfaces keep all four chairs (the
+ * anchor seat there is a real participant — a bot seated there
+ * carries a figure that needs its chair).
  *
  * This suite pins (a) the south-spot predicates against the REAL spot
  * data of every chair-building room, (b) the wiring Table -> Scene ->
@@ -21,6 +22,13 @@ import { isSouthSeatPos, isSouthSeatSpot } from '../src/three/ownChair';
  * builds seat chairs from CHAIR_SPOTS must apply the guard at exactly
  * one site — a future room that builds seat chairs without the guard
  * fails here until its site joins the census.
+ *
+ * Per-seat since the room-vantage fix (2026-11-03, room-vantage.test.ts):
+ * online, the room rotates to the viewer's seat, so the guard tests the
+ * VIEWER's canonical seat direction (isOwnSeatSpot/isOwnSeatPos with the
+ * useOwnSeatDir() direction) instead of the fixed south spot. With the
+ * south direction the own-seat predicates reduce exactly to the south
+ * predicates pinned below, so local play is unchanged.
  */
 
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -84,17 +92,19 @@ describe('own-chair wiring', () => {
     expect(table).toContain('spectator: spectating,');
   });
 
-  it('Scene declares the prop and provides the context from its negation', () => {
+  it('Scene declares the prop and provides the context keyed to it', () => {
     const scene = read('../src/three/Scene.tsx');
     expect(scene).toContain('spectator?: boolean;');
-    expect(scene).toContain('<OwnChairHiddenContext.Provider value={!props.spectator}>');
-    expect(scene).toContain("import { OwnChairHiddenContext } from './ownChair';");
+    expect(scene).toContain('<OwnChairHiddenContext.Provider value={ownSeatView}>');
+    expect(scene).toContain('hidden: !props.spectator, dir: ownSeatDirForYaw(roomYaw)');
+    expect(scene).toContain("import { OwnChairHiddenContext, ownSeatDirForYaw } from './ownChair';");
   });
 
   it('the context defaults to keeping every chair (out-of-Scene renders unchanged)', () => {
     const mod = read('../src/three/ownChair.ts');
-    expect(mod).toContain('createContext(false)');
+    expect(mod).toContain('createContext<OwnSeatView>({ hidden: false, dir: { x: 0, z: 1 } })');
     expect(mod).toContain('export function useOwnChairHidden()');
+    expect(mod).toContain('export function useOwnSeatDir()');
     expect(mod).toContain('export function isSouthSeatSpot(');
     expect(mod).toContain('export function isSouthSeatPos(');
   });
@@ -129,14 +139,16 @@ describe('chair-site census — every seat-chair builder applies the guard once'
       const src = readFileSync(new URL(f, threeDir), 'utf8');
       expect(src, f).toContain('useOwnChairHidden()');
       expect(src, f).toContain("from './ownChair'");
+      // the per-seat form: exactly one read of the viewer's seat direction
+      expect((src.match(/useOwnSeatDir\(\)/g) ?? []).length, f).toBe(1);
       const guards = src.match(/hideOwnChair &&/g) ?? [];
       expect(guards.length, f).toBe(1);
       // the guard sits at the chair site: a JSX room returns null for the
-      // south entry inside its CHAIR_SPOTS map; a GLB loop skips the clone
+      // viewer's own entry inside its CHAIR_SPOTS map; a GLB loop skips it
       if (src.includes('for (const spot of CHAIR_SPOTS)')) {
-        expect(src, f).toContain('if (hideOwnChair && isSouthSeatSpot(spot)) continue;');
+        expect(src, f).toContain('if (hideOwnChair && isOwnSeatSpot(spot, ownDir)) continue;');
       } else {
-        expect(src, f).toMatch(/if \(hideOwnChair && (i < CHAIR_SPOTS\.length && )?isSouthSeat(Spot|Pos)\((s|pos)\)\) return null;/);
+        expect(src, f).toMatch(/if \(hideOwnChair && (i < CHAIR_SPOTS\.length && )?isOwnSeat(Spot|Pos)\((s|pos), ownDir\)\) return null;/);
       }
     }
   });
@@ -148,6 +160,6 @@ describe('chair-site census — every seat-chair builder applies the guard once'
     const legends = read('../src/three/LegendsTableRoom.tsx');
     // the rail portion of the Legends map is reached only past the seat
     // portion's length bound in the guard itself
-    expect(legends).toContain('i < CHAIR_SPOTS.length && isSouthSeatSpot(s)');
+    expect(legends).toContain('i < CHAIR_SPOTS.length && isOwnSeatSpot(s, ownDir)');
   });
 });

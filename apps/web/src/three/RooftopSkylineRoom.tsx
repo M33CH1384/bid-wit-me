@@ -8,7 +8,7 @@ import { useFrame } from '@react-three/fiber';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { todLighting, type TodState } from './barbershopLayout';
 import { useLocalTod } from './cubeVenue';
-import { isSouthSeatPos, useOwnChairHidden } from './ownChair';
+import { isOwnSeatPos, useOwnChairHidden, useOwnSeatDir } from './ownChair';
 
 /** The shared table's floor plane (sibling rooms keep their own). */
 const FLOOR_Y = -0.9;
@@ -369,11 +369,12 @@ function roofChairGeo() {
 
 function RoofChairs({ a }: { a: RoofAssets }) {
   const hideOwnChair = useOwnChairHidden();
+  const ownDir = useOwnSeatDir();
   const geos = useMemo(roofChairGeo, []);
   return (
     <group>
       {CHAIR_SPOTS.map(({ pos, ry }, i) => {
-        if (hideOwnChair && isSouthSeatPos(pos)) return null;
+        if (hideOwnChair && isOwnSeatPos(pos, ownDir)) return null;
         return (
         <group key={i} position={pos} rotation={[0, ry, 0]}>
           <mesh geometry={geos.frame} material={a.frameDark} castShadow receiveShadow />

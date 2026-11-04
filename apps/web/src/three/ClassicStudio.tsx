@@ -15,7 +15,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { CHAIR_SPOTS, STUDIO } from './classicStudioLayout';
-import { isSouthSeatSpot, useOwnChairHidden } from './ownChair';
+import { isOwnSeatSpot, useOwnChairHidden, useOwnSeatDir } from './ownChair';
 import { noteRoomAssets } from '../assetGate';
 
 const BASE = '/assets/venues/classic';
@@ -44,6 +44,7 @@ function ground(obj: Group, floorWorldY: number): void {
 
 export default function ClassicStudio({ quality }: { quality: 'high' | 'low' }) {
   const hideOwnChair = useOwnChairHidden();
+  const ownDir = useOwnSeatDir();
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
   const propsRef = useRef<Group>(null);
@@ -86,7 +87,7 @@ export default function ClassicStudio({ quality }: { quality: 'high' | 'low' }) 
         if (dead || !propsRef.current) return;
         const host = propsRef.current;
         for (const spot of CHAIR_SPOTS) {
-          if (hideOwnChair && isSouthSeatSpot(spot)) continue;
+          if (hideOwnChair && isOwnSeatSpot(spot, ownDir)) continue;
           const c = chair.clone(true) as Group;
           c.rotation.y = spot.ry;
           c.position.set(spot.x, 0, spot.z);
@@ -131,7 +132,7 @@ export default function ClassicStudio({ quality }: { quality: 'high' | 'low' }) 
       }
       ktx2.dispose();
     };
-  }, [quality, gl, invalidate, hideOwnChair]);
+  }, [quality, gl, invalidate, hideOwnChair, ownDir]);
 
   const w = STUDIO.roomX * 2;
   return (

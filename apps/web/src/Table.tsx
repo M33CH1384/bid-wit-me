@@ -13,7 +13,7 @@ import { useEscapeClose } from './useEscapeClose';
 import { AvatarCircle, useAvatar } from './avatar';
 import { useAccount } from './account/api';
 import { type FlyingPlay, confirmPlay, feltClearsSelection, flyPlay, flyingCard, ignorePlayTap, playTrickOf, type PlayTrick } from './online/playGuard';
-import { actingSeat, localSeatOfServerTurn, turnView, type TurnBadge } from './turnState';
+import { actingSeat, localSeatOfServerTurn, roomYawForViewerSeat, turnView, type TurnBadge } from './turnState';
 import { highlightLegal, turnStateKey } from './turnPresentation';
 import { retainHandOrder } from './handOrder';
 import { winHeadline } from './headline';
@@ -3004,6 +3004,11 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     positions: pos,
     human: HUMAN,
     spectator: spectating,
+    // Room vantage (owner, 2026-11-03): a seated online player's room
+    // turns to their own seat. Local play (no online seat), spectators
+    // (viewerSeat null / spectating) and story tables keep the
+    // canonical room — story rendering is unchanged by this.
+    roomYaw: !spectating && online != null && online.viewerSeat != null && !(storyStopId ?? online.storyStopId) ? roomYawForViewerSeat(online.viewerSeat, n) : 0,
     myHand: fanHand,
     handCounts: display.counts,
     shownTrick: display.trick,

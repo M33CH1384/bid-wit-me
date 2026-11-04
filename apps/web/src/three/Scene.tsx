@@ -70,7 +70,7 @@ import PorchFigures from './PorchFigures';
 import PersonaFigures from './PersonaFigures';
 import SeatVideoLayer from './SeatVideo';
 import { FIGURE_SEAT_CONFIGS } from './figureSeats';
-import { OwnChairHiddenContext } from './ownChair';
+import { OwnChairHiddenContext, ownSeatDirForYaw } from './ownChair';
 import GrandmasKitchenRoom from './GrandmasKitchenRoom';
 import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
@@ -108,6 +108,14 @@ export interface SceneProps {
    *  is its chair suppressed (three/ownChair.ts, owner 2026-11-02).
    *  Absent/false = local seated scene. */
   spectator?: boolean;
+  /** Room vantage (owner, 2026-11-03): the Y rotation applied to the
+   *  ROOM layer only, so a seated online player sees the room from
+   *  their own seat — the wall behind the far seat is the one opposite
+   *  theirs. Table computes it from the online viewer seat
+   *  (turnState.roomYawForViewerSeat); the camera and the play layer
+   *  never move, so tilt/zoom stay relative to the viewer's seat.
+   *  Absent/0 = the canonical view: local play, spectators, story. */
+  roomYaw?: number;
   /** null while the human's cards are face down (Blind Nil decision). */
   myHand: Card[] | null;
   handCounts: number[];
@@ -2133,6 +2141,14 @@ export default function Scene(props: SceneProps) {
   const grandma = def.id === 'grandma';
   const mansion = def.id === 'mansion';
   const cubeRoom = barbershop || rooftop || yacht || beach || backyard || church || vegas || speakeasy || grandma || mansion;
+  // Room vantage (2026-11-03): the room layer turns by roomYaw; the
+  // own-chair context follows it — the suppressed chair is the one at
+  // the viewer's canonical seat direction, not always the south one.
+  const roomYaw = props.roomYaw ?? 0;
+  const ownSeatView = useMemo(
+    () => ({ hidden: !props.spectator, dir: ownSeatDirForYaw(roomYaw) }),
+    [props.spectator, roomYaw],
+  );
   // Crash telemetry: the Scene's mount/unmount brackets "at a table" for the
   // unclean-exit witness, and the venue/quality/stop ride every report made
   // while this table is up. Observation only — no behavior change.
@@ -2374,6 +2390,7 @@ export default function Scene(props: SceneProps) {
           first-frame certification for the deal gate. */}
       <FirstFrameSignal key={props.gameSeed ?? ''} onFirstFrame={firstFrame} />
       <CameraRig view={props.view} people={storyFiguresActive} />
+      <RoomYawEnv yaw={roomYaw} />
       <ViewAdjustControls />
       <FxShake table={tableGroup} />
       {/* Everything from here down owns GPU resources (rooms, table,
@@ -2383,9 +2400,10 @@ export default function Scene(props: SceneProps) {
           the camera rig and the controls above never unmount. */}
       <Fragment key={glEpoch}>
       {/* Own-chair rule (owner, 2026-11-02): in a local seated scene the
-          south/camera seat's chair is not built (three/ownChair.ts);
-          spectator surfaces keep all four chairs. */}
-      <OwnChairHiddenContext.Provider value={!props.spectator}>
+          viewer's own seat's chair is not built (three/ownChair.ts);
+          spectator surfaces keep all four chairs. The viewer's seat
+          follows the room vantage (roomYaw, 2026-11-03). */}
+      <OwnChairHiddenContext.Provider value={ownSeatView}>
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
       <Lights quality={props.quality} def={def} shadowSize={shadowSize} />
@@ -2404,6 +2422,12 @@ export default function Scene(props: SceneProps) {
           state) carry over. On a context restore the outer glEpoch
           key still rebuilds this subtree too, unchanged. */}
       <Fragment key={props.gameSeed ?? ''}>
+      {/* Room vantage (2026-11-03): every room mount below — backdrop,
+          floors, bespoke rooms, all of it — turns by roomYaw so a seated
+          online player sees the room from their own seat. The table,
+          cards, figures and effects after this group are view space and
+          never move; neither does the camera. */}
+      <group rotation={[0, roomYaw, 0]}>
       {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} handKey={props.handNo} storyStopId={props.storyStopId ?? null} />}
       {classic && textured && (props.storyStopId === 'rec-center' && props.quality === 'high'
         ? <RecCenterGymRoom fxOn={!props.reduceFx} />
@@ -2446,6 +2470,7 @@ export default function Scene(props: SceneProps) {
       {mansion && textured && (props.quality === 'high'
         ? <HighRisePenthouseRoom fxOn={!props.reduceFx} />
         : <MansionRoom quality={props.quality} handNo={props.handNo} />)}
+      </group>
       {showTable && (
         <group
           ref={tableGroup}
@@ -2518,6 +2543,22 @@ export default function Scene(props: SceneProps) {
     <div ref={badgeLayer} className="badge-layer" />
     </div>
   );
+}
+
+/** Room vantage (2026-11-03): Venue3D's Backdrop and drei Environment
+ *  live on the scene (background / environment are scene-global), so
+ *  the room group's rotation cannot carry them — turn them by the
+ *  same yaw here, or the Pj's backdrop panorama and the venue's env
+ *  reflections would stay in the canonical orientation while the room
+ *  turns under them. Resets to the canonical orientation on unmount. */
+function RoomYawEnv({ yaw }: { yaw: number }) {
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    scene.backgroundRotation.set(0, yaw, 0);
+    scene.environmentRotation.set(0, yaw, 0);
+    return () => { scene.backgroundRotation.set(0, 0, 0); scene.environmentRotation.set(0, 0, 0); };
+  }, [scene, yaw]);
+  return null;
 }
 
 /** Hands the table renderer to the effect warm so tornado shaders link before the loading screen lifts. */

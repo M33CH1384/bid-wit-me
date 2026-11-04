@@ -88,7 +88,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CHAIR_SPOTS } from './classicStudioLayout';
-import { isSouthSeatSpot, useOwnChairHidden } from './ownChair';
+import { isOwnSeatSpot, useOwnChairHidden, useOwnSeatDir } from './ownChair';
 
 const FLOOR_Y = -0.9;
 
@@ -398,12 +398,13 @@ function chairGeos() {
 
 function FoldingChairs() {
   const hideOwnChair = useOwnChairHidden();
+  const ownDir = useOwnSeatDir();
   const { mats } = assets();
   const geos = useMemo(() => chairGeos(), []);
   return (
     <group>
       {CHAIR_SPOTS.map((s, i) => {
-        if (hideOwnChair && isSouthSeatSpot(s)) return null;
+        if (hideOwnChair && isOwnSeatSpot(s, ownDir)) return null;
         return (
         <group key={i} position={[s.x, 0, s.z]} rotation={[0, s.ry, 0]}>
           <mesh geometry={geos.frame} material={mats.chairSteel} castShadow />

@@ -51,7 +51,7 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CHAIR_SPOTS } from './classicStudioLayout';
-import { isSouthSeatSpot, useOwnChairHidden } from './ownChair';
+import { isOwnSeatSpot, useOwnChairHidden, useOwnSeatDir } from './ownChair';
 import { fx } from '../fx';
 import { SEDAN_BLAST_FLASH_S, sedanBlastPoseAt, sedanBlastReaction, sedanBlastReducer, type SedanBlastState } from './pjsSedanBlast';
 
@@ -685,13 +685,14 @@ function chairPanelGeo(): BufferGeometry {
 
 function FoldingChairs() {
   const hideOwnChair = useOwnChairHidden();
+  const ownDir = useOwnSeatDir();
   const { mats } = assets();
   const frame = useMemo(chairFrameGeo, []);
   const panels = useMemo(chairPanelGeo, []);
   return (
     <group>
       {CHAIR_SPOTS.map((s, i) => {
-        if (hideOwnChair && isSouthSeatSpot(s)) return null;
+        if (hideOwnChair && isOwnSeatSpot(s, ownDir)) return null;
         return (
         <group key={i} position={[s.x, FLOOR_Y, s.z]} rotation={[0, s.ry, 0]}>
           <mesh geometry={frame} material={mats.steelBlack} castShadow receiveShadow />
