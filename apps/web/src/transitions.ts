@@ -172,6 +172,20 @@ export const SPRAY_FAILSAFE_MS = 2300;
  *  never trapped behind dealt cards. */
 export const DEAL_READY_CAP_MS = 4000;
 
+/** The fan's repeat cooldown (crash-social2, 2026-11-04): the fan
+ *  is the family's one heavyweight episode — nine viewport-sized
+ *  cards rasterizing on every Social open AND close — and round
+ *  1's paint budget made a single episode survivable without
+ *  making repetition cheap: hammering the panel open/closed keeps
+ *  the compositor at peak duty with no drain window, and the
+ *  renderer is evicted (the white screen). So a fan move that
+ *  arrives within this window of the previous fan episode's end
+ *  applies instantly, like a suppressed move. Normal use is
+ *  untouched (an open, a browse, a close minutes later always get
+ *  the full fan); only a tapping burst is throttled, and its cost
+ *  stays flat no matter how long the burst runs. */
+export const FAN_EPISODE_COOLDOWN_MS = 5000;
+
 export const PROGRAM_SPECS: Record<TransitionProgramId, ProgramSpec> = {
   spray: { coverMs: SPRAY_COVER_MS, holdMs: SPRAY_HOLD_MS, revealMs: SPRAY_REVEAL_MS, failsafeMs: SPRAY_FAILSAFE_MS },
   /* Ink Bloom is the spray PROGRAM re-skinned for Neon (theme parity:
@@ -302,6 +316,10 @@ let coverTimer: ReturnType<typeof setTimeout> | undefined;
 let revealTimer: ReturnType<typeof setTimeout> | undefined;
 let failsafeTimer: ReturnType<typeof setTimeout> | undefined;
 let rendererMounted = false;
+/* When the last fan episode ended (performance.now clock), for the
+ * repeat cooldown above. -Infinity = no fan has run (or the
+ * renderer world was torn down, which resets the memory). */
+let lastFanEndAt = Number.NEGATIVE_INFINITY;
 /* The Deal's readiness state (meaningful only during a deal cover). */
 let dealReady = false;
 let dealDwellDone = false;
@@ -348,7 +366,11 @@ export function getTransitionSnapshot(): TransitionSnapshot {
  *  synchronous. */
 export function registerTransitionRenderer(mounted: boolean): void {
   rendererMounted = mounted;
-  if (!mounted) cancelTransitions();
+  if (!mounted) {
+    cancelTransitions();
+    /* A torn-down renderer world starts the fan's memory fresh. */
+    lastFanEndAt = Number.NEGATIVE_INFINITY;
+  }
 }
 
 function activeSpec(): ProgramSpec {
@@ -397,6 +419,7 @@ function endReveal(): void {
   revealTimer = undefined;
   if (failsafeTimer !== undefined) clearTimeout(failsafeTimer);
   failsafeTimer = undefined;
+  if (snapshot.program === 'fan') lastFanEndAt = nowMs();
   emit({ phase: 'idle', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program, doorwayStop: snapshot.doorwayStop });
 }
 
@@ -451,7 +474,19 @@ export function coverThen(mutate: () => void, moveClass: MoveClass = 'screen', o
     startCover(mutate, 1 - dissolved, snapshot.program, snapshot.doorwayStop);
     return;
   }
-  startCover(mutate, 0, resolveProgram(moveClass), opts?.doorwayStopId ?? '');
+  const program = resolveProgram(moveClass);
+  if (program === 'fan') {
+    /* The fan's repeat cooldown (crash-social2): a fan move inside
+     * the window applies instantly — the swap lands with no episode
+     * at all. In-episode joins and snap-backs above are untouched:
+     * the cooldown only guards starting a NEW fan from idle. */
+    const sinceFan = nowMs() - lastFanEndAt;
+    if (sinceFan >= 0 && sinceFan < FAN_EPISODE_COOLDOWN_MS) {
+      mutate();
+      return;
+    }
+  }
+  startCover(mutate, 0, program, opts?.doorwayStopId ?? '');
 }
 
 /**
@@ -461,11 +496,15 @@ export function coverThen(mutate: () => void, moveClass: MoveClass = 'screen', o
  */
 export function cancelTransitions(): void {
   if (snapshot.phase === 'idle' && pending.length === 0) return;
+  /* A fan episode cut short still paid most of its raster — it
+   * starts the repeat cooldown just like a completed one. */
+  const fanWasActive = snapshot.program === 'fan';
   clearTimers();
   const ms = pending;
   pending = [];
   dealReady = false;
   dealDwellDone = false;
+  if (fanWasActive) lastFanEndAt = nowMs();
   runMutations(ms);
   emit({ phase: 'idle', phaseAt: nowMs(), fromCoverage: 0, episodeId: snapshot.episodeId, program: snapshot.program, doorwayStop: snapshot.doorwayStop });
 }

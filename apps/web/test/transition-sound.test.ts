@@ -17,6 +17,7 @@ const soundMock = vi.hoisted(() => ({ play: vi.fn() }));
 vi.mock('../src/audio', () => ({ sound: soundMock }));
 
 import {
+  FAN_EPISODE_COOLDOWN_MS,
   cancelTransitions,
   coverTableEntry,
   coverThen,
@@ -88,6 +89,13 @@ describe('transition-family sound', () => {
     const off = initTransitionSound();
     coverThen(vi.fn(), 'profile-social');
     vi.advanceTimersByTime(1000);
+    /* crash-social2: a fan move inside the repeat cooldown starts
+     * no episode at all — a silent instant cut, so no second sound.
+     * The per-episode rule is about episodes, and there is none. */
+    coverThen(vi.fn(), 'profile-social');
+    expect(soundMock.play).toHaveBeenCalledTimes(1);
+    /* Past the cooldown the fan runs — and sounds — again. */
+    vi.advanceTimersByTime(FAN_EPISODE_COOLDOWN_MS);
     coverThen(vi.fn(), 'profile-social');
     expect(soundMock.play).toHaveBeenCalledTimes(2);
     off();

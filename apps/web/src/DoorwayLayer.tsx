@@ -66,10 +66,23 @@ export default function DoorwayLayer() {
     if (!root) return;
     const q = (name: string) => root.querySelector<HTMLElement>(`[data-anim="${name}"]`);
     const d = (name: string) => root.querySelector<HTMLElement>(`[data-decor="${name}"]`);
+    /* The episode's animations, collected so the cleanup can cancel
+     * every one (the spray's discipline, SprayLayer.tsx). A
+     * finished-but-filling animation otherwise keeps its target —
+     * and the target's composited layers — rooted after the layer
+     * unmounts; the fan accumulated whole layer trees per episode
+     * that way (crash-social2, 2026-11-04) and this layer shares
+     * the same fire-and-forget shape. */
+    const anims: Animation[] = [];
     const run = (el: HTMLElement | null, frames: Keyframe[], opts: KeyframeAnimationOptions) => {
       if (!el) return;
       try {
-        el.animate(frames, { fill: 'both', ...opts });
+        const a = el.animate(frames, { fill: 'both', ...opts });
+        // A cancelled animation rejects its finished promise; nobody
+        // awaits it, so mark it handled before it can surface as an
+        // unhandled rejection at cleanup time.
+        a.finished?.catch(() => undefined);
+        anims.push(a);
       } catch {
         /* older engines: the CSS end state still lands */
       }
@@ -162,6 +175,21 @@ export default function DoorwayLayer() {
         easing: 'ease-out',
       });
     }
+    /* No animation outlives its phase: the next phase's inline
+     * end-state styles are already applied before this cleanup
+     * runs, and snap-back positioning is carried by the
+     * controller's fromCoverage delays — cancelling here is
+     * visually silent and leaves nothing rooted at unmount
+     * (crash-social2). */
+    return () => {
+      for (const a of anims) {
+        try {
+          a.cancel();
+        } catch {
+          /* already finished or detached */
+        }
+      }
+    };
   }, [active, phase, episodeId, fromCoverage, kind, split]);
 
   if (!active) return null;

@@ -188,10 +188,23 @@ export default function FanLayer() {
     const layout = fanLayout(window.innerWidth, window.innerHeight);
     const q = (name: string) => root.querySelector<HTMLElement>(`[data-anim="${name}"]`);
     const qa = (name: string) => Array.from(root.querySelectorAll<HTMLElement>(`[data-anim="${name}"]`));
+    /* The episode's animations, collected so the cleanup can cancel
+     * every one (the spray's discipline, SprayLayer.tsx). A
+     * finished-but-filling animation otherwise keeps its target —
+     * and the target's composited layers — rooted after the layer
+     * unmounts; repeated Social open/close cycles accumulated whole
+     * fan trees that way until the renderer died (crash-social2,
+     * 2026-11-04). */
+    const anims: Animation[] = [];
     const run = (el: HTMLElement | null, frames: Keyframe[], opts: KeyframeAnimationOptions) => {
       if (!el) return;
       try {
-        el.animate(frames, { fill: 'both', ...opts });
+        const a = el.animate(frames, { fill: 'both', ...opts });
+        // A cancelled animation rejects its finished promise; nobody
+        // awaits it, so mark it handled before it can surface as an
+        // unhandled rejection at cleanup time.
+        a.finished?.catch(() => undefined);
+        anims.push(a);
       } catch {
         /* older engines: the CSS end state still lands */
       }
@@ -245,6 +258,20 @@ export default function FanLayer() {
         });
       });
     }
+    /* No animation outlives its phase: React has already applied
+     * the next phase's inline end-state styles before this cleanup
+     * runs, and snap-back positioning is carried by the
+     * controller's fromCoverage delays — cancelling here is
+     * visually silent and leaves nothing rooted at unmount. */
+    return () => {
+      for (const a of anims) {
+        try {
+          a.cancel();
+        } catch {
+          /* already finished or detached */
+        }
+      }
+    };
   }, [active, phase, episodeId, fromCoverage]);
 
   if (!active) return null;

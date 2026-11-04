@@ -399,3 +399,163 @@ describe('Wave D — the Doorway, destination-dressed (row 67)', () => {
     expect(layer).not.toContain('spraySound');
   });
 });
+
+describe('crash-social2 — layers cancel their episode animations', () => {
+  /* The Social open/close white-screen round (2026-11-04): a fan
+   * episode's WAAPI animations were created with fill:'both' and
+   * never cancelled. A finished-but-filling animation keeps its
+   * target element — and the element's composited layers — rooted
+   * after the element unmounts, so every Social open AND close left
+   * a whole fan tree (47 nodes, 28 oversized layers) referenced in
+   * the document timeline. Repeated cycling accumulated them until
+   * the renderer was evicted. The spray has always collected and
+   * cancelled its animations in its effect cleanup; this pin holds
+   * the fan, the Deal/Sweep layer, and the Doorway to the same
+   * discipline: every animation an episode creates is cancelled by
+   * the end of the phase that created it, and none outlives the
+   * episode. The stub records every animate() the layers make. */
+  interface FakeAnim { cancel: ReturnType<typeof vi.fn>; finished: Promise<undefined> }
+  let created: FakeAnim[] = [];
+  let hadOwnAnimate = false;
+  let savedAnimate: unknown;
+
+  beforeEach(() => {
+    created = [];
+    const proto = (globalThis as { HTMLElement: typeof HTMLElement }).HTMLElement.prototype as unknown as Record<string, unknown>;
+    hadOwnAnimate = Object.prototype.hasOwnProperty.call(proto, 'animate');
+    savedAnimate = proto.animate;
+    proto.animate = () => {
+      const a: FakeAnim = { cancel: vi.fn(), finished: Promise.resolve(undefined) };
+      created.push(a);
+      return a;
+    };
+  });
+
+  afterEach(() => {
+    const proto = (globalThis as { HTMLElement: typeof HTMLElement }).HTMLElement.prototype as unknown as Record<string, unknown>;
+    if (hadOwnAnimate) proto.animate = savedAnimate;
+    else delete proto.animate;
+  });
+
+  const cancelled = (list: FakeAnim[]) => list.every((a) => a.cancel.mock.calls.length >= 1);
+
+  it('the Card Fan cancels its cover animations at the reveal and leaves none live at idle', async () => {
+    const { createElement } = await import('react');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { default: FanLayer } = await import('../src/FanLayer');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(createElement(FanLayer)));
+    act(() => registerTransitionRenderer(true));
+    const m = vi.fn();
+    act(() => coverThen(m, 'profile-social'));
+    // Cover beat: shade + 9 cards + 9 sheens.
+    expect(created.length).toBe(19);
+    const coverAnims = [...created];
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.fan.coverMs));
+    // The reveal flip must have cancelled every cover animation…
+    expect(cancelled(coverAnims)).toBe(true);
+    // …and the reveal created its own (shade + 9 cards).
+    expect(created.length).toBeGreaterThan(coverAnims.length);
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.fan.holdMs + PROGRAM_SPECS.fan.revealMs));
+    expect(host.querySelector('[data-testid="fan-layer"]')).toBeNull();
+    // Nothing the episode created is still live at idle.
+    expect(cancelled(created)).toBe(true);
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it('the Card Fan cancels mid-flight when the layer unmounts during a cover', async () => {
+    const { createElement } = await import('react');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { default: FanLayer } = await import('../src/FanLayer');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(createElement(FanLayer)));
+    act(() => registerTransitionRenderer(true));
+    act(() => coverThen(vi.fn(), 'profile-social'));
+    expect(created.length).toBe(19);
+    act(() => root.unmount());
+    expect(cancelled(created)).toBe(true);
+    host.remove();
+  });
+
+  it('the Deal cancels its cover animations when the lift begins and leaves none live at idle', async () => {
+    const { createElement } = await import('react');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { default: TableTransitionLayer } = await import('../src/TableTransitionLayer');
+    const { coverTableEntry, signalTableReady } = await import('../src/transitions');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(createElement(TableTransitionLayer)));
+    act(() => registerTransitionRenderer(true));
+    act(() => coverTableEntry());
+    expect(created.length).toBeGreaterThan(0);
+    const coverAnims = [...created];
+    act(() => signalTableReady());
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.deal.coverMs));
+    expect(cancelled(coverAnims)).toBe(true);
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.deal.revealMs));
+    expect(host.querySelector('[data-testid="table-transition-layer"]')).toBeNull();
+    expect(cancelled(created)).toBe(true);
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it('the Book Sweep cancels its cover animations at the reveal and leaves none live at idle', async () => {
+    const { createElement } = await import('react');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { default: TableTransitionLayer } = await import('../src/TableTransitionLayer');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(createElement(TableTransitionLayer)));
+    act(() => registerTransitionRenderer(true));
+    const m = vi.fn();
+    act(() => coverThen(m, 'table-exit'));
+    expect(created.length).toBeGreaterThan(0);
+    const coverAnims = [...created];
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.sweep.coverMs));
+    expect(cancelled(coverAnims)).toBe(true);
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.sweep.holdMs + PROGRAM_SPECS.sweep.revealMs));
+    expect(host.querySelector('[data-testid="table-transition-layer"]')).toBeNull();
+    expect(cancelled(created)).toBe(true);
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it('the Doorway cancels its cover animations at the reveal and leaves none live at idle', async () => {
+    const { createElement } = await import('react');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { default: DoorwayLayer } = await import('../src/DoorwayLayer');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(createElement(DoorwayLayer)));
+    act(() => registerTransitionRenderer(true));
+    const m = vi.fn();
+    act(() => coverThen(m, 'story-entry'));
+    expect(created.length).toBeGreaterThan(0);
+    const coverAnims = [...created];
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.doorway.coverMs));
+    expect(cancelled(coverAnims)).toBe(true);
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.doorway.holdMs + PROGRAM_SPECS.doorway.revealMs));
+    expect(host.querySelector('[data-testid="doorway-layer"]')).toBeNull();
+    expect(cancelled(created)).toBe(true);
+    act(() => root.unmount());
+    host.remove();
+  });
+});

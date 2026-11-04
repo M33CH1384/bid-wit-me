@@ -26,6 +26,7 @@ vi.mock('../src/fx', () => ({ fx: fxStub }));
 
 import {
   DEAL_READY_CAP_MS,
+  FAN_EPISODE_COOLDOWN_MS,
   PROGRAM_SPECS,
   SPRAY_COVER_MS,
   SPRAY_HOLD_MS,
@@ -379,6 +380,81 @@ describe('the Card Fan (stage 2)', () => {
     expect(host.querySelector('[data-testid="fan-layer"]')).toBeNull();
     act(() => root.unmount());
     host.remove();
+  });
+});
+
+describe('crash-social2 — the fan sits out rapid repeats', () => {
+  /* Round 2 of the Social white screen (owner, 2026-11-04): round
+   * 1's paint budget made ONE fan episode survivable, but the fan
+   * still pays its full compositor price on every Social open AND
+   * every close — nine viewport-sized cards rasterizing twice per
+   * open/close cycle. Hammering the panel open/closed keeps the
+   * compositor at peak duty with no drain window, and the renderer
+   * is evicted. The fan now sits out rapid repeats: a fan move that
+   * arrives within the cooldown of the last fan episode's end
+   * applies instantly, like a suppressed move. A normal open (and a
+   * close minutes later) always gets the full fan; only a tapping
+   * burst is throttled. */
+  const runFanToIdle = () => {
+    vi.advanceTimersByTime(PROGRAM_SPECS.fan.coverMs + PROGRAM_SPECS.fan.holdMs + PROGRAM_SPECS.fan.revealMs);
+    expect(getTransitionSnapshot().phase).toBe('idle');
+  };
+
+  it('a second fan move inside the cooldown applies instantly, with no new episode', () => {
+    registerTransitionRenderer(true);
+    const m1 = vi.fn();
+    coverThen(m1, 'profile-social');
+    expect(getTransitionSnapshot().phase).toBe('cover');
+    const ep = getTransitionSnapshot().episodeId;
+    runFanToIdle();
+    expect(m1).toHaveBeenCalledTimes(1);
+    const m2 = vi.fn();
+    coverThen(m2, 'profile-social');
+    expect(m2).toHaveBeenCalledTimes(1);
+    expect(getTransitionSnapshot().phase).toBe('idle');
+    expect(getTransitionSnapshot().episodeId).toBe(ep);
+  });
+
+  it('the fan runs again once the cooldown has passed', () => {
+    registerTransitionRenderer(true);
+    const m1 = vi.fn();
+    coverThen(m1, 'profile-social');
+    const ep = getTransitionSnapshot().episodeId;
+    runFanToIdle();
+    vi.advanceTimersByTime(FAN_EPISODE_COOLDOWN_MS);
+    const m2 = vi.fn();
+    coverThen(m2, 'profile-social');
+    expect(m2).not.toHaveBeenCalled();
+    expect(getTransitionSnapshot().phase).toBe('cover');
+    expect(getTransitionSnapshot().episodeId).toBe(ep + 1);
+    runFanToIdle();
+    expect(m2).toHaveBeenCalledTimes(1);
+  });
+
+  it('the cooldown is the fan\u2019s alone: other programs re-run back to back', () => {
+    registerTransitionRenderer(true);
+    const s1 = vi.fn();
+    coverThen(s1, 'screen');
+    vi.advanceTimersByTime(SPRAY_COVER_MS + SPRAY_HOLD_MS + SPRAY_REVEAL_MS);
+    expect(getTransitionSnapshot().phase).toBe('idle');
+    const s2 = vi.fn();
+    coverThen(s2, 'screen');
+    expect(getTransitionSnapshot().phase).toBe('cover');
+    vi.advanceTimersByTime(SPRAY_COVER_MS + SPRAY_HOLD_MS + SPRAY_REVEAL_MS);
+    expect(s2).toHaveBeenCalledTimes(1);
+  });
+
+  it('a fan episode cut short by a cancel still starts the cooldown', () => {
+    registerTransitionRenderer(true);
+    const m1 = vi.fn();
+    coverThen(m1, 'profile-social');
+    expect(getTransitionSnapshot().phase).toBe('cover');
+    cancelTransitions();
+    expect(m1).toHaveBeenCalledTimes(1);
+    const m2 = vi.fn();
+    coverThen(m2, 'profile-social');
+    expect(m2).toHaveBeenCalledTimes(1);
+    expect(getTransitionSnapshot().phase).toBe('idle');
   });
 });
 
