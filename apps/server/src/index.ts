@@ -11,6 +11,7 @@
  *   POST /api/crashes             → client crash/error telemetry (D1), see crashes.ts; GET /api/crashes/list is the admin read
  *   /api/auth/*                   → accounts + sign-in (D1), see auth/routes.ts; served same-origin via the Pages proxy
  *   POST /api/stats/local         → signed-in offline game (rebuilt server-side, unrated)
+ *   POST /api/gen-dialogue        → generated-dialogue prototype relay (404 unless GEN_DIALOGUE_RELAY=on), see genDialogue.ts
  *   GET  /health
  *
  * Free-plan notes (spec §13):
@@ -30,6 +31,7 @@ import { handleCrashes, pruneClientCrashes } from './crashes';
 import { ADMIN_COOKIE, ADMIN_TTL_MS, adminCookieOk, adminLoginHtml, makeAdminCookie, readCookie } from './admin';
 import { type Bucket, LIMITS, type LimitEnv, hit, limited } from './limits';
 import { type AuthEnv, handleAuth } from './auth/routes';
+import { handleGenDialogue } from './genDialogue';
 import { handleLocalStats } from './stats/local';
 import { type SocialEnv, handleSocialHttp, isAdmin } from './social/routes';
 import { type CredEnv, handleCredHttp } from './cred/routes';
@@ -77,6 +79,10 @@ export interface Env extends LimitEnv, AuthEnv, SocialEnv {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
+  /** Generated-dialogue prototype relay (branch proto/nemotron-dialogue): `npx wrangler secret put NVIDIA_API_KEY`;
+   *  the endpoint 404s unless GEN_DIALOGUE_RELAY is set to 'on'. See src/genDialogue.ts. */
+  NVIDIA_API_KEY?: string;
+  GEN_DIALOGUE_RELAY?: string;
 }
 
 const voiceBreaker = new WriterBreaker();
@@ -223,6 +229,12 @@ export default {
       const slow = await limited(req, env, 'stats', origin);
       if (slow) return slow;
       return handleLocalStats(req, env, url, Date.now());
+    }
+
+    if (parts[1] === 'gen-dialogue' && req.method === 'POST') {
+      const slow = await limited(req, env, 'info', origin);
+      if (slow) return slow;
+      return handleGenDialogue(req, env, url, Date.now());
     }
 
     if (parts[1] === 'social') {

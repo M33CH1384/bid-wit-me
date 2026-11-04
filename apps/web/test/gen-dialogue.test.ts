@@ -311,6 +311,33 @@ describe('nemotron adapter', () => {
   it('schema validation rejects a bad emotion before the director ever sees it', () => {
     expect(() => parseModelContent('{"line":"ok line.","emotion":"furious","animation":null}')).toThrow('gen-invalid:emotion-not-allowlisted');
   });
+
+  it('relay mode: posts only the payload (no prompt, no key) and parses the raw reply', async () => {
+    let seen: { url: string; init: { body: string; credentials?: string; headers: Record<string, string> } } | null = null;
+    const fetchFn = (async (url: string, init: NonNullable<typeof seen>['init']) => {
+      seen = { url, init };
+      return { ok: true, json: async () => ({ content: '{"line":"a relayed line.","emotion":"calm","animation":null}' }) };
+    }) as unknown as typeof fetch;
+    const a = new NemotronDialogueAdapter({ relayPath: '/api/gen-dialogue', fetchFn });
+    expect(a.configured).toBe(true);
+    const p = await import('@spades/bots').then((bots) => bots.buildGenPayload({ state: riggedState(), table, speakerSeat: 1, kind: 'set', lineKind: 'gotSet', subjectSide: 1 }));
+    const res = await a.generate(p);
+    expect(res.line).toBe('a relayed line.');
+    expect(seen!.url).toBe('/api/gen-dialogue');
+    expect(seen!.init.credentials).toBe('same-origin');
+    expect(seen!.init.headers.Authorization).toBeUndefined();
+    const sent = JSON.parse(seen!.init.body) as Record<string, unknown>;
+    expect(sent.event).toMatchObject({ kind: 'set' }); // the payload, allowlisted facts only
+    expect(sent).not.toHaveProperty('messages'); // no prompt is built client-side in relay mode
+    expect(JSON.stringify(sent)).not.toMatch(/"hands"|"deck"|"seed"/);
+  });
+
+  it('relay mode: a relay 404 (kill-switch off) fails closed like any adapter failure', async () => {
+    const fetchFn = (async () => ({ ok: false, status: 404, json: async () => ({}) })) as unknown as typeof fetch;
+    const a = new NemotronDialogueAdapter({ relayPath: '/api/gen-dialogue', fetchFn });
+    const p = await import('@spades/bots').then((bots) => bots.buildGenPayload({ state: riggedState(), table, speakerSeat: 1, kind: 'set', lineKind: 'gotSet', subjectSide: 1 }));
+    await expect(a.generate(p)).rejects.toThrow('gen-relay-http-404');
+  });
 });
 
 describe('speech adapters', () => {

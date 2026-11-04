@@ -22,6 +22,9 @@ ADMIN_USERNAMES = "M33CH"
 #   npx wrangler secret put VAPID_PUBLIC_KEY
 #   npx wrangler secret put VAPID_PRIVATE_KEY
 #   npx wrangler secret put VAPID_SUBJECT   (e.g. mailto:you@example.com)
+# Generated-dialogue prototype relay (branch proto/nemotron-dialogue; POST /api/gen-dialogue):
+#   npx wrangler secret put NVIDIA_API_KEY
+#   and set GEN_DIALOGUE_RELAY = "on" here in [vars] to enable. Unset/off = the endpoint 404s.
 # Without these, /api/push/vapid-key returns 503 and no pushes are sent.
 
 [[durable_objects.bindings]]

@@ -6,9 +6,18 @@
  * Everything is behind the prototype flag: VITE_GEN_DIALOGUE=1 at build
  * time, or localStorage 'bwm.genDialogue' = '1' on the device. With the
  * flag off (the default), the hooks are inert and the game behaves
- * exactly as master. With the flag on and no model endpoint configured,
- * the MOCK adapter drives the pipeline (labeled 'mock' on every line it
- * wins). The speech stage defaults to the labeled mock (text-only)
+ * exactly as master. Adapter selection with the flag on:
+ *   - VITE_GEN_DIALOGUE_URL set → the Nemotron adapter calls that
+ *     endpoint directly (LOCAL DEV ONLY — the env key is a dev
+ *     convenience and must never ship in a production bundle);
+ *   - VITE_GEN_DIALOGUE_MOCK=1 (or localStorage 'bwm.genDialogueMock')
+ *     → the MOCK adapter drives the pipeline (labeled 'mock' on every
+ *     line it wins) — the no-endpoint proof path;
+ *   - otherwise → RELAY mode: the Nemotron adapter posts payloads to the
+ *     game's own server (/api/gen-dialogue), which holds the key. The
+ *     relay 404s unless the server enables it, and any failure fails
+ *     closed to the curated line, as everywhere in this prototype.
+ * The speech stage defaults to the labeled mock (text-only)
  * unless VITE_GEN_SPEECH_URL points at the studio service.
  */
 import {
@@ -38,9 +47,13 @@ let director: GenDirector | null = null;
 export function genDirector(): GenDirector {
   if (director) return director;
   const url = env('VITE_GEN_DIALOGUE_URL');
+  let mockOptIn = env('VITE_GEN_DIALOGUE_MOCK') === '1';
+  if (!mockOptIn) { try { mockOptIn = localStorage.getItem('bwm.genDialogueMock') === '1'; } catch { /* no storage */ } }
   const adapter: DialogueAdapter = url
     ? new NemotronDialogueAdapter({ url, model: env('VITE_GEN_DIALOGUE_MODEL'), key: env('VITE_GEN_DIALOGUE_KEY') })
-    : new MockDialogueAdapter();
+    : mockOptIn
+      ? new MockDialogueAdapter()
+      : new NemotronDialogueAdapter({ relayPath: '/api/gen-dialogue' });
   const speechUrl = env('VITE_GEN_SPEECH_URL');
   const speech: SpeechAdapter = speechUrl
     ? new ChatterboxSpeechAdapter({

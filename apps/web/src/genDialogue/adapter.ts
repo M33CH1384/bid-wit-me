@@ -15,6 +15,14 @@
  * the game's own server proxy, which holds the credential server-side —
  * a browser bundle can keep no secret. Unconfigured / unreachable /
  * slow → the adapter fails closed and the curated line owns the moment.
+ *
+ * RELAY mode is that production shape: the adapter POSTs only the
+ * allowlisted payload to the game's own server (POST /api/gen-dialogue,
+ * session cookie auth, same as every other game call). The server builds
+ * the prompt itself and holds the NVIDIA key; it returns the model's raw
+ * structured reply, which is schema-checked HERE (parseModelContent)
+ * and fact-checked by the director — the gates stay client-side, where
+ * the game state lives. Relay mode carries no key and no prompt.
  */
 import { buildGenPrompt, mockGenerate, validateGenResponse, type GenPayload, type GenResponse } from '@spades/bots';
 
@@ -49,13 +57,17 @@ export interface NemotronAdapterConfig {
   /** DEV ONLY — see the header. Production goes through the server proxy. */
   key?: string;
   fetchFn?: typeof fetch;
+  /** RELAY mode: same-origin server path (e.g. '/api/gen-dialogue'). When
+   *  set (and no direct url), generate() posts the payload to the relay. */
+  relayPath?: string;
 }
 
 export class NemotronDialogueAdapter implements DialogueAdapter {
   readonly id = 'nemotron-bolt-e4b';
   constructor(private cfg: NemotronAdapterConfig) {}
-  get configured(): boolean { return !!this.cfg.url; }
+  get configured(): boolean { return !!this.cfg.url || !!this.cfg.relayPath; }
   async generate(p: GenPayload, signal?: AbortSignal): Promise<GenResponse> {
+    if (this.cfg.relayPath && !this.cfg.url) return this.generateViaRelay(p, signal);
     if (!this.cfg.url) throw new Error('nemotron-unconfigured');
     const { system, user } = buildGenPrompt(p);
     const fetchFn = this.cfg.fetchFn ?? fetch;
@@ -86,6 +98,22 @@ export class NemotronDialogueAdapter implements DialogueAdapter {
     // shape ONLY through validateGenResponse at the director — this
     // adapter returns the parsed-or-thrown response via the same path:
     return parseModelContent(content);
+  }
+
+  /** Relay mode: payload out, raw structured reply back, gates here. */
+  private async generateViaRelay(p: GenPayload, signal?: AbortSignal): Promise<GenResponse> {
+    const fetchFn = this.cfg.fetchFn ?? fetch;
+    const res = await fetchFn(this.cfg.relayPath!, {
+      method: 'POST',
+      signal,
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    });
+    if (!res.ok) throw new Error(`gen-relay-http-${res.status}`);
+    const j = (await res.json()) as { content?: unknown };
+    if (typeof j.content !== 'string' || !j.content) throw new Error('gen-relay-empty');
+    return parseModelContent(j.content);
   }
 }
 
