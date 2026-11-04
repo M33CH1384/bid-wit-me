@@ -102,6 +102,7 @@ const ONLINE_BOT_MS = 750;
 import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
 import { plateTally, rememberHandTally, type HandTally } from './plateStats';
+import { MARGIN_LABEL, marginTierForSeat, type MarginTier } from './thinMargin';
 import { BOOK_GATHER_MS, landedTook, shownTook } from './tookDisplay';
 import { bidChipText, dealerChipMatches, plateTookText, popPlateTook, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
@@ -309,6 +310,16 @@ function PlateFace({ uid, name, color, storyId, bot }: { uid?: string; name: str
   if (storyId) return <StoryFace characterId={storyId} name={name} className="plate-avatar" />;
   if (bot) return <PersonaFace name={name} className="plate-avatar" />;
   return <AvatarCircle pic={pic} name={name} className="plate-avatar" style={{ ['--uc' as string]: color }} />;
+}
+
+/** Thin-margin warning chip (owner, 2026-11-04): the stats row's danger
+ * light for a side whose bid is running out of room — the arithmetic lives
+ * in thinMargin.ts. It carries the `bad` class so the plate-facts DOM sync
+ * never indexes it (the NIL BUSTED precedent below): its text is
+ * React-owned, written by this render and no one else. */
+function MarginChip({ tier, testId }: { tier: MarginTier; testId: string }) {
+  if (tier === 0) return null;
+  return <span className={`chip bad margin t${tier}`} data-testid={testId}>{MARGIN_LABEL[tier]}</span>;
 }
 
 /** Own name-plate face: the signed-in player's own uploaded picture, else the initial. */
@@ -2651,6 +2662,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
           <div className="plate-stats" key={st.handNo}>
             <span className="chip" data-testid={`bid-${seat}`}>{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
             <span className="chip took" data-testid={`books-${seat}`}>{plateTookText(took, st.phase)}</span>
+            <MarginChip tier={marginTierForSeat(st, seat)} testId={`margin-${seat}`} />
           </div>
         </div>
         {online?.seatExtra(seat)}
@@ -3315,6 +3327,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
               <span className="chip" data-testid="bid-0">{bidChipText(plates.bids[HUMAN] ?? null, actor === HUMAN && st.phase === 'bidding')}</span>
               <span className="chip took" data-testid="books-0">{plateTookText(tookShown[HUMAN] ?? 0, st.phase)}</span>
               {isNilBid(plates.bids[HUMAN]) && (tookShown[HUMAN] ?? 0) > 0 && <span className="chip bad">NIL BUSTED</span>}
+              <MarginChip tier={marginTierForSeat(st, HUMAN)} testId="margin-0" />
             </div>
             {!spectating && (
               <span className="plate-toggles">

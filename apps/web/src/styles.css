@@ -270,6 +270,19 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .shot-out-banner { font: 900 clamp(28px, 7vw, 54px)/1 var(--display, Impact, sans-serif); color: #ff3b3b; letter-spacing: .06em; text-shadow: 0 3px 0 #3a0000, 0 0 24px rgba(255,59,59,.6); margin: 4px 0 6px; transform: rotate(-3deg); }
 .shot-out-banner.third-set { color: #ffb340; text-shadow: 0 3px 0 #4a2400, 0 0 24px rgba(255,179,64,.55); }
 .chip.bad { background: rgba(255,77,109,.3); color: #ffd1da; }
+/* Thin-margin marker (owner, 2026-11-04): the stats row's warning light for a
+   side whose bid is running out of room (thinMargin.ts). Fixed hues in both
+   themes — the caution-tape rule: Classic and Neon carry the identical
+   signal. t1 THIN ICE is ice-blue and steady (no other plate chip uses the
+   hue, so the escalation reads at a glance); t2 MUST WIN OUT pulses red on
+   the notice cadence; t3 SET is solid deep red and steady — the pulse is
+   urgency, and at slack < 0 the urgency is over. The `bad` class it also
+   carries keeps the plate-facts sync from ever indexing it (NIL BUSTED
+   precedent); these rules outrank .chip.bad on specificity. */
+.chip.margin { font-weight: 800; letter-spacing: .04em; }
+.chip.margin.t1 { background: rgba(126,184,255,.30); color: #dcefff; box-shadow: inset 0 0 0 1px rgba(126,184,255,.55); }
+.chip.margin.t2 { background: #ff3b3b; color: #fff; animation: notice-pulse 1.6s ease-in-out infinite; }
+.chip.margin.t3 { background: #7a0d18; color: #ffb9c0; box-shadow: inset 0 0 0 1px rgba(255,77,109,.5); }
 .plate-turn {
   position: absolute; left: 30px; top: -16px; font-family: var(--display); font-weight: 800; font-size: 11px; letter-spacing: .14em; padding: 1px 8px;
   background: var(--purple); color: white; box-shadow: 0 0 12px var(--purple); clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
