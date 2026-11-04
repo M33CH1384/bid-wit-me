@@ -130,7 +130,40 @@ import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from 
 import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, buzzMomentFor, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, personaPortraitFor, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, storyPortraitFor, tableExchangeFor } from '@spades/bots';
 import { preloadVoice, setSeatedVoiceKeys, spriteKeyFor } from './voices/voices';
 import { signalTableReady } from './transitions';
+import type { SceneProps } from './three/Scene';
 const Scene = lazy(loadScene);
+
+/**
+ * The scene sink the per-game table publishes into (perf fix A,
+ * 2026-11-03). The 3D Scene — its Canvas and WebGL context — is owned
+ * by the session shell (the default export at the bottom of this
+ * file), NOT by the per-game table: a new game used to rebuild the
+ * whole graphics stack (shader-link parade, figure re-decode, texture
+ * re-upload) because Table remounted per game and took the Canvas
+ * with it. Now TableGame renders an anchor where the canvas lives
+ * and publishes its Scene props after every render; the shell owns
+ * ONE permanent portal element for its whole life and moves that
+ * element (imperatively, appendChild) into the current game's
+ * anchor. The portal target never changes, so the Scene — canvas,
+ * context, compiled programs — never remounts; the element just
+ * changes physical parent, which a WebGL context survives. A
+ * departing game re-homes the element to the shell (its unmount
+ * cleanup), so React's own bookkeeping stays honest at real exits:
+ * the shell unmounting is the only teardown.
+ */
+interface SceneSink {
+  publishScene: (sp: SceneProps) => void;
+  /** Hands the shell the anchor element inside the current game's
+   * screen. Only non-null elements are forwarded (see Table's
+   * anchorRef): a departing game's anchor going away must not drag
+   * the Scene with it — the game's unmount cleanup re-homes the
+   * portal element to the shell first. */
+  publishAnchor: (el: HTMLDivElement | null) => void;
+  /** Called from TableGame's unmount cleanup: returns the shell's
+   *  portal element to the shell's home node before the game's
+   *  screen subtree is detached. */
+  rehomeScene: () => void;
+}
 
 /**
  * "X TAKES IT": placed just above the trick (measured from the 3D layout), or below it when there's no room —
@@ -836,7 +869,7 @@ function ViewAdjustChip() {
   );
 }
 
-export default function Table({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onViewAdjust, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer, story }: Props) {
+function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onViewAdjust, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer, story, publishScene, publishAnchor, rehomeScene }: Props & SceneSink) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // Adjustable table view (owner, 2026-10-29): seed the tilt/zoom store from
   // the saved settings during this first render — before the Scene mounts and
@@ -2947,6 +2980,85 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
     live: liveSeats(st),
   });
 
+  // Perf fix A (2026-11-03): the Scene is rendered by the session shell
+  // (see SceneSink) — this game publishes its props after every render
+  // and leaves the slot below where the canvas lives. loadSettled is
+  // this game's loader verdict, the signal the persistent Scene uses
+  // to run the per-game figure-residency shed at the transition.
+  const sceneProps: SceneProps = {
+    onTableReady,
+    onFirstFrame: onSceneFirstFrame,
+    onTableDressed,
+    onHandLive,
+    onDealDone,
+    quality: settings.quality,
+    n,
+    handNo: st.handNo,
+    dealer: st.dealer,
+    positions: pos,
+    human: HUMAN,
+    spectator: spectating,
+    myHand: fanHand,
+    handCounts: display.counts,
+    shownTrick: display.trick,
+    trickArmed: !!view.nukeArmed,
+    slam: display.slam,
+    reduceFx,
+    venue,
+    view: effView,
+    turnUp,
+    piles: display.piles,
+    legal: runFx ? [] : humanExchanging && hand ? hand : legal,
+    turnKey,
+    onTurnPresented,
+    nukeKey,
+    onNukePresented,
+    selected: runFx ? null : selected,
+    turnSeat: actor === HUMAN && !spectating ? actor : null,
+    activeSeat: actor,
+    winnerSeat,
+    promoted,
+    onCardTap: onCard,
+    onCardDrop,
+    landing: landingMode(tips.on),
+    gameSeed: String(st.seed ?? ''),
+    loadSettled: !loading,
+    onFeltTap: () => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } },
+    renderSeat,
+    introHand,
+    dealing: dealing || redeal?.phase === 'deal',
+    dealReady,
+    animK: redeal?.phase === 'deal' ? k * MISDEAL_DEAL_SPEED : k,
+    gatherHands: redeal?.phase === 'gather' && !fx.osReducedMotion,
+    dealEpoch,
+    dealFlight: redeal?.phase === 'deal',
+    kingGunSeat: kingGunSeatFor(story) ?? online?.kingGunSeat ?? null,
+    storyStopId: storyStopId ?? online?.storyStopId ?? null,
+    kingRailCast: kingRail,
+    seatedFigures: seatedFiguresArr,
+    figureSeats,
+    personaFigureSeats,
+    seatVideos: online?.seatVideos,
+    crowdCue,
+    crowdAnimate: !reduceFx && !fx.osReducedMotion,
+    visitRail: visitSoloKing,
+    landCue,
+    deuceFx,
+    short: vp.short,
+    safe: vp.safe,
+    hintLegal,
+    marked: tipMarked,
+    collecting,
+    reviewHoldMs: finishedTrickHoldMs({ speed: k, handEnding: st.phase === 'handOver' || st.phase === 'gameOver', run: false, nuke: null }),
+    botPace: { baseMs: online ? ONLINE_BOT_MS : BOT_PLAY_MS, speedK: online ? 1 : k, botSeats: Array.from({ length: st.rules.playerCount }, (_, i) => i).filter(isBotSeat) },
+  };
+  useEffect(() => { publishScene(sceneProps); });
+  const anchorRef = useCallback((el: HTMLDivElement | null) => { publishAnchor(el); }, [publishAnchor]);
+  // On the way out (rematch or a real exit) hand the shell's portal
+  // element back to its home BEFORE this screen's subtree detaches —
+  // the canvas rides along inside it, context intact.
+  useEffect(() => () => { rehomeScene(); }, [rehomeScene]);
+
   return (
     <div ref={screenRef} className={`table-screen q-${settings.quality}${vp.short ? ' short' : ''}${modalOpen ? ' modal-open' : ''}${showPad ? ' pad-open' : ''}`} inert={loading ? true : undefined} data-dealing={dealing ? 'yes' : 'no'} data-my-turn={myTurn ? 'yes' : 'no'}>
       <DrivebyLights />
@@ -2967,74 +3079,11 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           promoted={promoted}
         />
       )}
-      <Suspense fallback={null}>
-        <Scene
-          onTableReady={onTableReady}
-          onFirstFrame={onSceneFirstFrame}
-          onTableDressed={onTableDressed}
-          onHandLive={onHandLive}
-          onDealDone={onDealDone}
-          quality={settings.quality}
-          n={n}
-          handNo={st.handNo}
-          dealer={st.dealer}
-          positions={pos}
-          human={HUMAN}
-          spectator={spectating}
-          myHand={fanHand}
-          handCounts={display.counts}
-          shownTrick={display.trick}
-          trickArmed={!!view.nukeArmed}
-          slam={display.slam}
-          reduceFx={reduceFx}
-          venue={venue}
-          view={effView}
-          turnUp={turnUp}
-          piles={display.piles}
-          legal={runFx ? [] : humanExchanging && hand ? hand : legal}
-          turnKey={turnKey}
-          onTurnPresented={onTurnPresented}
-          nukeKey={nukeKey}
-          onNukePresented={onNukePresented}
-          selected={runFx ? null : selected}
-          turnSeat={actor === HUMAN && !spectating ? actor : null}
-          activeSeat={actor}
-          winnerSeat={winnerSeat}
-          promoted={promoted}
-          onCardTap={onCard}
-          onCardDrop={onCardDrop}
-          landing={landingMode(tips.on)}
-          gameSeed={String(st.seed ?? '')}
-          onFeltTap={() => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } }}
-          renderSeat={renderSeat}
-          introHand={introHand}
-          dealing={dealing || redeal?.phase === 'deal'}
-          dealReady={dealReady}
-          animK={redeal?.phase === 'deal' ? k * MISDEAL_DEAL_SPEED : k}
-          gatherHands={redeal?.phase === 'gather' && !fx.osReducedMotion}
-          dealEpoch={dealEpoch}
-          dealFlight={redeal?.phase === 'deal'}
-          kingGunSeat={kingGunSeatFor(story) ?? online?.kingGunSeat ?? null}
-          storyStopId={storyStopId ?? online?.storyStopId ?? null}
-          kingRailCast={kingRail}
-          seatedFigures={seatedFiguresArr}
-          figureSeats={figureSeats}
-          personaFigureSeats={personaFigureSeats}
-          seatVideos={online?.seatVideos}
-          crowdCue={crowdCue}
-          crowdAnimate={!reduceFx && !fx.osReducedMotion}
-          visitRail={visitSoloKing}
-          landCue={landCue}
-          deuceFx={deuceFx}
-          short={vp.short}
-          safe={vp.safe}
-          hintLegal={hintLegal}
-          marked={tipMarked}
-          collecting={collecting}
-          reviewHoldMs={finishedTrickHoldMs({ speed: k, handEnding: st.phase === 'handOver' || st.phase === 'gameOver', run: false, nuke: null })}
-          botPace={{ baseMs: online ? ONLINE_BOT_MS : BOT_PLAY_MS, speedK: online ? 1 : k, botSeats: Array.from({ length: st.rules.playerCount }, (_, i) => i).filter(isBotSeat) }}
-        />
-      </Suspense>
+      {/* The persistent Scene's home anchor (see SceneSink): the
+          shell moves its permanent portal element into this anchor;
+          it sits exactly where the Scene's wrap lived, so the canvas
+          keeps its geometry, stacking and inert coverage. */}
+      <div ref={anchorRef} style={{ display: 'contents' }} />
       {!loadGone && <TableLoading progress={loadProgress} leaving={!loading && (!versusActive || versusStoryDone)} room={storyRoomLabel ?? roomName} seats={loadingSeats} reducedMotion={reduceFx || fx.osReducedMotion} versus={versusModel ? <VersusIntro model={versusModel} reduced={reduceFx || fx.osReducedMotion} ready={!loading} onStoryComplete={() => setVersusStoryDone(true)} /> : undefined} />}
       {preDeal && loadGone && (
         <div className="predeal-note" data-testid="predeal-note" role="status">
@@ -3514,5 +3563,92 @@ export default function Table({ rules: initialRules, seed, settings, onExit, onS
           blur rule exempts its .modal-backdrop like every other table modal */}
       <TableProfileModal />
     </div>
+  );
+}
+
+/**
+ * The table SESSION shell (perf fix A, 2026-11-03) — the default export
+ * every surface mounts. It owns the 3D Scene for the whole sitting:
+ * TableGame (keyed by the game seed, so every game's hooks reseed
+ * exactly as they always have) publishes its Scene props here, and the
+ * Scene portals into whichever slot the current game rendered. A
+ * rematch or the next game in a room swaps the game under the Scene —
+ * the Canvas, its WebGL context, the compiled shader programs and the
+ * decoded figure residency carry over, and the per-game reload tax
+ * (measured 2026-11-03: shader linking at 62–85% of the load-phase
+ * main thread, ~68 MB of figures re-decoded per game) is paid once
+ * per session instead of once per game. Leaving for real (menu, lobby,
+ * map) unmounts the shell, and the Scene's own unmount discipline —
+ * telemetry bracket, figure shed, teardown accounting — fires exactly
+ * as it did when every game owned a Scene.
+ */
+interface ScenePropStore {
+  subscribe: (fn: () => void) => () => void;
+  getSnapshot: () => SceneProps | null;
+  publish: (sp: SceneProps) => void;
+}
+
+function createScenePropStore(): ScenePropStore {
+  let current: SceneProps | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    subscribe: (fn) => { listeners.add(fn); return () => { listeners.delete(fn); }; },
+    getSnapshot: () => current,
+    publish: (sp) => { current = sp; for (const fn of [...listeners]) fn(); },
+  };
+}
+
+/** Renders the persistent Scene from the shell's prop store. Only this
+ *  component subscribes, so a publish re-renders the Scene and nothing
+ *  else — the per-game table never re-renders on its own publish (no
+ *  cascade, by construction). */
+function PersistentScene({ store }: { store: ScenePropStore }) {
+  const sp = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  return sp ? <Scene {...sp} /> : null;
+}
+
+export default function Table(props: Props) {
+  const storeRef = useRef<ScenePropStore | null>(null);
+  if (storeRef.current === null) storeRef.current = createScenePropStore();
+  const store = storeRef.current;
+  // The ONE portal element the Scene ever renders into, created once
+  // for the shell's whole life: React keeps portal children mounted
+  // only while the target element is the same, and each game used to
+  // hand the portal a fresh slot div — the remount (and the context
+  // loss that came with it) happened anyway. So the target is
+  // permanent and only its physical parent changes: adopted into the
+  // live game's anchor, re-homed here on the game's way out. The
+  // element is imperatively created, so React never tries to remove
+  // it from a parent it doesn't have; its content's bookkeeping stays
+  // exact.
+  const [portalEl] = useState<HTMLDivElement>(() => {
+    const el = document.createElement('div');
+    el.style.display = 'contents';
+    return el;
+  });
+  const homeRef = useRef<HTMLDivElement | null>(null);
+  const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
+  // Only a live anchor is ever adopted: when a game unmounts, its
+  // anchor's ref fires null — forwarding that would strand the Scene
+  // at exactly the transition persistence exists to cross. The
+  // game's own unmount cleanup re-homes the element first.
+  const publishAnchor = useCallback((el: HTMLDivElement | null) => { if (el) setAnchor(el); }, []);
+  const rehomeScene = useCallback(() => { if (homeRef.current && portalEl.parentElement !== homeRef.current) homeRef.current.appendChild(portalEl); }, [portalEl]);
+  useLayoutEffect(() => {
+    if (anchor && portalEl.parentElement !== anchor) anchor.appendChild(portalEl);
+  }, [anchor, portalEl]);
+  return (
+    <>
+      {createPortal(
+        <Suspense fallback={null}>
+          <PersistentScene store={store} />
+        </Suspense>,
+        portalEl,
+      )}
+      <TableGame key={props.seed} {...props} publishScene={store.publish} publishAnchor={publishAnchor} rehomeScene={rehomeScene} />
+      {/* the portal element's home between games (and its honest
+          React parent at shell teardown) */}
+      <div ref={homeRef} style={{ display: 'contents' }} />
+    </>
   );
 }

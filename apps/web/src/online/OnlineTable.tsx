@@ -189,9 +189,13 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
   return (
     <>
       {/* Seat is not part of the key. A spectator frame used to remount the 3D table and hold
-          the full-screen "Shuffling the deck…" loader for several seconds. */}
+          the full-screen "Shuffling the deck…" loader for several seconds.
+          The game number is not part of the key either (perf fix A,
+          2026-11-03): the key names the ROOM — Table's session shell
+          keeps the 3D scene across the room's games and keys the
+          per-game table by the seed prop (code:game) internally. */}
       <Table
-        key={`${room.code}:${room.game}`}
+        key={room.code}
         rules={r}
         seed={`${room.code}:${room.game}`}
         settings={settings}

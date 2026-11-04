@@ -76,8 +76,11 @@ export default function App() {
   return (
     <>
     <NowPlaying />
+    {/* No key (perf fix A, 2026-11-03): Table's session shell must
+        survive a seed change — it keys the per-game table by seed
+        internally and keeps the 3D scene (and its WebGL context)
+        across rematches. Leaving to the menu unmounts it for real. */}
     <Table
-      key={game.seed}
       rules={settingsToRules(game.settings)}
       seed={game.seed}
       resume={game.resume}

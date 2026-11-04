@@ -60,7 +60,7 @@ describe('Turn up (slam mode) — opt-in, OFF by default', () => {
     expect(table).toContain('data-testid="turnup-toggle"');
     expect(table).toContain('const turnUp = settings.turnUp === true');
     expect(table).toContain('onTurnUp?.(!turnUp)');
-    expect(table).toContain('turnUp={turnUp}'); // scene drag path
+    expect(table).toContain('turnUp,'); // scene drag path
     expect(table).toContain('tapPlaySlamIntensity(effView, turnUp)'); // tap/toss + online slam field
     const more = readFileSync(new URL('../src/MoreOptions.tsx', import.meta.url), 'utf8');
     expect(more).toContain('Turn up (slam mode)');

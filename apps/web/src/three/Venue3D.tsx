@@ -30,6 +30,7 @@ import {
 } from 'three';
 import { type VenueDef, type VenueId, venueAssetUrls } from '../venues';
 import { noteRoomAssets } from '../assetGate';
+import { pulseDue } from './framePulse';
 import PjsStreetRoom, { SEDAN_URL } from './PjsStreetRoom';
 import KingLoungeRoom from './KingLoungeRoom';
 import { flickerAt, glowAt, smokePuffAt, venueLifeFor } from '../venueLife';
@@ -128,11 +129,13 @@ function VenueFloor({ def, url }: { def: VenueDef; url: string | null }) {
 
 /* ------------------------------------------------------------------ ambient motion (throttled redraws) */
 
-/** frameloop is 'demand': ambient motion asks for ~20 redraws a second, only while something moves */
+/** frameloop is 'demand': ambient motion asks for ~20 redraws a second, only while something moves.
+ *  Through the settled gate (framePulse) the ask drops to the shared
+ *  settled pulse once the table sits quiet. */
 function AmbientTicker() {
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
-    const id = window.setInterval(() => { if (!document.hidden) invalidate(); }, 50);
+    const id = window.setInterval(() => { if (!document.hidden && pulseDue()) invalidate(); }, 50);
     return () => window.clearInterval(id);
   }, [invalidate]);
   return null;

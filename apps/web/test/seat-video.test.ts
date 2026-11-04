@@ -139,7 +139,7 @@ describe('the wiring (source pins)', () => {
   it('Table forwards them to the Scene; the Scene mounts the layer in the scene chunk', () => {
     const table = src('src/Table.tsx');
     expect(table).toContain('seatVideos?: (MediaStream | null)[]');
-    expect(table).toContain('seatVideos={online?.seatVideos}');
+    expect(table).toContain('seatVideos: online?.seatVideos,');
     const scene = src('src/three/Scene.tsx');
     expect(scene).toContain("import SeatVideoLayer from './SeatVideo';");
     expect(scene).toContain('seatVideos?: readonly (MediaStream | null)[]');

@@ -70,6 +70,7 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { STORY_FIGURE_SEAMS } from '../assetGate';
+import { pulseDue } from './framePulse';
 import { FIGURE_SEAT_CONFIGS, type FigureSeatConfig, type FigureSeatSpot } from './figureSeats';
 import { useFigureResidency } from './figureResidency';
 import { opponentFan, seatDir, type SeatPos } from './layout';
@@ -1397,10 +1398,12 @@ export default function PorchFigures({ seats, positions, n, handCounts, activeSe
     w.__bwmPorchFigures ??= { mounted: [], failed: [] };
   }, []);
   /* The canvas is frameloop="demand": breath/sway/gaze need a pulse
-     while the figures live (the KingRail ticker's pattern). */
+     while the figures live (the KingRail ticker's pattern). The pulse
+     runs through the settled gate (framePulse): full cadence while the
+     table is active, a shared ~4/second once it settles. */
   useEffect(() => {
     if (!animate) return;
-    const id = window.setInterval(() => { if (!document.hidden) invalidate(); }, 50);
+    const id = window.setInterval(() => { if (!document.hidden && pulseDue()) invalidate(); }, 50);
     return () => window.clearInterval(id);
   }, [animate, invalidate]);
   const anchors = useMemo(() => {

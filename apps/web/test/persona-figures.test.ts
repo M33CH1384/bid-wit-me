@@ -125,7 +125,7 @@ describe('the seam wiring', () => {
     expect(table).toContain('!story && !online?.storyStopId');
     expect(table).toContain('personaFigureKeyForName(names[seat]');
     expect(table).toContain('isBotSeat(seat) ? personaFigureKeyForName');
-    expect(table).toContain('personaFigureSeats={personaFigureSeats}');
+    expect(table).toContain('personaFigureSeats,');
   });
 
   it('Scene activates the layer on non-story + High + the prop, and only there', () => {

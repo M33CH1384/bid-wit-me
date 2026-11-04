@@ -248,8 +248,8 @@ describe('the playable highlight waits for the table', () => {
   it('the wiring is in place: Table gates on the certification the Scene issues', () => {
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
     expect(table).toContain('highlightLegal({ myTurn, dropOpen: dropOpenView, phase: st.phase, presented, viewLegal: view.legal, hand })');
-    expect(table).toContain('turnKey={turnKey}');
-    expect(table).toContain('onTurnPresented={onTurnPresented}');
+    expect(table).toContain('turnKey,');
+    expect(table).toContain('    onTurnPresented,');
     const scene = readFileSync(new URL('../src/three/Scene.tsx', import.meta.url), 'utf8');
     expect(scene).toContain('presentationCaughtUp({ rests, sweepUntilFrameSec: pileSeq.current.sweepUntil, nowFrameSec: seqClock.current })');
     expect(scene).toContain('props.onTurnPresented(tk)');

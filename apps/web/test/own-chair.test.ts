@@ -81,7 +81,7 @@ describe('own-chair predicates over the real spot data', () => {
 describe('own-chair wiring', () => {
   it('Table passes its spectating flag to Scene', () => {
     const table = read('../src/Table.tsx');
-    expect(table).toContain('spectator={spectating}');
+    expect(table).toContain('spectator: spectating,');
   });
 
   it('Scene declares the prop and provides the context from its negation', () => {

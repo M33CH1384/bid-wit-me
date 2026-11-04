@@ -46,7 +46,7 @@ describe('The Corner — story-scoped street room', () => {
 
   it('Table feeds storyStopId: solo story scene first, then the co-op room prop', () => {
     const table = src('src/Table.tsx');
-    expect(table).toContain('storyStopId={storyStopId ?? online?.storyStopId ?? null}');
+    expect(table).toContain('storyStopId: storyStopId ?? online?.storyStopId ?? null,');
     expect(table).toContain('storyStopId?: string | null;');
   });
 

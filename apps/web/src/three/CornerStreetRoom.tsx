@@ -47,6 +47,7 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CHAIR_SPOTS } from './classicStudioLayout';
+import { pulseDue } from './framePulse';
 import { isSouthSeatSpot, useOwnChairHidden } from './ownChair';
 import { SEDAN_URL } from './PjsStreetRoom';
 
@@ -882,7 +883,7 @@ function RoomTicker({ fxOn }: { fxOn: boolean }) {
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
     if (!fxOn) return;
-    const id = window.setInterval(() => { if (!document.hidden) invalidate(); }, 90);
+    const id = window.setInterval(() => { if (!document.hidden && pulseDue()) invalidate(); }, 90);
     return () => window.clearInterval(id);
   }, [fxOn, invalidate]);
   return null;

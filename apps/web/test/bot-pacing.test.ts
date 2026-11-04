@@ -152,7 +152,7 @@ describe('wiring pins', () => {
     expect(scene).toContain('botPaceDelayMs({');
     expect(scene).toContain('playStarts.current.starts.set(playKey, frameNow + playDelay)');
     const table = src('src/Table.tsx');
-    expect(table).toContain('botPace={{');
+    expect(table).toContain('botPace: { baseMs:');
     expect(table).toContain('ONLINE_BOT_MS = 750');
   });
 });

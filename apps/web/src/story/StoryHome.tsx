@@ -890,9 +890,12 @@ export default function StoryHome() {
     const pair = stop.pair.map((id) => STORY_CHARACTERS[id]!) as [typeof STORY_CHARACTERS[string], typeof STORY_CHARACTERS[string]];
     const gameSettings = storySettingsFor(stop, settings);
     const tierSkill = STORY_TIER_SKILL[stop.tier];
+    // No key on the Table (perf fix A, 2026-11-03): Table's session
+    // shell keys the per-game table by the seed prop internally and
+    // keeps the 3D scene across attempts; leaving the game screen
+    // unmounts it for real.
     body = (
       <Table
-        key={screen.seed}
         rules={storyRulesFor(stop, settings)}
         seed={screen.seed}
         settings={gameSettings}

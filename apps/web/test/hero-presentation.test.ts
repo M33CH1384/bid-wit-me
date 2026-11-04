@@ -166,7 +166,7 @@ describe('hero presentation — source pins', () => {
     // but firing waits for Scene's certification that the nuked trick is the one on display, all cards down
     expect(tableSrc).toContain('nukeDueKey');
     expect(tableSrc).toContain('nukeShownKey !== nukeKey');
-    expect(tableSrc).toContain('onNukePresented={onNukePresented}');
+    expect(tableSrc).toContain('    onNukePresented,');
     expect(sceneSrc).toContain('onNukePresented');
     expect(sceneSrc).toContain('certifiedNuke');
   });

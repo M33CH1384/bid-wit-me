@@ -36,7 +36,7 @@ describe('the Porch story-scoped mount seam', () => {
 
   it('the storyStopId plumbing already shipped with the Corner carries porch too', () => {
     const table = src('src/Table.tsx');
-    expect(table).toContain('storyStopId={storyStopId ?? online?.storyStopId ?? null}');
+    expect(table).toContain('storyStopId: storyStopId ?? online?.storyStopId ?? null,');
     const online = src('src/online/OnlineTable.tsx');
     expect(online).toContain('storyStopId: room.story?.stopId ?? null');
   });

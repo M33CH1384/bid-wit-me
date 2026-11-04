@@ -175,9 +175,9 @@ describe('the coin columns are gone (negative pins)', () => {
     expect(scene).toContain('props.kingRailCast?.length ?? 0) > 0');
     expect(scene).toContain('crowdAnimate');
     const table = readSrc('src/Table.tsx');
-    expect(table).toContain('kingRailCast={kingRail}');
-    expect(table).toContain('seatedFigures={seatedFiguresArr}');
-    expect(table).toContain('crowdAnimate={!reduceFx && !fx.osReducedMotion}');
+    expect(table).toContain('kingRailCast: kingRail,');
+    expect(table).toContain('seatedFigures: seatedFiguresArr,');
+    expect(table).toContain('crowdAnimate: !reduceFx && !fx.osReducedMotion,');
   });
 
   it('co-op inherits the same gate: OnlineTable deals the cast + seated figures only at the King stop', () => {
@@ -608,7 +608,7 @@ describe('the filmed visit — Uncle Ray walks in, he does not stand', () => {
     expect(table).toContain('Math.max(baseDelay, VISIT_ARRIVE_MS + 400)'); // the whole beat extends…
     expect(table).toContain('stampVisit(crowdCue, lineAt - VISIT_ARRIVE_MS, lineAt + VISIT_SETTLED_MS + VISIT_DEPART_MS, VISIT_SETTLED_MS)'); // …so the line lands at settle
     expect(table).toContain('stampVisit(crowdCue, at, at + VISIT_ARRIVE_MS + visit.settledMs + VISIT_DEPART_MS, visit.settledMs)'); // ambient rides the same window
-    expect(table).toContain('visitRail={visitSoloKing}');
+    expect(table).toContain('visitRail: visitSoloKing,');
   });
 
   it('the lightning tier stays reverted: no stamps, no thunder, no director', () => {
@@ -641,7 +641,7 @@ describe('the filmed visit — Uncle Ray walks in, he does not stand', () => {
     const scene = readSrc('src/three/Scene.tsx');
     expect(scene).toContain('visit={props.visitRail ?? false}');
     const table = readSrc('src/Table.tsx');
-    expect(table).toContain('visitRail={visitSoloKing}');
+    expect(table).toContain('visitRail: visitSoloKing,');
   });
 
   it('floor-anchored at life scale: the shoe line plants on the venue floor', () => {

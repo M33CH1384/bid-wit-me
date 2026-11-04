@@ -22,7 +22,7 @@ describe('sitting slam regression (live bug: plain flick speed-slammed)', () => 
     // Table3D must receive the EFFECTIVE view (saved preference, or Sitting after the
     // seated-each-hand reset), and both toggles must go through toggleView so a manual
     // choice clears the auto-seat for the rest of the hand.
-    expect(table).toContain('view={effView}');
+    expect(table).toContain('view: effView,');
     expect(table).toContain('const effView = effectiveView(settings.view, handView)');
     expect(table).toContain('data-testid="view-toggle" onClick={toggleView}');
     expect(table).toContain('data-testid="view-toggle-plate"');

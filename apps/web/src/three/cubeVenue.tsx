@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Box3, type Group, Mesh, MeshStandardMaterial, type Object3D, type PointLight, RepeatWrapping, SRGBColorSpace, TextureLoader, VideoTexture } from 'three';
 import { flickerAt, glowAt, venueLifeFor } from '../venueLife';
+import { pulseDue } from './framePulse';
 import { fx } from '../fx';
 import type { VenueId } from '../venues';
 import { noteRoomAssets } from '../assetGate';
@@ -73,7 +74,7 @@ function CubeLifePulse({ cfg, quality, lights }: { cfg: CubeVenueConfig; quality
   const bases = useMemo(() => (cfg.points ?? []).map((pt) => pt.i), [cfg]);
   useEffect(() => {
     if (quality !== 'high' || !bases.length) return;
-    const id = window.setInterval(() => { if (!document.hidden) invalidate(); }, 90);
+    const id = window.setInterval(() => { if (!document.hidden && pulseDue()) invalidate(); }, 90);
     return () => window.clearInterval(id);
   }, [quality, bases.length, invalidate]);
   useFrame(({ clock }) => {

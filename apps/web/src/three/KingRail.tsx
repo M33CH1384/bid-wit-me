@@ -30,6 +30,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { storyPortraitFor } from '@spades/bots';
 import { fx } from '../fx';
 import { edgePoint, seatDir, type SeatPos } from './layout';
+import { pulseDue } from './framePulse';
 import {
   RAIL_FLOOR_Y, RAIL_VISITORS, VISIT_PEAK,
   attentionYawFor, railVisitorFigures, restPose, ringScaleFor, seatedFigureFor, seatedPoseAt, stampStir, visitStateAt,
@@ -199,11 +200,13 @@ function SeatedFigure3D({ fig, cue, animate, target }: {
 }
 
 /** Keeps demand-loop frames flowing at the venue's ambient cadence —
- *  mounted only while the figures are animated. */
+ *  mounted only while the figures are animated. Runs through the
+ *  settled gate (framePulse): full cadence while the table is active,
+ *  the shared settled pulse once it sits quiet. */
 function CrowdTicker() {
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
-    const id = window.setInterval(() => { if (!document.hidden) invalidate(); }, 50);
+    const id = window.setInterval(() => { if (!document.hidden && pulseDue()) invalidate(); }, 50);
     return () => window.clearInterval(id);
   }, [invalidate]);
   return null;

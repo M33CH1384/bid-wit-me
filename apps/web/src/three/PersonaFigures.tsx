@@ -63,6 +63,7 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PERSONA_FIGURE_KEYS } from '../personaFigureKey';
+import { pulseDue } from './framePulse';
 import { useFigureResidency } from './figureResidency';
 import { CHAIR_SPOTS } from './classicStudioLayout';
 import { opponentFan, seatDir, type SeatPos } from './layout';
@@ -1519,10 +1520,13 @@ export default function PersonaFigures({ seats, positions, n, handCounts, active
     w.__bwmPersonaFigures ??= { mounted: [], failed: [] };
   }, []);
   /* The canvas is frameloop="demand": breath/sway/gaze need a pulse
-     while the figures live (the KingRail ticker's pattern). */
+     while the figures live (the KingRail ticker's pattern). The pulse
+     runs through the settled gate (framePulse): full cadence while the
+     table is active, a shared ~4/second once it settles — the figures
+     keep breathing, calmer, at a fifth of the idle render cost. */
   useEffect(() => {
     if (!animate) return;
-    const id = window.setInterval(() => { if (!document.hidden) invalidate(); }, 50);
+    const id = window.setInterval(() => { if (!document.hidden && pulseDue()) invalidate(); }, 50);
     return () => window.clearInterval(id);
   }, [animate, invalidate]);
   const anchors = useMemo(() => {

@@ -115,7 +115,7 @@ describe('wiring pins', () => {
     const scene = readFileSync('apps/web/src/three/Scene.tsx', 'utf8');
     // the solo gate first; the online binding's seat (the co-op finale's
     // cutthroat, Phase 4) is the fallback — the prop is the same piece
-    expect(table).toContain('kingGunSeat={kingGunSeatFor(story) ?? online?.kingGunSeat ?? null}');
+    expect(table).toContain('kingGunSeat: kingGunSeatFor(story) ?? online?.kingGunSeat ?? null,');
     expect(scene).toContain('kingGunSeat');
     expect(scene).toContain('kingGunSpot');
     expect(scene).toContain('<KingGun');

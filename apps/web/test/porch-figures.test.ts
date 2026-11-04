@@ -58,7 +58,7 @@ describe('the pilot seam wiring', () => {
     // object with the pair only.
     expect(table).toContain("story?.scene && story.scene.stop.id !== 'king' && storySeatIds");
     expect(table).toContain('seat === 0 ? null : (storySeatIds[seat] ?? null)');
-    expect(table).toContain('figureSeats={figureSeats}');
+    expect(table).toContain('figureSeats,');
     expect(table).toContain('storyFigureSeats ?? online?.figureSeats');
   });
 

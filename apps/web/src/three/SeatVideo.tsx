@@ -32,6 +32,7 @@ import { LinearFilter, PlaneGeometry, ShaderMaterial, SRGBColorSpace, VideoTextu
 import { useFrame, useThree } from '@react-three/fiber';
 import type { SeatPos } from './layout';
 import { assignSeatVideos, seatVideoYawAt, type SeatVideoSpot } from './seatVideoLayout';
+import { noteSceneActivity } from './framePulse';
 
 const QUAD = new PlaneGeometry(1, 1);
 
@@ -217,11 +218,15 @@ export default function SeatVideoLayer({ seats, positions, n, human }: SeatVideo
     return () => { delete (window as unknown as { __bwmSeatVideo?: unknown }).__bwmSeatVideo; };
   }, [assignments]);
 
-  /* Demand frameloop: keep frames flowing only while a feed shows. */
+  /* Demand frameloop: keep frames flowing only while a feed shows.
+     A live feed is continuous scene activity by definition — the video
+     texture must never drop to the settled pulse rate — so each tick
+     also notes activity (framePulse), holding the whole table at full
+     cadence for as long as a feed is up. */
   const anyLive = liveSeats.current.size > 0;
   useEffect(() => {
     if (!anyLive) return;
-    const id = window.setInterval(() => { if (!document.hidden) invalidate(); }, 50);
+    const id = window.setInterval(() => { if (!document.hidden) { noteSceneActivity(); invalidate(); } }, 50);
     return () => window.clearInterval(id);
   }, [anyLive, invalidate]);
 

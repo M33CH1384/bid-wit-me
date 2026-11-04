@@ -392,7 +392,7 @@ describe('the Scene <-> Card3D contract the gate is keyed on', () => {
 describe('the review-anchor contract (Scene + Table)', () => {
   it('Table hands Scene the plain finished-trick hold, computed by the same helper the hooks use', () => {
     const table = src('src/Table.tsx');
-    expect(table).toContain('reviewHoldMs={finishedTrickHoldMs({');
+    expect(table).toContain('reviewHoldMs: finishedTrickHoldMs({');
   });
 
   it('Scene anchors the fresh pile gather to the last rest and serializes the next trick behind the sweep', () => {

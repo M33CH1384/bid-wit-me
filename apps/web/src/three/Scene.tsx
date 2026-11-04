@@ -6,6 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial, createRestCardMaterial } from './Card3D';
 import { enterFigureLeanMode } from './figureResidency';
+import { noteSceneActivity } from './framePulse';
 import { createBackCardMaterial } from './cardBack';
 import DeuceFxLayer from './DeuceFxLayer';
 import { CUT_FACE_ANGLE, setDeuceCutPose } from './deuceImpact';
@@ -146,6 +147,14 @@ export interface SceneProps {
   landing?: 'fixed' | 'physics';
   /** The game's seed: with hand, trick and card it seeds every landing, so all clients agree. */
   gameSeed?: string;
+  /** The owning Table's loader has settled for the CURRENT game (gate
+   *  complete or given up). The scene persists across games inside a
+   *  table session (perf fix A, 2026-11-03); this signal is what lets
+   *  the scene run the per-game transition discipline — the figure
+   *  residency shed — at the moment the new game's cast has actually
+   *  loaded and acquired, instead of at a scene unmount that no longer
+   *  happens per game. */
+  loadSettled?: boolean;
   /** A tap on the cloth, not on a card. Puts the raised card down. */
   onFeltTap?: () => void;
   renderSeat: (seat: number) => ReactNode;
@@ -2127,12 +2136,16 @@ export default function Scene(props: SceneProps) {
   // Crash telemetry: the Scene's mount/unmount brackets "at a table" for the
   // unclean-exit witness, and the venue/quality/stop ride every report made
   // while this table is up. Observation only — no behavior change.
+  // Perf fix A (2026-11-03): a Scene mount is now a table SESSION (the
+  // scene persists across the session's games), so the bracket spans
+  // the whole sitting — which is what "at a table" always meant; the
+  // unmount cleanup below fires when the session really ends.
   useEffect(() => {
     noteCrumb('scene-mount', `${def.id} ${props.quality}${props.storyStopId ? ` stop=${props.storyStopId}` : ''}`);
     return () => {
       noteCrumb('scene-unmount', def.id);
       tornDownRef.current = true;
-      // Leaving a table sheds unmounted figure residency by design
+      // Leaving a table (the session ending) sheds unmounted figure residency by design
       // (crash round 4, 2026-11-03): until now this happened only as a
       // side effect of the teardown context loss reaching the loss
       // listener ~100 ms after unmount (round 3's lean mode). Same
@@ -2188,6 +2201,59 @@ export default function Scene(props: SceneProps) {
   const tornDownRef = useRef(false);
   // Drag-to-play: the card under the finger is drawn by the lifted copy, so its slot in the fan is left open.
   const [dragCard, setDragCard] = useState<Card | null>(null);
+  // Perf fix A (2026-11-03): the Scene (and its Canvas/WebGL context) now
+  // persists across games inside a table session — Table remounts per
+  // game around it and the GPU-resource subtree below remounts per
+  // gameSeed instead. Two consequences handled here and in onCreated:
+  //  - listeners registered once in onCreated must read venue/quality
+  //    from this ref, never from their first-mount closure;
+  //  - the per-game disciplines that used to ride the scene unmount
+  //    (the figure residency shed) re-key to the game transition.
+  const liveVenueRef = useRef({ venue: def.id, quality: props.quality });
+  liveVenueRef.current = { venue: def.id, quality: props.quality };
+  // Settled-pulse activity (perf fix B, framePulse): any game-flow
+  // movement re-opens the full render cadence instantly; the gated
+  // life tickers fall to the settled pulse only after the table has
+  // sat quiet for the whole activity window. The watcher keys on
+  // VALUES, not identities: Table recomputes its display model every
+  // render, so array identities churn on housekeeping renders that
+  // mean nothing happened — a housekeeping render must not count as
+  // activity or the table would never settle.
+  const activityKeyRef = useRef('');
+  useEffect(() => {
+    const cue = props.crowdCue;
+    const key = [
+      props.gameSeed ?? '', props.handNo, props.turnKey ?? '', props.activeSeat ?? '',
+      props.winnerSeat ?? '', props.shownTrick.length, props.piles.length,
+      props.handCounts.join(','), props.slam ? 'slam' : '', props.nukeKey ?? '',
+      cue ? `${cue.stirAt}:${cue.seatSpeakerAt}:${cue.visitAt}` : '',
+      props.collecting ? 'c' : '', props.dealing ? 'd' : '', props.dealEpoch ?? 0,
+      props.selected ?? '', props.venue ?? '', props.storyStopId ?? '',
+    ].join('|');
+    if (key !== activityKeyRef.current) { activityKeyRef.current = key; noteSceneActivity(); }
+  });
+  // The transition shed (crash round 4's discipline at its new
+  // boundary): leaving a table used to shed unmounted figure residency
+  // from the scene's unmount cleanup — and still does, when the session
+  // really ends. Between games of one session there is no unmount, so
+  // the shed moves here: once the seed has changed AND the new game's
+  // loader has settled (its cast loaded and acquired — figures are
+  // asset-gate units), shed once for the departed game. The registry's
+  // own contract protects the continuing cast: figures the new game
+  // seated hold refs and are never touched; only the departed game's
+  // unmounted leftovers go. Caps and lean semantics are unchanged.
+  const shedSeedRef = useRef(props.gameSeed ?? '');
+  const shedDoneRef = useRef(true);
+  useEffect(() => {
+    const seed = props.gameSeed ?? '';
+    if (seed !== shedSeedRef.current) { shedSeedRef.current = seed; shedDoneRef.current = false; }
+    if (!shedDoneRef.current && props.loadSettled) {
+      shedDoneRef.current = true;
+      enterFigureLeanMode();
+    }
+  }, [props.gameSeed, props.loadSettled]);
+  // A lifted drag card belongs to the game that lifted it.
+  useEffect(() => { setDragCard(null); }, [props.gameSeed]);
   const onTableReady = props.onTableReady;
   const tableReady = useCallback(() => { onTableReady?.(); }, [onTableReady]);
   const onFirstFrameProp = props.onFirstFrame;
@@ -2230,7 +2296,7 @@ export default function Scene(props: SceneProps) {
           // in the unmount cleanup instead.
           if (tornDownRef.current) { noteCrumb('webgl', 'lost-teardown'); return; }
           noteCrumb('webgl', 'lost');
-          reportCrash('webgl-lost', new Error('WebGL context lost'), { venue: def.id, quality: props.quality });
+          reportCrash('webgl-lost', new Error('WebGL context lost'), { venue: liveVenueRef.current.venue, quality: liveVenueRef.current.quality });
           // Pressure relief (crash round 3, 2026-11-01): a loss on a
           // LIVE scene is memory pressure made visible — exactly where
           // the figure registry's previous-cast retention rides on top
@@ -2241,8 +2307,13 @@ export default function Scene(props: SceneProps) {
         });
         gl.domElement.addEventListener('webglcontextrestored', () => {
           noteCrumb('webgl', 'restored');
-          reportCrash('webgl-restored', new Error('WebGL context restored'), { venue: def.id, quality: props.quality });
+          reportCrash('webgl-restored', new Error('WebGL context restored'), { venue: liveVenueRef.current.venue, quality: liveVenueRef.current.quality });
         });
+        // Settled-pulse activity (perf fix B): touching the felt — a
+        // tap, a card drag, a camera drag/zoom — is scene activity and
+        // re-opens the full render cadence instantly.
+        gl.domElement.addEventListener('pointerdown', () => noteSceneActivity());
+        gl.domElement.addEventListener('wheel', () => noteSceneActivity(), { passive: true });
         // Recovery (crash hardening, 2026-10-30): the reporting pair
         // above observes; this pair RECOVERS, and both stay. Our own
         // preventDefault on the loss keeps the context restorable
@@ -2298,7 +2369,10 @@ export default function Scene(props: SceneProps) {
       <OrientationRehearsal ready={textured} />
       <EffectWarmup quality={props.quality} />
       <SnapHook />
-      <FirstFrameSignal onFirstFrame={firstFrame} />
+      {/* Keyed per game (perf fix A): the Canvas persists across a
+          session's games, but each game's Table still needs its own
+          first-frame certification for the deal gate. */}
+      <FirstFrameSignal key={props.gameSeed ?? ''} onFirstFrame={firstFrame} />
       <CameraRig view={props.view} people={storyFiguresActive} />
       <ViewAdjustControls />
       <FxShake table={tableGroup} />
@@ -2319,6 +2393,17 @@ export default function Scene(props: SceneProps) {
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
       {hi && classic && <HallAttach active={hallGo && textured} />}
+      {/* Perf fix A (2026-11-03): everything below owns per-game GPU
+          resources (room, table, cards, figures, effects, badges) and
+          remounts per gameSeed — a fresh game's subtree against the
+          SAME Canvas/context, so its mount-time certifications
+          (TableModel's onReady/onTextured, the figures' asset-gate
+          registration) fire per game exactly as they did when the
+          whole Canvas remounted, while the context, its compiled
+          programs and the load ramp above (ResumeRamp's DPR/shadow
+          state) carry over. On a context restore the outer glEpoch
+          key still rebuilds this subtree too, unchanged. */}
+      <Fragment key={props.gameSeed ?? ''}>
       {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} handKey={props.handNo} storyStopId={props.storyStopId ?? null} />}
       {classic && textured && (props.storyStopId === 'rec-center' && props.quality === 'high'
         ? <RecCenterGymRoom fxOn={!props.reduceFx} />
@@ -2425,6 +2510,7 @@ export default function Scene(props: SceneProps) {
       <DeuceFxLayer reducedProp={!!props.reduceFx} />
       <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
+      </Fragment>
       </OwnChairHiddenContext.Provider>
       </Fragment>
     </Canvas>
