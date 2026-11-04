@@ -225,3 +225,56 @@ describe('mock model', () => {
     expect(user).not.toContain('"hands"');
   });
 });
+
+describe('fact-check: spelled-out numbers (hardening, round-2 blind spot)', () => {
+  // the tuned model spells scores in words; before this pass a word-spelled
+  // lie's numbers passed untouched and a word-spelled truth couldn't count.
+  const wonState = riggedState({ result: { endReason: 'target', finalScores: [512, 388], winners: [0], placements: [1, 2] } as GameState['result'] });
+  const won = buildGenPayload({ state: wonState, table, speakerSeat: 2, kind: 'matchEnd', lineKind: 'win', subjectSide: 1 });
+
+  it('REPLAY (round-2 fallback case): the composed-word true score passes', () => {
+    expect(factCheckLine('the final word: five hundred twelve to three hundred eighty eight.', won).ok).toBe(true);
+    expect(factCheckLine('five hundred and twelve to three hundred and eighty eight — it is finished.', won).ok).toBe(true);
+  });
+  it('REPLAY (round-2 fallback case): the digit-by-digit true score passes', () => {
+    expect(factCheckLine('five one two to three eight eight. every book accounted for.', won).ok).toBe(true);
+  });
+  it('composed small numbers pass when they are the facts', () => {
+    const st = riggedState({ scores: [112, 98], result: { endReason: 'target', finalScores: [112, 98], winners: [0], placements: [1, 2] } as GameState['result'] });
+    const p = buildGenPayload({ state: st, table, speakerSeat: 2, kind: 'matchEnd', lineKind: 'win', subjectSide: 1 });
+    expect(factCheckLine('one hundred twelve to ninety eight. it is finished.', p).ok).toBe(true);
+    expect(factCheckLine('one hundred twelve to ninety nine. it is finished.', p).ok).toBe(false);
+  });
+  it('composed words for the set facts pass on the set payload', () => {
+    const p = setPayload(); // truth: bid 7, books 4, scores 210 / 145
+    expect(factCheckLine('two hundred ten to one hundred forty five, and the gap is the sermon.', p).ok).toBe(true);
+  });
+  it('a word-spelled lie dies on its numbers: nine hundred to twelve', () => {
+    const r = factCheckLine('the score was nine hundred to twelve, and the whole table knew it.', won);
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toContain('number-not-in-facts:900');
+    expect(r.reasons).toContain('number-not-in-facts:12');
+  });
+  it('a digit-by-digit lie dies on its numbers', () => {
+    const r = factCheckLine('five one three to three eight eight — not even close, children.', won);
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toContain('number-not-in-facts:513');
+  });
+  it('word-spelled book counts go through the books role check', () => {
+    const p = setPayload(); // books facts: 5, 4
+    const r = factCheckLine('y\'all gathered twenty four books, somehow.', p);
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toContain('books-claim-false:24');
+  });
+  it('a word-spelled wrong bid dies on the bid role check', () => {
+    const p = setPayload(); // bids made: 4, 3, 4 and the contract's 7
+    const r = factCheckLine('a nine bid was a promise nobody could keep.', p);
+    expect(r.ok).toBe(false);
+    expect(r.reasons).toContain('bid-claim-false:9');
+  });
+  it('flavour number words still pass unheld', () => {
+    const p = setPayload();
+    expect(factCheckLine('two hands from now, we answer.', p).ok).toBe(true);
+    expect(factCheckLine('one more hand, children. we rise.', p).ok).toBe(true);
+  });
+});

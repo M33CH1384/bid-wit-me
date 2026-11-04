@@ -216,6 +216,20 @@ const NUMBER_WORDS: Record<string, number> = {
   eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
   eighteen: 18, nineteen: 19, twenty: 20,
 };
+const UNIT_WORDS: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+};
+const TENS_WORDS: Record<string, number> = {
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+type NumCat = 'unit' | 'teen' | 'tens';
+function wordValue(w: string): { v: number; cat: NumCat } | undefined {
+  if (UNIT_WORDS[w] !== undefined) return { v: UNIT_WORDS[w]!, cat: 'unit' };
+  if (TENS_WORDS[w] !== undefined) return { v: TENS_WORDS[w]!, cat: 'tens' };
+  if (NUMBER_WORDS[w] !== undefined) return { v: NUMBER_WORDS[w]!, cat: 'teen' };
+  return undefined;
+}
+const isNumWord = (w: string): boolean => wordValue(w) !== undefined || w === 'hundred' || w === 'thousand';
 const CARD_WORDS = /\b(ace|aces|king|kings|queen|queens|jack|jacks|joker|jokers|spade|spades|heart|hearts|diamond|diamonds|club|clubs)\b/i;
 const HIDDEN_CLAIMS = /\b(your hand|you (was|were) holding|i saw your|your cards|next card|top of the deck|bottom of the deck)\b/i;
 const NIL_MADE_CLAIMS = /\b(made (the |your |his |her |my )?nil|nil (worked|held|landed|paid off|succeeded)|stuck the landing|took no books|zero books|no books at all)\b/i;
@@ -229,22 +243,101 @@ export interface FactCheck { ok: boolean; reasons: string[] }
 
 const CLAIM_NOUN = /^(bid|books?|points?|tricks?|bags?)$/;
 
+interface NumClaim { value: number; next?: string }
+
 /**
- * Numbers a line ASSERTS. Digits always assert ("340" is a claim wherever
- * it stands). A number WORD only asserts in a claim context — directly
- * before a claim noun ("six books", "five bid") — so flavour like "one
- * more hand" or "next hand we answer" is not held to the score pad.
+ * Parse one maximal run of number words into the values it states.
+ * Composed grammar first ("twenty four" = 24, "one hundred twelve" = 112,
+ * "five hundred twelve" = 512), segmenting when the grammar cannot
+ * continue ("three eighty eight" reads as 3, then 88 — neither is the
+ * score 388, and the checker errs toward rejecting: a true line lost to
+ * the fallback costs a flourish, a false line shown costs the law).
+ * A run of 3+ unit words is the digit-by-digit reading the model falls
+ * into for scores ("five one two" = 512, "three eight eight" = 388) and
+ * parses as ONE concatenated number.
  */
-function numbersIn(line: string): number[] {
-  const lower = line.toLowerCase();
-  const out: number[] = [];
-  for (const m of lower.matchAll(/\d+/g)) out.push(parseInt(m[0], 10));
-  const words = lower.replace(/[^a-z' ]/g, ' ').split(/\s+/).filter(Boolean);
-  words.forEach((w, i) => {
-    const n = NUMBER_WORDS[w];
-    if (n !== undefined && i + 1 < words.length && CLAIM_NOUN.test(words[i + 1]!)) out.push(n);
-  });
-  return out;
+function parseNumRun(run: string[]): number[] {
+  if (run.length >= 3 && run.every((t) => UNIT_WORDS[t] !== undefined)) {
+    return [parseInt(run.map((t) => String(UNIT_WORDS[t])).join(''), 10)];
+  }
+  const vals: number[] = [];
+  let cur: number | null = null;
+  let prev: NumCat | 'hundred' | 'thousand' | null = null;
+  const flush = () => { if (cur !== null) { vals.push(cur); cur = null; } };
+  for (const t of run) {
+    if (t === 'hundred') {
+      if (cur !== null && prev === 'unit') cur *= 100;
+      else if (cur === null) cur = 100;
+      else { flush(); cur = 100; }
+      prev = 'hundred';
+      continue;
+    }
+    if (t === 'thousand') { cur = (cur ?? 1) * 1000; prev = 'thousand'; continue; }
+    const wv = wordValue(t)!;
+    if (cur === null) cur = wv.v;
+    else if (prev === 'hundred' || prev === 'thousand' || prev === 'tens') cur += wv.v;
+    else { flush(); cur = wv.v; }
+    prev = wv.cat;
+  }
+  flush();
+  return vals;
+}
+
+/**
+ * Numbers a line ASSERTS, each with the word that follows it (for the
+ * role checks). Digits always assert ("340" is a claim wherever it
+ * stands). A number WORD asserts in a claim context: directly before a
+ * claim noun ("six books", "five bid"), as part of a multi-word number
+ * ("five hundred twelve", "five one two" — a deliberate numeric
+ * statement, never flavour), or as the second half of an asserted
+ * "X to Y" score. A lone number word anywhere else is flavour — "one
+ * more hand" is not held to the score pad. Spelled-out numbers are
+ * claims on exactly the same terms as digits (hardening, 2026-11-03:
+ * the tuned model spells scores in words, and a lie told in words was
+ * passing the number checks untouched).
+ */
+export function numberClaims(line: string): NumClaim[] {
+  const words = line.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').split(/\s+/).filter(Boolean);
+  const claims: NumClaim[] = [];
+  let lastAsserted = false;
+  let afterTo = false;
+  let i = 0;
+  while (i < words.length) {
+    const w = words[i]!;
+    if (/^\d+$/.test(w)) {
+      claims.push({ value: parseInt(w, 10), next: words[i + 1] });
+      lastAsserted = true;
+      afterTo = false;
+      i++;
+      continue;
+    }
+    if (isNumWord(w)) {
+      const run: string[] = [];
+      let j = i;
+      while (j < words.length) {
+        const t = words[j]!;
+        if (isNumWord(t)) { run.push(t); j++; continue; }
+        // "one hundred and twelve": 'and' may sit inside a run only after a scale word
+        if (t === 'and' && (run[run.length - 1] === 'hundred' || run[run.length - 1] === 'thousand')
+          && j + 1 < words.length && isNumWord(words[j + 1]!)) { j++; continue; }
+        break;
+      }
+      const next = words[j];
+      const hasScale = run.some((t) => t === 'hundred' || t === 'thousand');
+      const asserts: boolean = run.length >= 2 || hasScale
+        || (next !== undefined && CLAIM_NOUN.test(next))
+        || (afterTo && lastAsserted);
+      if (asserts) for (const v of parseNumRun(run)) claims.push({ value: v, next });
+      lastAsserted = asserts;
+      afterTo = false;
+      i = j;
+      continue;
+    }
+    afterTo = w === 'to' && lastAsserted;
+    if (w !== 'to') lastAsserted = false;
+    i++;
+  }
+  return claims;
 }
 
 /**
@@ -257,22 +350,18 @@ function numbersIn(line: string): number[] {
 export function factCheckLine(line: string, p: GenPayload): FactCheck {
   const reasons: string[] = [];
   const allowed = new Set(p.facts.numbers);
-  for (const n of numbersIn(line)) if (!allowed.has(n)) reasons.push(`number-not-in-facts:${n}`);
   // Role checks: a number standing in front of "books" must be a books
   // fact (a side's tricks, the contract's books, the Nil's books) — the
   // bare allowlist would wave "thirteen books" through on the strength of
   // 13 being the hand size. Same for "bid": it must be a bid that was made.
+  // Digits and spelled-out numbers go through this identically.
   const booksFacts = new Set<number>([...p.facts.handTricks, ...(p.facts.contract ? [p.facts.contract.books] : []), ...(p.facts.nil ? [p.facts.nil.books] : [])]);
   const bidFacts = new Set<number>([...p.facts.bids, ...(p.facts.contract ? [p.facts.contract.bid] : [])]);
-  const words = line.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').split(/\s+/).filter(Boolean);
-  words.forEach((w, i) => {
-    const next = words[i + 1];
-    if (!next) return;
-    const n = /^\d+$/.test(w) ? parseInt(w, 10) : NUMBER_WORDS[w];
-    if (n === undefined) return;
-    if (/^books?$/.test(next) && !booksFacts.has(n)) reasons.push(`books-claim-false:${n}`);
-    if (next === 'bid' && !bidFacts.has(n)) reasons.push(`bid-claim-false:${n}`);
-  });
+  for (const c of numberClaims(line)) {
+    if (!allowed.has(c.value)) reasons.push(`number-not-in-facts:${c.value}`);
+    if (c.next && /^books?$/.test(c.next) && !booksFacts.has(c.value)) reasons.push(`books-claim-false:${c.value}`);
+    if (c.next === 'bid' && !bidFacts.has(c.value)) reasons.push(`bid-claim-false:${c.value}`);
+  }
   if (CARD_WORDS.test(line)) reasons.push('card-mention-unverifiable');
   if (HIDDEN_CLAIMS.test(line)) reasons.push('hidden-info-claim');
   // Nil outcome claims: a line may only celebrate a made Nil when the
