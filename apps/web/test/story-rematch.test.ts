@@ -325,6 +325,19 @@ async function finishResumedPorch(won: boolean) {
   return el;
 }
 
+/** Chapter-1 film layer: on a first clear the post-win film takes the
+ *  outro's scene slot and the preview film rides the exit to the map.
+ *  A player reaches the beats (and then the map) by skipping what is
+ *  up — the harness does the same, front layer first. */
+const skipFilmIfUp = async (c: HTMLElement) => {
+  for (let i = 0; i < 4; i++) {
+    const skip = c.querySelector<HTMLButtonElement>('[data-testid="story-film-skip"]');
+    if (!skip) return;
+    await act(async () => { skip.click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  }
+};
+
 describe('finished story match → outro, never /rewards', () => {
   it('a first-clear WIN shows the reward line, both unlock notices and the badge strip', async () => {
     const c = await finishResumedPorch(true);
@@ -346,10 +359,12 @@ describe('finished story match → outro, never /rewards', () => {
     expect(sessionStorage.getItem('bwm.rewards.v1')).toBeNull();
     expect(location.pathname).toBe('/story');
     // and the outro scene's own exit (Skip = its onDone) ends at the map
+    await skipFilmIfUp(c); // the post-win film stands in the scene slot first
     const skip = c.querySelector<HTMLButtonElement>('[data-testid="story-script-skip"]');
     expect(skip, 'outro scene Skip').toBeTruthy();
     await act(async () => { skip!.click(); });
     await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await skipFilmIfUp(c); // the first-clear preview rides this exit
     expect(c.querySelector('[data-testid="story-map"]'), 'the win terminates at the story map').toBeTruthy();
     // the cleared stop shows cleared on the map, the next stop unlocked
     expect(c.querySelector('[data-testid="story-stop-porch"]')?.textContent).toContain('CLEARED');

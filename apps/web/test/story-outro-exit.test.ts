@@ -118,6 +118,18 @@ const click = async (node: Element) => {
   await settle(10);
 };
 const byTestid = (id: string) => el!.querySelector(`[data-testid="${id}"]`);
+/** Chapter-1 film layer: on a first visit / first clear the Porch film
+ *  takes the scene slot before the beats, and overlays (the teaser on
+ *  a fresh track, the preview on a first-clear exit) can stack. A
+ *  player reaches the beats by skipping what is up — the harness does
+ *  the same, front overlay first. */
+const skipFilmIfUp = async () => {
+  for (let i = 0; i < 4; i++) {
+    const skip = el!.querySelector('[data-testid="story-film-skip"]');
+    if (!skip) return;
+    await click(skip);
+  }
+};
 
 function stubSessionStorage() {
   const store = new Map<string, string>();
@@ -194,6 +206,7 @@ async function finishResumed(stop: StoryStop, won: boolean) {
   await settle();
   await act(async () => { probe.props!.onExit!(); });
   await settle(10);
+  await skipFilmIfUp();
   expect(byTestid('story-script'), 'the outro scene is up').toBeTruthy();
 }
 
@@ -242,6 +255,9 @@ describe('story outro exits — a labeled way to the map from first paint', () =
     expect(exit!.className).toContain('primary'); // a win terminates at the map: the exit IS the primary
     expect(byTestid('story-retry'), 'no Retry on a win').toBeNull();
     await click(exit!);
+    // A first-clear exit offers the next-match preview film first; the
+    // player's Skip completes the same exit to the map.
+    await skipFilmIfUp();
     expect(byTestid('story-map'), 'the exit lands on the map').toBeTruthy();
     expect(counter.posts).toBe(1);
     expect(byTestid('story-stop-porch')!.textContent).toContain('CLEARED');
@@ -293,6 +309,7 @@ describe('story intro exit — a way back that starts nothing', () => {
     expect(exitAtTape!.textContent).toContain('Back to map');
     // forward into the scene step: the exit is still there
     await click(byTestid('story-tape-done')!); // "Play the scene"
+    await skipFilmIfUp();
     expect(byTestid('story-script'), 'the intro scene step').toBeTruthy();
     const exitAtScene = byTestid('story-intro-map');
     expect(exitAtScene, 'Back to map on the scene step').toBeTruthy();
@@ -315,6 +332,7 @@ describe('story intro exit — a way back that starts nothing', () => {
     await mount(() => porchFresh(), () => porchFresh(), () => porchResult(false));
     await click(byTestid('story-play-porch')!);
     await click(byTestid('story-tape-done')!);
+    await skipFilmIfUp();
     await click(byTestid('story-script-skip')!);
     const table = byTestid('mock-table');
     expect(table, 'Skip still starts the game').toBeTruthy();

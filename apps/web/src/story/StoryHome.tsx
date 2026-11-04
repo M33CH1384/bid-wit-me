@@ -39,6 +39,12 @@ import { clearStoryGame, loadStoryGame, storySaveSummary, storySaveValidFor, typ
 import { railCastForAttempt, rundownFor, storyBadgesFor } from '@spades/bots';
 import ScriptPlayer, { type SceneEgg } from './ScriptPlayer';
 import { livingMoodFor } from './storyLiving';
+import { FILM_SCENES, STORY_FILM_CHAPTER, type FilmScene } from './storyFilmManifest';
+import { pickTeaser, pickPregame, pickPostScene, pickPreview, filmSceneOffered } from './storyFilm';
+import { loadFilmSeen, storeFilmSeen, markFilmKeySeen, markFilmOffered, type FilmSeenState } from './storyFilmSeen';
+import StoryFilmScene from './StoryFilmScene';
+import { useTalkPrefs } from '../talkPrefs';
+import { fx, useReduceEffects } from '../fx';
 import { SceneAudio } from './SceneAudio';
 import StoryTape from './StoryTape';
 import StoryFace from './StoryFace';
@@ -402,6 +408,100 @@ export default function StoryHome() {
    *  outro's replay swap reads this game's band (the Porch reacts to
    *  how THIS one went) — set at game over, beside finishedRef. */
   const justPlayedRef = useRef<{ stopId: string; band: MannerBand | null } | null>(null);
+
+  // ---- Story film, Chapter 1 (the Porch) ----
+  // The film layer (MANIFEST-CH1.json): scenes selected by storyFilm.ts
+  // from the same facts the beat selectors read, played by
+  // StoryFilmScene in the shipped video discipline, with the seen
+  // record in its own versioned slot (bwm.storyFilm.v1, bound to the
+  // signed-in account — reloaded whenever the identity changes).
+  // Footage is 'to-generate' (owner spend approval pending): the
+  // player presents labeled posters until the films land.
+  const filmPrefs = useTalkPrefs();
+  const filmReduceFx = useReduceEffects();
+  const filmVoicesOff = !filmPrefs.voices || !sound.settings.on || sound.settings.volume <= 0;
+  const filmReduced = filmReduceFx || fx.osReducedMotion;
+  const [filmSeen, setFilmSeen] = useState<FilmSeenState>(() => loadFilmSeen(null));
+  useEffect(() => { setFilmSeen(loadFilmSeen(storyUserId)); }, [storyUserId]);
+  /** Write an offer mark (seen key or posted gameId) and persist it. */
+  const offerFilm = useCallback((scene: FilmScene, gameId?: string) => {
+    setFilmSeen((cur) => {
+      const next: FilmSeenState = { ...cur, seen: { ...cur.seen }, offered: { ...cur.offered } };
+      if (gameId) markFilmOffered(next, scene.id, gameId);
+      else if (scene.seenKey) markFilmKeySeen(next, scene.seenKey);
+      storeFilmSeen(next);
+      return next;
+    });
+  }, []);
+  // Teaser (map, first entry) and preview (outro exit) ride overlays;
+  // the pregame and post scenes take the ScriptPlayer slot in place.
+  const [teaserScene, setTeaserScene] = useState<FilmScene | null>(null);
+  const teaserFired = useRef(false);
+  const [previewScene, setPreviewScene] = useState<FilmScene | null>(null);
+  const [introFilm, setIntroFilm] = useState<FilmScene | null>(null);
+  const [introFilmDone, setIntroFilmDone] = useState(false);
+  const [outroFilm, setOutroFilm] = useState<FilmScene | null>(null);
+  const [outroFilmDone, setOutroFilmDone] = useState(false);
+  const [replayFilm, setReplayFilm] = useState<FilmScene | null>(null);
+  const [filmListOpen, setFilmListOpen] = useState(false);
+  // Teaser: fires once when a fresh solo track first reaches the map.
+  useEffect(() => {
+    if (teaserFired.current || teaserScene) return;
+    if (screen.k !== 'map' || mode !== 'solo' || room || !progress || signedOut) return;
+    const scene = pickTeaser({
+      track: progress.track,
+      stopsCleared: progress.stops.filter((s) => s.clears > 0).length,
+      attemptsAtStop: progress.stops.find((s) => s.stopId === 'porch')?.attempts ?? 0,
+    }, filmSeen);
+    if (!scene) return;
+    teaserFired.current = true;
+    offerFilm(scene);
+    setTeaserScene(scene);
+  }, [screen.k, mode, room, progress, signedOut, filmSeen, teaserScene, offerFilm]);
+  // Pregame: the intro's scene step, first visit only. The mark is
+  // written on offer, so leaving for the map and returning before any
+  // match never re-offers it (the manifest's rule).
+  useEffect(() => {
+    if (screen.k !== 'intro') { setIntroFilm(null); setIntroFilmDone(false); return; }
+    if (introStep !== 'scene' || introFilm || introFilmDone) return;
+    const scene = pickPregame({ track: 'solo', stopId: screen.stop.id, attemptsAtStop: factsFor(screen.stop).attempts }, filmSeen);
+    if (scene) { offerFilm(scene); setIntroFilm(scene); }
+  }, [screen, introStep, introFilm, introFilmDone, filmSeen, offerFilm]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Post-win / post-loss: the outro, keyed to the posted gameId
+  // ('story-' + seed — the same id handleGameOver posts). A win waits
+  // for the posted result: firstClear is the server's word, and until
+  // it lands the shipped beats hold the slot, exactly as they do for
+  // their own r-driven variants.
+  useEffect(() => {
+    if (screen.k !== 'outro') { setOutroFilm(null); setOutroFilmDone(false); return; }
+    if (outroFilm || outroFilmDone) return;
+    const seed = finishedRef.current?.seed;
+    if (!seed) return;
+    const r = lastResult && lastResult.stopId === screen.stop.id ? lastResult : null;
+    const scene = pickPostScene({
+      track: 'solo', stopId: screen.stop.id, won: screen.won,
+      firstClear: r ? r.firstClear : false, gameId: `story-${seed}`,
+    }, filmSeen);
+    if (scene) { offerFilm(scene, `story-${seed}`); setOutroFilm(scene); }
+  }, [screen, lastResult, filmSeen, outroFilm, outroFilmDone, offerFilm]);
+  /** The outro's exits to the map, with the next-match preview riding
+   *  the first-clear path: the preview is offered here (its mark is
+   *  written on offer), and only here — never after a loss, a discard,
+   *  or a replay win. Every other exit is the shipped goScreen. */
+  const leaveOutroToMap = useCallback(() => {
+    if (screen.k === 'outro') {
+      const stop = screen.stop;
+      const r = lastResult && lastResult.stopId === stop.id ? lastResult : null;
+      const clears = r?.stops.find((s) => s.stopId === stop.id)?.clears
+        ?? progress?.stops.find((s) => s.stopId === stop.id)?.clears ?? 0;
+      const scene = pickPreview({
+        track: 'solo', stopId: stop.id, won: screen.won,
+        firstClear: r ? r.firstClear : false, clearsAtStop: clears,
+      }, filmSeen);
+      if (scene) { offerFilm(scene); setPreviewScene(scene); return; }
+    }
+    goScreen({ k: 'map' });
+  }, [screen, lastResult, progress, filmSeen, offerFilm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Story save slot: a match in progress (own key; the normal save is untouched).
   const [saved, setSaved] = useState<StorySavedGame | null>(() => loadStoryGame());
@@ -861,6 +961,18 @@ export default function StoryHome() {
         <SceneAudio stop={stop} />
         {introStep === 'tape' ? (
           <StoryTape stop={stop} facts={factsFor(stop)} cta="Play the scene" onDone={() => setIntroStep('scene')} rundown={rundownFor(stop, factsFor(stop))} rundownTrack="solo" />
+        ) : introFilm && !introFilmDone ? (
+          /* The pregame film takes the scene slot on the first visit
+             only (selection in the film effects above); its end, skip
+             or failure hands the slot back to the shipped beat scene
+             below — the egg and the beats are never displaced. */
+          <StoryFilmScene
+            scene={introFilm}
+            voicesOff={filmVoicesOff}
+            reduced={filmReduced}
+            mode="hook"
+            onDone={() => setIntroFilmDone(true)}
+          />
         ) : (
           <ScriptPlayer
             beats={beatsFor(stop, 'intro', factsFor(stop))}
@@ -1039,6 +1151,18 @@ export default function StoryHome() {
           return <>{fresh.size > 0 && <StoryBadgeReveal facts={badgeFactsOf(r ?? progress)} fresh={fresh} />}<StoryBadges facts={badgeFactsOf(r ?? progress)} highlight={fresh} title="Badges" celebrate /></>;
         })()}
         </div>
+        {outroFilm && !outroFilmDone ? (
+          /* The post-win / post-loss film takes the scene slot when the
+             posted result selects it (film effects above); its end,
+             skip or failure hands the slot back to the shipped beats. */
+          <StoryFilmScene
+            scene={outroFilm}
+            voicesOff={filmVoicesOff}
+            reduced={filmReduced}
+            mode="hook"
+            onDone={() => setOutroFilmDone(true)}
+          />
+        ) : (
         <ScriptPlayer
           beats={dblStarted ? kingDoubleBeats('started') : dblLost ? kingDoubleBeats('lost') : beatsFor(stop, screen.won ? 'outroWin' : 'outroLose', {
             ...factsFor(stop),
@@ -1049,13 +1173,14 @@ export default function StoryHome() {
             justBand: justPlayedRef.current?.stopId === stop.id ? justPlayedRef.current.band : null,
           })}
           cta="Back to the map"
-          onDone={() => goScreen({ k: 'map' })}
+          onDone={leaveOutroToMap}
           bgUrl={storyBackdropUrl(stop)}
           cast={[stop.pair[0], 'dee', stop.pair[1]]}
           rail={attemptRailRef.current?.stopId === stop.id
             ? [...attemptRailRef.current.cast]
             : railCastForAttempt(stop.id, (progressBeforeRef.current?.stops.find((s) => s.stopId === stop.id)?.attempts ?? 0) + 1)}
         />
+        )}
         {/* The outro's own exits, on the screen from first paint (owner,
             2026-10-21): the loss outro used to show only "Retry this
             stop" under the scene — the scene's Skip reached the map but
@@ -1075,7 +1200,7 @@ export default function StoryHome() {
           ) : !screen.won ? (
             <button type="button" className="btn primary story-retry" data-testid="story-retry" onClick={() => goScreen({ k: 'intro', stop })}>Retry this stop</button>
           ) : null}
-          <button type="button" className={`btn ${screen.won && !dblStarted ? 'primary' : 'ghost'}`} data-testid="story-outro-map" onClick={() => goScreen({ k: 'map' })}>To the map</button>
+          <button type="button" className={`btn ${screen.won && !dblStarted ? 'primary' : 'ghost'}`} data-testid="story-outro-map" onClick={leaveOutroToMap}>To the map</button>
         </div>
       </div>
     );
@@ -1155,6 +1280,15 @@ export default function StoryHome() {
                         disabled={signedOut}
                         onClick={() => goScreen({ k: 'tape', stop })}
                       >Meet them</button>
+                      {stop.id === STORY_FILM_CHAPTER.stopId && FILM_SCENES.some((s) => filmSceneOffered(s, filmSeen)) && (
+                        <button
+                          type="button"
+                          className="btn ghost story-meet"
+                          data-testid="story-film-chapter"
+                          disabled={signedOut}
+                          onClick={() => setFilmListOpen(true)}
+                        >Chapter film</button>
+                      )}
                       {stopSave ? (
                         <>
                           <button
@@ -1217,6 +1351,46 @@ export default function StoryHome() {
       {viewDeck && <DeckViewer deck={viewDeck} onClose={() => setViewDeck(null)} />}
       {detail?.kind === 'setanim' && <SetAnimDetail stopId={detail.stopId} onClose={() => setDetail(null)} />}
       {detail?.kind === 'find' && <FindDetail find={detail.find} onClose={() => setDetail(null)} />}
+      {/* Story film overlays (Chapter 1): the teaser over the map, the
+          next-match preview over the outro on its way to the map, and
+          replays from the Porch card. Overlays move no screen state:
+          the teaser dismisses back to the map it covered, the preview's
+          continue completes the exit it interrupted, and a replay
+          returns to wherever it was opened from. */}
+      {teaserScene && (
+        <div className="story-film-overlay" data-testid="story-film-overlay">
+          <StoryFilmScene scene={teaserScene} voicesOff={filmVoicesOff} reduced={filmReduced} mode="hook" onDone={() => setTeaserScene(null)} />
+        </div>
+      )}
+      {previewScene && (
+        <div className="story-film-overlay" data-testid="story-film-overlay">
+          <StoryFilmScene scene={previewScene} voicesOff={filmVoicesOff} reduced={filmReduced} mode="hook" onDone={() => { setPreviewScene(null); goScreen({ k: 'map' }); }} />
+        </div>
+      )}
+      {replayFilm && (
+        <div className="story-film-overlay" data-testid="story-film-overlay">
+          <StoryFilmScene scene={replayFilm} voicesOff={filmVoicesOff} reduced={filmReduced} mode="replay" onDone={() => setReplayFilm(null)} />
+        </div>
+      )}
+      {filmListOpen && (
+        <div className="story-film-overlay" data-testid="story-film-list">
+          <div className="story-film-list-card" role="dialog" aria-label="Chapter 1 — the Porch, on film">
+            <p className="story-film-list-title">Chapter 1 — The Porch, on film</p>
+            {FILM_SCENES.map((s) => {
+              const offered = filmSceneOffered(s, filmSeen);
+              return (
+                <div key={s.id} className="story-film-list-row">
+                  <span className="story-film-list-name">{s.title}</span>
+                  {offered
+                    ? <button type="button" className="btn ghost" data-testid={`story-film-watch-${s.id}`} onClick={() => { setFilmListOpen(false); setReplayFilm(s); }}>Watch again</button>
+                    : <span className="story-film-list-locked">Plays when the story reaches it</span>}
+                </div>
+              );
+            })}
+            <button type="button" className="btn ghost" data-testid="story-film-list-close" onClick={() => setFilmListOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
