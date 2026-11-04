@@ -6,6 +6,7 @@ import { type BufferGeometry, type Camera, type Group, type Material, type Mesh,
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial, createRestCardMaterial } from './Card3D';
 import { enterFigureLeanMode } from './figureResidency';
+import { perfCrumb, publishPerfCensus } from '../perfCensus';
 import { noteSceneActivity } from './framePulse';
 import { createBackCardMaterial } from './cardBack';
 import DeuceFxLayer from './DeuceFxLayer';
@@ -553,6 +554,21 @@ function isColorMap(url: string): boolean {
   return url.includes('diff') || url.includes('/venues/');
 }
 
+/**
+ * Session cache of streamed table-map Textures by URL (perf round 2,
+ * 2026-11-04). The decoded IMAGES were already shared (loadTableImage:
+ * "nothing is fetched twice"), but the Texture objects were rebuilt —
+ * and re-uploaded, ~20 MB at 1k — on every TableModel mount, and the
+ * old ones were never disposed: each new game in a session paid the
+ * upload again and left the previous set live in the persisting
+ * context (rig: live textures 72 -> 112 and +268 texSubImage2D calls
+ * across one rematch). Round 1 cached the table GEOMETRIES
+ * (geosCache below); the maps get the same treatment. A cached
+ * texture belongs to the session — like the card-face cache, it is
+ * never disposed per game; three re-uploads it per context as needed.
+ */
+const streamedTexCache = new Map<string, Texture>();
+
 /** Decode the cloth and wood maps as they arrive and publish one Texture per frame (a single upload). */
 function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: boolean } {
   const invalidate = useThree((s) => s.invalidate);
@@ -564,17 +580,23 @@ function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: b
   // PersonaFigures' standing rule already demands.
   const maxAniso = useThree((s) => Math.min(8, s.gl.capabilities.getMaxAnisotropy()));
   const key = urls.join('|');
-  const [maps, setMaps] = useState<(Texture | null)[]>(() => urls.map(() => null));
-  const [settled, setSettled] = useState(urls.length === 0);
+  const [maps, setMaps] = useState<(Texture | null)[]>(() => urls.map((u) => streamedTexCache.get(u) ?? null));
+  const [settled, setSettled] = useState(() => urls.every((u) => streamedTexCache.has(u)));
   useEffect(() => {
     const list = key ? key.split('|') : [];
     if (!list.length) { setSettled(true); return; }
+    if (list.every((u) => streamedTexCache.has(u))) {
+      setMaps(list.map((u) => streamedTexCache.get(u)!));
+      setSettled(true);
+      return;
+    }
     let alive = true;
     setSettled(false);
-    const status = list.map(() => 'wait' as 'wait' | 'ok' | 'bad');
+    const status = list.map((u) => (streamedTexCache.has(u) ? 'made' : 'wait') as 'wait' | 'ok' | 'bad' | 'made');
     const imgs: HTMLImageElement[] = [];
-    const made = list.map(() => false);
+    const made = list.map((u) => streamedTexCache.has(u));
     list.forEach((url, i) => {
+      if (made[i]) return;
       loadTableImage(url).then((img) => { status[i] = 'ok'; imgs[i] = img; }).catch(() => { status[i] = 'bad'; });
     });
     const pump = () => {
@@ -582,11 +604,16 @@ function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: b
       const i = status.findIndex((s, idx) => s === 'ok' && !made[idx]);
       if (i >= 0) {
         made[i] = true;
-        const tex = new Texture(imgs[i]!);
-        tex.needsUpdate = true;
-        tex.wrapS = tex.wrapT = RepeatWrapping;
-        tex.anisotropy = maxAniso;
-        if (isColorMap(list[i]!)) tex.colorSpace = SRGBColorSpace;
+        status[i] = 'made';
+        let tex = streamedTexCache.get(list[i]!);
+        if (!tex) {
+          tex = new Texture(imgs[i]!);
+          tex.needsUpdate = true;
+          tex.wrapS = tex.wrapT = RepeatWrapping;
+          tex.anisotropy = maxAniso;
+          if (isColorMap(list[i]!)) tex.colorSpace = SRGBColorSpace;
+          streamedTexCache.set(list[i]!, tex);
+        }
         setMaps((prev) => { const next = prev.slice(); next[i] = tex; return next; });
         invalidate();
       }
@@ -693,15 +720,20 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
   const logo = useMemo(() => logoTexture(invalidate), [invalidate]);
   const logoMat = useMemo(() => new MeshBasicMaterial({ map: logo, transparent: true, opacity: 0.13, depthWrite: false }), [logo]);
   const textured = useRef(false);
+  /* Maps are session-shared Textures now (streamedTexCache), so the
+   * "already applied" mark cannot live on the texture — it belongs to
+   * THIS mount's materials. A per-instance WeakSet: each new game's
+   * TableModel applies the shared maps to its own material set once. */
+  const appliedTexRef = useRef(new WeakSet<Texture>());
   // Swap placeholder maps for the real ones one texture per frame, after the lit shaders are already linked.
   useEffect(() => {
     if (!lit) return;
     const jobs: (() => void)[] = [];
     const [feltN, feltR, woodC, woodN, woodR, railMap] = maps;
     const take = (tex: Texture | null, apply: (t: Texture) => void, repeat: number) => {
-      if (!tex || tex.userData.applied) return;
+      if (!tex || appliedTexRef.current.has(tex)) return;
       jobs.push(() => {
-        tex.userData.applied = 1;
+        appliedTexRef.current.add(tex);
         tex.repeat.set(repeat, repeat);
         apply(tex);
         invalidate();
@@ -2276,6 +2308,39 @@ export default function Scene(props: SceneProps) {
       enterFigureLeanMode();
     }
   }, [props.gameSeed, props.loadSettled]);
+  // Perf census (perf round 2, 2026-11-04): one per settled game, on
+  // the same gate as the transition shed. The sandbox rig cannot
+  // reproduce a phone's multi-game slope (SwiftShader settles in
+  // minutes; the series path needs two live clients), so the session
+  // reports its own growth table instead: live GL counters from the
+  // renderer's info, heap where the browser exposes it, the
+  // figure/voice residency probes, DOM and WAAPI counts — published
+  // on window.__bwmPerfCensus/__bwmPerfTrail and as one 'perf'
+  // breadcrumb per game (see perfCensus.ts).
+  const glRef = useRef<{ info: { memory: { textures: number; geometries: number }; programs?: unknown[] | null } } | null>(null);
+  const censusSeedRef = useRef(props.gameSeed ?? '');
+  const censusDoneRef = useRef(true);
+  useEffect(() => {
+    const seed = props.gameSeed ?? '';
+    if (seed !== censusSeedRef.current) { censusSeedRef.current = seed; censusDoneRef.current = false; }
+    if (censusDoneRef.current || !props.loadSettled) return;
+    censusDoneRef.current = true;
+    const gl = glRef.current;
+    const w = window as unknown as { __bwmFigureResidency?: { totalBytes: number }; __bwmVoiceResidency?: { clipBytes: number } };
+    const mem = (performance as { memory?: { usedJSHeapSize: number } }).memory;
+    const census = publishPerfCensus({
+      seed,
+      textures: gl?.info.memory.textures ?? 0,
+      geometries: gl?.info.memory.geometries ?? 0,
+      programs: gl?.info.programs?.length ?? 0,
+      heapMB: mem ? mem.usedJSHeapSize / 1048576 : null,
+      figMB: w.__bwmFigureResidency ? w.__bwmFigureResidency.totalBytes / 1048576 : null,
+      voiceMB: w.__bwmVoiceResidency ? w.__bwmVoiceResidency.clipBytes / 1048576 : null,
+      dom: document.querySelectorAll('*').length,
+      waapi: (document as unknown as { getAnimations(o: { subtree: boolean }): Animation[] }).getAnimations({ subtree: true }).length,
+    });
+    noteCrumb('perf', perfCrumb(census));
+  }, [props.gameSeed, props.loadSettled]);
   // A lifted drag card belongs to the game that lifted it.
   useEffect(() => { setDragCard(null); }, [props.gameSeed]);
   const onTableReady = props.onTableReady;
@@ -2300,6 +2365,7 @@ export default function Scene(props: SceneProps) {
       gl={{ antialias: hi, powerPreference: 'high-performance', toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       camera={{ fov: 50, near: 0.05, far: 60, position: [0, 4, 3.5] }}
       onCreated={({ gl, size }) => {
+        glRef.current = gl;
         quietShaderErrors(gl);
         // WebGL context loss: memory pressure's canary, and until now
         // completely unobserved — no listener existed anywhere, so a lost
