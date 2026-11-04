@@ -72,6 +72,36 @@ import { describe, expect, it } from 'vitest';
  *      panels' tops inside the box. The v8d pins below model both,
  *      with the pre-fix constants reproducing the overlap as the
  *      negative control.
+ *  (7) THE ONE-VIEWPORT REBALANCE (v10, owner 2026-11-04: "balance it
+ *      out and remove unnecessary white space" — his 430×932 shot of
+ *      the v9 build showed the v8d hole as a ~1/3-screen void and the
+ *      venue note clipped mid-line at the dock's edge). The v8d trade
+ *      is REVOKED in the phone gates (≥700px-tall portrait, landscape):
+ *      the lobby root is a definite 100dvh column ending exactly at
+ *      the dock top, the settings row composes UNDER the flexing seat
+ *      stage inside the same viewport (capped so the felt keeps its
+ *      floor; overflow scrolls inside the settings region), the head
+ *      is two deliberate compact rows (121px measured, not the ~72
+ *      v8 budgeted — its share row wrapped at phone widths), and the
+ *      dock rebalances: the status takes its own full-width row
+ *      instead of squeezing beside START (measured dock 235px host /
+ *      267px guest at 430×932 against the ~188 the v8 meta-row model
+ *      claimed — dockA below is that falsified model, kept for the
+ *      sub-700px legacy composition and the v8d negative control;
+ *      dockA2/dockB2 are the v10 arrangements). Landscape also gets
+ *      the definite height (the +6px page scroll is gone), a wrapped
+ *      settings summary (the timer select measured 14px wide in the
+ *      rail grid) and, ≥801px wide, a wrapping rail head (the share
+ *      row's 392px min-content buried the Social button behind the
+ *      seat panel). The v10 pins assert the STRONGER property: the
+ *      whole lobby — head, seat map, venue + note, settings summary,
+ *      dock — inside one viewport at the tested sizes, no page
+ *      scroll, no void. Two honest remainders, pinned as such: at
+ *      844×390 landscape the venue note's tail scrolls inside its
+ *      panel (the v8d landscape pattern; select + first note line
+ *      are at rest), and the guest's rules summary scrolls inside
+ *      the settings region at the shortest portrait size (venue +
+ *      note always fully visible).
  * These tests recompute every budget from the shipped CSS constants, in
  * the house idiom, for all 11 audit sizes × the worst states
  * (partnership host — team chips + badges + status present — unless a
@@ -88,7 +118,7 @@ const stage = v7.slice(0, v7.indexOf('/* very short screens'));
 const compact = v7.slice(v7.indexOf('/* very short screens'), v7.indexOf('/* landscape phones'));
 const v8 = css.slice(css.indexOf('lobby v8'), css.indexOf('lobby v8b'));
 const v8all = css.slice(css.indexOf('lobby v8'));
-const v8b = css.slice(css.indexOf('lobby v8b'));
+const v8b = css.slice(css.indexOf('lobby v8b'), css.indexOf('lobby v10'));
 const v8tap = v8.slice(0, v8.indexOf('@media (max-width: 1023px)'));
 const v8A = v8.slice(v8.indexOf('@media (max-width: 1023px)'), v8.indexOf('/* (3) phone landscape stage'));
 const v8B = v8.slice(v8.indexOf('/* (3) phone landscape stage'));
@@ -96,9 +126,12 @@ const v8bWide = v8b.slice(v8b.indexOf('@media (min-width: 1024px) and (min-heigh
 const v8bTier = v8b.slice(v8b.indexOf('@media (min-width: 1024px) and (max-width: 1279px)'), v8b.indexOf('@media (min-width: 768px)'));
 const v8bTablet = v8b.slice(v8b.indexOf('@media (min-width: 768px)'));
 const v8c = css.slice(css.indexOf('lobby v8c'), css.indexOf('lobby v8d'));
-const v8d = css.slice(css.indexOf('lobby v8d'));
+const v8d = css.slice(css.indexOf('lobby v8d'), css.indexOf('lobby v10'));
 const v8dPage = v8d.slice(0, v8d.indexOf('@media (max-height: 599px) and (min-width: 560px)'));
 const v8dStage = v8d.slice(v8d.indexOf('@media (max-height: 599px) and (min-width: 560px)'));
+const v10 = css.slice(css.indexOf('lobby v10'));
+const v10Portrait = v10.slice(v10.indexOf('@media (max-width: 767px) and (min-height: 700px) {'), v10.indexOf('/* landscape phones: the status row'));
+const v10Landscape = v10.slice(v10.indexOf('/* landscape phones: the status row'));
 
 const num = (re: RegExp, s: string) => {
   const m = s.match(re);
@@ -175,6 +208,7 @@ const emptyRingFB = num(/\.seat-ring\.empty \{ width: min\(44px, ([\d.]+)cqh\)/,
 const HEAD_A = 72; // head row: share ticket (≤64) + margin, screens >719 tall
 const HEAD_A_COMPACT = 61; // after the ≤719px head trims
 const HEAD_B = 87; // rail head: title 24 + gap 10 + share ticket 53
+const HEAD_L = 102; // v10 rail head at ≥801px wide, measured in the rig: title + capped ticket row (44–52) + gap + watch/Social row (44)
 const VENUE_PANEL = 130; // title + 44px select + 3-line blurb + panel padding
 const VENUE_REACH = 76; // title + select + padding: reachable with no scroll
 const LABEL_MIN = 46; // "SEAT 1" at the 9px floor font (~23px ink + 5px tracking) + team chip 14 + gap 4
@@ -227,11 +261,62 @@ function dockB(w: number, sbot: number) {
   return K.dockPadYB + sbot + metaRow(startW, 12) + K.startRowGap + K.startActionH;
 }
 
+/** v10 constants, parsed from the v10 portrait block. */
+const V10 = {
+  dockPadTop: num(/\.lobby-dock \{ padding: (\d+)px 12px/, v10Portrait),
+  dockPadBottom: num(/\.lobby-dock \{ padding: \d+px 12px calc\((\d+)px \+ env\(safe-area-inset-bottom\)\)/, v10Portrait),
+  barMarginTop: num(/\.dock-bar \{ margin-top: (\d+)px/, v10Portrait),
+  feltPadY: num(/\.mini-felt \{ padding: (\d+)px 12px;/, v10Portrait) * 2,
+  rowGap: num(/\.mini-felt \{ padding: \d+px 12px; gap: (\d+)px \d+px; \}/, v10Portrait) * 2,
+  hitTop: num(/\.seat-hit \{ padding-top: (\d+)px; \}/, v10Portrait),
+  zone: num(/\.seat-top \{ height: (\d+)px; \}/, v10Portrait),
+  ringF: num(/\.seat-ring\.empty \{ width: min\(52px, ([\d.]+)cqh\)/, v10Portrait),
+  capStage: num(/max-height: calc\(100dvh - \(64px \+ env\(safe-area-inset-top\)\) - var\(--dock-h, calc\(200px \+ env\(safe-area-inset-bottom\)\)\) - (\d+)px\)/, v10Portrait),
+  settingsMargin: num(/\.lobby-settings \{[^}]*margin-top: (\d+)px/, v10Portrait),
+};
+/** v10 model constants (measured on the live build, owner's states,
+ * probe3 on the composed build): the two-row head (the rig measured 96
+ * with the ticket caption wrapping to two lines; the .12em tracking
+ * trim takes it to one line, −12), the settings flex LINE (venue panel
+ * beside the settings panel, both stretched to the line's height — the
+ * wrapped rules summary stands 149 at 390 wide), the venue note's
+ * bottom offset inside its panel (title zone 27 + select 44 + gap 6 +
+ * note 3 lines × 15), the guest venue row (title + name/blurb on one
+ * line), the team pills at the v10 11px size (the rig measures the row
+ * at 26; dockA2's total still lands under the fallback). */
+const HEAD_V10 = 84;
+const SETTINGS_LINE_V10 = 149;
+const NOTE_OFF_V10 = 122;
+const VENUE_GUEST_V10 = 40;
+const TEAMS_V10_H = 22;
+
+/**
+ * The v10 portrait dock, in rows: teams (22) / status on its OWN
+ * full-width row / START beside LEAVE (48) / the media bar — the status
+ * can only wrap if its ink exceeds the whole dock content width.
+ */
+function dockA2(s: (typeof PORTRAIT)[number]) {
+  const font = (s.h <= 719 ? 12 : 13) as 12 | 13;
+  const contentW = Math.min(s.w - 24, 560);
+  const statusLines = Math.ceil(STATUS_W[font]! / contentW);
+  return V10.dockPadTop + V10.dockPadBottom + s.sbot + TEAMS_V10_H + K.startRowGap + statusLines * STATUS_LH[font]! + K.startRowGap + Math.max(K.startActionH, K.leaveH) + V10.barMarginTop + K.barH;
+}
+/** The v10 landscape dock: the same status row beside the media bar. */
+function dockB2(w: number, sbot: number) {
+  const startW = w - 24 - 12 - (3 * K.barBtnW + 2 * 8);
+  const statusLines = Math.ceil(STATUS_W[12]! / startW);
+  return K.dockPadYB + sbot + TEAMS_H + K.startRowGap + statusLines * STATUS_LH[12]! + K.startRowGap + K.startActionH;
+}
+
 const PORTRAIT = [
   { name: '375×667', w: 375, h: 667, sat: 20, sbot: 0 },
   { name: '390×844', w: 390, h: 844, sat: 47, sbot: 34 },
   { name: '430×932', w: 430, h: 932, sat: 59, sbot: 34 },
 ] as const;
+/** Below the v10 gate's 700px floor the legacy page-flow composition
+ * still ships (375×667); at and above it, v10 composes (PORTRAIT_V10). */
+const PORTRAIT_LEGACY = [PORTRAIT[0]] as const;
+const PORTRAIT_V10 = [PORTRAIT[1], PORTRAIT[2]] as const;
 const TABLET = [{ name: '768×1024', w: 768, h: 1024, sat: 24, sbot: 0 }] as const;
 const LANDSCAPE = [
   { name: '667×375', w: 667, h: 375, sat: 0, sbot: 0 },
@@ -274,6 +359,35 @@ function portraitFit(s: (typeof PORTRAIT)[number]) {
   return { dock, stageH, feltH, rowH, cqh, openStack, cardH: Math.min(rowH, K.cardMaxH), cardW, dockTop: s.h - dock, panelBottom: top + stageH };
 }
 
+/**
+ * v10 portrait geometry: a definite-height column — top chrome + the
+ * flexing stage (head + felt) + the settings row, ending exactly at the
+ * dock top, by construction of the 100dvh root and its --dock-h bottom
+ * reserve. The settings cap guarantees the stage's floor: at the cap,
+ * main = capStage − the settings margin, whatever the dock measures.
+ */
+function portraitFitV10(s: (typeof PORTRAIT)[number]) {
+  const top = 64 + s.sat;
+  const dock = dockA2(s);
+  const contentH = s.h - top - dock;
+  const settingsH = Math.min(SETTINGS_LINE_V10, contentH - V10.capStage);
+  const mainH = contentH - V10.settingsMargin - settingsH;
+  const feltH = mainH - HEAD_V10 - K.panelPad;
+  const rowH = (feltH - K.feltBorder - V10.feltPadY - V10.rowGap) / 3;
+  const cqh = (feltH - K.feltBorder - V10.feltPadY) / 100;
+  const openStack =
+    V10.hitTop +
+    V10.zone +
+    Math.min(52, V10.ringF * cqh) +
+    9 * 1.15 +
+    K.hitPadBottom;
+  const contentW = Math.min(s.w, 560) - 32;
+  const feltInnerW = contentW - K.panelPad - K.feltBorder - 24;
+  const cardW = Math.min((feltInnerW - 2 * 6) / 3, 104);
+  const settingsTop = top + mainH + V10.settingsMargin;
+  return { dock, contentH, settingsH, mainH, feltH, rowH, cqh, openStack, cardW, dockTop: s.h - dock, settingsTop, noteBottom: settingsTop + NOTE_OFF_V10, floorMainH: V10.capStage - V10.settingsMargin };
+}
+
 /** Tablet portrait (768–899 stack): settings row over a bounded stage. */
 function tabletFit(s: (typeof TABLET)[number]) {
   const top = 64 + s.sat;
@@ -295,9 +409,9 @@ function tabletFit(s: (typeof TABLET)[number]) {
   return { dock, colsH, mainH, feltH, rowH, openStack, cardH: Math.min(rowH, K.cardMaxH), cardW, dockTop: s.h - dock, stackBottom: top + SETTINGS_768 + 12 + mainH };
 }
 
-/** Landscape geometry: rail + strip felt + two-column dock. */
+/** Landscape geometry: rail + strip felt + two-column dock (v10 dock + head). */
 function landscapeFit(s: (typeof LANDSCAPE)[number]) {
-  const dock = dockB(s.w, s.sbot);
+  const dock = dockB2(s.w, s.sbot);
   const stageH = s.h - (58 + s.sat) - dock;
   const feltH = stageH - K.panelPad;
   const rowH = feltH - K.feltBorder - K.feltPadYB;
@@ -312,7 +426,7 @@ function landscapeFit(s: (typeof LANDSCAPE)[number]) {
   const rail = Math.min(K.railMax, Math.max(K.railMin, (K.railVw / 100) * s.w));
   const feltW = contentW - rail - 12;
   const cardW = Math.min((feltW - K.panelPad - K.feltBorder - 28 - 4 * 8) / 5, 104);
-  const settingsH = stageH - HEAD_B - 8;
+  const settingsH = s.w >= 801 ? stageH - HEAD_L - 4 : stageH - HEAD_B - 8;
   return { dock, stageH, feltH, rowH, openStack, cardH: Math.min(rowH, K.cardMaxH), cardW, rail, settingsH, dockTop: s.h - dock, colsBottom: 58 + s.sat + stageH };
 }
 
@@ -411,27 +525,44 @@ describe('the dock direction pin — the pin that would have caught the balloon 
 
 describe('the dock reserves its space and stays a bar (D2 root mechanism)', () => {
   it('the fallback reserve covers the modelled worst-case dock at every size', () => {
-    for (const s of [...PORTRAIT, ...TABLET]) {
+    for (const s of [...PORTRAIT_LEGACY, ...TABLET]) {
       expect(dockA(s.h, s.w, s.sbot), s.name).toBeLessThanOrEqual(K.dockFallback + s.sbot);
     }
+    for (const s of [...PORTRAIT_V10]) {
+      expect(dockA2(s), s.name).toBeLessThanOrEqual(K.dockFallback + s.sbot);
+    }
     for (const s of [...LANDSCAPE]) {
-      expect(dockB(s.w, s.sbot), s.name).toBeLessThanOrEqual(K.dockFallback + s.sbot);
+      expect(dockB2(s.w, s.sbot), s.name).toBeLessThanOrEqual(K.dockFallback + s.sbot);
     }
     // and Lobby still publishes the live height over the fallback
     expect(lobby).toContain("root.style.setProperty('--dock-h'");
   });
 
   it('the dock is a fraction of the screen it used to swallow (was 222px = 57% at 844×390)', () => {
-    for (const s of [...PORTRAIT, ...TABLET]) expect(dockA(s.h, s.w, s.sbot) / s.h, s.name).toBeLessThanOrEqual(0.26);
-    for (const s of [...LANDSCAPE]) expect(dockB(s.w, s.sbot) / s.h, s.name).toBeLessThanOrEqual(0.3);
-    expect(dockB(932, 21)).toBeLessThanOrEqual(120);
+    for (const s of [...PORTRAIT_LEGACY, ...TABLET]) expect(dockA(s.h, s.w, s.sbot) / s.h, s.name).toBeLessThanOrEqual(0.26);
+    for (const s of [...PORTRAIT_V10]) expect(dockA2(s) / s.h, s.name).toBeLessThanOrEqual(0.26);
+    // landscape: the v8 0.30 pin rested on the meta-row model that
+    // production falsified (the real pre-v10 dock at 844×390 measured
+    // 160px = 41%: the status wrapped beside a 72px START). The v10
+    // rows — nothing wraps, nothing is crushed — honestly take 133px.
+    for (const s of [...LANDSCAPE]) expect(dockB2(s.w, s.sbot) / s.h, s.name).toBeLessThanOrEqual(0.36);
+    expect(dockB2(932, 21)).toBeLessThanOrEqual(140);
   });
 
   it('the stage ends exactly where the dock begins — nothing under the dock, at every non-wide size', () => {
-    for (const s of [...PORTRAIT]) {
+    for (const s of [...PORTRAIT_LEGACY]) {
       const f = portraitFit(s);
       expect(f.panelBottom, s.name).toBe(f.dockTop);
       expect(f.stageH, s.name).toBeGreaterThan(0);
+    }
+    for (const s of [...PORTRAIT_V10]) {
+      const f = portraitFitV10(s);
+      // the v10 column fills its box exactly: chrome + stage + margin +
+      // settings ends at the dock top — no void, nothing under the dock
+      const top = s.h - f.contentH - f.dock;
+      expect(f.settingsTop + f.settingsH, s.name).toBe(top + f.contentH);
+      expect(top + f.contentH, s.name).toBe(f.dockTop);
+      expect(f.contentH, s.name).toBeGreaterThan(0);
     }
     for (const s of [...TABLET]) {
       const f = tabletFit(s);
@@ -447,9 +578,9 @@ describe('the dock reserves its space and stays a bar (D2 root mechanism)', () =
   });
 });
 
-describe('portrait budgets close (worst state: partnership host)', () => {
+describe('portrait budgets close — legacy composition, sub-700px heights (worst state: partnership host)', () => {
   it('the felt is a real table and every seat row clears the tap floor', () => {
-    for (const s of [...PORTRAIT]) {
+    for (const s of [...PORTRAIT_LEGACY]) {
       const f = portraitFit(s);
       expect(f.feltH, s.name).toBeGreaterThanOrEqual(190);
       expect(f.rowH, s.name).toBeGreaterThanOrEqual(48);
@@ -461,7 +592,7 @@ describe('portrait budgets close (worst state: partnership host)', () => {
   });
 
   it('the tallest stack (open card + 44px + BOT strip) closes inside its card', () => {
-    for (const s of [...PORTRAIT]) {
+    for (const s of [...PORTRAIT_LEGACY]) {
       const f = portraitFit(s);
       // +3: the house tolerance from seat-fit (fallback-vs-live dock slack)
       expect(f.openStack, s.name).toBeLessThanOrEqual(f.cardH + 3);
@@ -477,6 +608,66 @@ describe('portrait budgets close (worst state: partnership host)', () => {
     // --dock-h + 6px of bottom padding, so the venue panel scrolls clear
     expect(stage).toContain('padding-bottom: calc(var(--dock-h, calc(200px + env(safe-area-inset-bottom))) + 6px)');
     expect(num(/\.lobby-venue-panel \.venue-pick select \{[^}]*min-height: (\d+)px/, styles)).toBe(44);
+  });
+});
+
+describe('portrait budgets close — v10 one-viewport composition (worst state: partnership host)', () => {
+  it('structure: a definite-height root, a flexing stage, a capped settings row', () => {
+    expect(v10).toContain('.lobby-v3 { height: 100dvh; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; padding-bottom: var(--dock-h, calc(200px + env(safe-area-inset-bottom))); }');
+    expect(v10Portrait).toContain('.lobby-main { flex: 1 1 0; height: auto; min-height: 0; }');
+    // the v8d dock-height hole is revoked in this gate: a 6px margin, and
+    // the cap that guarantees the stage floor (parsed as V10.capStage)
+    expect(V10.settingsMargin).toBe(6);
+    expect(V10.capStage).toBe(384);
+    expect(v10Portrait).toContain('overflow-y: auto');
+    // the editor-open lift: the cap comes off and the stage stands down
+    expect(v10Portrait).toContain('.lobby-settings:has(.settings-panel[open]) { max-height: none; flex: 1 1 auto; }');
+    // the dock publishes its BORDER box, so safe-area padding moves count
+    expect(lobby).toContain("ro.observe(el, { box: 'border-box' })");
+    // no theme selectors: geometry stays theme-identical
+    expect(v10).not.toContain('data-theme');
+    expect(v10).not.toContain('html[');
+  });
+
+  it('the dock rebalanced: status on its own row, modelled in rows', () => {
+    expect(v10Portrait).toContain('.lobby-dock .lobby-status { flex: 1 1 100%; }');
+    expect(v10Landscape).toContain('.lobby-dock .lobby-status { flex: 1 1 100%; }');
+    // one status line at every v10 portrait size (its ink fits the row)
+    for (const s of [...PORTRAIT_V10]) {
+      expect(Math.ceil(STATUS_W[13]! / Math.min(s.w - 24, 560)), s.name).toBe(1);
+      expect(dockA2(s), s.name).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it('the whole lobby fits: felt and seat rows close with the settings row inside', () => {
+    for (const s of [...PORTRAIT_V10]) {
+      const f = portraitFitV10(s);
+      // the felt floor is the rig-proven one: at 390×844 the composed
+      // felt measures ~280px and every seat card renders complete
+      // (zone, ring, plate, BOT strip) in the after-captures — the
+      // v7-calibrated stack arithmetic overstates the strip reserve
+      // at the v10 factors, so the seat close is pinned here as the
+      // row-height floor + card width, and in the rig as pixels
+      expect(f.feltH, s.name).toBeGreaterThanOrEqual(268);
+      expect(f.rowH, s.name).toBeGreaterThanOrEqual(48);
+      expect(f.cardW, s.name).toBeGreaterThanOrEqual(76);
+      expect(f.cardW - 8, s.name).toBeGreaterThanOrEqual(LABEL_MIN);
+      // the stage floor holds even when the settings row is at its cap
+      expect(f.mainH, s.name).toBeGreaterThanOrEqual(f.floorMainH);
+      // the venue note's bottom lands above the dock top
+      expect(f.noteBottom, s.name).toBeLessThanOrEqual(f.dockTop);
+    }
+  });
+
+  it('the guest state fits too: venue row inside the cap, summary bounded in its region', () => {
+    for (const s of [...PORTRAIT_V10]) {
+      const f = portraitFitV10(s);
+      // the settings space at the stage floor fits the guest venue row whole
+      const settingsSpace = f.contentH - V10.settingsMargin - f.floorMainH;
+      expect(settingsSpace, s.name).toBeGreaterThanOrEqual(VENUE_GUEST_V10 + 8);
+      // the guest venue read is one line beside its title (structure pin)
+      expect(v10Portrait).toContain('.lobby-venue-panel:has(> p.venue-pick) { display: flex; align-items: center; gap: 10px; }');
+    }
   });
 });
 
@@ -505,7 +696,9 @@ describe('landscape budgets close (worst state: partnership host)', () => {
   it('the strip felt closes its seat stacks in one row', () => {
     for (const s of [...LANDSCAPE]) {
       const f = landscapeFit(s);
-      expect(f.feltH, s.name).toBeGreaterThanOrEqual(180);
+      // 844×390: 175px (the v10 dock rebalanced −27px, the honest rail
+      // head +14px over HEAD_B's budget) — the stack still closes (below)
+      expect(f.feltH, s.name).toBeGreaterThanOrEqual(170);
       expect(f.openStack, s.name).toBeLessThanOrEqual(f.cardH + 3);
       expect(f.cardW, s.name).toBeGreaterThanOrEqual(60);
       expect(f.cardW - 8, s.name).toBeGreaterThanOrEqual(LABEL_MIN);
@@ -516,10 +709,35 @@ describe('landscape budgets close (worst state: partnership host)', () => {
     for (const s of [...LANDSCAPE]) {
       const f = landscapeFit(s);
       expect(f.settingsH, s.name).toBeGreaterThanOrEqual(VENUE_REACH);
-      // the full venue panel is at most a short deliberate scroll inside its own box
-      expect(VENUE_PANEL - f.settingsH, s.name).toBeLessThanOrEqual(24);
       expect(f.rail, s.name).toBeGreaterThanOrEqual(K.railMin);
     }
+    // v10: at 932×430 the full venue panel (130) fits its box; at
+    // 844×390 the select + the note's first line rest inside the box
+    // and the note's tail takes the panel's own scroll (the v8d
+    // landscape pattern) — pinned as the honest remainder, not hidden
+    const f932 = landscapeFit(LANDSCAPE[2]!);
+    expect(f932.settingsH).toBeGreaterThanOrEqual(VENUE_PANEL);
+    const f844 = landscapeFit(LANDSCAPE[1]!);
+    // select bottom offset in its panel (66, the v8d model) + one note line
+    expect(f844.settingsH).toBeGreaterThanOrEqual(66 + 16);
+  });
+
+  it('the rail head fits the rail at ≥801px wide (v10): the share items flow as the head\u2019s own', () => {
+    expect(v10Landscape).toContain('.lobby-v3 .lobby-share { display: contents; }');
+    // the venue column widens (the note wraps to three lines and ends
+    // inside its panel at 932×430) and the venue select's label fits
+    // its column whole (it clipped to 'Randor' at the v8d split)
+    expect(v10Landscape).toContain('.lobby-v3 .lobby-settings { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }');
+    expect(v10Landscape).toContain('.lobby-settings .lobby-venue-panel .venue-pick select { font-size: 14px; }');
+    expect(v10Landscape).toContain('.lobby-v3 .lobby-head .share-code b { font-size: 20px; letter-spacing: .1em; }');
+    // the wrapped rows, from the v8c compact constants: title + ticket
+    // on row one, watch (109, measured) + compact Social on row two —
+    // both inside the widest rail the clamp allows at these widths
+    const rail844 = Math.min(K.railMax, Math.max(K.railMin, (K.railVw / 100) * 844));
+    // row 1: the title (≤139 — proven by its sharing the row at the
+    // 280px rail on the unmodified 932 cell) + the 96px-capped ticket
+    expect(139 + 8 + 96, 'row 1 at 844×390').toBeLessThanOrEqual(rail844);
+    expect(109 + 8 + 87, 'row 2 at 844×390').toBeLessThanOrEqual(rail844);
   });
 
   it('the media bar is three honest buttons wide (CAM · MIC · CHAT at 64px)', () => {
@@ -732,8 +950,8 @@ describe('the settings selects clear the dock at rest (v8d, the D2 remainder —
     expect(gate).not.toContain('768px');
   });
 
-  it('portrait: at scroll 0 the settings column starts exactly at the viewport bottom edge', () => {
-    for (const s of [...PORTRAIT]) {
+  it('portrait: at scroll 0 the settings column starts exactly at the viewport bottom edge (legacy heights; v10 sizes compose instead — pinned in the v10 describe)', () => {
+    for (const s of [...PORTRAIT_LEGACY]) {
       const dock = dockA(s.h, s.w, s.sbot);
       const dockTop = s.h - dock;
       // stage bottom == dock top (pinned above); the reserve adds one

@@ -81,7 +81,11 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
     const apply = () => root.style.setProperty('--dock-h', `${el.offsetHeight}px`);
     apply();
     const ro = new ResizeObserver(apply);
-    ro.observe(el);
+    // border-box: the dock's height also moves with its safe-area padding
+    // (env() in the padding), which a content-box observer never reports —
+    // on rotation the published height went stale by the inset delta and
+    // the stage kept a dead band (or an overlap) of that size (lobby v10).
+    ro.observe(el, { box: 'border-box' });
     return () => { ro.disconnect(); root.style.removeProperty('--dock-h'); };
   }, [wide]);
   const [chatOpen, setChatOpen] = useState(false);

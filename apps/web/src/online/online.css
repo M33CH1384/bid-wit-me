@@ -820,3 +820,149 @@
   .lobby-settings .settings-panel > summary { padding-top: 2px; padding-bottom: 2px; }
   .lobby-settings .settings-panel .sr-mode { display: none; }
 }
+
+/* ---------- lobby v10: the whole lobby in ONE viewport (owner 2026-11-04) ----------
+   The owner, on the v9 build: "The ui on this screen makes no sense let's
+   balance it out and remove unnecessary white space." His phone shot (host,
+   Neon, 430×932, venue Random): header scrolled off, the seat stage, then a
+   dead void of ~1/3 of the screen, then the VENUE block with its note line
+   clipped mid-line at the dock's edge. Measured on the live build (rig,
+   owner's state, real safe-area insets): the void is v8d's cure — the
+   settings column starts one live dock-height (235px on his phone class)
+   below the stage, a trade the owner accepted on 2026-10-25 and has now
+   revoked; the settings column (192px host / 330px guest) sat entirely
+   below the fold; the head is really 121px (the share row wraps under the
+   title at phone widths, not the ~72px v8 budgeted); the dock is 235px
+   (host) / 267px (guest), not the modelled ~188, because the status
+   squeezes beside START into a 3-line column while LEAVE strands alone.
+   v10 revokes the v8d page-flow trade in the phone gates and composes the
+   lobby as ONE definite-height column instead: the root is 100dvh with the
+   live dock height reserved as its bottom padding, the seat stage flexes
+   (the felt is the one elastic piece), and the settings row takes its
+   natural height beneath it — capped so the stage keeps a legal felt, the
+   overflow scrolling inside the settings region (the pattern the landscape
+   stage already ships). The dock rebalances: the status takes its own
+   full-width row (one line, never squeezed), START/waiting + LEAVE share
+   the action row. In landscape the v8B stage stays; v10 gives it the same
+   definite height (killing the residual +6px page scroll), the same
+   status row, a wrapped settings summary (the timer select was crushed to
+   a 14px sliver in the rail's grid column), and — at ≥801px wide, where
+   the share row's 392px min-content overran the ≤280px rail and buried
+   the Social button behind the seat panel — a wrapping rail head with
+   the v8c compact ticket at every landscape width. Geometry only — no
+   theme selectors; the v9 dock paint is untouched. */
+
+/* both phone compositions: a definite-height root ending at the dock top */
+@media (max-width: 767px) and (min-height: 700px), (max-height: 599px) and (min-width: 560px) {
+  .lobby-v3 { height: 100dvh; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; padding-bottom: var(--dock-h, calc(200px + env(safe-area-inset-bottom))); }
+}
+
+/* portrait phones: stage + settings compose inside the one viewport */
+@media (max-width: 767px) and (min-height: 700px) {
+  .lobby-cols { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .lobby-main { flex: 1 1 0; height: auto; min-height: 0; }
+  /* the settings row: natural height under the stage, capped so the felt
+     keeps its floor (100dvh − top chrome − dock − 384px of stage — the
+     floor the rig proves: at 390×844 the composed stage is 378px and the
+     seat cards render complete, zone, ring, plate and BOT strip, at a
+     280px felt); past the cap the region scrolls inside itself — the
+     guest's rules summary is the one content that needs it at the
+     shortest sizes. With the settings editor open the cap lifts and the
+     region takes the column, the stage standing down (a deliberate mode,
+     as the editor was when it pushed the stage off a scrolling page). */
+  .lobby-settings { flex: 0 1 auto; min-height: 0; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 8px; overflow-y: auto; scrollbar-width: thin; max-height: calc(100dvh - (64px + env(safe-area-inset-top)) - var(--dock-h, calc(200px + env(safe-area-inset-bottom))) - 384px); }
+  .lobby-settings > * { margin-bottom: 0; }
+  .lobby-settings:has(.settings-panel[open]) { max-height: none; flex: 1 1 auto; }
+  .lobby-cols:has(.settings-panel[open]) .lobby-main { flex-grow: 0; }
+  /* venue + settings side by side (the v8d landscape pattern, brought to
+     portrait); the guest's venue panel takes its row alone, its rules
+     summary wrapping underneath at full width */
+  .lobby-venue-panel { flex: 1 1 168px; min-width: 0; padding: 4px 12px; }
+  .lobby-settings .settings-panel { flex: 1 1 148px; min-width: 0; padding: 4px 12px; }
+  .lobby-settings .summary { flex: 1 1 100%; min-width: 0; margin: 0; font-size: 12.5px; line-height: 1.35; gap: 1px; }
+  .lobby-settings .summary .mic-mute-row .row-label small { font-size: 11.5px; line-height: 1.3; }
+  /* the settings summary wraps deliberately: mode line on its own row,
+     timer + Edit beneath — neither column crushes the timer select */
+  .lobby-settings .settings-panel > summary { flex-wrap: wrap; row-gap: 4px; padding: 4px 0; }
+  .lobby-settings .settings-panel .sr-mode { flex: 1 1 100%; }
+  /* the venue note is a caption under its select: 12px, tight leading */
+  .lobby-venue-panel .venue-pick small { font-size: 12px; line-height: 1.25; margin-top: 3px; }
+  /* the guest's venue read (a <p>, not the host's picker) sits on one
+     line beside its title: name + blurb inline */
+  .lobby-venue-panel:has(> p.venue-pick) { display: flex; align-items: center; gap: 10px; }
+  .lobby-venue-panel p.venue-pick { margin: 0; }
+  .lobby-venue-panel p.venue-pick small { display: inline; margin-left: 6px; }
+  /* head: two deliberate compact rows — title, then the share row at the
+     compact tier's sizes (the stacked head v8 meant to ship) */
+  .lobby-v3 .lobby-head { flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 6px; }
+  .lobby-v3 .lobby-pick-title { font-size: 20px; }
+  .lobby-v3 .lobby-share { justify-content: flex-start; }
+  .lobby-v3 .share-code { padding: 4px 10px 2px; }
+  .lobby-v3 .room-code b { font-size: 21px; }
+  /* the ticket caption at its base .25em tracking wraps to two lines at
+     phone widths and the head grows ~12px (measured) — .12em keeps it
+     on one line, the same trim the landscape head takes */
+  .lobby-v3 .share-code small { letter-spacing: .12em; }
+  /* dock rebalance: status on its own full-width row (one line), the
+     action row beneath it; tighter teams + bar spacing */
+  .lobby-dock { padding: 6px 12px calc(8px + env(safe-area-inset-bottom)); }
+  .lobby-dock .lobby-status { flex: 1 1 100%; }
+  .lobby-dock .team-pill { font-size: 11px; padding: 3px 9px; }
+  .lobby-dock .waiting-block { padding: 8px 12px; }
+  /* START's label at 15px: at the narrowest docks its 18px ink wraps to
+     two lines beside LEAVE and the action row grows ~16px (measured) */
+  .lobby-dock .lobby-start > .primary.big { font-size: 15px; }
+  .dock-bar { margin-top: 2px; }
+  /* seat stack: the portrait factors — the felt gives up its padding and
+     gap air and the empty ring its factor, so the open card's stack
+     (label zone + ring + plate + the 44px +BOT strip reserve) still
+     closes inside its row at the composed stage heights */
+  .mini-felt { padding: 6px 12px; gap: 4px 6px; }
+  .seat-top { height: 12px; }
+  .seat-hit { padding-top: 4px; }
+  .seat-ring.empty { width: min(52px, 6.2cqh); height: min(52px, 6.2cqh); }
+  .seat-card { padding-top: clamp(5px, 1.6cqh, 7px); }
+  .seat-plate.empty { padding-top: 0; padding-bottom: 0; }
+}
+
+/* landscape phones: the status row + a summary that cannot crush its select */
+@media (max-height: 599px) and (min-width: 560px) {
+  .lobby-dock .lobby-status { flex: 1 1 100%; }
+  .lobby-settings .settings-panel > summary { flex-wrap: wrap; row-gap: 4px; }
+  .lobby-settings .settings-panel .sr-timer { flex: 1 1 100%; }
+  /* the venue note at the portrait v10 size, tighter: in the short
+     landscape box every line counts (four lines at 932×430 = 58px,
+     and the note ends inside its panel, not 1px past it) */
+  .lobby-settings .lobby-venue-panel .venue-pick small { font-size: 12px; line-height: 1.2; margin-top: 1px; }
+  /* the rail's columns run a touch narrow for their content: the
+     venue select's label clipped its last letter behind the chevron
+     (measured: 'Random' rendered 'Randor') — 14px fits it whole */
+  .lobby-settings .lobby-venue-panel .venue-pick select { font-size: 14px; }
+}
+
+/* landscape ≥801px: the rail head wraps inside the rail (v8c's compact
+   ticket at every landscape width; the share row's items flow as the
+   head's own, so nothing paints over the seat panel) */
+@media (max-height: 599px) and (min-width: 801px) {
+  /* the venue column takes a larger share of the rail's settings grid:
+     at the v8d split the venue note wrapped to four lines and its last
+     line ended past the panel's edge (measured at 932×430); at 1.45fr
+     the note wraps to three and ends inside its panel */
+  .lobby-v3 .lobby-settings { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }
+  .lobby-v3 .lobby-head { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .lobby-v3 .lobby-share { display: contents; }
+  /* the ticket capped at 96px: at 844 wide the title + full ticket
+     (125 + 133 + gap) overran the 253px rail and the ticket wrapped to
+     its own row — the head grew to 130px and the venue select crossed
+     its box's edge (measured). Capped, the ticket shares the title's
+     row and its caption wraps inside it instead */
+  .lobby-v3 .lobby-head .share-code { padding: 2px 8px 1px; max-width: 96px; }
+  .lobby-v3 .lobby-head .share-code b { font-size: 20px; letter-spacing: .1em; }
+  /* the ticket's caption at its base .25em tracking wraps to three
+     lines in the rail and the head grows ~11px (measured) — .12em
+     wraps it to two and gives the settings box those 11px back; the
+     tighter leading + padding give the 844×390 box the last 4px its
+     venue note's first line needs */
+  .lobby-v3 .lobby-head .share-code small { letter-spacing: .12em; line-height: 1.1; }
+  .lobby-v3 .lobby-head .lobby-social { padding: 0 8px; }
+}
