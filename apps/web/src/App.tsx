@@ -33,7 +33,9 @@ export default function App() {
       // consumes nothing and stays a test start: fresh game, 0–0.
       const rematchSeats = consumeRematchSeats();
       if (!rematchSeats) saveSeries(null); // a test start is a fresh game: 0–0, same as Deal me in
-      return { seed: p.get('seed') ?? secureSeed(), settings: loadSettings(), continueSeries: !!rematchSeats, ...(rematchSeats ? { carryNames: rematchSeats } : {}) };
+      return rematchSeats
+        ? { seed: p.get('seed') ?? secureSeed(), settings: loadSettings(), continueSeries: true, carryNames: rematchSeats }
+        : { seed: p.get('seed') ?? secureSeed(), settings: loadSettings(), continueSeries: false };
     }
     // Opening the app and refreshing land on the menu. A saved bot game is not resumed.
     // Leave (including a spectator leaving an online table) also sets wiz:home.
