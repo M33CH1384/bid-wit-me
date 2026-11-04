@@ -57,7 +57,8 @@ import { Intermission, calloutsFor } from './Intermission';
 import { BoxScore } from './BoxScore';
 import Hype from './Hype';
 import AnimFxLayer from './animfx/AnimFxLayer';
-import { landCueFor, wheelsFor, wheelsMade, wheelsTenth, wheelsTenthBooks } from './landCue';
+import { landCueFor, resultsWheelsFeats, wheelsFor, wheelsMade, wheelsTenth, wheelsTenthBooks } from './landCue';
+import { WheelsResultsShow } from './WheelsResults';
 import { classifyDeuceFx, deuceLandCue } from './deuceFx';
 import Feedback from './Feedback';
 import { setFeedbackGame } from './feedbackContext';
@@ -415,7 +416,17 @@ function positions(n: number): SeatPos[] {
 
 /* -------------------------------------------------------------- chat feed */
 const talkOn = () => { try { return JSON.parse(localStorage.getItem('bwm.talk.v1') ?? '{}').botTalk !== false; } catch { return true; } };
-function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
+/** The Wheels results gate (TableGame owns the state): a 10th-book emit
+ *  whose timer lands after the game has ended must not fire into the
+ *  covered table — it stashes the feat for the results surface instead;
+ *  a live emit records its key so the results replay never doubles it. */
+interface WheelsGate {
+  phaseRef: { current: GameState['phase'] };
+  shownLive: Set<string>;
+  stash: (key: string, who: string) => void;
+}
+
+function useChat(st: GameState, names: string[], initial: ChatMsg[] | undefined, wheelsGate: WheelsGate) {
   const [msgs, setMsgs] = useState<ChatMsg[]>(() => initial ?? []);
   const prev = useRef<GameState | null>(initial ? st : null);
   const idRef = useRef(initial && initial.length ? Math.max(...initial.map((m) => m.id)) + 1 : 1);
@@ -470,13 +481,24 @@ function useChat(st: GameState, names: string[], initial?: ChatMsg[]) {
     const runWait = st.tricks.slice(p.tricks.length).some((t) => t.plays.some((q) => q.run)) ? runWaitMs(st) : 0;
     if (st.handNo === p.handNo) for (const s of wheelsTenth(r, p.tricksWon, st.tricksWon)) {
       push('System', `🏎 Wheels! ${names[s]} took a 10th book`, true);
-      window.setTimeout(() => fx.emit('wheelsCar', { text: `${names[s]} · 10 books` }), 900 + runWait);
+      const key = `${st.handNo}:tenth:${s}`;
+      const text = `${names[s]} · 10 books`;
+      window.setTimeout(() => {
+        // the game ended under this timer: the results surface owns the show
+        if (wheelsGate.phaseRef.current === 'gameOver') wheelsGate.stash(key, text);
+        else { wheelsGate.shownLive.add(key); fx.emit('wheelsCar', { text }); }
+      }, 900 + runWait);
     }
     // first hand (books bid themselves, so no bids): a team's 10th book of the hand → the same celebration
     if (st.handNo === p.handNo) for (const side of wheelsTenthBooks(r, st.bids, p.tricksWon, st.tricksWon)) {
       const who = sideName(r, side, names);
       push('System', `🏎 Wheels! ${who} took 10 books`, true);
-      window.setTimeout(() => fx.emit('wheelsCar', { text: `${who} · 10 books` }), 900 + runWait);
+      const key = `${st.handNo}:tenthBooks:${side}`;
+      const text = `${who} · 10 books`;
+      window.setTimeout(() => {
+        if (wheelsGate.phaseRef.current === 'gameOver') wheelsGate.stash(key, text);
+        else { wheelsGate.shownLive.add(key); fx.emit('wheelsCar', { text }); }
+      }, 900 + runWait);
     }
     // ☢ a nuke arming (second Joker down, trick still open — any trick) is announced once, on the way in
     if (st.handNo === p.handNo && nukeArmed(st) && !nukeArmed(p)) push('System', '☢ Nuke armed — ready to blow', true);
@@ -995,7 +1017,29 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   useEffect(() => { saveTableChatOpen(chatOpen); }, [chatOpen]);
   const [seenMsgs, setSeenMsgs] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const localChat = useChat(st, names, resume?.chat);
+  // Wheels on the RESULTS page (owner, 2026-11-04): the car used to be
+  // summoned only into the table scene, which the results overlay covers
+  // — the peel-out played and the car did its doughnuts unseen. A feat
+  // earned in the final hand is now STASHED (never fired into the covered
+  // scene) and replayed by the results surface itself; feats the table
+  // showed live are recorded so they never replay.
+  const wheelsPhaseRef = useRef(st.phase);
+  wheelsPhaseRef.current = st.phase;
+  const wheelsShownLive = useRef<Set<string>>(new Set());
+  const wheelsPlayed = useRef(false);
+  const [resultsWheels, setResultsWheels] = useState<{ key: string; who: string } | null>(null);
+  const stashResultsWheels = useCallback((key: string, who: string) => {
+    if (wheelsPlayed.current) return;
+    setResultsWheels((cur) => cur ?? { key, who });
+  }, []);
+  const wheelsGate = useMemo<WheelsGate>(() => ({ phaseRef: wheelsPhaseRef, shownLive: wheelsShownLive.current, stash: stashResultsWheels }), [stashResultsWheels]);
+  useEffect(() => {
+    if (st.phase === 'gameOver') return;
+    setResultsWheels(null);
+    wheelsPlayed.current = false;
+    wheelsShownLive.current.clear();
+  }, [st.phase]);
+  const localChat = useChat(st, names, resume?.chat, wheelsGate);
   const { msgs: rawMsgs, push } = online ? online.chat : localChat;
   // partner talk presets (team games, bidding): plain PUBLIC table chat — everyone sees it, opponents included.
   const partnerSeat = r.partnerships ? (HUMAN + 2) % n : -1;
@@ -2220,11 +2264,21 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       timers.push(() => clearTimeout(ht));
     }
     const streak = calls.find((c) => c.kind === 'streak');
-    // Wheels made: a team that bid 10+ together and took 10+ books → the supercar peel-out
+    // Wheels made: a team that bid 10+ together and took 10+ books → the roadster peel-out
     const made = wheelsMade(r, rec);
     if (made.length) {
       const w = made[0]!;
-      timers.push(fx.later('wheelsCar', shot ? 1500 : streak ? 2600 : 600, { text: `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}` }));
+      const who = `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}`;
+      const key = `${rec.handNo}:made:${w.side}`;
+      if (st.phase === 'gameOver') {
+        // This record closed the game: firing into the bus now plays the
+        // show under the results overlay (the heard-but-not-seen bug).
+        // Stash it — the results surface replays it at presentation.
+        stashResultsWheels(key, who);
+      } else {
+        wheelsShownLive.current.add(key);
+        timers.push(fx.later('wheelsCar', shot ? 1500 : streak ? 2600 : 600, { text: who }));
+      }
     }
     if (streak) timers.push(fx.later('streak', shot ? 1100 : 400, { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }));
     return () => { clearTimeout(tm); toastHold(); timers.forEach((c) => c()); };
@@ -2483,6 +2537,21 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     // finished game's own frozen state
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showResults, st.result, matchSeed]);
+  // If the final hand's feat was never stashed by an emit site (its timer
+  // fired live just before the game closed, or the record landed without
+  // one), derive it from the recorded history at presentation — real game
+  // state only, and never a feat the table already showed.
+  useEffect(() => {
+    if (!showResults || resultsWheels || wheelsPlayed.current) return;
+    const feats = resultsWheelsFeats(r, st.history, st.tricksWon, wheelsShownLive.current);
+    const f = feats[0];
+    if (!f) return;
+    stashResultsWheels(f.key, f.kind === 'made'
+      ? `${sideName(r, f.side!, names)} made ${f.bid} · took ${f.books}`
+      : f.kind === 'tenth'
+        ? `${names[f.seat!]} · 10 books`
+        : `${sideName(r, f.side!, names)} · 10 books`);
+  }, [showResults, resultsWheels]); // eslint-disable-line react-hooks/exhaustive-deps
   // A guest claim landing on the merged screen swaps the credited
   // breakdown in: mirror it into the stash so a later reload's recovery
   // presents the credited version too.
@@ -3621,6 +3690,15 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       )}
 
       {coachOn && !modalOpen && st.phase === 'playing' && !pause && <LedSuitChip st={st} />}
+      {showResults && resultsWheels && (
+        <WheelsResultsShow
+          key={resultsWheels.key}
+          who={resultsWheels.who}
+          quality={settings.quality}
+          reduced={reduceFx}
+          onDone={() => { wheelsPlayed.current = true; setResultsWheels(null); }}
+        />
+      )}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
       <AnimFxLayer st={st} online={!!online} names={names} resultPresented={showResults || (st.phase === 'gameOver' && showRecap)} />
       {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} onLeave={st.phase === 'handOver' ? () => { setShowPad(false); if (online) leave(); else setConfirmLeave(true); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}

@@ -1697,6 +1697,13 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    scene now — three/WheelsCar3D.tsx: doughnuts on the felt, blown off it by
    a detonation; this layer keeps the banner + timing in every quality) ---- */
 .wheels-fx { position: absolute; inset: 0; pointer-events: none; }
+/* The Wheels show on the results page: a transient overlay above the
+   results surfaces (victory z-1000 included), pointer-transparent so the
+   results stay live underneath; the stage is a centered panel that
+   never takes layout space. */
+.wheels-results { position: fixed; inset: 0; z-index: 1002; pointer-events: none; }
+.wheels-stage { position: absolute; left: 50%; top: 57%; transform: translate(-50%, -50%); width: min(88vw, 540px); aspect-ratio: 16 / 10; }
+@media (orientation: landscape) and (max-height: 500px) { .wheels-stage { top: 59%; width: min(62vw, 540px); max-height: 74vh; } }
 .wheels-fx.gone { display: none; }
 .hype-pop.wheels-banner { top: 28%; pointer-events: auto; cursor: pointer; animation: wc-banner 2.5s ease both; }
 .hype-pop.wheels-banner .hype-text { font-family: var(--display); font-weight: 900; font-style: italic; font-size: clamp(44px, 9vw, 96px); letter-spacing: .04em; color: #fff; background: linear-gradient(180deg, #fff1b8, var(--gold) 55%, #a8741a); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 3px 0 #4b1aa6) drop-shadow(0 0 22px rgba(var(--gold-rgb),.7)); }

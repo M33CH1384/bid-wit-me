@@ -118,3 +118,34 @@ export function wheelsTenth(rules: { partnerships: boolean }, before: readonly n
   if (rules.partnerships) return [];
   return after.flatMap((n, s) => (n >= WHEELS_AT && (before[s] ?? 0) < WHEELS_AT ? [s] : []));
 }
+
+/** A Wheels feat the RESULTS page replays: earned in the game's final
+ *  hand, keyed the same way the live emit sites key it (`<handNo>:<kind>:
+ *  <side|seat>`), minus any key the table already showed live. The final
+ *  hand only — a feat from an earlier hand had its moment at the table.
+ *  Books are per-hand, so a 10th-book crossing inside the final hand is
+ *  measured from zero. */
+export interface ResultsWheelsFeat {
+  key: string;
+  kind: 'made' | 'tenth' | 'tenthBooks';
+  side?: number;
+  seat?: number;
+  bid?: number;
+  books?: number;
+}
+export function resultsWheelsFeats(
+  rules: { partnerships: boolean; playerCount: number },
+  history: readonly { handNo: number; bids: readonly (number | string | null)[]; sides: { side: number; tricks: number; contractMade?: boolean | null }[] }[],
+  finalTricksWon: readonly number[],
+  shownLive: ReadonlySet<string>,
+): ResultsWheelsFeat[] {
+  const rec = history[history.length - 1];
+  if (!rec) return [];
+  const out: ResultsWheelsFeat[] = [];
+  const push = (f: ResultsWheelsFeat) => { if (!shownLive.has(f.key)) out.push(f); };
+  for (const m of wheelsMade(rules, rec)) push({ key: `${rec.handNo}:made:${m.side}`, kind: 'made', side: m.side, bid: m.bid, books: m.books });
+  const zeros = finalTricksWon.map(() => 0);
+  for (const s of wheelsTenth(rules, zeros, finalTricksWon)) push({ key: `${rec.handNo}:tenth:${s}`, kind: 'tenth', seat: s });
+  for (const sd of wheelsTenthBooks(rules, rec.bids, zeros, finalTricksWon)) push({ key: `${rec.handNo}:tenthBooks:${sd}`, kind: 'tenthBooks', side: sd });
+  return out;
+}

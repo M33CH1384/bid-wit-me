@@ -1,12 +1,14 @@
 /**
  * THE WHEELS CAR, IN THE SCENE — the 3D rebuild (owner verdict on the 2D sprite
  * show, 2026-10-28: "That car animation looks terrible honestly" → "Rebuild it as
- * a real 3D car"). The glossy purple-and-gold supercar is a real Forge body
- * (TRELLIS, three.ws — vehicle bodywork is the proven Forge-mix class: code can't
- * carry bodywork, the Pj's sedan precedent) driving ON the felt at High quality:
- * it swings in under the revs, lays ~1¾ powerslide doughnuts around the trick
- * centre trailing tyre smoke from its rear wheels and dark arcs on the cloth,
- * then peels off the right edge. Pure poses live in wheelsCar3d.ts.
+ * a real 3D car"). The body is a real Forge body (TRELLIS, three.ws — vehicle
+ * bodywork is the proven Forge-mix class: code can't carry bodywork, the Pj's
+ * sedan precedent) driving ON the felt at High quality: it swings in under the
+ * revs, lays ~1¾ powerslide doughnuts around the trick centre trailing tyre
+ * smoke from its rear wheels and dark arcs on the cloth, then peels off the
+ * right edge. Pure poses live in wheelsCar3d.ts; the body itself — a deep-red
+ * EV roadster since the owner's 2026-11-04 remodel — and its normalization
+ * live in wheelsCarModel.ts, shared with the results-page stage.
  *
  * The summons is unchanged (`wheelsCar` on the fx bus — a side took all 10
  * books); the DOM celebration (WheelsCar.tsx) keeps the banner, the timing and
@@ -27,23 +29,17 @@
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import {
-  AdditiveBlending, Box3, BufferGeometry, CanvasTexture, Float32BufferAttribute, Group, MeshBasicMaterial,
+  BufferGeometry, CanvasTexture, Float32BufferAttribute, Group, MeshBasicMaterial,
   NormalBlending, ShaderMaterial, Vector3,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { fx } from '../fx';
 import { wheelsBlastReaction } from '../wheelsDonuts';
 import {
-  WHEELS3D_DONUT_END_S, WHEELS3D_FLASH_S, WHEELS3D_SHOW_S, WHEELS_CAR_LEN,
+  WHEELS3D_DONUT_END_S, WHEELS3D_FLASH_S, WHEELS3D_SHOW_S,
   wheelPoints3d, wheelsCarBlastLen, wheelsCarBlastPoseAt, wheelsPose3dAt, type WheelsPose3d,
 } from './wheelsCar3d';
-
-export const WHEELS_CAR_URL = '/assets/cars/wheels-supercar.glb';
-/** Baked from look-at renders of the raw Forge mesh: its nose is local +Z, so a
- *  quarter turn puts it on this scene's forward (+X). */
-const MODEL_YAW = Math.PI / 2;
-/** Car footprint after normalization (from the raw bbox proportions). */
-const CAR_DIMS = { len: WHEELS_CAR_LEN, wid: WHEELS_CAR_LEN * (0.487 / 0.999) };
+import { WHEELS_CAR_DIMS, WHEELS_CAR_URL, normalizeWheelsCar } from './wheelsCarModel';
 
 interface WheelsProbe {
   loaded: boolean;
@@ -119,24 +115,7 @@ function WheelsCarRig() {
   const showRef = useRef<{ id: number; at: number } | null>(null);
   const blastRef = useRef<{ atShowT: number; mega: boolean; calm: boolean } | null>(null);
 
-  const model = useMemo(() => {
-    const o = gltf.scene.clone(true) as Group;
-    o.updateMatrixWorld(true);
-    const box0 = new Box3().setFromObject(o);
-    const size0 = box0.getSize(new Vector3());
-    const longest = Math.max(size0.x, size0.z);
-    if (longest > 0) o.scale.setScalar(WHEELS_CAR_LEN / longest);
-    o.rotation.y = MODEL_YAW;
-    o.updateMatrixWorld(true);
-    const box = new Box3().setFromObject(o);
-    const c = box.getCenter(new Vector3());
-    o.position.set(-c.x, -box.min.y, -c.z);
-    o.traverse((n) => {
-      const mesh = n as { isMesh?: boolean; castShadow?: boolean };
-      if (mesh.isMesh) mesh.castShadow = true;
-    });
-    return o;
-  }, [gltf]);
+  const model = useMemo(() => normalizeWheelsCar(gltf.scene), [gltf]);
 
   /* ---- smoke pool (one Points draw) ---- */
   const smoke = useMemo(() => {
@@ -271,7 +250,7 @@ function WheelsCarRig() {
 
     /* ---- smoke + arcs, keyed off the rear wheels ---- */
     const dt = Math.min(0.05, delta || 0.016);
-    const wheels = wheelPoints3d(pose, CAR_DIMS);
+    const wheels = wheelPoints3d(pose, WHEELS_CAR_DIMS);
     const driving = !swept && (pose.phase === 'donuts' || pose.phase === 'exit');
     if (!swept && pose.phase === 'enter' && Math.sin(t * 18) > 0.6) {
       // exhaust puffs pulsing with the revs, off the rear bumper
@@ -375,19 +354,8 @@ function WheelsCarRig() {
       <group ref={outer} visible={false} onClick={() => { showRef.current = null; blastRef.current = null; setShow(null); }}>
         <group ref={inner}>
           <primitive object={model} />
-          {/* headlights: lit discs + glow at the nose (the model's own lamps are texture) */}
-          {([-1, 1] as const).map((s) => (
-            <group key={s} position={[CAR_DIMS.len / 2 + 0.002, 0.095, s * CAR_DIMS.wid * 0.31]} rotation={[0, Math.PI / 2, 0]}>
-              <mesh>
-                <circleGeometry args={[0.02, 12]} />
-                <meshBasicMaterial color={0xffedb5} />
-              </mesh>
-              <mesh position={[0, 0, 0.012]}>
-                <planeGeometry args={[0.13, 0.13]} />
-                <meshBasicMaterial map={smoke.tex} color={0xffdf94} transparent opacity={0.5} blending={AdditiveBlending} depthWrite={false} />
-              </mesh>
-            </group>
-          ))}
+          {/* no bolt-on headlight discs: the roadster's full-width light
+              bars are part of its baked body, unlike the old supercar's */}
         </group>
       </group>
       <points geometry={smoke.geo} material={smoke.mat} frustumCulled={false} />

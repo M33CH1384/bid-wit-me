@@ -361,6 +361,7 @@ Windowless by design (no sky/street plates). Herringbone floor already credited 
 - Barlow Condensed (600/700/800) by Jeremy Tribby, via `@fontsource/barlow-condensed` — SIL Open Font License 1.1.
 
 ## Generated / own assets
+- The Wheels car: `apps/web/public/assets/cars/wheels-roadster.glb` was generated in-house with the TRELLIS image-to-3D model (Microsoft, MIT) via three.ws Forge (creation c15f5d6f-a930-4d1a-9ef4-35698cb7569b, 2026-11-04), then optimized for the web. Its shape is an homage to a modern EV roadster; it carries no logos, badges or wordmarks. No third-party art is bundled in it.
 - Card faces, card backs, pips, court and Joker art: drawn procedurally at runtime (`apps/web/src/three/cardTextures.ts`).
 - Table, rail, and card geometry: procedural (`apps/web/src/three/geometry.ts`).
 - "BWM" wordmark (`assets/bwm-wordmark-white.svg`, variant D) and `favicon.svg`: Bid Wit Me brand assets (from `brand/variants/D`).
