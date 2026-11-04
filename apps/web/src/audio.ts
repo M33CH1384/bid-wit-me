@@ -1352,7 +1352,7 @@ class Engine {
       const deck: Deck = { el, gain, track: null, ready: null, url: null };
       el.addEventListener('timeupdate', () => this.onTime(deck));
       el.addEventListener('ended', () => { if (deck.url && this.decks[this.active] === deck && !this.fading) { this.fading = true; void this.advance(); } });
-      el.addEventListener('playing', () => { if (deck.url && this.decks[this.active] === deck && this.musicStatus !== 'playing') { this.musicStatus = 'playing'; this.emit(); this.applyTension(); } });
+      el.addEventListener('playing', () => { if (deck.url && this.decks[this.active] === deck && this.musicStatus !== 'playing' && wantsMusic(this.settings)) { this.musicStatus = 'playing'; this.emit(); this.applyTension(); } });
       // A media error on the sounding deck (decode failure, resource torn
       // down by the OS) used to be invisible: no listener, no reload, the
       // status kept reading 'playing'. Reconcile — syncMusic reloads a dead
@@ -1529,7 +1529,8 @@ class Engine {
     if (to.track === null || !to.ready) this.loadDeck(toIdx, this.pickNext());
     let ok = await to.ready!;
     for (let tries = 0; !ok && tries < TRACKS.length; tries++) ok = await this.loadDeck(toIdx, this.pickNext());
-    if (!ok || !this.settings.music) { this.musicStatus = 'error'; this.fading = false; this.advancing = false; this.emit(); return; }
+    if (!this.settings.music) { this.musicStatus = 'off'; this.fading = false; this.advancing = false; this.emit(); return; } // the owner turned music off mid-load: a clean off, not a load failure
+    if (!ok) { this.musicStatus = 'error'; this.fading = false; this.advancing = false; this.emit(); return; }
     const now = c.currentTime;
     to.gain.gain.cancelScheduledValues(now); to.gain.gain.setValueAtTime(0.0001, now); to.gain.gain.linearRampToValueAtTime(1, now + XFADE);
     from.gain.gain.cancelScheduledValues(now); from.gain.gain.setValueAtTime(Math.max(0.0001, from.gain.gain.value), now); from.gain.gain.linearRampToValueAtTime(0.0001, now + XFADE);
@@ -1564,7 +1565,19 @@ class Engine {
     if (!wantsMusic(this.settings)) {
       this.stopTensionPad();
       if (this.decks.length) {
-        for (const d of this.decks) { d.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.25); }
+        // OFF is a command, not a suggestion (owner 2026-11-04: "turning the
+        // music off in the room I was in and it kept playing"): cancel any
+        // automation advance() already scheduled on the deck gains — a
+        // crossfade's in-flight ramp to full volume otherwise outranks this
+        // fade for its whole window and the incoming track keeps swelling
+        // after the toggle. Anchor at the current value, then fade: from
+        // this instant the gain only falls.
+        const now = this.ctx.currentTime;
+        for (const d of this.decks) {
+          d.gain.gain.cancelScheduledValues(now);
+          d.gain.gain.setValueAtTime(Math.max(0.0001, d.gain.gain.value), now);
+          d.gain.gain.setTargetAtTime(0, now, 0.25);
+        }
         window.setTimeout(() => { if (!wantsMusic(this.settings)) this.decks.forEach((d) => d.el.pause()); }, 1200);
       }
       if (this.musicStatus !== 'off') { this.musicStatus = 'off'; this.emit(); }
