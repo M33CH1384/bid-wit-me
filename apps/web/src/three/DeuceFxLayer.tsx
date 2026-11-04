@@ -5,7 +5,7 @@ import {
   PlaneGeometry, PointLight, Points, PointsMaterial, RingGeometry,
 } from 'three';
 import { fx } from '../fx';
-import { cutColorFor } from '../deuceFx';
+import { cutColorFor, DUEL_COLORS } from '../deuceFx';
 import { deuceCutPose, deuceFxElapsed, deuceImpactsAfter, lastDeuceImpactId, type DeuceImpact } from './deuceImpact';
 
 /**
@@ -24,6 +24,13 @@ import { deuceCutPose, deuceFxElapsed, deuceImpactsAfter, lastDeuceImpactId, typ
  *    along that same line, in Card3D); a coloured shockwave ring and a
  *    flash disc burst from the clash point with sparks and heavier
  *    shards, and one pooled light flares and dies over the pile.
+ *  - DUEL (2026-11-04, the 2♦-over-2♠ pairing only): crystal, not steel.
+ *    NO blade, no afterglow line — a white flash at the clash point and
+ *    a dense shard burst at double density in the diamond palette
+ *    (DUEL_COLORS: white core, ice glow), a wider white shockwave ring,
+ *    and the pooled light flaring ice-white. The victim is knocked past
+ *    (in Card3D), never split. Same envelopes, same pooled geometry —
+ *    the duel is a re-dress of the Cut's machinery, not new machinery.
  * Reduced effects (the player's own setting, fx.reduced / the reduceFx
  * prop): one static ring that simply pulses and fades — no expansion,
  * no strike, no debris, no light — the nuke's calm-version treatment.
@@ -41,7 +48,7 @@ const SPARK_SLOTS = 5;
 const SPARK_POOL = SPARKS_PER_CUT * SPARK_SLOTS;
 const CHUNK_POOL = CHUNKS_PER_CUT * SPARK_SLOTS;
 
-interface RingFx { t0: number; dur: number; maxR: number; peak: number; expand: boolean; flash: boolean }
+interface RingFx { t0: number; dur: number; maxR: number; peak: number; expand: boolean; flash: boolean; duel: boolean }
 interface StrikeFx { t0: number }
 interface SparkFx { t0: number; ox: number; oy: number; oz: number; seed: number; gr: number; gg: number; gb: number }
 
@@ -149,28 +156,52 @@ export default function DeuceFxLayer({ reducedProp = false }: { reducedProp?: bo
 
   const spawn = (e: DeuceImpact, reduced: boolean) => {
     const now = performance.now();
-    const pal = e.kind === 'cut' && e.winner ? cutColorFor(e.winner) : null;
+    const pal = e.duel ? DUEL_COLORS : e.kind === 'cut' && e.winner ? cutColorFor(e.winner) : null;
     // Ring (+ pressure bloom for a full Drop, flash disc for a Cut).
     const ri = ringIdx.current++ % RING_SLOTS;
     rings.current[ri] = {
       t0: now,
       dur: reduced ? REDUCED_DUR : e.kind === 'cut' ? CUT_RING_DUR : RING_DUR,
-      maxR: e.kind === 'cut' ? 1.85 : 1.35,
-      peak: e.kind === 'cut' ? 0.8 : 0.55,
+      maxR: e.duel ? 2.1 : e.kind === 'cut' ? 1.85 : 1.35,
+      peak: e.duel ? 0.9 : e.kind === 'cut' ? 0.8 : 0.55,
       expand: !reduced,
       flash: e.kind === 'cut' && !reduced,
+      duel: e.duel,
     };
     const ring = built.ringMeshes[ri]!;
     (ring.material as MeshBasicMaterial).color.set(pal ? pal.glow : '#f7efdb');
     ring.position.set(e.x, e.y + 0.004, e.z);
     ring.visible = true;
     const disc = built.discMeshes[ri]!;
-    (disc.material as MeshBasicMaterial).color.set(pal ? pal.glow : '#fff8e7');
+    (disc.material as MeshBasicMaterial).color.set(e.duel ? DUEL_COLORS.core : pal ? pal.glow : '#fff8e7');
     disc.position.set(e.x, e.y + 0.003, e.z);
     disc.visible = !reduced && (e.kind === 'drop' || e.kind === 'cut');
     if (e.kind !== 'cut' || reduced) return;
     const vp = e.victim ? deuceCutPose(e.victim) : undefined;
     if (!vp) return;
+    if (e.duel) {
+      // The Duel: no blade crosses the victim — crystal bursts at the clash
+      // point instead. The spark/shard burst runs at double density (two
+      // pool slots, the second seeded apart and nudged off-centre) in the
+      // diamond palette, and the pooled light flares ice-white.
+      const ox = (e.x + vp.x) / 2, oy = Math.max(e.y, vp.y) + 0.03, oz = (e.z + vp.z) / 2;
+      const ice = new Color(DUEL_COLORS.glow);
+      for (let b = 0; b < 2; b++) {
+        const ki = sparkIdx.current++ % SPARK_SLOTS;
+        sparks.current[ki] = {
+          t0: now,
+          ox: ox + (b ? (draw(e.seed, 31) - 0.5) * 0.07 : 0), oy,
+          oz: oz + (b ? (draw(e.seed, 37) - 0.5) * 0.07 : 0),
+          seed: b ? (e.seed + 7919) >>> 0 : e.seed,
+          gr: ice.r, gg: ice.g, gb: ice.b,
+        };
+      }
+      (built.chunks.material as PointsMaterial).color.set(DUEL_COLORS.core);
+      built.light.position.set(ox, Math.max(e.y, vp.y) + 0.17, oz);
+      built.light.color.set(DUEL_COLORS.glow);
+      lightAt.current = now;
+      return;
+    }
     // The blade streak, laid along the cut line across the beaten trump.
     const si = strikeIdx.current++ % STRIKE_SLOTS;
     strikes.current[si] = { t0: now };
@@ -227,11 +258,13 @@ export default function DeuceFxLayer({ reducedProp = false }: { reducedProp?: bo
       (ring.material as MeshBasicMaterial).opacity = r.peak * Math.pow(1 - u, 1.6);
       if (disc.visible) {
         if (r.flash) {
-          const fu = el / FLASH_DUR_MS;
+          // The Duel's flash is the crystal strike itself: faster and
+          // brighter than the Cut's clash flash, and a touch wider.
+          const fu = el / (r.duel ? FLASH_DUR_MS * 0.7 : FLASH_DUR_MS);
           if (fu >= 1) disc.visible = false;
           else {
-            disc.scale.setScalar((0.25 + 0.85 * (1 - Math.pow(1 - fu, 2))) / 0.5);
-            (disc.material as MeshBasicMaterial).opacity = 0.3 * (1 - fu);
+            disc.scale.setScalar(((r.duel ? 0.3 : 0.25) + (r.duel ? 1.05 : 0.85) * (1 - Math.pow(1 - fu, 2))) / 0.5);
+            (disc.material as MeshBasicMaterial).opacity = (r.duel ? 0.55 : 0.3) * (1 - fu);
           }
         } else {
           disc.scale.setScalar((0.2 + 0.55 * (1 - Math.pow(1 - u, 2))) / 0.5);

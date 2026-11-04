@@ -28,6 +28,10 @@ export interface DeuceImpact {
   /** The winning card of a Cut (the stealer — it takes the hero beat and
    *  keys the strike's colour); null for a Drop. */
   winner: Card | null;
+  /** The Deuce Duel (2♦ over 2♠): a Cut-kind impact with its own treatment —
+   *  the layer bursts crystal instead of sweeping the blade, and the
+   *  victim knocks without splitting. False for every ordinary Drop/Cut. */
+  duel: boolean;
   /** Deterministic per play (seeded from card + target) — spark jitter agrees across clients. */
   seed: number;
 }

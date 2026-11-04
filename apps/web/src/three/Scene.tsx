@@ -1071,7 +1071,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   if (held.current.handNo !== handNo) held.current = { handNo, cards: new Set(), slots: new Map(), count: 0, seen: new Set() };
   const pendingHold = useRef<Held>(held.current);
 
-  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; armed?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick' | 'runslam'; variant?: FlightVariant; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean; impactFx?: { kind: 'drop' | 'cut'; victim?: Card | null } | null; knock?: { dirX: number; dirZ: number } | null };
+  type Item = { spatialSeat?: SeatPos; spatialN?: number; slam?: import('../slam').SlamFeel; key: string; card: Card | null; cardId?: string | null; target: Xform; from?: Xform; origin?: Xform; delay?: number; dim?: boolean; glow?: boolean; armed?: boolean; tap?: ((cardId: string) => void) | null; shadow?: boolean; duration?: number; arc?: number; motion?: 'lift' | 'flight' | 'slide' | 'glide' | 'gather' | 'flick' | 'runslam'; variant?: FlightVariant; raise?: number; roll?: number; order?: number; sfxStart?: Sfx; sfxLand?: string; hand?: boolean; public?: boolean; holdUntilMove?: boolean; impactFx?: { kind: 'drop' | 'cut'; victim?: Card | null; duel?: boolean } | null; knock?: { dirX: number; dirZ: number } | null };
   const items: Item[] = [];
   // Seats still in this hand (a Cutthroat ejection leaves a seat with no cards): the deal
   // schedule goes around these only, or late cards are timed past the end of the deal.
@@ -1268,7 +1268,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       if (!dfx.drop && !dfx.cut) continue;
       const mine = byCard.get(card);
       if (!mine) continue;
-      mine.impactFx = { kind: dfx.cut ? 'cut' : 'drop', victim: dfx.cut?.victim ?? null };
+      mine.impactFx = { kind: dfx.cut ? 'cut' : 'drop', victim: dfx.cut?.victim ?? null, ...(dfx.duel ? { duel: true } : {}) };
       if (dfx.cut) {
         const victim = byCard.get(dfx.cut.victim);
         if (victim) {

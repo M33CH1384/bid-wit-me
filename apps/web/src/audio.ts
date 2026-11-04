@@ -56,7 +56,10 @@ export type Sfx =
   // Deuce Drop / Cut (owner 2026-10-30): RECORDED library sounds (SSE Library, CC0 —
   // CREDITS.md), never synthesized: a deep body-fall-on-wood thump under a trump
   // deuce's landing, and a metallic sword strike layered over a trump steal.
-  | 'deuceThump' | 'trumpCut'
+  // Deuce Duel (owner 2026-11-04): the 2♦-over-2♠ pairing's own strike — a
+  // recorded glass bell + glass crack (SSE Library, CC0), crystalline, in
+  // place of the sword for that one pairing.
+  | 'deuceThump' | 'trumpCut' | 'deuceDuel'
   // Extinguish (owner 2026-11-01): a RECORDED steam put-out (SSE Library, CC0 —
   // CREDITS.md) — an extinguisher-blast snap over a large steam burst — played
   // once when another seat breaks a rendered streak fire (animfx streakDeath).
@@ -65,7 +68,7 @@ export type Sfx =
   | 'cloth';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, mega: 4400, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, trumpCut: 700, fireOut: 900, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, mega: 4400, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, trumpCut: 700, deuceDuel: 700, fireOut: 900, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean;
   /** Chat notification sounds (DM chime / global-chat blip). Absent = on. */ chatSounds?: boolean;
@@ -577,9 +580,10 @@ const FILES: Record<string, string[]> = {
   // Spray-paint transition: a real can's rattle-ball shake + aerosol hiss (CREDITS.md).
   // Same fetch/decode path, so warmEffects has both decoded before the first spray.
   'spray-shake': ['spray-shake'], 'spray-hiss': ['spray-hiss'],
-  // Deuce Drop / Cut one-shots (SSE Library recordings, CREDITS.md): the deuce's
-  // deep thump and the steal's metallic strike. Same fetch/decode path.
-  deuceThump: ['deuce-thump'], trumpCut: ['trump-cut'],
+  // Deuce Drop / Cut / Duel one-shots (SSE Library recordings, CREDITS.md): the
+  // deuce's deep thump, the steal's metallic strike, and the 2♦-over-2♠
+  // pairing's crystalline strike. Same fetch/decode path.
+  deuceThump: ['deuce-thump'], trumpCut: ['trump-cut'], deuceDuel: ['deuce-duel'],
   // Extinguish one-shot (SSE Library recordings, CREDITS.md): the steam
   // put-out hiss. Same fetch/decode path, so SFX_COUNT (the watchdog's
   // readiness bar, derived from this map) counts it automatically.
@@ -2455,6 +2459,10 @@ class Engine {
       // are sample-identical (kept small — pitch is the thump's weight).
       case 'deuceThump': return this.sample('deuceThump', t, 0.95 * g, 0.97 + Math.random() * 0.05, undefined, opts.seat, opts.playerCount);
       case 'trumpCut': return this.sample('trumpCut', t, 0.8 * g, 0.98 + Math.random() * 0.05, undefined, opts.seat, opts.playerCount);
+      // Deuce Duel: staged exactly like the Cut it replaces (same gain family,
+      // same rate wobble, spatialised from the stealer's seat) — only the
+      // recorded strike itself differs.
+      case 'deuceDuel': return this.sample('deuceDuel', t, 0.8 * g, 0.98 + Math.random() * 0.05, undefined, opts.seat, opts.playerCount);
       // Extinguish: the steam put-out, centred (the animfx layer cannot
       // ground a seat direction for it) and staged just under the thump —
       // a hiss should read as an event, not an explosion. A whisper of

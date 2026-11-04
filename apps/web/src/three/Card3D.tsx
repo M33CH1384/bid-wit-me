@@ -73,8 +73,9 @@ interface Props {
   sfxLand?: string; // comma-separated Sfx names, e.g. 'play,cut'
   /** Deuce Drop / Cut impact for this play (deuceFx.ts, classified by Scene from game state):
    *  on the landing frame this card fires the felt ripple event (deuceImpact.ts), takes the
-   *  tight thump shake and settles with extra weight. `victim` is the beaten trump of a Cut. */
-  impactFx?: { kind: 'drop' | 'cut'; victim?: Card | null } | null;
+   *  tight thump shake and settles with extra weight. `victim` is the beaten trump of a Cut.
+   *  `duel` marks the 2♦-over-2♠ pairing's own treatment of a Cut. */
+  impactFx?: { kind: 'drop' | 'cut'; victim?: Card | null; duel?: boolean } | null;
   /** This trick card is the beaten trump of a later Cut: the knock direction on the felt
    *  (unit x/z, pointing away from the stealer's landing spot). The knock itself starts when
    *  the stealer's impact event lands on the bus (deuceImpact.ts). */
@@ -389,7 +390,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   // the heavy settle on the landing frame; `knockAt`/`knockDir` run the beaten
   // trump's shove + tilt + dim when the stealer's impact names this card.
   const dk = useRef({
-    impact: null as { kind: 'drop' | 'cut'; victim: Card | null } | null,
+    impact: null as { kind: 'drop' | 'cut'; victim: Card | null; duel?: boolean } | null,
     dipAt: 0, dipDepth: 0, knockAt: 0, knockDir: { x: 0, z: 1 }, innerActive: false,
     cutAt: 0, heroAt: 0, heroAxis: new Vector3(1, 0, 0), splitShown: false,
     seen: lastDeuceImpactId(), q: new Quaternion(), w: new Vector3(), axis: new Vector3(), dimCol: new Color(),
@@ -653,7 +654,9 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
           if (e.kind === 'cut' && e.victim && e.victim === cardId && fxNow.current.knock
             && s0.t >= 1 && !s0.isSweep && PLAY_FLIGHT_MOTIONS.has(s0.motionSnap) && g.position.y < 0.35) {
             dkS.knockAt = e.at;
-            dkS.cutAt = e.at;
+            // The Duel's victim is shattered past, not sliced: it takes the
+            // knock + dim but never the split (the split is The Cut's wound).
+            if (!e.duel) dkS.cutAt = e.at;
             dkS.knockDir.x = fxNow.current.knock.dirX;
             dkS.knockDir.z = fxNow.current.knock.dirZ;
           }
@@ -819,7 +822,7 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       s.land = sfx.current.sfxLand; // this tween's landing cue
       // The adopted tween's deuce classification rides with its cue; a fresh
       // flight also ends any knock/dip the previous pose was still playing.
-      dk.current.impact = fxNow.current.impactFx ? { kind: fxNow.current.impactFx.kind, victim: fxNow.current.impactFx.victim ?? null } : null;
+      dk.current.impact = fxNow.current.impactFx ? { kind: fxNow.current.impactFx.kind, victim: fxNow.current.impactFx.victim ?? null, duel: fxNow.current.impactFx.duel } : null;
       dk.current.knockAt = 0;
       dk.current.cutAt = 0;
       dk.current.heroAt = 0;
@@ -1059,9 +1062,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         // the sounds; the shake and the dip stay home.
         if (dkS.impact) {
           const impact = dkS.impact;
-          pushDeuceImpact({ at: performance.now(), kind: impact.kind, x: g.position.x, y: g.position.y, z: g.position.z, victim: impact.victim, winner: impact.kind === 'cut' ? (cardId as Card | null) : null, seed: deuceSeed(`${cardId ?? ''}|${s.key}`) });
+          pushDeuceImpact({ at: performance.now(), kind: impact.kind, x: g.position.x, y: g.position.y, z: g.position.z, victim: impact.victim, winner: impact.kind === 'cut' ? (cardId as Card | null) : null, duel: !!impact.duel, seed: deuceSeed(`${cardId ?? ''}|${s.key}`) });
           if (!fx.reduced && !fx.osReducedMotion) {
-            fx.shake = impact.kind === 'cut'
+            fx.shake = impact.duel
+              ? { start: performance.now(), dur: 0.22, amp: 0.13, thump: true } // the Duel: a shorter, harder snap than the Cut's
+              : impact.kind === 'cut'
               ? { start: performance.now(), dur: 0.32, amp: 0.115, thump: true }
               : { start: performance.now(), dur: 0.5, amp: 0.085, thump: true };
           }
