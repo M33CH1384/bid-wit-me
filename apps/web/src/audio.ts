@@ -345,6 +345,32 @@ export const TRACKS: Track[] = [
   { file: 'thief-in-the-night', title: 'Thief in the Night', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Thief%20in%20the%20Night.mp3', credit: '"Thief in the Night" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
   { file: 'hard-boiled', title: 'Hard Boiled', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Hard%20Boiled.mp3', credit: '"Hard Boiled" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
   { file: 'phonk-ish', title: 'Phonk-ish', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/phonk-aura-farming/phonk-ish/' },
+  // The Vegas room set (owner sample pick, 2026-11-04 — the
+  // audition's recommended six approved as presented, "Add em",
+  // with the held-out optional seventh named in): five Kevin
+  // MacLeod hip-hop instrumentals (CC BY 4.0, via incompetech) —
+  // "Griphop" the dusty boom-bap identity pick, "On the Ground"
+  // its jazzy sibling, "Basic Implosion" the synth-funk colour,
+  // "Hackbeat" the noir-leaning mid, and "Funky Chunk" the funk
+  // colour the owner pulled in from the bench — around two
+  // HoliznaCC0 lofi instrumentals (CC0 1.0): "On The Other Side
+  // Of Bad" the hushed floor and "Shimmer" the bright top. They
+  // join the vegas pin in spatial.ts; appended last so every
+  // existing track index keeps its meaning, exactly like the
+  // sets above. "Got Funk", "Stealth Groover", "Protofunk",
+  // "DD Groove", "Still Life" and "Complicated Feelings" stay
+  // out as the audition's alternates and banked substitutes,
+  // held out unplayed, exactly like "Off Days" above; "Just
+  // Nasty", "Spy Groove" and "Style Funk" were benched at the
+  // audition itself. This is the closed rotation the owner
+  // actually picked.
+  { file: 'griphop', title: 'Griphop', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Griphop.mp3', credit: '"Griphop" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'on-the-ground', title: 'On the Ground', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/On%20the%20Ground.mp3', credit: '"On the Ground" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'basic-implosion', title: 'Basic Implosion', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Basic%20Implosion.mp3', credit: '"Basic Implosion" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'hackbeat', title: 'Hackbeat', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Hackbeat.mp3', credit: '"Hackbeat" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'on-the-other-side-of-bad', title: 'On The Other Side Of Bad', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/on-the-other-side-of-bad-lofi-nostalgic-mp3/' },
+  { file: 'shimmer', title: 'Shimmer', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/shimmer-lofi-chill/' },
+  { file: 'funky-chunk', title: 'Funky Chunk', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Funky%20Chunk.mp3', credit: '"Funky Chunk" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -856,14 +882,48 @@ const MANSION_EVENT_GAIN = 4.318;
  *  p99 0.0111). */
 const MAN_BED_LEAD_S = 1105 / 44100;
 const MAN_BED_SECONDS = 64;
+/** The Vegas room's recorded bed (owner sample pick, 2026-11-04):
+ *  a 64.000 s seamless loop of casino recordings — a real floor
+ *  body under everything, a roulette table's murmur buried under
+ *  a double low-pass so no words survive, chips clicking at the
+ *  next table, and the far machines held down at the back of the
+ *  room (SSE Library, CC0, and freesfx.co.uk under its
+ *  attribution EULA). The floor's life rides over it as one-shot
+ *  events on their own timers: a stack of chips set down between
+ *  hands, a deck shuffled, ice settling in a glass, and a payout
+ *  somewhere across the floor — the liveliest event pool in the
+ *  program, because this floor never sleeps. */
+const VEG_BED_URL = '/audio/ambience/vegas-bed.mp3';
+const VEG_EVENT_URLS = {
+  chipStack: ['/audio/ambience/vegas-event-chip-stack.mp3'],
+  cardShuffle: ['/audio/ambience/vegas-event-card-shuffle.mp3'],
+  iceInGlass: ['/audio/ambience/vegas-event-ice-in-glass.mp3'],
+  slotPayout: ['/audio/ambience/vegas-event-slot-payout.mp3'],
+} as const;
+/** Event staging gain, same construction as MANSION_EVENT_GAIN:
+ *  the bed file is the −16 LUFS master; the event clips keep
+ *  their premaster staging, so they play through this gain to
+ *  hold the approved demo balance (the shipped bed sits
+ *  +10.27 dB over its premaster — measured RMS on the shipped
+ *  files). */
+const VEGAS_EVENT_GAIN = 3.261;
+/** The bed's MP3 loop trim, from the shipped file's own measured
+ *  offsets: 1105 samples of encoder delay at 44.1 kHz ahead of
+ *  exactly 64.000 s of content — same encoder settings as The
+ *  Pj's, Speakeasy, Barbershop, Grandma's, Cookout, Church,
+ *  Rooftop, Yacht, Beach and Mansion beds (the shipped file's
+ *  measured seam step, 0.0036, sits far below the material's own
+ *  step noise, p99 0.0239). */
+const VEG_BED_LEAD_S = 1105 / 44100;
+const VEG_BED_SECONDS = 64;
 /** Every recorded venue's ambience-cache footprint: the bed's cache key
  *  plus every event URL the venue lazy-loads. The engine binds its decode
  *  cache to the CURRENT venue (bindAmbienceToVenue, crash-2 lane
- *  2026-11-01): ten recorded 64 s beds decode to ~23–25 MB each and the
+ *  2026-11-01): eleven recorded 64 s beds decode to ~23–25 MB each and the
  *  event one-shots add ~15–25 MB across venues, and the cache used to
  *  keep ALL of it for the life of the context — up to ~150–175 MB of
  *  decoded audio accumulating in exactly the table-hopping pattern that
- *  feeds iOS process death. Synthesized beds (casino, rec, porch)
+ *  feeds iOS process death. Synthesized beds (rec, porch)
  *  decode nothing and map to no entry: switching to one evicts
  *  every recorded buffer. */
 const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readonly string[] }>> = {
@@ -877,6 +937,7 @@ const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readon
   yacht: { bedKey: 'yct-bed', urls: [YACHT_BED_URL, ...Object.values(YACHT_EVENT_URLS).flat()] },
   beach: { bedKey: 'bch-bed', urls: [BEACH_BED_URL, ...Object.values(BEACH_EVENT_URLS).flat()] },
   mansion: { bedKey: 'man-bed', urls: [MAN_BED_URL, ...Object.values(MAN_EVENT_URLS).flat()] },
+  casino: { bedKey: 'veg-bed', urls: [VEG_BED_URL, ...Object.values(VEG_EVENT_URLS).flat()] },
 };
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
@@ -4248,6 +4309,76 @@ class Engine {
     arm('footsteps', 150, 300, true);
   }
 
+  private startVegasBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('veg-bed', VEG_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, VEG_BED_LEAD_S, VEG_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...VEG_EVENT_URLS.chipStack, ...VEG_EVENT_URLS.cardShuffle, ...VEG_EVENT_URLS.iceInGlass, ...VEG_EVENT_URLS.slotPayout]) void this.loadAmbience(url, url);
+    this.scheduleVegasEvents();
+  }
+
+  /** Vegas life over the recorded bed: four independent randomized
+   *  timers — a stack of chips set down between hands every
+   *  60–150 s, a deck shuffled every 90–240 s, ice settling in a
+   *  glass every 120–300 s and a payout somewhere across the
+   *  floor every 240–480 s (samples-lane densities, 2026-11-04)
+   *  — sharing one busy gate, so an event never talks over
+   *  another (the street pattern). The liveliest pool in the
+   *  program: the floor's machinery of hope runs day and night,
+   *  and its wins belong to somebody else, far away. Each kind
+   *  has a single recording, so there is no variant to rotate;
+   *  the spacing itself is the variety. The timers live in
+   *  venueTimers, so leaving the venue silences the room, and
+   *  the first fire comes a half-interval in, once the table
+   *  settles. */
+  private scheduleVegasEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the deck
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = VEGAS_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof VEG_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(VEG_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('chipStack', 60, 150, true);
+    arm('cardShuffle', 90, 240, true);
+    arm('iceInGlass', 120, 300, true);
+    arm('slotPayout', 240, 480, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -4365,14 +4496,27 @@ class Engine {
         this.startSpeakeasyBed();
         break;
       }
-      case 'casino':
-        murmur(1);
-        this.vEvery(2, 6, (t) => { const base = [1046.5, 1174.66, 1318.5, 1567.98]; for (let i = 0; i < 4; i++) this.tone(t + i * 0.09, base[Math.floor(Math.random() * 4)]!, 0.25, 'triangle', 0.008, { dest: B }); }); // slots
-        // Story Audio Pass (the Legends' Table plays here): a payout somewhere behind you,
-        // chips being stacked between hands at the next table.
-        this.vEvery(23, 55, (t) => { const seq = [1567.98, 1318.5, 1567.98, 2093, 1567.98, 2637]; seq.forEach((f, i) => this.tone(t + i * 0.11, f, 0.22, 'triangle', 0.007, { dest: B })); }); // slot payout arpeggio
-        this.vEvery(8, 19, (t) => { for (let i = 0; i < 4; i++) this.vBurst(t + i * 0.07, 0.014, 'bandpass', 2100 + Math.random() * 500, 0.02); }); // chips clicking
+      case 'casino': {
+        // The Vegas room's bed is a RECORDING now (owner sample
+        // pick, 2026-11-04), replacing the last synthesized casino
+        // stand-in (a murmur wash under triangle-wave slot
+        // arpeggios, a payout arpeggio and bandpass chip bursts —
+        // the arpeggios were the tell: no real floor sounds like a
+        // music box): a seamless 64 s casino loop — a real floor
+        // body under everything, a roulette table's murmur buried
+        // past words, chips clicking at the next table and the far
+        // machines held deep. The floor's life rides over it as
+        // one-shot events on their own timers (startVegasBed): a
+        // stack of chips set down between hands, a deck shuffled,
+        // ice settling in a glass, a payout somewhere across the
+        // floor. Story Audio Pass: the Legends' Table (Stop 10)
+        // plays here — its floor is this recording too; its music
+        // stays the story theme, the stop's mood outranking the
+        // venue pin in story context, as at the Mansion. The
+        // tournament room rides the same bed.
+        this.startVegasBed();
         break;
+      }
       case 'beach': {
         // The Beach's bed is a RECORDING now (owner sample pick,
         // 2026-11-03), replacing the synthesized stand-in (filtered-noise

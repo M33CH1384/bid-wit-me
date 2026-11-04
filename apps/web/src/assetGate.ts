@@ -287,6 +287,22 @@ export const BEACH_BED_URL = '/audio/ambience/beach-bed.mp3';
  * optional life, loaded lazily by the engine after the bed starts.
  */
 export const MAN_BED_URL = '/audio/ambience/mansion-bed.mp3';
+/**
+ * The Vegas room's recorded casino bed (owner, 2026-11-04): gated
+ * exactly like the Mansion's bed — ONE shared unit for both surfaces
+ * the bed serves: the engine fetches it at every vegas table, the
+ * regular venue and story Stop 10 alike (the Legends' Table stop
+ * plays the same 'casino' bed — its bespoke LegendsTableRoom is a
+ * seam for the room ledger, not for the sound: the stop carries no
+ * bed override in STORY_STOP_AUDIO, only its 'theme' mood; the
+ * tournament room rides the same bed), so at High the loader's
+ * promise covers it on both compositions; at Low it streams in
+ * behind the loader as music always has. The bed's event one-shots
+ * (chip stack, card shuffle, ice in a glass, slot payout)
+ * deliberately do NOT gate: optional life, loaded lazily by the
+ * engine after the bed starts.
+ */
+export const VEG_BED_URL = '/audio/ambience/vegas-bed.mp3';
 export function roomAudioUrls(
   venue: string,
   quality: 'high' | 'low',
@@ -303,6 +319,7 @@ export function roomAudioUrls(
   if (venue === 'yacht') return [{ label: 'ambience bed (Yacht)', url: YACHT_BED_URL }];
   if (venue === 'beach') return [{ label: 'ambience bed (Beach)', url: BEACH_BED_URL }];
   if (venue === 'mansion') return [{ label: 'ambience bed (Mansion)', url: MAN_BED_URL }];
+  if (venue === 'vegas') return [{ label: 'ambience bed (Vegas)', url: VEG_BED_URL }];
   return [];
 }
 

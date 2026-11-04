@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, BEACH_BED_URL, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, MAN_BED_URL, PJS_BED_URL, ROO_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, YACHT_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, BEACH_BED_URL, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, MAN_BED_URL, PJS_BED_URL, ROO_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, VEG_BED_URL, YACHT_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomAudioUrls, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -310,6 +310,24 @@ describe('room asset enumeration', () => {
     expect(existsSync(new URL('../public/audio/ambience/mansion-bed.mp3', import.meta.url))).toBe(true);
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain(`const MAN_BED_URL = '${MAN_BED_URL}'`);
+  });
+
+  it("the Vegas room's recorded bed rides the gate at High vegas tables — regular venue AND story Stop 10 on one shared unit, never Low", () => {
+    // Owner, 2026-11-04: the recorded casino bed joins the Vegas loader
+    // gate exactly like the Mansion's bed (one shared unit: the gate
+    // gains one unit at the regular venue and at story Stop 10, the
+    // Legends' Table, whose table plays at venue 'vegas' — the bed's
+    // event one-shots deliberately do not gate and are not listed
+    // here). The LegendsTableRoom seam skips the room ledger, not
+    // the sound: Stop 10 hears the same 'casino' bed — the stop
+    // carries no bed override in STORY_STOP_AUDIO.
+    expect(roomAudioUrls('vegas', 'high', null)).toEqual([{ label: expect.any(String), url: VEG_BED_URL }]);
+    expect(roomAudioUrls('vegas', 'high', 'legends')).toEqual([{ label: expect.any(String), url: VEG_BED_URL }]);
+    expect(roomAudioUrls('vegas', 'low', null)).toEqual([]);
+    expect(roomAudioUrls('vegas', 'low', 'legends')).toEqual([]);
+    expect(existsSync(new URL('../public/audio/ambience/vegas-bed.mp3', import.meta.url))).toBe(true);
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain(`const VEG_BED_URL = '${VEG_BED_URL}'`);
   });
 
   it('the gate sedan URL is the very file PjsStreetRoom loads', () => {
