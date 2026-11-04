@@ -5,6 +5,10 @@
  * - hideBotTalk: hide bot lines from your chat (default off)
  * - voices / voiceVolume: bot voices (default on: recorded clips; Web Speech for lines without one, fenced off during live play) at this volume
  *   (× master volume; silent when sound is off)
+ * - genDialogue: "Fresh table talk — Deacon" (default OFF): at a set / busted-nil / match-end moment in an
+ *   offline bot game, the Deacon may speak a brand-new line written live by the model and fact-checked
+ *   before it shows (text only). The server relay additionally allowlists accounts, so this switch
+ *   alone never suffices on a non-allowlisted account.
  */
 import { useSyncExternalStore } from 'react';
 import { PERSONAS, type PersonaId, type TalkIntensity, applyPronunciation, maskMild, personaForName, storyCastForName, voiceGender } from '@spades/bots';
@@ -12,9 +16,9 @@ import { sound } from './audio';
 import { cancelActiveSpeech } from './audioSession';
 import { clipDurationMs, playClip, rawLine } from './voices/voices';
 
-export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number; /** Voice Phase 3, on this device: play pre-voiced AI lines when the table offers them (default on; the host flag decides whether any are offered) */ aiVoices: boolean }
+export interface TalkPrefs { botTalk: boolean; hideBotTalk: boolean; voices: boolean; voiceVolume: number; /** Voice Phase 3, on this device: play pre-voiced AI lines when the table offers them (default on; the host flag decides whether any are offered) */ aiVoices: boolean; /** Fresh table talk (Nemotron generated dialogue): brand-new Deacon lines at slow moments, fact-checked before they show. Default OFF — see the header note. */ genDialogue: boolean }
 const KEY = 'bwm.talk.v1';
-const DEFAULTS: TalkPrefs = { botTalk: true, hideBotTalk: false, voices: true, voiceVolume: 0.6, aiVoices: true };
+const DEFAULTS: TalkPrefs = { botTalk: true, hideBotTalk: false, voices: true, voiceVolume: 0.6, aiVoices: true, genDialogue: false };
 
 function load(): TalkPrefs {
   try {

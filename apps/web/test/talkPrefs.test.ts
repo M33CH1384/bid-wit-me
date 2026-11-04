@@ -40,3 +40,24 @@ describe('bot voices default respects explicit choices', () => {
     expect((await load(s2)).talkPrefs.get()).toMatchObject({ voices: true, cleanTalk: false });
   });
 });
+
+describe('fresh table talk (gen dialogue) toggle', () => {
+  it('defaults off with no save, and an old save without the field stays off', async () => {
+    expect((await load()).talkPrefs.get().genDialogue).toBe(false);
+    expect((await load({ botTalk: true, cleanTalk: true, hideBotTalk: false, voices: false, voiceVolume: 0.8 })).talkPrefs.get().genDialogue).toBe(false);
+  });
+  it('turning it on is kept across reloads', async () => {
+    const a = await load();
+    a.talkPrefs.set({ genDialogue: true });
+    const saved = JSON.parse(a.m.get(KEY)!);
+    expect(saved.genDialogue).toBe(true);
+    expect((await load(saved)).talkPrefs.get().genDialogue).toBe(true);
+  });
+  it('changing another setting does not pin the toggle', async () => {
+    const b = await load();
+    b.talkPrefs.set({ cleanTalk: false });
+    const s2 = JSON.parse(b.m.get(KEY)!);
+    expect(s2).not.toHaveProperty('genDialogue');
+    expect((await load(s2)).talkPrefs.get()).toMatchObject({ genDialogue: false, cleanTalk: false });
+  });
+});

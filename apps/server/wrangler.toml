@@ -22,6 +22,13 @@ ADMIN_USERNAMES = "M33CH"
 #   npx wrangler secret put VAPID_PUBLIC_KEY
 #   npx wrangler secret put VAPID_PRIVATE_KEY
 #   npx wrangler secret put VAPID_SUBJECT   (e.g. mailto:you@example.com)
+# Generated-dialogue relay (POST /api/gen-dialogue) — enable with dashboard SECRETS
+# (Workers & Pages → bid-wit-me-server → Settings → Variables and Secrets):
+#   NVIDIA_API_KEY = the key, GEN_DIALOGUE_RELAY = "on" (the kill-switch).
+# Use Secrets for BOTH: secrets survive deploys, while a dashboard plain Variable
+# (or a [vars] line absent here) is wiped by the next `wrangler deploy` — this file
+# has no keep_vars. Unset/off = the endpoint 404s. Audience: GEN_DIALOGUE_USERS
+# (comma-separated user ids, set the same way) — unset means OWNER-ONLY.
 # Without these, /api/push/vapid-key returns 503 and no pushes are sent.
 
 [[durable_objects.bindings]]

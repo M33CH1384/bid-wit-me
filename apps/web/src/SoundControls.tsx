@@ -321,6 +321,10 @@ export function BotTalkFields() {
         <span>Hide bot trash talk<small className="sf-note"> · in your chat</small></span>
         <button type="button" role="switch" aria-checked={t.hideBotTalk} aria-label="Hide bot trash talk" data-testid="hide-bot-talk" className={`switch ${t.hideBotTalk ? 'on' : ''}`} onClick={() => talkPrefs.set({ hideBotTalk: !t.hideBotTalk })}><i /></button>
       </label>
+      <label className="sf-row">
+        <span>Fresh table talk — Deacon<small className="sf-note"> · experimental: at a set, a busted nil, or match end he may speak a brand-new line, written live and fact-checked before it shows (text only)</small></span>
+        <button type="button" role="switch" aria-checked={t.genDialogue} aria-label="Fresh table talk — Deacon" data-testid="gen-dialogue" className={`switch ${t.genDialogue ? 'on' : ''}`} onClick={() => talkPrefs.set({ genDialogue: !t.genDialogue })}><i /></button>
+      </label>
       <div className="sf-row" data-testid="talk-intensity-info">
         <span>Trash talk<small className="sf-note"> · set for the table{tableIntensity() === 'family' ? ' · mild cursing masked' : ''}</small></span>
         <b className="sf-val">{TALK_INTENSITY_LABEL[tableIntensity()]}</b>
