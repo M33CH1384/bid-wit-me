@@ -127,7 +127,7 @@ import { isWildDeuce } from './cardFaces';
 import { MISDEAL_DEAL_SPEED, MISDEAL_REVEAL_DWELL_MS, heldHandForThrowIn, misdealDealGate, misdealDealMs, misdealFanHand, misdealRevealKey, misdealRevealMs } from './misdeal';
 import { QUICK_TRASH_SET } from './quickTrash';
 import { BADGES, award, runItTipDue, runItTipShown, runItUsed, useBadges } from './badges';
-import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, buzzMomentFor, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, personaPortraitFor, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, storyPortraitFor, tableExchangeFor } from '@spades/bots';
+import { STORY_CHARACTERS, STORY_STOPS, STOP_DENSITY_CLASS, TALK_PROFILES, type BotLevel, type StoryBeat, type StoryBeatFacts, type StoryGameFacts, type StoryStop, type TalkIntensity, botSkillFor, buildStoryTape, buzzMomentFor, callbackFor, midSceneFor, parseHint, partnerBidIntent, personaForName, personaPortraitFor, platePersona, pickBotNames, playBeatFor, railCastForAttempt, railMomentFor, resumeLineFor, skillOf, storyPortraitFor, tableExchangeFor, withDeaconOpponent } from '@spades/bots';
 import { preloadVoice, setSeatedVoiceKeys, spriteKeyFor } from './voices/voices';
 import { signalTableReady } from './transitions';
 import type { SceneProps } from './three/Scene';
@@ -366,11 +366,17 @@ interface Props {
   };
 }
 
-/** Offline bot names: random per game (derived from the game seed), never your own online name; kept in the save. */
-function offlineNames(n: number, seed: string): string[] {
+/** Offline bot names: random per game (derived from the game seed), never your own online name; kept in the save.
+ *  Preference off, the dealt names pass through untouched — same seeds, same names as always. */
+function offlineNames(n: number, seed: string, partnerships: boolean): string[] {
   let mine = '';
   try { mine = (localStorage.getItem('bwm.online.name') ?? '').replace(/^"|"$/g, ''); } catch { /* ignore */ }
-  return ['You', ...pickBotNames(n - 1, mine ? [mine, 'You'] : ['You'], seed, platePersona)];
+  const taken = mine ? [mine, 'You'] : ['You'];
+  const picked = ['You', ...pickBotNames(n - 1, taken, seed, platePersona)];
+  // Fresh table talk (owner-approved, 2026-11-03): with the Deacon switch on, seat him across on
+  // purpose — there is no bot picker, and his names surface in only ~1 game in 7 by chance.
+  if (!talkStore.get().genDialogue) return picked;
+  return withDeaconOpponent(picked, { partnerships, seed, taken });
 }
 
 function positions(n: number): SeatPos[] {
@@ -905,7 +911,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const [tipOpen, setTipOpen] = useState(false);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
   const n0 = (resume?.state.rules ?? initialRules).playerCount;
-  const [botNames] = useState(() => (story?.names.length === n0 ? story.names : resume?.names?.length === n0 ? resume.names : offlineNames(n0, seed)));
+  const [botNames] = useState(() => (story?.names.length === n0 ? story.names : resume?.names?.length === n0 ? resume.names : offlineNames(n0, seed, initialRules.partnerships)));
   // bot skill per seat: the table setting (Mixed = a hidden, seeded roll per seat) + persona floors (the Hustler is Pro+).
   // Story games override per seat instead: Dee scales with the stop, the pair plays the stop's tier.
   const levelFor = useCallback((seat: number) => (story ? story.levelFor(seat) : botSkillFor(settings.botLevel, seed, seat, botNames[seat] ?? '')), [story, settings.botLevel, seed, botNames]);
