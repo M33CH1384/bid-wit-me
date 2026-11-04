@@ -56,14 +56,20 @@ export default function ClassicStudio({ quality }: { quality: 'high' | 'low' }) 
     const loader = new TextureLoader();
     const load = (url: string, srgb = false) => new Promise<import('three').Texture | null>((res) => loader.load(url, (t) => { if (srgb) t.colorSpace = SRGBColorSpace; t.wrapS = t.wrapT = RepeatWrapping; t.repeat.set(6, 7); t.anisotropy = 4; res(t); }, undefined, () => res(null)));
     void (async () => {
-      const [map, normalMap, roughnessMap] = await Promise.all([
-        load(`${BASE}/floor_diffuse_512.jpg`, true), load(`${BASE}/floor_nor_gl_512.jpg`), load(`${BASE}/floor_rough_512.jpg`),
+      const [map, normalMap] = await Promise.all([
+        load(`${BASE}/floor_diffuse_512.jpg`, true), load(`${BASE}/floor_nor_gl_512.jpg`),
       ]);
       const m = floorMat.current;
       if (dead || !m) return;
       if (map) m.map = map;
       if (normalMap) m.normalMap = normalMap;
-      if (roughnessMap) m.roughnessMap = roughnessMap;
+      // Wet-floor fix (owner, 2026-11-04): the shipped roughnessMap measures
+      // ~0.10 mean, so at material roughness 1 the parquet was a near-mirror
+      // and threw a streaky white specular patch in front of the south seat.
+      // The floor now takes a scalar satin roughness; the rough file is
+      // still warmed by preload (the asset list is pinned) but no longer
+      // drives the material. The lighting-identity pass may revisit.
+      m.roughness = 0.6;
       m.color.set('#b7bfc9'); // regrade: cool the warm/orange parquet down
       m.needsUpdate = true;
       invalidate();

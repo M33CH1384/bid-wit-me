@@ -556,6 +556,13 @@ function isColorMap(url: string): boolean {
 /** Decode the cloth and wood maps as they arrive and publish one Texture per frame (a single upload). */
 function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: boolean } {
   const invalidate = useThree((s) => s.invalidate);
+  // Grazing-angle rule (owner, 2026-11-04): these were the only textured
+  // surfaces in the game left at the three.js anisotropy default of 1, so
+  // the felt's fine suede normal map aliased into a rippled watery moiré
+  // across the south felt from the sitting camera. Raise every streamed
+  // table map to the device cap (<= 8) like every room loader does and
+  // PersonaFigures' standing rule already demands.
+  const maxAniso = useThree((s) => Math.min(8, s.gl.capabilities.getMaxAnisotropy()));
   const key = urls.join('|');
   const [maps, setMaps] = useState<(Texture | null)[]>(() => urls.map(() => null));
   const [settled, setSettled] = useState(urls.length === 0);
@@ -578,6 +585,7 @@ function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: b
         const tex = new Texture(imgs[i]!);
         tex.needsUpdate = true;
         tex.wrapS = tex.wrapT = RepeatWrapping;
+        tex.anisotropy = maxAniso;
         if (isColorMap(list[i]!)) tex.colorSpace = SRGBColorSpace;
         setMaps((prev) => { const next = prev.slice(); next[i] = tex; return next; });
         invalidate();
@@ -588,7 +596,7 @@ function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: b
     };
     const id = requestAnimationFrame(pump);
     return () => { alive = false; cancelAnimationFrame(id); };
-  }, [key, invalidate]);
+  }, [key, invalidate, maxAniso]);
   return { maps, settled };
 }
 

@@ -311,14 +311,17 @@ export default function KingLoungeRoom({ fxOn }: { fxOn: boolean }) {
     const loader = new TextureLoader();
     const load = (url: string, srgb = false) => new Promise<import('three').Texture | null>((res) => loader.load(url, (t) => { if (srgb) t.colorSpace = SRGBColorSpace; t.wrapS = t.wrapT = RepeatWrapping; t.repeat.set(6, 7); t.anisotropy = 4; res(t); }, undefined, () => res(null)));
     void (async () => {
-      const [map, normalMap, roughnessMap] = await Promise.all([
-        load(`${BASE}/floor_diffuse_512.jpg`, true), load(`${BASE}/floor_nor_gl_512.jpg`), load(`${BASE}/floor_rough_512.jpg`),
+      const [map, normalMap] = await Promise.all([
+        load(`${BASE}/floor_diffuse_512.jpg`, true), load(`${BASE}/floor_nor_gl_512.jpg`),
       ]);
       const m = floorMat.current;
       if (dead || !m) return;
       if (map) m.map = map;
       if (normalMap) m.normalMap = normalMap;
-      if (roughnessMap) m.roughnessMap = roughnessMap;
+      // Same wet-floor fix as ClassicStudio (owner, 2026-11-04): the shared
+      // roughnessMap measures ~0.10 mean — a near-mirror at roughness 1.
+      // Scalar satin roughness instead; see ClassicStudio.tsx.
+      m.roughness = 0.6;
       m.color.set('#b7bfc9');
       m.needsUpdate = true;
       invalidate();
