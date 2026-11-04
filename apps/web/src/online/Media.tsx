@@ -75,6 +75,35 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
     setMenuState(v);
     if (!v) setConfirm(false);
   };
+  // Seat-derived values are computed BEFORE the early returns, and every
+  // hook runs on every render (hook-order fix, 2026-11-03): the two voice
+  // effects used to sit below the returns, so one mounted instance ran 7
+  // hooks on the early path and 9 on the full path. A seat flipping paths
+  // inside one mounted table — a human replaced by a bot mid-game (leave
+  // or kick), a spectator taking a seat, the video mesh arriving or
+  // leaving — changed the instance's hook count mid-flight and React
+  // killed the table's render (error #300: "Rendered fewer hooks than
+  // expected"; the frozen tables players force-closed out of). The
+  // guards that used to be the returns now live inside the routing
+  // effect; detachVoiceChat is a safe no-op for an id that never routed.
+  const id = seat?.kind === 'human' ? seat.playerId : '';
+  const offline = seat?.kind === 'human' ? !seat.connected : true;
+  const stream = id ? vs.remote[id] : undefined;
+  const camOn = seat?.kind === 'human' ? (seat.media?.cam ?? false) && !offline : false;
+  const micOn = seat?.kind === 'human' ? (seat.media?.mic ?? false) && !offline : false;
+  const hidden = id ? vs.hidden.includes(id) : false;
+  const peerMuted = sound.voiceMuted(id); // single source of truth (persisted); the mesh no longer keeps its own mute list
+  const muted = peerMuted || vs.needsTap || limited;
+  // Phase 7: route this peer's voice through the engine (seat panner -> playerVoice bus).
+  // While routed, the <video> element stays muted so the voice is heard exactly once.
+  useEffect(() => {
+    if (!id || isMe || !mesh || !stream || vs.needsTap || !hasLive(stream, 'audio')) { setRouted(false); return; }
+    const ok = sound.attachVoiceChat(id, stream, seatPos, playerCount, { muted: peerMuted || limited, ducked: vs.ducked?.includes(id) });
+    setRouted(ok);
+    return () => { sound.detachVoiceChat(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream, seatPos, playerCount, vs.needsTap, vcGen]);
+  useEffect(() => { if (routed) sound.updateVoiceChat(id, { muted: peerMuted || limited, ducked: vs.ducked?.includes(id) }); }, [routed, id, peerMuted, limited, vs.ducked]);
   if (!seat || seat.kind !== 'human' || !mesh) return null;
   if (isMe) {
     if (!vs.cam || !vs.local) return null;
@@ -84,24 +113,6 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
       </div>
     );
   }
-  const id = seat.playerId;
-  const offline = !seat.connected;
-  const stream = vs.remote[id];
-  const camOn = seat.media.cam && !offline;
-  const micOn = seat.media.mic && !offline;
-  const hidden = vs.hidden.includes(id);
-  const peerMuted = sound.voiceMuted(id); // single source of truth (persisted); the mesh no longer keeps its own mute list
-  const muted = peerMuted || vs.needsTap || limited;
-  // Phase 7: route this peer's voice through the engine (seat panner -> playerVoice bus).
-  // While routed, the <video> element stays muted so the voice is heard exactly once.
-  useEffect(() => {
-    if (!stream || vs.needsTap || !hasLive(stream, 'audio')) { setRouted(false); return; }
-    const ok = sound.attachVoiceChat(id, stream, seatPos, playerCount, { muted: peerMuted || limited, ducked: vs.ducked?.includes(id) });
-    setRouted(ok);
-    return () => { sound.detachVoiceChat(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream, seatPos, playerCount, vs.needsTap, vcGen]);
-  useEffect(() => { if (routed) sound.updateVoiceChat(id, { muted: peerMuted || limited, ducked: vs.ducked?.includes(id) }); }, [routed, id, peerMuted, limited, vs.ducked]);
   const hasMedia = camOn || micOn;
   // the scene plane at the seat is showing this feed (frames flowing):
   // the bubble's visual clip stands down so the player appears once, at

@@ -3021,7 +3021,19 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     onCardTap: onCard,
     onCardDrop,
     landing: landingMode(tips.on),
-    gameSeed: String(st.seed ?? ''),
+    // The scene's per-game identity (its resource subtree remounts on it,
+    // and TableModel's mount-only onReady certification rides that
+    // remount). OFFLINE the state seed is the identity: real, per game.
+    // ONLINE the rotated state deliberately carries seed '' — the real
+    // seed would reveal the deck (rotate.ts) — so the seed PROP is the
+    // identity instead: it names the game on every surface (online it is
+    // `code:game`), changes exactly when this table remounts per game,
+    // and is shared by every client in the room, so the scene's landing
+    // seeds still agree across the table. Publishing st.seed online keyed
+    // the scene '' for a whole room: a rematch's subtree never remounted,
+    // onReady never fired for the new game, and the table sat on
+    // "Setting the table…" for good (owner report, 2026-11-03).
+    gameSeed: online ? seed : String(st.seed ?? ''),
     loadSettled: !loading,
     onFeltTap: () => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } },
     renderSeat,
