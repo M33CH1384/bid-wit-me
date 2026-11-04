@@ -335,10 +335,14 @@ streak hits (`streak1`–`streak3`), `shot` (impact slam) and `gotShot` (soft st
 
 ## Bot voices
 
-Bot voices: generated with Kokoro-82M by hexgrad (Apache-2.0), https://huggingface.co/hexgrad/Kokoro-82M
+Bot voices: synthesized in-house with Chatterbox by Resemble AI (MIT), https://github.com/resemble-ai/chatterbox,
+cloning voice references drawn from CREMA-D — the Crowd-sourced Emotional Multimodal Actors Dataset
+(Cao et al., IEEE Transactions on Affective Computing, 2014), https://github.com/CheyneyComputerScience/CREMA-D —
+used under the Open Database License (ODbL) v1.0, https://opendatacommons.org/licenses/odbl/1-0/
 
-Clips in `apps/web/public/voices/` (Opus/WebM + AAC/M4A), made locally with kokoro-onnx (MIT) from Kokoro's built-in
-synthetic voices (no cloned or real-person voices). Line map: `apps/web/src/voices/manifest.json`. Lines without a clip
+Clips in `apps/web/public/voices/` (Opus/WebM + AAC/M4A), baked locally by the game's voice studio
+(Chatterbox synthesis cloned from the CREMA-D donor performances, de-noised and assembled into per-persona
+sprites). Line map: `apps/web/src/voices/manifest.json`. Lines without a clip
 use the browser's Web Speech voice.
 
 ## Dee's Rundown films (Story mode)
