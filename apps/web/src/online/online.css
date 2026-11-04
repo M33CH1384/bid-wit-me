@@ -236,8 +236,8 @@
 .lobby-teams { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
 .team-pill { font-size: 12.5px; padding: 5px 10px; border-radius: 14px; color: var(--muted); white-space: nowrap; }
 .team-pill b { font-family: var(--display); letter-spacing: .05em; margin-right: 4px; text-transform: uppercase; }
-.team-pill.team-A { background: rgba(var(--gold-rgb),.14); box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb),.45); } .team-pill.team-A b { color: var(--gold); }
-.team-pill.team-B { background: rgba(79,209,255,.12); box-shadow: inset 0 0 0 1px rgba(79,209,255,.4); } .team-pill.team-B b { color: #9fe6ff; }
+.team-pill.team-A { background: rgba(var(--gold-rgb),.18); box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb),.6); } .team-pill.team-A b { color: var(--gold); }
+.team-pill.team-B { background: rgba(79,209,255,.16); box-shadow: inset 0 0 0 1px rgba(79,209,255,.55); } .team-pill.team-B b { color: #9fe6ff; }
 .lobby-you { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 10px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(var(--edge-rgb),.2); }
 .lobby-you .lobby-team-name { flex: 1 1 180px; margin: 0; }
 .lobby-you .av-bar { margin: 0; }
@@ -297,7 +297,7 @@
 .team-pill .team-name-edit input { width: 130px; font-size: 16px; padding: 3px 6px; background: rgba(0,0,0,.35); border: 1px solid rgba(var(--gold-rgb),.5); color: var(--ink); }
 .team-pill .team-name-edit button { padding: 2px 8px; }
 
-.lobby-status { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.lobby-status { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 0 0 6px; font-size: 13px; color: var(--ink); font-weight: 600; }
 .status-text { animation: fade-up .3s ease both; }
 .lobby-start .waiting { font-size: 15px; margin: 6px 0; }
 .link.quiet { opacity: .7; font-size: 13px; }
@@ -377,7 +377,7 @@
 .seat-plate.empty { color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .12em; }
 .seat-plate .seat-name { font-size: 14px; }
 .host-tag { font-family: var(--display); font-size: 9px; font-weight: 800; letter-spacing: .1em; color: #1d1204; background: var(--gold); padding: 1px 4px; }
-.start-gold { text-transform: uppercase; letter-spacing: .05em; }
+.start-gold { text-transform: uppercase; letter-spacing: .05em; box-shadow: 0 0 18px rgba(var(--gold-rgb),.35), inset 0 1px 0 rgba(255,255,255,.35); }
 .waiting-block { background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.3); padding: 14px 12px; text-align: center; }
 .leave-table-btn { width: 100%; border: 0; padding: 12px; background: rgba(255,77,109,.14); color: #ff8fa5; box-shadow: inset 0 0 0 1px rgba(255,77,109,.55);
   font-family: var(--display); font-weight: 800; font-size: 17px; letter-spacing: .1em; touch-action: manipulation;
@@ -603,6 +603,18 @@
   .seat-bot { left: 0; right: 0; bottom: 0; transform: none; width: 100%; height: 44px; padding: 0 8px; border-radius: 0 0 12px 12px; display: flex; align-items: center; justify-content: center; font-size: 12px; background: rgba(255,255,255,.1); }
   .seat-hit { padding-bottom: 44px; }
   .seat-card .seat-sub { min-height: 44px; display: inline-flex; align-items: center; }
+  /* lobby v9 paint (owner 2026-11-04: the dock read "lazy"): the dock is a
+     solid panel in the app's glass/gold language, not a fade into the void;
+     the waiting line and the media labels read at full strength; LEAVE gets
+     the same gradient depth as START's gold. PAINT ONLY — no geometry
+     property the v8 model parses is set here. */
+  .lobby-dock { background: linear-gradient(180deg, rgba(var(--glass-strong-rgb),.97), rgba(var(--glass-strong-rgb),1) 72px); border-top: 1px solid rgba(var(--edge-rgb),.45); box-shadow: 0 -14px 34px rgba(0,0,0,.5), inset 0 1px 0 rgba(var(--gold-rgb),.22); }
+  .lobby-dock .waiting { color: var(--ink); }
+  .lobby-dock .leave-table-btn { background: linear-gradient(180deg, rgba(255,77,109,.22), rgba(255,77,109,.12)); }
+  .dock-bar .av-btn { background: rgba(var(--glass-strong-rgb),.94); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.5), 0 4px 12px rgba(0,0,0,.45); }
+  .dock-bar .av-btn.on { background: linear-gradient(180deg, var(--gold-hi), var(--gold-deep)); box-shadow: 0 0 14px rgba(var(--gold-rgb),.6); }
+  .dock-bar .av-btn small { color: var(--ink); }
+  .dock-bar .av-btn.on small { color: #1d1204; }
 }
 
 /* (3) phone landscape stage: rail + strip felt, dock as a two-column grid */

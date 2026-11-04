@@ -171,6 +171,37 @@ export function SeatMedia({ seat, isMe, mesh, vs, limited = false, kick, seatPos
   );
 }
 
+/* Stroke icons in the app's icon style for the cam/mic faces (owner
+ * 2026-11-04: the emoji read as clip-art in the lobby dock's wide buttons).
+ * Same controls, labels and handlers — only the faces are drawn now. */
+const camIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 8h2.6l2-2.6h6.8l2 2.6H20a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 20 20H4a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 4 8Z" />
+    <circle cx="12" cy="13.5" r="3.4" />
+  </svg>
+);
+const videoIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="2.5" y="7" width="13" height="10" rx="2" />
+    <path d="M15.5 10.6 21 7.8v8.4l-5.5-2.8" />
+  </svg>
+);
+const micIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="9" y="2.8" width="6" height="11" rx="3" />
+    <path d="M5.6 11.2a6.4 6.4 0 0 0 12.8 0" />
+    <path d="M12 17.6V21" />
+  </svg>
+);
+const micOffIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="9" y="2.8" width="6" height="11" rx="3" />
+    <path d="M5.6 11.2a6.4 6.4 0 0 0 12.8 0" />
+    <path d="M12 17.6V21" />
+    <path d="M4.5 4.5l15 15" />
+  </svg>
+);
+
 /** Camera + mic toggles (off by default; permission is only requested when turned on). */
 export function MediaBar({ mesh, vs, seated, limited = false }: { mesh: VideoMesh | null; vs: VideoState; seated: boolean; limited?: boolean }) {
   if (!mesh || !seated) return null;
@@ -178,10 +209,10 @@ export function MediaBar({ mesh, vs, seated, limited = false }: { mesh: VideoMes
   return (
     <div className="av-bar" role="group" aria-label="Camera and microphone">
       <button type="button" className={`av-btn ${vs.cam ? 'on' : ''}`} disabled={!supported || vs.busy} aria-pressed={vs.cam} aria-label={vs.cam ? 'Turn camera off' : 'Turn camera on'} onClick={() => void mesh.setCam(!vs.cam)}>
-        {vs.cam ? '📹' : '📷'}<small>{vs.cam ? 'ON' : 'CAM'}</small>
+        {vs.cam ? videoIcon : camIcon}<small>{vs.cam ? 'ON' : 'CAM'}</small>
       </button>
       <button type="button" className={`av-btn ${vs.mic ? 'on' : ''}`} disabled={!supported || vs.busy} aria-pressed={vs.mic} aria-label={vs.mic ? 'Mute microphone' : 'Turn microphone on'} onClick={() => void mesh.setMic(!vs.mic)}>
-        {vs.mic ? '🎙' : '🔇'}<small>{vs.mic ? 'ON' : 'MIC'}</small>
+        {vs.mic ? micIcon : micOffIcon}<small>{vs.mic ? 'ON' : 'MIC'}</small>
       </button>
       {limited && vs.mic && <span className="mic-limited" data-testid="mic-limited" title="Your partner can't hear you during bids and play (opponents can). Mics open between hands.">MIC LIMITED</span>}
       {vs.needsTap && Object.keys(vs.remote).length > 0 && <span className="av-hint">Tap anywhere for sound</span>}
@@ -195,8 +226,8 @@ export function OfflineMediaBar() {
   const tip = 'Camera & mic are for online tables. Play Online to use them';
   return (
     <div className="av-bar offline" role="group" aria-label="Camera and microphone (online tables only)" title={tip} data-testid="av-offline">
-      <button type="button" className="av-btn" disabled aria-disabled="true" aria-label={`Camera — ${tip}`} title={tip}>📷<small>CAM</small></button>
-      <button type="button" className="av-btn" disabled aria-disabled="true" aria-label={`Microphone — ${tip}`} title={tip}>🔇<small>MIC</small></button>
+      <button type="button" className="av-btn" disabled aria-disabled="true" aria-label={`Camera — ${tip}`} title={tip}>{camIcon}<small>CAM</small></button>
+      <button type="button" className="av-btn" disabled aria-disabled="true" aria-label={`Microphone — ${tip}`} title={tip}>{micOffIcon}<small>MIC</small></button>
     </div>
   );
 }

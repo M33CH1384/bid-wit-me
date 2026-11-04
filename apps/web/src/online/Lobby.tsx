@@ -327,7 +327,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <div className="dock-bar">
             {cs.seat !== null ? <MediaBar mesh={mesh} vs={vs} seated /> : <span className="dock-spacer" />}
             <button type="button" className={`av-btn dock-chat ${chatOpen ? 'on' : ''}`} data-testid="lobby-chat-tab" aria-expanded={chatOpen} aria-label="Table chat" onClick={() => setChatOpen(!chatOpen)}>
-              💬<small>CHAT</small>{unread > 0 && !chatOpen && <span className="unread" data-testid="lobby-unread">{unread}</span>}
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4.5h16V15h-10.5L4 19.5v-15Z" /></svg><small>CHAT</small>{unread > 0 && !chatOpen && <span className="unread" data-testid="lobby-unread">{unread}</span>}
             </button>
           </div>
         </div>, document.body)}
