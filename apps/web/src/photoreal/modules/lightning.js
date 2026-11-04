@@ -102,12 +102,18 @@ function build(env){const{ctx,W,H,S,cx,cy,Q}=env,R=env.R,D=3.6;
   }};}
 
   const env = makeEnv(canvas, opts), e = build(env);
-  function render(t) { const { ctx, W, H } = env; ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0,0,W,H);
+  /* Owner 2026-11-04: the strike read "a tad bit too slow" — the whole timeline runs on a
+   * 0.8x clock (3.6 s -> 2.88 s, 25% faster): every phase (leader, strikes, sparks, smoke,
+   * fade) keeps its proportions, just compressed. The return stroke lands at 0.55 x 0.8 =
+   * 0.44 s; fx.ts schedules the recorded thunder at that same 0.44 s (THUNDER_DELAY_S) —
+   * change the two together. */
+  const CLOCK = 0.8;
+  function render(t) { t /= CLOCK; const { ctx, W, H } = env; ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0,0,W,H);
     const [sx, sy] = e.shake ? e.shake(t) : [0, 0];
     if (opts.drawScene) { ctx.save(); ctx.translate(sx, sy); opts.drawScene(ctx, W, H, t); ctx.restore(); env.sctx.clearRect(0,0,W,H); env.sctx.drawImage(canvas, 0, 0); }
     ctx.save(); ctx.translate(sx, sy); e.draw(t); ctx.restore(); finish(env, t); }
   function play(onEnd) { let t0 = null, id = 0; const step = now => { if (t0 === null) t0 = now; const t = (now - t0) / 1000;
-      if (t >= e.duration) { env.ctx.clearRect(0,0,env.W,env.H); onEnd && onEnd(); return; } render(t); id = requestAnimationFrame(step); };
+      if (t >= e.duration * CLOCK) { env.ctx.clearRect(0,0,env.W,env.H); onEnd && onEnd(); return; } render(t); id = requestAnimationFrame(step); };
     id = requestAnimationFrame(step); return () => cancelAnimationFrame(id); }
-  return { duration: e.duration, render, play };
+  return { duration: e.duration * CLOCK, render, play };
 }

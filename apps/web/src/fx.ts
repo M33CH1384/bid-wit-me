@@ -274,6 +274,15 @@ class FxBus {
         this.heroWait = { kind, timer };
       } else sound.play(sfxFor(e), { gain: 1 });
     }
+    // The big over-cut's lightning (photoreal overlay, level >= 3) gets its thunder: a real
+    // recorded crack scheduled for the bolt's impact frame, not the emit — the leader runs
+    // 0.55 s of module time on the module's 0.8x clock (lightning.js), so the stroke lands
+    // THUNDER_DELAY_S after the event. Gated exactly like the overlay itself (startPhotoreal):
+    // Reduce effects or OS reduced motion -> no bolt, no thunder. The card's own overcut3
+    // slam above is untouched — this is the sky's sound, layered over it.
+    if (!opts.silent && kind === 'overcut' && (e.level ?? 2) >= 3 && !this.reduced && !this.osReducedMotion) {
+      sound.play('thunder', { delay: THUNDER_DELAY_S, gain: 1 });
+    }
     if (!this.reduced && !this.osReducedMotion) {
       if (kind === 'jokerLittle') this.shake = { start: e.at, dur: 0.35, amp: 0.035 };
       else if (kind === 'jokerBig') this.shake = { start: e.at, dur: 0.95, amp: 0.07 };
@@ -289,6 +298,12 @@ class FxBus {
     this.listeners.forEach((f) => f(e));
   }
 }
+
+/** When the photoreal lightning's return stroke lands, in seconds after the overcut event:
+ *  0.55 s of module timeline on its 0.8x clock (photoreal/modules/lightning.js CLOCK).
+ *  The thunder sample is scheduled this far out so the crack hits WITH the bolt.
+ *  Change it only with the module's clock. */
+const THUNDER_DELAY_S = 0.44;
 
 export function sfxFor(e: Pick<FxEvent, 'kind' | 'level'>): Sfx {
   if (e.kind === 'streak') return (e.level ?? 2) >= 4 ? 'streak3' : (e.level ?? 2) === 3 ? 'streak2' : 'streak1';

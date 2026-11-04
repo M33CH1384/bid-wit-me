@@ -42,7 +42,7 @@ export type Sfx =
   | 'shuffle' | 'deal' | 'play' | 'tap' | 'sweep' | 'broken' | 'turn' | 'bid' | 'bidSoft'
   | 'cut' | 'made' | 'set' | 'nil' | 'bags' | 'pop' | 'win' | 'lose' | 'flip'
   // hype effects. The sheet siren is a recorded wail (CREDITS.md); the rest are synthesized.
-  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado'
+  | 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado' | 'thunder'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud'
   // Versus intro (boxing-style match card on the loading screen): entrances travel
@@ -584,6 +584,10 @@ const FILES: Record<string, string[]> = {
   // put-out hiss. Same fetch/decode path, so SFX_COUNT (the watchdog's
   // readiness bar, derived from this map) counts it automatically.
   fireOut: ['fire-out'],
+  // Lightning one-shot (SSE Library recording, CREDITS.md): the recorded
+  // thunder crack for the big over-cut's bolt. Same fetch/decode path, so
+  // SFX_COUNT counts it automatically.
+  thunder: ['thunder'],
 };
 /** Total one-shot SFX buffers a complete load() decodes (the watchdog's readiness bar). */
 const SFX_COUNT = Object.values(FILES).reduce((n, a) => n + a.length, 0);
@@ -2496,6 +2500,10 @@ class Engine {
       case 'wheelsCar': return this.peelOut(t, g);
       case 'overcut': return this.overcutSlam(t, g, 2);
       case 'overcut3': return this.overcutSlam(t, g, 3);
+      // Lightning strike: the recorded thunder the fx bus schedules onto the
+      // bolt's impact frame for a level-3 over-cut (THUNDER_DELAY_S there).
+      // Staged like the deuce thump — a hero one-shot, centred (it is the sky).
+      case 'thunder': return this.sample('thunder', t, 0.95 * g);
       case 'tornado': return this.tornado(t, g);
       case 'runSlam': this.overcutSlam(t, g * 1.2, 3); this.thud(t, g); return this.quake(t + 0.03, g * 0.9); // heavy slow-mo impact + bass hit — gains raised 2026-11-02 with the slam aggression retune (owner: 'isn't aggressive enough')
       case 'runThud': for (let i = 0; i < 4; i++) this.thud(t + i * 0.055, g * (0.42 - i * 0.07)); return;
