@@ -1085,3 +1085,106 @@ describe('tap floor — the online.css census (D4)', () => {
     expect(K.barH, 'CAM/MIC/CHAT bar').toBe(44);
   });
 });
+
+/* lobby v11 (owner 2026-11-04, round 3): the SETTINGS-OPEN state. Round 2
+   composed the lobby at rest; the rig never opened the host editor, and
+   on the owner's phone that state "looks crazy and is hardly usable" in
+   both orientations — reproduced on unmodified master (rig, 390×844
+   Neon): the venue panel paints 14,430px² over the head, the felt
+   collapses to 38px, the mode tiles hold their 106px min-content and
+   run 54px past the viewport's right edge, the sheet scrolls 2,758px
+   and DONE is gone at its end; at 932×430 the editor lives in a
+   110px-wide panel (every select 80px wide, mode tiles 124px past the
+   rail box) whose content scrolls 3,563px in a 121px window. v11
+   composes the open state as ONE sheet in both phone gates: a single
+   scroll column (venue whole on top, settings at natural height), the
+   summary sticky at the sheet's top so DONE never scrolls away, the
+   modes on minmax(0, 1fr) tracks, every row stacked full-width.
+   Portrait: the stage stands down to its head (table hidden, main at
+   its natural height) and the sheet takes the column. Landscape: the
+   settings region becomes a fixed sheet over the table region only —
+   its edges land on the table panel's own box. Every rule keys on the
+   MAIN editor (:not([data-testid="pace-settings"])) — the mid-game
+   pace editor and the guest are untouched, and at rest nothing changes:
+   every v11 rule needs [open]. Geometry only — no theme selectors. */
+const v11 = css.slice(css.indexOf('lobby v11'));
+const v11Shared = css.slice(css.indexOf('the sheet\'s shared internals'), css.indexOf('portrait: the stage stands down'));
+const v11Portrait = css.slice(css.indexOf('portrait: the stage stands down'), css.indexOf('landscape: the sheet overlays'));
+const v11Landscape = css.slice(css.indexOf('landscape: the sheet overlays'));
+const MAIN_OPEN = '.settings-panel[open]:not([data-testid="pace-settings"])';
+
+describe('the settings-open sheet (v11)', () => {
+  it('every open-state rule is scoped to the MAIN editor, never the pace editor', () => {
+    expect(css.indexOf('lobby v11'), 'the v11 section exists').toBeGreaterThan(-1);
+    expect(v11Shared.length, 'shared slice found').toBeGreaterThan(100);
+    expect(v11Portrait.length, 'portrait slice found').toBeGreaterThan(100);
+    expect(v11Landscape.length, 'landscape slice found').toBeGreaterThan(100);
+    // each orientation block and every shared rule carries the scoping
+    expect(v11.split('pace-settings').length - 1, 'pace scoping throughout v11').toBeGreaterThanOrEqual(10);
+    expect(v11, 'no unscoped [open] selector').not.toMatch(/\.settings-panel\[open\](?!:not)/);
+    expect(v11, 'geometry only').not.toContain('data-theme');
+    expect(v11).not.toContain('html[');
+    // the sheet never reaches for the dock, the seats or the felt model
+    expect(v11).not.toContain('.lobby-dock');
+    expect(v11).not.toContain('.seat-');
+    expect(v11).not.toContain('.mini-felt');
+    expect(v11).not.toContain('dockPad');
+  });
+
+  it('DONE rides the sheet top: the summary is sticky inside the open panel', () => {
+    expect(v11Shared).toContain(`.lobby-settings ${MAIN_OPEN} > summary { position: sticky; top: 0;`);
+    expect(v11Shared).toContain('background: rgba(var(--glass-strong-rgb), .96)');
+  });
+
+  it('the modes fit the sheet: shrinkable tracks and tiles, rows stacked full-width', () => {
+    expect(v11Shared).toContain(`.lobby-settings ${MAIN_OPEN} .modes { grid-template-columns: repeat(2, minmax(0px, 1fr)); }`);
+    expect(v11Shared).toContain(`.lobby-settings ${MAIN_OPEN} .mode { min-width: 0px; }`);
+    expect(v11Shared).toContain(`.lobby-settings ${MAIN_OPEN} .row-label { flex: 1 1 100%; }`);
+    expect(v11Shared).toContain(`.lobby-settings ${MAIN_OPEN} .row-control { flex: 1 1 100%; margin-left: 0px; }`);
+    expect(v11Shared).toContain(`.lobby-settings ${MAIN_OPEN} .row-control select { width: 100%; }`);
+    expect(v11Shared).toContain(`.lobby-settings ${MAIN_OPEN} .row-control:has(.toggle) { display: flex; justify-content: flex-end; }`);
+    expect(v11Shared).toContain(`.lobby-settings ${MAIN_OPEN} .seg button { flex: 1 1 0; min-width: 0px; }`);
+  });
+
+  it('portrait: the stage stands down to its head; the sheet is one column', () => {
+    const colsHas = `.lobby-cols:has(> .lobby-settings > ${MAIN_OPEN})`;
+    expect(v11Portrait).toContain(`${colsHas} .lobby-main { flex-basis: auto; flex-shrink: 0; }`);
+    expect(v11Portrait).toContain(`${colsHas} .lobby-table { display: none; }`);
+    expect(v11Portrait).toContain(`.lobby-settings:has(> ${MAIN_OPEN}) { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }`);
+    expect(v11Portrait).toContain(`.lobby-settings:has(> ${MAIN_OPEN}) > * { flex: 0 0 auto; }`);
+    // the portrait head is the v10 two-row head (84px at the phones):
+    // main at natural height + the v10 sheet cap leaves a working sheet
+    // (dock = the portrait dock model pinned by the K constants above)
+    for (const s of [{ name: '390x844', h: 844, top: 47, dock: 199 }, { name: '430x932', h: 932, top: 59, dock: 235 }]) {
+      const sheetH = s.h - (58 + s.top) - (84 + 6) - s.dock;
+      expect(sheetH, `${s.name} open sheet height`).toBeGreaterThanOrEqual(400);
+    }
+  });
+
+  it('landscape: a fixed sheet over the table region, edges on the table box', () => {
+    const sheet = `.lobby-settings:has(> ${MAIN_OPEN})`;
+    expect(v11Landscape).toContain(`${sheet} {`);
+    expect(v11Landscape).toContain('position: fixed; z-index: 35;');
+    expect(v11Landscape).toContain('top: calc(58px + env(safe-area-inset-top));');
+    expect(v11Landscape).toContain('bottom: var(--dock-h, calc(200px + env(safe-area-inset-bottom)));');
+    // left edge = centering + the v3 padding (16) + the rail clamp + the
+    // grid gap (12) = the shipped constants' (rail + 28); right edge =
+    // centering + the v3 padding, the table panel's own right edge
+    expect(v11Landscape).toContain('left: calc(max(0px, (100vw - 900px) / 2) + clamp(190px, 30vw, 280px) + 28px);');
+    expect(v11Landscape).toContain('right: calc(max(0px, (100vw - 900px) / 2) + 16px);');
+    expect(v11Landscape).toContain(`${sheet} > * { flex: 0 0 auto; min-width: 0px; overflow: visible; }`);
+    expect(v11Landscape).toContain(`.lobby-settings ${MAIN_OPEN} .sr-mode { display: block; }`);
+    expect(v11Landscape).toContain(`.lobby-settings ${MAIN_OPEN} .sr-timer { flex: 1 1 auto; }`);
+    // arithmetic from the shipped constants: at both landscape phones
+    // the sheet is wide enough for two honest mode tiles and tall
+    // enough for the venue block whole + the sticky summary + rows
+    for (const s of [{ name: '932x430', w: 932, h: 430, dock: 137 }, { name: '844x390', w: 844, h: 390, dock: 160 }]) {
+      const rail = Math.min(280, Math.max(190, 0.3 * s.w));
+      const sheetW = s.w - 2 * Math.max(0, (s.w - 900) / 2) - 16 - rail - 28;
+      const sheetH = s.h - 58 - s.dock;
+      expect(sheetW, `${s.name} sheet width`).toBeGreaterThanOrEqual(500);
+      expect((sheetW - 20 - 28 - 10) / 2, `${s.name} mode tile width`).toBeGreaterThanOrEqual(200);
+      expect(sheetH, `${s.name} sheet height`).toBeGreaterThanOrEqual(165);
+    }
+  });
+});

@@ -966,3 +966,100 @@
   .lobby-v3 .lobby-head .share-code small { letter-spacing: .12em; line-height: 1.1; }
   .lobby-v3 .lobby-head .lobby-social { padding: 0 8px; }
 }
+
+/* ---------- lobby v11: the SETTINGS-OPEN state is a sheet (owner 2026-11-04) ----------
+   Round 2 composed the lobby AT REST; the rig never opened the host
+   settings editor, and on the owner's phone that state "looks crazy and
+   is hardly usable" in both orientations. Reproduced on unmodified
+   master (rig, host, venue Random, real insets, 390×844 Neon): the
+   venue panel paints 14,430px² OVER the head (title × venue 3,330px²),
+   the felt collapses to 38px, the mode tiles hold their 106px
+   min-content and run 54px past the viewport's right edge, the sheet
+   scrolls 2,758px and DONE is not visible at its end. Mechanism: the
+   open state was never composed — v10's two open rules (cap lift +
+   main flex-grow 0) leave .lobby-main at its flex-basis of 0 with its
+   content overflowing visibly over the settings row, and inside the
+   row the AT-REST arrangement (venue 168px beside settings 148px in
+   portrait; the v8d two-panel grid in an 83–123px rail box in
+   landscape) squeezes a ~1,300px editor into summary-card columns:
+   the base .modes grid cannot shrink below the tiles' min-content,
+   the rows' selects size to their longest option, and the summary —
+   DONE included — scrolls away with the sheet.
+   v11 composes the open state as ONE sheet in both phone gates: a
+   single scroll column, the venue panel whole at the top, the
+   settings panel at natural height under it, the summary (mode ·
+   timer · DONE) sticky at the sheet's top so DONE is on screen at
+   every scroll position; the modes take repeat(2, minmax(0, 1fr))
+   with min-width-0 tiles; every editor row stacks — label on its own
+   line, the control at full sheet width beneath it.
+   Portrait: the sheet is the in-flow settings region turned column;
+   the stage stands down to its head (the table is display:none while
+   the main editor is open, main takes flex 0 0 auto), so the head —
+   title, code, watch, Social — stays fully visible and the sheet
+   fills the column to the dock.
+   Landscape: the rail box (83–123px) cannot hold a sheet, so the open
+   settings region becomes a fixed sheet over the TABLE region only —
+   its edges land on the table panel's own box (top: the cols top;
+   bottom: the live dock height; left: centering + v3 padding + the
+   rail clamp + the grid gap; right: the v3 padding edge), z-index 35
+   (above the stage, below the dock's 41 and the chat drawer's 42),
+   surfaced in the v9 dock's solid glass so it reads as one designed
+   sheet. The rail keeps the head; its settings box stands empty
+   behind the sheet (both panels live inside the repositioned
+   element). The summary's mode line un-hides inside the sheet — the
+   felt centre it duplicated is under the sheet there.
+   Scope: every rule keys on the MAIN editor via
+   :has(> .settings-panel[open]:not([data-testid="pace-settings"])) —
+   the mid-game PACE editor keeps today's behaviour, the guest (no
+   settings panel) is untouched, and at rest nothing changes: every
+   rule needs [open]. Geometry only — no theme selectors. */
+
+/* both phone compositions: the sheet's shared internals */
+@media (max-width: 767px) and (min-height: 700px), (max-height: 599px) and (min-width: 560px) {
+  /* DONE rides the sheet's top: the summary sticks inside the panel
+     while the sheet scrolls beneath it */
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) > summary { position: sticky; top: 0; z-index: 3; background: rgba(var(--glass-strong-rgb), .96); box-shadow: 0 8px 14px rgba(0,0,0,.35); }
+  /* the modes fit the sheet: tracks may shrink below min-content and
+     the tiles with them, so no tile ever leaves the sheet */
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .modes { grid-template-columns: repeat(2, minmax(0px, 1fr)); }
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .mode { min-width: 0px; }
+  /* every editor row stacks: label on its own line, control full width */
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .row-label { flex: 1 1 100%; }
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .row-control { flex: 1 1 100%; margin-left: 0px; }
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .row-control select { width: 100%; }
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .row-control:has(.toggle) { display: flex; justify-content: flex-end; }
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .seg { display: flex; }
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .seg button { flex: 1 1 0; min-width: 0px; }
+}
+
+/* portrait: the stage stands down to its head; the sheet takes the column */
+@media (max-width: 767px) and (min-height: 700px) {
+  .lobby-cols:has(> .lobby-settings > .settings-panel[open]:not([data-testid="pace-settings"])) .lobby-main { flex-basis: auto; flex-shrink: 0; }
+  .lobby-cols:has(> .lobby-settings > .settings-panel[open]:not([data-testid="pace-settings"])) .lobby-table { display: none; }
+  .lobby-settings:has(> .settings-panel[open]:not([data-testid="pace-settings"])) { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+  .lobby-settings:has(> .settings-panel[open]:not([data-testid="pace-settings"])) > * { flex: 0 0 auto; }
+}
+
+/* landscape: the sheet overlays the table region; the rail keeps the head */
+@media (max-height: 599px) and (min-width: 560px) {
+  .lobby-settings:has(> .settings-panel[open]:not([data-testid="pace-settings"])) {
+    position: fixed; z-index: 35; margin: 0px;
+    top: calc(58px + env(safe-area-inset-top));
+    bottom: var(--dock-h, calc(200px + env(safe-area-inset-bottom)));
+    left: calc(max(0px, (100vw - 900px) / 2) + clamp(190px, 30vw, 280px) + 28px);
+    right: calc(max(0px, (100vw - 900px) / 2) + 16px);
+    display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch;
+    overflow-y: auto; scrollbar-width: thin; padding: 10px;
+    background: linear-gradient(180deg, rgba(var(--glass-strong-rgb), .97), rgba(var(--glass-strong-rgb), 1) 72px);
+    border-top: 1px solid rgba(var(--edge-rgb), .45);
+    box-shadow: 0 -14px 34px rgba(0,0,0,.5), inset 0 1px 0 rgba(var(--gold-rgb), .22);
+  }
+  .lobby-settings:has(> .settings-panel[open]:not([data-testid="pace-settings"])) > * { flex: 0 0 auto; min-width: 0px; overflow: visible; }
+  /* the mode line reads in the sheet (its felt-centre duplicate is
+     under the sheet here), so the sticky bar names the mode it edits */
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .sr-mode { display: block; }
+  /* in the sheet's width the summary is ONE row again — the v10 wrap
+     that gives the timer its own row was for the rail's sliver panel;
+     if a long mode line ever overflows, the wrap still catches it */
+  .lobby-settings .settings-panel[open]:not([data-testid="pace-settings"]) .sr-timer { flex: 1 1 auto; }
+}
