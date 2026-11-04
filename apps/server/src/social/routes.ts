@@ -54,6 +54,8 @@ export interface ProfileOut {
   avatar: string | null;
   badges: { id: string; earnedAt: number }[];
   teamNames: string[];
+  /** one record per teamNames entry (same order): that team's real recorded games */
+  teams: TeamStatOut[];
   ratings: { team?: number; cutthroat?: number };
   totals: { games: number; wins: number };
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[];
@@ -61,6 +63,137 @@ export interface ProfileOut {
   champion: number;
   stats: PersonalStats;
   awards: { label: string; ref: string; at: number }[];
+}
+
+/* ------------------------------------------------------------ team records */
+
+/** The partner a team name was played with (owner, 2026-11-04: tapping a
+ *  team name shows that team's stats). A signed-in partner carries their
+ *  social id ('u:<account id>') and avatar so the client can tap through
+ *  to their profile; a bot or guest partner is a display name only — they
+ *  have no profile and left no recorded rows. */
+export interface TeamPartnerOut {
+  id?: string;
+  name: string;
+  avatar?: string | null;
+  bot?: boolean;
+  guest?: boolean;
+  games: number;
+}
+
+export interface TeamStatOut {
+  name: string;
+  games: number; wins: number; losses: number; winPct: number | null;
+  streak: number; bestStreak: number;
+  accuracy: number | null; booksPerHand: number | null; nil: string; wheels: number;
+  /** 'side' when the partner also left recorded rows in these games (so the
+   *  performance lines are the pair's), 'self' when only the profile
+   *  player's rows exist (bot/guest partner) and the lines are theirs. */
+  recorded: 'side' | 'self';
+  partner: TeamPartnerOut | null;
+  /** further partners the same name was played with, most games first */
+  others: { name: string; games: number }[];
+}
+
+interface TeamRow {
+  user_id: string; game_id: string; won: number; stats: string; side: number;
+  partner_id: string | null; ended_at: number; seats: string;
+  end_reason: string; leaver_id: string | null; rated: number; family: string;
+}
+
+const TEAM_PERF_KEYS = ['bids', 'made', 'books', 'hands', 'nilBids', 'nilMade', 'wheels'] as const;
+
+/**
+ * One team's record for one player: their recorded games played under
+ * `name` (game_players.team_name), aggregated with personalStats' exact
+ * semantics — deals deduped by family (finished row wins), an abandoned
+ * deal counting only as the rated leaver's loss, streaks chronological.
+ * W–L and streaks are the side's (the player was in every one of these
+ * games); the performance lines aggregate every recorded row of that side
+ * in those games — the partner's too when they are signed in. A name with
+ * no recorded games returns an honest zero entry.
+ */
+export async function teamRecordFor(db: D1Database, uid: string, name: string): Promise<TeamStatOut> {
+  const zero: TeamStatOut = {
+    name, games: 0, wins: 0, losses: 0, winPct: null, streak: 0, bestStreak: 0,
+    accuracy: null, booksPerHand: null, nil: '0/0', wheels: 0, recorded: 'self', partner: null, others: [],
+  };
+  const rows = (await db.prepare(`SELECT gp.user_id AS user_id, gp.game_id AS game_id, gp.won AS won, gp.stats AS stats, gp.side AS side,
+      gp.partner_id AS partner_id, gp.ended_at AS ended_at, g.seats AS seats,
+      COALESCE(g.end_reason, 'finished') AS end_reason, g.leaver_id AS leaver_id, g.rated AS rated, COALESCE(g.family, g.id) AS family
+    FROM game_players gp JOIN games g ON g.id = gp.game_id
+    WHERE gp.team_name = ? AND gp.game_id IN (SELECT game_id FROM game_players WHERE user_id = ? AND team_name = ?)
+    ORDER BY gp.ended_at ASC, gp.game_id ASC`).bind(name, uid, name).all<TeamRow>()).results;
+  if (!rows.length) return zero;
+  const order: string[] = [];
+  const groups = new Map<string, TeamRow[]>();
+  for (const r of rows) {
+    const list = groups.get(r.family);
+    if (list) list.push(r);
+    else { groups.set(r.family, [r]); order.push(r.family); }
+  }
+  const perf = { bids: 0, made: 0, books: 0, hands: 0, nilBids: 0, nilMade: 0, wheels: 0 };
+  let games = 0; let wins = 0; let run = 0; let best = 0; let sideRecorded = false;
+  interface Tally { key: string; rawId: string | null; seatName: string; bot: boolean; guest: boolean; games: number; last: number }
+  const tallies = new Map<string, Tally>();
+  const tally = (t: Tally) => {
+    const cur = tallies.get(t.key);
+    if (cur) { cur.games++; cur.last = Math.max(cur.last, t.last); } else tallies.set(t.key, t);
+  };
+  for (const family of order) {
+    const list = groups.get(family)!;
+    const mine = list.filter((r) => r.user_id === uid);
+    if (!mine.length) continue;
+    const use = mine.find((r) => r.end_reason !== 'abandoned') ?? mine.find((r) => r.end_reason === 'abandoned');
+    if (!use) continue;
+    if (use.end_reason === 'abandoned') {
+      if (!(use.rated && use.leaver_id === uid)) continue; // not a counted game; streak untouched
+      games++; run = 0;
+    } else {
+      games++;
+      if (use.won) { wins++; run++; best = Math.max(best, run); } else run = 0;
+      for (const r of list) {
+        if (r.game_id !== use.game_id) continue;
+        if (r.user_id !== uid) sideRecorded = true;
+        let st: Record<string, number> = {};
+        try { st = JSON.parse(r.stats); } catch { /* skip */ }
+        for (const k of TEAM_PERF_KEYS) perf[k] += Number(st[k]) || 0;
+      }
+    }
+    if (use.partner_id) {
+      tally({ key: `u:${use.partner_id}`, rawId: use.partner_id, seatName: '', bot: false, guest: false, games: 1, last: use.ended_at });
+    } else {
+      let seats: { name: string; side: number; kind: string; uid?: string }[] = [];
+      try { seats = JSON.parse(use.seats); } catch { /* skip */ }
+      const mate = seats.find((s) => s.side === use.side && !(s.kind === 'user' && s.uid === uid));
+      if (mate) {
+        if (mate.kind === 'user' && mate.uid) tally({ key: `u:${mate.uid}`, rawId: mate.uid, seatName: mate.name, bot: false, guest: false, games: 1, last: use.ended_at });
+        else tally({ key: `n:${mate.name}`, rawId: null, seatName: mate.name, bot: mate.kind === 'bot', guest: mate.kind === 'guest', games: 1, last: use.ended_at });
+      }
+    }
+  }
+  const ranked = [...tallies.values()].sort((a, b) => b.games - a.games || b.last - a.last);
+  const userInfo = new Map<string, { username: string; avatar: string | null }>();
+  const rawIds = ranked.filter((t) => t.rawId).map((t) => t.rawId!);
+  if (rawIds.length) {
+    const us = (await db.prepare(`SELECT id, username, avatar FROM users WHERE id IN (${rawIds.map(() => '?').join(',')})`).bind(...rawIds).all<{ id: string; username: string | null; avatar: string | null }>()).results;
+    for (const u of us) userInfo.set(u.id, { username: u.username ?? 'Player', avatar: u.avatar });
+  }
+  const toPartner = (t: Tally): TeamPartnerOut => (t.rawId
+    ? { id: `u:${t.rawId}`, name: userInfo.get(t.rawId)?.username ?? (t.seatName || 'Player'), avatar: userInfo.get(t.rawId)?.avatar ?? null, games: t.games }
+    : { name: t.seatName, ...(t.bot ? { bot: true } : {}), ...(t.guest ? { guest: true } : {}), games: t.games });
+  const [main, ...rest] = ranked;
+  return {
+    name, games, wins, losses: games - wins,
+    winPct: games ? Math.round((1000 * wins) / games) / 10 : null,
+    streak: run, bestStreak: best,
+    accuracy: perf.bids ? Math.round((1000 * perf.made) / perf.bids) / 10 : null,
+    booksPerHand: perf.hands ? Math.round((100 * perf.books) / perf.hands) / 100 : null,
+    nil: `${perf.nilMade}/${perf.nilBids}`, wheels: perf.wheels,
+    recorded: sideRecorded ? 'side' : 'self',
+    partner: main ? toPartner(main) : null,
+    others: rest.map((t) => ({ name: toPartner(t).name, games: t.games })),
+  };
 }
 
 export async function profileFor(db: D1Database, username: string, viewer: string | null): Promise<ProfileOut | null> {
@@ -79,9 +212,11 @@ export async function profileFor(db: D1Database, username: string, viewer: strin
     JOIN games g ON g.id = me.game_id AND COALESCE(g.end_reason, 'finished') != 'abandoned'
     WHERE me.user_id = ? GROUP BY o.user_id ORDER BY games DESC LIMIT 8`).bind(u.id).all<{ id: string; name: string | null; games: number; wins: number; losses: number }>()).results;
   const store = new SocialStore(db);
+  const teamNamesOut = teams.slice(0, 6);
+  const teamStats = await Promise.all(teamNamesOut.map((t) => teamRecordFor(db, u.id, t)));
   const out: ProfileOut = {
     id: u.id, avatar: u.avatar,
-    username: u.username, memberSince: u.created_at, tagline: u.tagline, region: u.region, badges, teamNames: teams.slice(0, 6), ratings: await store.ratings(u.id),
+    username: u.username, memberSince: u.created_at, tagline: u.tagline, region: u.region, badges, teamNames: teamNamesOut, teams: teamStats, ratings: await store.ratings(u.id),
     totals: { games: stats.games, wins: stats.wins },
     h2h: h2h.map((r) => ({ id: `u:${r.id}`, name: r.name ?? 'Player', games: r.games, wins: r.wins, losses: r.losses })),
     champion: champ?.n ?? 0,

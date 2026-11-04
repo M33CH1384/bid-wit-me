@@ -217,6 +217,17 @@ html[data-theme="neon"] .soc-wire-byline { color: #5BDFFF; }
 .soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 7px; font-size: 12px; min-height: 40px; }
 .soc-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .soc-badge-chip { font-size: 13px; padding: 4px 9px; border-radius: 999px; background: rgba(var(--gold-rgb),.12); border: 1px solid rgba(var(--gold-rgb),.35); }
+/* Tappable team names (owner, 2026-11-04): the chip is a real button; the
+   open team carries the stronger gold ring, and its record renders inline
+   directly under the chip row in the profile's stat language. */
+.soc-badge-chip.team-chip { font: inherit; color: inherit; cursor: pointer; min-height: 32px; }
+.soc-badge-chip.team-chip.on { background: rgba(var(--gold-rgb),.3); border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.team-detail { margin-top: 10px; display: grid; gap: 8px; }
+.team-detail-name { font-family: var(--display); font-size: 17px; letter-spacing: .02em; }
+.team-partner-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.team-partner-row .link { font: inherit; font-weight: 700; }
+.team-others { margin: 0; }
+.team-detail .team-summary { grid-template-columns: repeat(3, 1fr); }
 .soc-h2h { width: 100%; border-collapse: collapse; font-size: 14px; }
 .soc-h2h td { padding: 4px 2px; border-bottom: 1px solid rgba(255,255,255,.06); }
 .soc-h2h tr:nth-child(even) td { background: rgba(255,255,255,.03); }

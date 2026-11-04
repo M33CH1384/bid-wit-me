@@ -136,10 +136,34 @@ interface CredData {
   dailyBonus?: { granted: boolean; amount: number; streak: number; day: string };
 }
 
+/** One partner on a team record: signed-in partners carry their social id
+ *  ('u:<account id>') for profile tap-through; bot/guest partners are
+ *  display names only — they have no profile. */
+interface TeamPartnerData {
+  id?: string; name: string; avatar?: string | null; bot?: boolean; guest?: boolean; games: number;
+}
+
+/** One team name's real recorded record, computed server-side from the
+ *  profile player's games played under that name. `recorded` says whose
+ *  rows the performance lines aggregate: 'side' = both partners recorded,
+ *  'self' = only the profile player's rows exist (bot/guest partner). */
+interface TeamStatData {
+  name: string;
+  games: number; wins: number; losses: number; winPct: number | null;
+  streak: number; bestStreak: number;
+  accuracy: number | null; booksPerHand: number | null; nil: string; wheels: number;
+  recorded: 'side' | 'self';
+  partner: TeamPartnerData | null;
+  others: { name: string; games: number }[];
+}
+
 /** The social-record payload (/api/social/profile/:name). */
 interface SocialProfileData {
   id?: string; avatar?: string | null;
   username: string; memberSince: number; tagline?: string | null; region?: string | null; badges: { id: string; earnedAt: number }[]; teamNames: string[];
+  /** per-team records aligned with teamNames; optional so a payload from
+   *  an older deploy keeps the inert name chips instead of dead buttons */
+  teams?: TeamStatData[];
   ratings: { team?: number; cutthroat?: number }; totals: { games: number; wins: number };
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[]; vsYou?: { games: number; wins: number; losses: number }; champion: number;
   stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; wheels: number; bjWins: number; bidSec: number | null; playSec: number | null };
@@ -377,6 +401,59 @@ function StatRows({ rows }: { rows: [string, string][] }) {
   );
 }
 
+/** A team name's detail (owner, 2026-11-04: tapping a team name shows that
+ *  team's stats) — rendered inline under the chip row, the profile family's
+ *  drill-in pattern. Only what the server record honestly carries: a team
+ *  with no recorded games gets the empty state, and a metric the aggregate
+ *  cannot support (no bids, no hands) omits its row instead of showing a
+ *  dressed-up zero. */
+function TeamDetail({ team, onPartner }: { team: TeamStatData; onPartner: (name: string, id?: string) => void }) {
+  const partner = team.partner;
+  const rows: [string, string][] = [
+    ['Win streak', `${team.streak} (best ${team.bestStreak})`],
+    ...(team.accuracy !== null ? [['Bid accuracy', `${team.accuracy}%`] as [string, string]] : []),
+    ...(team.booksPerHand !== null ? [['Books / hand', String(team.booksPerHand)] as [string, string]] : []),
+    ['Nils made', team.nil],
+    ['Wheels', String(team.wheels)],
+  ];
+  return (
+    <div className="team-detail" data-testid="team-detail">
+      <div className="team-detail-name"><b>{team.name}</b></div>
+      {partner && (
+        <div className="team-partner-row">
+          <AvatarCircle pic={partner.avatar ?? null} name={partner.name} className="soc-av"
+            onTap={partner.id ? () => onPartner(partner.name, partner.id) : undefined} />
+          {partner.id
+            ? <button type="button" className="link" data-testid="team-partner" onClick={() => onPartner(partner.name, partner.id)}>{partner.name}</button>
+            : <span>{partner.name}</span>}
+          <span className="soc-muted">
+            {partner.bot ? 'Bot partner · ' : partner.guest ? 'Guest partner · ' : ''}
+            {partner.games} game{partner.games === 1 ? '' : 's'} together
+          </span>
+        </div>
+      )}
+      {team.others.length > 0 && (
+        <p className="soc-muted team-others">Also teamed with {team.others.map((o) => `${o.name} (${o.games} game${o.games === 1 ? '' : 's'})`).join(', ')}</p>
+      )}
+      {team.games === 0 ? (
+        <p className="soc-muted" data-testid="team-empty">No recorded games under this name yet. Games this team plays while signed in will build its record here.</p>
+      ) : (
+        <>
+          <div className="soc-stats team-summary">
+            <div><b>{team.games}</b><small>games</small></div>
+            <div><b>{team.wins}–{team.losses}</b><small>record</small></div>
+            <div><b>{team.winPct === null ? '—' : `${team.winPct}%`}</b><small>win %</small></div>
+          </div>
+          {team.recorded === 'self' && (
+            <p className="soc-muted">Your numbers in these games — bot and guest partners are not recorded.</p>
+          )}
+          <StatRows rows={rows} />
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Social-links editor: one row per platform; the server normalizes handles to
  *  canonical profile URLs and rejects anything that isn't really on the platform.
  *  It renders only inside Edit profile mode (Demetrius 2026-10-20: the whole
@@ -446,6 +523,8 @@ export function ProfileView({ host, name, id }: {
   const acct = useAccount();
   const selfRoute = host === 'page' && !name;
   const [tab, setTab] = useState<Tab>('stats');
+  /** The team name whose stats are open under the Team names chips. */
+  const [openTeam, setOpenTeam] = useState<string | null>(null);
   const [p, setP] = useState<SocialProfileData | null | 'missing'>(null);
   const [cred, setCred] = useState<CredData | null>(null);
   const [credErr, setCredErr] = useState<string | null>(null);
@@ -493,6 +572,7 @@ export function ProfileView({ host, name, id }: {
   useEffect(() => {
     if (!subjectName) return;
     let alive = true;
+    setOpenTeam(null);
     setP(null);
     fetch(`/api/social/profile/${encodeURIComponent(subjectName)}`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : 'missing'))
@@ -994,7 +1074,20 @@ export function ProfileView({ host, name, id }: {
             {socialP && (
               <>
                 <h4>Team names</h4>
-                <div className="soc-badges">{socialP.teamNames.length ? socialP.teamNames.map((t) => <span key={t} className="soc-badge-chip">{t}</span>) : <span className="soc-muted">None yet</span>}</div>
+                {socialP.teams ? (
+                  <>
+                    <div className="soc-badges">{socialP.teams.length ? socialP.teams.map((t) => (
+                      <button type="button" key={t.name} className={`soc-badge-chip team-chip${openTeam === t.name ? ' on' : ''}`}
+                        data-testid="team-chip" data-team={t.name} aria-expanded={openTeam === t.name}
+                        onClick={() => setOpenTeam(openTeam === t.name ? null : t.name)}>{t.name}</button>
+                    )) : <span className="soc-muted">None yet</span>}</div>
+                    {openTeam && socialP.teams.find((t) => t.name === openTeam) && (
+                      <TeamDetail team={socialP.teams.find((t) => t.name === openTeam)!} onPartner={openProfile} />
+                    )}
+                  </>
+                ) : (
+                  <div className="soc-badges">{socialP.teamNames.length ? socialP.teamNames.map((t) => <span key={t} className="soc-badge-chip">{t}</span>) : <span className="soc-muted">None yet</span>}</div>
+                )}
                 {rivalry && <p className="soc-vs" data-testid="profile-rivalry">🔥 Rivalry — {rivalry.name}: <b>{rivalry.wins}–{rivalry.losses}</b> in {rivalry.games} game{rivalry.games === 1 ? '' : 's'}</p>}
                 <h4>Head-to-head</h4>
                 {socialP.h2h.length ? (
