@@ -854,7 +854,7 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
     for (const seat of newlyEliminated(p.eliminated, snap.eliminated)) {
       if (calm()) continue;
       const r = plateRectOf(seat);
-      if (r) addShot({ kind: 'crack', x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h }, 850);
+      if (r) { addShot({ kind: 'crack', x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h }, 850); sound.play('glassCrack'); }
     }
 
     // NIL, BUSTED: the moment a live nil takes its first trick — the same
@@ -868,10 +868,10 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
         // seat's trick slot) when the layout knows it, else the plate
         const sp = slotPt(seat);
         const slot = layoutWin()?.slots?.[seat];
-        if (sp && slot) addShot({ kind: 'crack', x: sp.x, y: sp.y, w: slot.w, h: slot.h }, 780);
+        if (sp && slot) { addShot({ kind: 'crack', x: sp.x, y: sp.y, w: slot.w, h: slot.h }, 780); sound.play('glassCrack'); }
         else {
           const r = plateRectOf(seat);
-          if (r) addShot({ kind: 'crack', x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h }, 780);
+          if (r) { addShot({ kind: 'crack', x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h }, 780); sound.play('glassCrack'); }
         }
       }
     }

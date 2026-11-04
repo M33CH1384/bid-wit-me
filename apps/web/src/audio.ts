@@ -64,6 +64,14 @@ export type Sfx =
   // CREDITS.md) — an extinguisher-blast snap over a large steam burst — played
   // once when another seat breaks a rendered streak fire (animfx streakDeath).
   | 'fireOut'
+  // Screen crack (owner 2026-11-04: "When the screen cracking animation
+  // happens there is no sound"): a RECORDED glass fracture (SSE Library,
+  // CC0 — CREDITS.md) — a single pane crack over a crystalline settle —
+  // played once when a plate cracks in the animfx layer (a cutthroat
+  // elimination, a busted nil). The animation shipped silent; this is
+  // its first cue, fired at the fracture's onset frame (offset 0 — the
+  // main vein carries no CSS delay).
+  | 'glassCrack'
   // App-open sting slot (owner 2026-11-04): a RECORDED card shuffle resolving
   // into a whole-deck slam (freesound CC0 — CREDITS.md), never synthesized.
   // The first cut's wake()-latch trigger was RETIRED the same day on the
@@ -76,7 +84,7 @@ export type Sfx =
   | 'cloth';
 
 /** SFX that bot voices duck under, and for how long (ms). */
-const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, mega: 4400, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, trumpCut: 700, deuceDuel: 700, fireOut: 900, win: 2000, lose: 1600, set: 1200, nil: 1600 };
+const DUCK_MS: Partial<Record<Sfx, number>> = { runSlam: 700, nuke: 3600, mega: 4400, tornado: 2600, wheelsCar: 3000, jokerBig: 1100, shot: 1200, shotgun: 700, pump: 500, siren: 2700, docSting: 2400, streak2: 1400, streak3: 1800, overcut3: 1000, trumpCut: 700, deuceDuel: 700, glassCrack: 700, fireOut: 900, win: 2000, lose: 1600, set: 1200, nil: 1600 };
 
 export interface SoundSettings { on: boolean; volume: number; ambient: boolean; music: boolean; musicVolume: number; /** the venue's quiet ambient sound bed (Release 7), default on */ venueSound: boolean;
   /** Chat notification sounds (DM chime / global-chat blip). Absent = on. */ chatSounds?: boolean;
@@ -596,6 +604,10 @@ const FILES: Record<string, string[]> = {
   // put-out hiss. Same fetch/decode path, so SFX_COUNT (the watchdog's
   // readiness bar, derived from this map) counts it automatically.
   fireOut: ['fire-out'],
+  // Screen crack one-shot (SSE Library recording, CREDITS.md): the glass
+  // fracture for the animfx plate crack. Same fetch/decode path, so
+  // SFX_COUNT counts it automatically.
+  glassCrack: ['glass-crack'],
   // Lightning one-shot (SSE Library recording, CREDITS.md): the recorded
   // thunder crack for the big over-cut's bolt. Same fetch/decode path, so
   // SFX_COUNT counts it automatically.
@@ -2483,6 +2495,12 @@ class Engine {
       // a hiss should read as an event, not an explosion. A whisper of
       // rate jitter so no two put-outs are sample-identical.
       case 'fireOut': return this.sample('fireOut', t, 0.85 * g, 0.98 + Math.random() * 0.04);
+      // Screen crack: the plate-crack fracture, centred and staged exactly
+      // like the fireOut hiss beside it in the animfx layer (that layer
+      // cannot ground a seat for its plate events either). No delay —
+      // play() already set t = ctx.currentTime, and the fracture's first
+      // visible frame is the shot's mount instant.
+      case 'glassCrack': return this.sample('glassCrack', t, 0.85 * g, 0.98 + Math.random() * 0.04);
       case 'tap': return this.sample('tap', t, 0.5 * g, 1.1);
       case 'flip': this.sample('deal', t, 0.32 * g, 1.55); this.sample('deal', t + 0.07, 0.22 * g, 1.75); return this.whoosh(t, 0.06 * g);
       case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05, undefined, opts.seat, opts.playerCount); return this.whoosh(t, 0.18 * g);
