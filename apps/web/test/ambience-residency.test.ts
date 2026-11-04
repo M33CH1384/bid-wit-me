@@ -14,7 +14,8 @@
  * NOT evict (no re-decode hiccup for flipping venue sound off and on).
  * (Eight recorded beds since the Yacht wire-in, 2026-11-02; nine
  * since the Beach wire-in, 2026-11-03; ten since the Mansion
- * wire-in, 2026-11-03; eleven since the Vegas wire-in, 2026-11-04.)
+ * wire-in, 2026-11-03; eleven since the Vegas wire-in, 2026-11-04;
+ * twelve since the Classic Studio wire-in, 2026-11-04.)
  *
  * This suite drives the REAL Engine on the watchdog suite's fake-context
  * harness and pins the cache contents across a full venue-hop sequence.
@@ -178,7 +179,7 @@ describe('the ambience cache is bound to the current venue', () => {
     expect(keys().some((k) => k.includes('pjs'))).toBe(false);
   });
 
-  it('barbershop, kitchen, cookout, the church basement, the rooftop, the yacht, the beach, the mansion and the vegas room each hold only their own set', async () => {
+  it('barbershop, kitchen, cookout, the church basement, the rooftop, the yacht, the beach, the mansion, the vegas room and the classic studio each hold only their own set', async () => {
     sound.setVenueBed('barbershop');
     await settle();
     expect(keys()).toContain('brb-bed');
@@ -215,6 +216,18 @@ describe('the ambience cache is bound to the current venue', () => {
     await settle();
     expect(keys()).toContain('veg-bed');
     expect(keys().every((k) => k === 'veg-bed' || k.includes('vegas-'))).toBe(true);
+    sound.setVenueBed('studio');
+    await settle();
+    expect(keys()).toContain('cls-bed');
+    expect(keys().every((k) => k === 'cls-bed' || k.includes('classic-'))).toBe(true);
+    // The Rec Center's composed bed IS the studio set (the recording
+    // under the gym's own life — owner, 2026-11-04): hopping from the
+    // studio to the stop keeps the very same buffers resident.
+    sound.setVenueBed('rec');
+    await settle();
+    expect(sound.venueBedNow).toBe('rec');
+    expect(keys()).toContain('cls-bed');
+    expect(keys().every((k) => k === 'cls-bed' || k.includes('classic-'))).toBe(true);
   });
 
   it('returning to The Pj\'s re-fetches and re-decodes its bed, which starts', async () => {
@@ -239,9 +252,27 @@ describe('the ambience cache is bound to the current venue', () => {
   });
 
   it('a synthesized venue holds no recorded buffers at all', async () => {
+    sound.setVenueBed('porch');
+    await settle();
+    expect(sound.venueBedNow).toBe('porch');
+    expect(keys()).toEqual([]);
+  });
+
+  it("the Rec Center's composed bed holds exactly the studio set", async () => {
+    const CLS_BED = '/audio/ambience/classic-bed.mp3';
+    const fetchesBefore = fetchCounts.get(CLS_BED) ?? 0;
     sound.setVenueBed('rec');
     await settle();
     expect(sound.venueBedNow).toBe('rec');
-    expect(keys()).toEqual([]);
+    expect(keys()).toEqual([
+      '/audio/ambience/classic-event-card-deal.mp3',
+      '/audio/ambience/classic-event-card-shuffle.mp3',
+      '/audio/ambience/classic-event-chair-shift.mp3',
+      '/audio/ambience/classic-event-glass-set-down.mp3',
+      'cls-bed',
+    ]);
+    // The porch hop evicted the set, so the composed bed re-fetched
+    // the studio recording — once, from the shared venue asset.
+    expect(fetchCounts.get(CLS_BED)).toBe(fetchesBefore + 1);
   });
 });

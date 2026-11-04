@@ -303,6 +303,24 @@ export const MAN_BED_URL = '/audio/ambience/mansion-bed.mp3';
  * engine after the bed starts.
  */
 export const VEG_BED_URL = '/audio/ambience/vegas-bed.mp3';
+/**
+ * The Classic Studio's recorded bed (owner, 2026-11-04): gated
+ * exactly like the Mansion's bed — ONE shared unit for both
+ * surfaces the bed serves: the engine fetches it at every classic
+ * table, the regular venue and story Stop 3 alike (the Rec
+ * Center's composed 'rec' bed starts the same recording under its
+ * gym treatment — the owner ruled the stop hears the studio bed
+ * too, 2026-11-04 — so at High the loader's promise covers it on
+ * both compositions; it is one shared asset, never two units).
+ * Classic is also the FALLBACK room (an unknown venue id resolves
+ * to it), so the unit rides every table whose venue resolves to
+ * classic: picked, random-rolled or fallen back to. At Low it
+ * streams in behind the loader as music always has. The bed's
+ * event one-shots (card shuffle, card deal, glass set down, chair
+ * shift) deliberately do NOT gate: optional life, loaded lazily
+ * by the engine after the bed starts.
+ */
+export const CLS_BED_URL = '/audio/ambience/classic-bed.mp3';
 export function roomAudioUrls(
   venue: string,
   quality: 'high' | 'low',
@@ -320,6 +338,7 @@ export function roomAudioUrls(
   if (venue === 'beach') return [{ label: 'ambience bed (Beach)', url: BEACH_BED_URL }];
   if (venue === 'mansion') return [{ label: 'ambience bed (Mansion)', url: MAN_BED_URL }];
   if (venue === 'vegas') return [{ label: 'ambience bed (Vegas)', url: VEG_BED_URL }];
+  if (venue === 'classic') return [{ label: 'ambience bed (Classic Studio)', url: CLS_BED_URL }];
   return [];
 }
 

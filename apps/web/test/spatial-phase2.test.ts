@@ -26,7 +26,7 @@ describe('spatial phase 2 plumbing', () => {
   it('soundscape resolver: the venue\'s signature bed wins; no venue = seeded roll', () => {
     expect(resolveSoundscape({ venue: 'barbershop', seed: 'g1' })).toBe('barbershop');
     expect(resolveSoundscape({ venue: 'church', seed: 'g1' })).toBe('basement'); // Church's room IS Basement Spades Night, bed included
-    expect(resolveSoundscape({ venue: 'classic' })).toBe('none'); // Classic Studio's signature is quiet
+    expect(resolveSoundscape({ venue: 'classic' })).toBe('studio'); // Classic Studio's signature is its recorded studio air (2026-11-04; it was silent 'none' before)
     const roll = resolveSoundscape({ seed: 'game-42' });
     expect(roll).not.toBe('none'); expect(resolveSoundscape({ seed: 'game-42' })).toBe(roll); // deterministic: online agrees
     expect(resolveSoundscape({ venue: 'random', seed: 'game-42' })).toBe(roll); // Random: the roll picks the room

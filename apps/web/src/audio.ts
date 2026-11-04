@@ -161,7 +161,7 @@ export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSe
   return patched;
 }
 /** venue ambience beds (see venues.ts → bed) */
-export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street' | 'rec' | 'porch';
+export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street' | 'rec' | 'porch' | 'studio';
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
 
 export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string; /** story-score tracks: excluded from the general shuffle, reached only via the story mood (setStoryStop) */ storyOnly?: boolean; /** the menu theme: excluded from the general shuffle, reached only in menu context (pickNext) */ menuOnly?: boolean }
@@ -371,6 +371,33 @@ export const TRACKS: Track[] = [
   { file: 'on-the-other-side-of-bad', title: 'On The Other Side Of Bad', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/on-the-other-side-of-bad-lofi-nostalgic-mp3/' },
   { file: 'shimmer', title: 'Shimmer', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/shimmer-lofi-chill/' },
   { file: 'funky-chunk', title: 'Funky Chunk', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Funky%20Chunk.mp3', credit: '"Funky Chunk" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  // The Classic Studio set (owner sample pick, 2026-11-04 — the
+  // audition's recommended six approved as presented): the game's
+  // founding sound, finished. The room opened the game leaning on
+  // three lo-fi tracks over the general shuffle; this set deepens
+  // that identity into a closed pin like every finished venue —
+  // warm lo-fi / jazzy boom-bap instrumentals, mellow and head-nod,
+  // nothing aggressive: three Kevin MacLeod cuts (CC BY 4.0, via
+  // incompetech) — "Vicious" the dusty identity pick, "Slow Jam"
+  // the laid-back mid, "Cold Sober" the reflective close — around
+  // three HoliznaCC0 lofi instrumentals (CC0 1.0): "Color Of A
+  // Soul" the warm heart, "Reminders" the nostalgic drift and
+  // "Warm Fuzz" the soft retro glow. They join the classic pin in
+  // spatial.ts; appended last so every existing track index keeps
+  // its meaning, exactly like the sets above. The founding lean
+  // trio (Windows Down / Chillin Hard / Glad To Be Stuck Inside)
+  // stays in the general pool — only the venue's lean retires.
+  // "Dream Catcher" (MacLeod) and "Orchid" (HoliznaCC0) were the
+  // audition's held-out optionals and stay out unplayed, with
+  // "ZigZag" and "Saturation" banked as cut-ready substitutes.
+  // This is the closed rotation the owner actually picked — the
+  // last venue in the program to get one.
+  { file: 'vicious', title: 'Vicious', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Vicious.mp3', credit: '"Vicious" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'slow-jam', title: 'Slow Jam', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Slow%20Jam.mp3', credit: '"Slow Jam" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'cold-sober', title: 'Cold Sober', artist: 'Kevin MacLeod', license: 'CC BY 4.0', source: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Cold%20Sober.mp3', credit: '"Cold Sober" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/' },
+  { file: 'color-of-a-soul', title: 'Color Of A Soul', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/color-of-a-soul-lofi-calm-nostalgic/' },
+  { file: 'reminders', title: 'Reminders', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/reminders-lofi-calm-nostalgic/' },
+  { file: 'warm-fuzz', title: 'Warm Fuzz', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/warm-fuzz-lofi-retro/' },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
@@ -916,16 +943,56 @@ const VEGAS_EVENT_GAIN = 3.261;
  *  step noise, p99 0.0239). */
 const VEG_BED_LEAD_S = 1105 / 44100;
 const VEG_BED_SECONDS = 64;
+/** The Classic Studio's recorded bed (owner sample pick, 2026-11-04):
+ *  a 64.000 s seamless loop of treated-studio air — a faint HVAC
+ *  breath and the soft pressure of a treated room, built from two
+ *  CC0 recordings (SSE Library) and nothing else: no crowd, no
+ *  voices, no music bleed. This room played in SILENCE under the
+ *  music while the other eleven rooms were finished — 'none' was
+ *  its bed and there was no synth stand-in either — so this is the
+ *  room's first bed, not a replacement. It is the quietest bed in
+ *  the game by design, and the room's life rides over it as
+ *  one-shot events on their own timers: a deck shuffled at the
+ *  table, cards dealt, a glass set down on the wood, a chair
+ *  shifting — the sparsest event pool in the program, because a
+ *  studio has no floor show. A chip stack was hunted for the pool
+ *  and omitted rather than faked: the only chip recording in the
+ *  approved sources carries a room of voices under the chips,
+ *  wrong for a crowd:'none' room (see CREDITS.md). */
+const CLS_BED_URL = '/audio/ambience/classic-bed.mp3';
+const CLS_EVENT_URLS = {
+  cardShuffle: ['/audio/ambience/classic-event-card-shuffle.mp3'],
+  cardDeal: ['/audio/ambience/classic-event-card-deal.mp3'],
+  glassSetDown: ['/audio/ambience/classic-event-glass-set-down.mp3'],
+  chairShift: ['/audio/ambience/classic-event-chair-shift.mp3'],
+} as const;
+/** Event staging gain, same construction as MANSION_EVENT_GAIN:
+ *  the bed file is the −16.4 LUFS master; the event clips keep
+ *  their premaster staging, so they play through this gain to
+ *  hold the approved demo balance (the shipped bed sits
+ *  +3.28 dB over its premaster — measured RMS on the shipped
+ *  files). */
+const CLASSIC_EVENT_GAIN = 1.459;
+/** The bed's MP3 loop trim, from the shipped file's own measured
+ *  offsets: 1105 samples of encoder delay at 44.1 kHz ahead of
+ *  exactly 64.000 s of content — same encoder settings as The
+ *  Pj's, Speakeasy, Barbershop, Grandma's, Cookout, Church,
+ *  Rooftop, Yacht, Beach, Mansion and Vegas beds (the shipped
+ *  file's measured seam step, 0.0107, sits far below the
+ *  material's own step noise, p99 0.0435). */
+const CLS_BED_LEAD_S = 1105 / 44100;
+const CLS_BED_SECONDS = 64;
 /** Every recorded venue's ambience-cache footprint: the bed's cache key
  *  plus every event URL the venue lazy-loads. The engine binds its decode
  *  cache to the CURRENT venue (bindAmbienceToVenue, crash-2 lane
- *  2026-11-01): eleven recorded 64 s beds decode to ~23–25 MB each and the
+ *  2026-11-01): twelve recorded 64 s beds decode to ~23–25 MB each and the
  *  event one-shots add ~15–25 MB across venues, and the cache used to
  *  keep ALL of it for the life of the context — up to ~150–175 MB of
  *  decoded audio accumulating in exactly the table-hopping pattern that
- *  feeds iOS process death. Synthesized beds (rec, porch)
- *  decode nothing and map to no entry: switching to one evicts
- *  every recorded buffer. */
+ *  feeds iOS process death. The synthesized porch bed
+ *  decodes nothing and maps to no entry: switching to it evicts
+ *  every recorded buffer. The Rec Center's composed 'rec' bed
+ *  maps to the studio set it starts (see its entry below). */
 const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readonly string[] }>> = {
   street: { bedKey: 'pjs-bed', urls: [PJS_BED_URL, ...Object.values(PJS_EVENT_URLS).flat()] },
   jazz: { bedKey: 'spk-bed', urls: [SPK_BED_URL, ...Object.values(SPK_EVENT_URLS).flat()] },
@@ -938,6 +1005,12 @@ const RECORDED_AMBIENCE: Partial<Record<VenueBed, { bedKey: string; urls: readon
   beach: { bedKey: 'bch-bed', urls: [BEACH_BED_URL, ...Object.values(BEACH_EVENT_URLS).flat()] },
   mansion: { bedKey: 'man-bed', urls: [MAN_BED_URL, ...Object.values(MAN_EVENT_URLS).flat()] },
   casino: { bedKey: 'veg-bed', urls: [VEG_BED_URL, ...Object.values(VEG_EVENT_URLS).flat()] },
+  studio: { bedKey: 'cls-bed', urls: [CLS_BED_URL, ...Object.values(CLS_EVENT_URLS).flat()] },
+  // The Rec Center's composed bed (owner, 2026-11-04): its footprint IS
+  // the studio set — the 'rec' case starts the studio recording under
+  // the gym's synthesized life, so the cache binding keeps the same
+  // buffers resident across a Classic ↔ Rec Center hop.
+  rec: { bedKey: 'cls-bed', urls: [CLS_BED_URL, ...Object.values(CLS_EVENT_URLS).flat()] },
 };
 /** Trim a decoded MP3 loop to its true content — [encoder delay][content][padding]
  *  → content only — so buffer looping is seamless. Returns the buffer untouched
@@ -3337,10 +3410,10 @@ class Engine {
   /**
    * STORY MODE AUDIO API (the scene/story UI calls exactly this; Story Audio Pass 2026-10-21):
    * entering a stop applies its whole audio identity from spatial.ts STORY_STOP_AUDIO — the
-   * score mood (theme / danger / king) and, where the stop's venue has no bed of its own
-   * (the Rec Center plays in the silent Classic Studio), a bed override (the gym 'rec' bed).
-   * Pass null when leaving story mode; enterContext('menu') also clears both. The venue bed
-   * itself still comes from applySoundscape — the override only fills a silent venue.
+   * score mood (theme / danger / king) and, where the stop names one, a bed override (the
+   * Rec Center's gym 'rec' bed). Pass null when leaving story mode; enterContext('menu')
+   * also clears both. The venue bed itself still comes from applySoundscape — where a
+   * stop names an override, syncVenue gives it precedence over the venue bed outright.
    * Call it BEFORE the first scene line: the bed fades in under the scene and the score
    * crossfades promptly (queueContextRetarget), so the first 60 seconds land as one production.
    */
@@ -4379,6 +4452,74 @@ class Engine {
     arm('slotPayout', 240, 480, true);
   }
 
+  private startClassicBed() {
+    const sink = this.venueNodes;
+    const bed = this.venuePlaying;
+    let through: GainNode | null = null;
+    if (this.ctx && this.venueBus) {
+      through = this.ctx.createGain();
+      through.connect(this.venueBus);
+      const node = through;
+      sink.push({ stop: () => { try { node.disconnect(); } catch { /* already gone */ } } });
+    }
+    void this.loadAmbience('cls-bed', CLS_BED_URL).then((raw) => {
+      if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = trimLoopBuffer(this.ctx, raw, CLS_BED_LEAD_S, CLS_BED_SECONDS);
+      src.loop = true;
+      src.connect(through ?? this.venueBus);
+      src.start();
+      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+    });
+    for (const url of [...CLS_EVENT_URLS.cardShuffle, ...CLS_EVENT_URLS.cardDeal, ...CLS_EVENT_URLS.glassSetDown, ...CLS_EVENT_URLS.chairShift]) void this.loadAmbience(url, url);
+    this.scheduleClassicEvents();
+  }
+
+  /** Classic Studio life over the recorded bed: four independent
+   *  randomized timers — a deck shuffled every 90–240 s, cards
+   *  dealt every 120–300 s, a glass set down on the wood every
+   *  150–300 s and a chair shifting every 180–360 s (samples-lane
+   *  densities, 2026-11-04) — sharing one busy gate, so an event
+   *  never talks over another (the street pattern). The sparsest
+   *  pool in the program: a treated studio, one table, nobody
+   *  else in the room — the spacing itself is the point. Each
+   *  kind has a single recording, so there is no variant to
+   *  rotate. The timers live in venueTimers, so leaving the
+   *  venue silences the room, and the first fire comes a
+   *  half-interval in, once the table settles. */
+  private scheduleClassicEvents() {
+    const bed = this.venuePlaying;
+    let busyUntil = 0; // ctx-time until which a playing event owns the deck
+    const play = (url: string): number => {
+      const buf = this.ambCache?.ctx === this.ctx ? this.ambCache.map.get(url) : undefined;
+      const c = this.ctx; const B = this.venueBus;
+      if (!buf || !c || !B) return 0;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const g = c.createGain(); g.gain.value = CLASSIC_EVENT_GAIN;
+      src.connect(g).connect(B);
+      src.start();
+      return buf.duration;
+    };
+    const arm = (kind: keyof typeof CLS_EVENT_URLS, min: number, max: number, first = false) => {
+      const span = (max - min) * (first ? 0.6 : 1);
+      const delay = min * (first ? 0.6 : 1) + Math.random() * span;
+      const id = window.setTimeout(() => {
+        if (this.venuePlaying !== bed) return;
+        if (this.ctx && this.ctx.state === 'running' && this.ctx.currentTime >= busyUntil) {
+          const now = this.ctx.currentTime;
+          const d = play(CLS_EVENT_URLS[kind][0]!);
+          if (d) busyUntil = now + d + 1;
+        }
+        arm(kind, min, max);
+      }, delay * 1000);
+      this.venueTimers.push(id);
+    };
+    arm('cardShuffle', 90, 240, true);
+    arm('cardDeal', 120, 300, true);
+    arm('glassSetDown', 150, 300, true);
+    arm('chairShift', 180, 360, true);
+  }
+
   private buildBed(bed: VenueBed) {
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
@@ -4517,6 +4658,26 @@ class Engine {
         this.startVegasBed();
         break;
       }
+      case 'studio': {
+        // The Classic Studio's bed is a RECORDING now (owner
+        // sample pick, 2026-11-04) — the room's FIRST bed: it
+        // played in silence by design ('none', no synthesized
+        // stand-in either) while the other eleven rooms were
+        // finished, and this closes the program. A seamless 64 s
+        // loop of treated-studio air: a faint HVAC breath and the
+        // soft pressure of the room, nothing else — the quietest
+        // bed in the game, for the room whose identity is quiet.
+        // The studio's life rides over it as one-shot events on
+        // their own timers (startClassicBed): a deck shuffled,
+        // cards dealt, a glass set down, a chair shifting — the
+        // sparsest pool in the program. Story Audio Pass: the
+        // Rec Center (Stop 3) plays in this room and hears this
+        // bed under its gym treatment — its 'rec' override names
+        // the composed bed whose case starts this same recording
+        // and layers the gym's life over it (owner, 2026-11-04).
+        this.startClassicBed();
+        break;
+      }
       case 'beach': {
         // The Beach's bed is a RECORDING now (owner sample pick,
         // 2026-11-03), replacing the synthesized stand-in (filtered-noise
@@ -4555,9 +4716,17 @@ class Engine {
       case 'rec':
         // The Rec Center (Story stop 3) — a gym that never fully empties: ball on hardwood,
         // shoes on the court, a buzzer's ghost. Reached only via the story bed override
-        // (STORY_STOP_AUDIO) since the stop's venue (Classic Studio) is silent by design.
-        murmur(0.9); room(1.1); this.vHum(120, 0.005);
-        this.vNoise('bandpass', 800, 0.4, 0.025, 0.11, 0.5); // hall air, big-room wash
+        // (STORY_STOP_AUDIO), which outranks the stop's venue bed outright. The stop plays
+        // in the Classic Studio, and since the studio gained its recorded bed the owner
+        // ruled the stop hears it too ("run the studio bed under Rec Center too",
+        // 2026-11-04): the studio's air is the room bed here — startClassicBed runs the
+        // recording and the studio's own sparse events, as Stop 10 hears the casino bed
+        // under its stop — and the gym's life layers over it: the murmur of a gym that
+        // never fully empties, the ball, the shoes, the buzzer. The old synthesized room
+        // layers (the lowpass room tone, the hall-air wash, the mains hum) are retired:
+        // the recording is the room now, and doubling the air would muddy both.
+        this.startClassicBed();
+        murmur(0.9);
         this.vEvery(5, 13, (t) => { this.tone(t, 95, 0.16, 'sine', 0.05, { glideTo: 55, dest: B }); this.tone(t + 0.42, 95, 0.14, 'sine', 0.035, { glideTo: 58, dest: B }); this.tone(t + 0.78, 95, 0.12, 'sine', 0.022, { glideTo: 60, dest: B }); }); // basketball dribble, slowing
         this.vEvery(4, 11, (t) => this.tone(t, 1050 + Math.random() * 300, 0.07, 'sine', 0.006, { glideTo: 1500 + Math.random() * 400, dest: B })); // shoe squeak
         this.vEvery(55, 110, (t) => { this.tone(t, 233, 0.5, 'square', 0.006, { filter: 900, dest: B }); }); // a buzzer, court over

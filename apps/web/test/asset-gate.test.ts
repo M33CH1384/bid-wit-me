@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ASSET_GATE_CAP_MS, BEACH_BED_URL, BRB_BED_URL, CHU_BED_URL, CTT_BED_URL, GMA_BED_URL, MAN_BED_URL, PJS_BED_URL, ROO_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, VEG_BED_URL, YACHT_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
+  ASSET_GATE_CAP_MS, BEACH_BED_URL, BRB_BED_URL, CHU_BED_URL, CLS_BED_URL, CTT_BED_URL, GMA_BED_URL, MAN_BED_URL, PJS_BED_URL, ROO_BED_URL, SEDAN_GLB_URL, SPK_BED_URL, VEG_BED_URL, YACHT_BED_URL, createAssetGate, gateLedgerFiles, gateLedgerVenue, imageSettled, loaderStillUp,
   noteRoomAssets, notedRoomAssets, roomAudioUrls, roomGlbUrls, storySeamMounts,
 } from '../src/assetGate';
 import { versusDismissReady } from '../src/VersusIntro';
@@ -328,6 +328,28 @@ describe('room asset enumeration', () => {
     expect(existsSync(new URL('../public/audio/ambience/vegas-bed.mp3', import.meta.url))).toBe(true);
     const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
     expect(audio).toContain(`const VEG_BED_URL = '${VEG_BED_URL}'`);
+  });
+
+  it("the Classic Studio's recorded bed rides the gate at High classic tables — regular venue AND story Rec Center on one shared unit, never Low", () => {
+    // Owner, 2026-11-04: the recorded studio-air bed joins the Classic
+    // Studio loader gate like every finished venue's bed (one unit at
+    // High at the regular venue — picked, random-rolled or the
+    // fallback room an unknown venue id lands on; the bed's event
+    // one-shots deliberately do not gate and are not listed here).
+    // The Rec Center shares the unit, on the owner's explicit call
+    // (2026-11-04 12:38 EST, "run the studio bed under Rec Center
+    // too"): the stop's composed 'rec' bed starts this same recording
+    // under its gym treatment, so the bed plays at that composition
+    // and the loader's promise covers it — the stop's gate gains the
+    // one shared unit, exactly like Stop 8 at the Mansion and Stop
+    // 10 at the Vegas room.
+    expect(roomAudioUrls('classic', 'high', null)).toEqual([{ label: expect.any(String), url: CLS_BED_URL }]);
+    expect(roomAudioUrls('classic', 'high', 'rec-center')).toEqual([{ label: expect.any(String), url: CLS_BED_URL }]);
+    expect(roomAudioUrls('classic', 'low', null)).toEqual([]);
+    expect(roomAudioUrls('classic', 'low', 'rec-center')).toEqual([]);
+    expect(existsSync(new URL('../public/audio/ambience/classic-bed.mp3', import.meta.url))).toBe(true);
+    const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+    expect(audio).toContain(`const CLS_BED_URL = '${CLS_BED_URL}'`);
   });
 
   it('the gate sedan URL is the very file PjsStreetRoom loads', () => {

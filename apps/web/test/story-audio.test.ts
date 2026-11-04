@@ -76,6 +76,17 @@ describe('upgraded venue beds (buildBed source pins)', () => {
   it('the gym bed exists for the Rec Center override', () => {
     expect(src).toContain("case 'rec':");
   });
+  it("the Rec Center's gym bed is composed over the recorded studio bed (owner, 2026-11-04)", () => {
+    // The stop plays in the Classic Studio; once the studio gained its
+    // recorded bed the owner ruled the stop hears it too ("run the
+    // studio bed under Rec Center too", 2026-11-04 12:38 EST): the
+    // 'rec' case starts the studio bed as the room bed and keeps the
+    // gym's own life — murmur, ball, shoes, buzzer — layered over it.
+    const recCase = src.slice(src.indexOf("case 'rec':"), src.indexOf("case 'porch':"));
+    expect(recCase).toContain('this.startClassicBed()');
+    expect(recCase).toContain('basketball dribble');
+    expect(recCase).toContain('a buzzer, court over');
+  });
   it('story-venue life layers are scheduled (hymn through the wall, scissors, screen door, gusts, car-stereo pass)', () => {
     for (const marker of ['hymn through the wall', 'scissors between cuts', 'screen door to the', 'wind chime two roofs over', 'a car rolls past slow with the bass up', 'money-quiet', 'the yard is alive']) {
       expect(src, marker).toContain(marker);

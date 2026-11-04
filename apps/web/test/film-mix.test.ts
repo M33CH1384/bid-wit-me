@@ -32,8 +32,12 @@ describe('the sample touches exactly two surfaces', () => {
   });
 
   it('all twelve venues keep their beds verbatim (the Porch bed is a story override, not a venue change)', () => {
+    // The classic cell moved 'none' → 'studio' with the Classic Studio
+    // wire-in (2026-11-04, owner pick): the room's first recorded bed.
+    // Every other cell is the pre-sample identity verbatim, and the
+    // Rec Center's 'rec' override above is untouched by it.
     expect(ROOM_STYLES.map((r) => [r.venue, r.bed])).toEqual([
-      ['classic', 'none'], ['backyard', 'cookout'], ['mansion', 'mansion'], ['barbershop', 'barbershop'],
+      ['classic', 'studio'], ['backyard', 'cookout'], ['mansion', 'mansion'], ['barbershop', 'barbershop'],
       ['church', 'basement'], ['rooftop', 'rooftop'], ['speakeasy', 'jazz'], ['vegas', 'casino'],
       ['beach', 'beach'], ['grandma', 'kitchen'], ['yacht', 'yacht'], ['blockAfterDark', 'street'],
     ]);
@@ -65,9 +69,9 @@ describe('the two new tracks', () => {
     }
   });
 
-  it('never enter the general pool (pool is still the 70 approved tracks)', () => {
+  it('never enter the general pool (pool is still the 76 approved tracks)', () => {
     const pool = generalPool();
-    expect(pool.length).toBe(70);
+    expect(pool.length).toBe(76);
     const files = pool.map((i) => TRACKS[i]!.file);
     expect(files).not.toContain('porch-theme');
     expect(files).not.toContain('menu-soul');

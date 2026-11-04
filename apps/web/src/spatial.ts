@@ -108,7 +108,7 @@ export interface RoomStyle { venue: string; name: string; bed: VenueBed; surface
 /** One sound style PER ROOM (Demetrius, supersedes shared families). Every repo venue gets its own
  *  ambience bed, reverb character, table surface and crowd. Pool/picker enumerate exactly these. */
 export const ROOM_STYLES: RoomStyle[] = [
-  { venue: 'classic', name: 'Classic Studio', bed: 'none', surface: 'felt', reverb: 'studio', crowd: 'none', music: { lean: ['windows-down', 'chillin-hard', 'glad-to-be-stuck-inside'] }, events: [] },
+  { venue: 'classic', name: 'Classic Studio', bed: 'studio', surface: 'felt', reverb: 'studio', crowd: 'none', music: { pin: ['vicious', 'slow-jam', 'cold-sober', 'color-of-a-soul', 'reminders', 'warm-fuzz'], lean: [] }, events: [] },
   { venue: 'backyard', name: 'Backyard Cookout', bed: 'cookout', surface: 'wood', reverb: 'dry-outdoor', crowd: 'party', music: { pin: ['make-funk', 'take-it-out', 'breath', 'saviour-above'], lean: [] }, events: [] },
   { venue: 'mansion', name: 'Mansion', bed: 'mansion', surface: 'glass', reverb: 'hall', crowd: 'low', music: { pin: ['ghost-town', 'backbay-lounge', 'thief-in-the-night', 'hard-boiled', 'phonk-ish'], lean: [] }, events: [] },
   { venue: 'barbershop', name: 'Barbershop', bed: 'barbershop', surface: 'wood', reverb: 'lively', crowd: 'low', music: { pin: ['funk-trunk', 'soul-sync', 'c-funk'], lean: [] }, events: [] },
@@ -130,9 +130,12 @@ export function styleForVenue(venue: string): RoomStyle | undefined { return ROO
  * 'theme' = the story theme in rotation, 'sparse' = the theme stripped down and looped for
  * the slow stops (Porch evening, Church Basement, Rooftop — the score breathes, per the
  * owner's range note), 'danger' = the tension bed looped, 'king' = the boss arrangement
- * looped. A stop may also name a bed override for when its VENUE is silent
- * by design — the Rec Center plays in the Classic Studio (bed 'none'), so the stop supplies
- * the gym's 'rec' bed. Everywhere else the venue's own bed (upgraded in buildBed) carries the
+ * looped. A stop may also name a bed override: the Rec Center plays in
+ * the Classic Studio and supplies the gym's 'rec' bed — an override that
+ * outranks the venue bed outright. Since the studio gained a recorded
+ * bed of its own, the 'rec' bed is composed over it (owner, 2026-11-04:
+ * the studio air is the room bed, the gym's life layered on top).
+ * Everywhere else the venue's own bed (upgraded in buildBed) carries the
  * place. In story context the mood outranks the venue's music character (the Pj's stop plays
  * the danger bed, not the venue's pin — the pin still rules normal Pj's games), and the
  * King gets his own music, full stop.
@@ -180,7 +183,7 @@ export function sessionRoom(o: { visualVenue?: string; seed?: string; onlineVenu
   if (o.onlineVenue) return styleForVenue(o.onlineVenue) ?? ROOM_STYLES[0]!;
   // 1) The venue picked for this game wins (seen = heard = named, still unified).
   if (o.visualVenue) return styleForVenue(o.visualVenue) ?? ROOM_STYLES[0]!;
-  // 2) Random venue: roll over ALL 12 rooms — Classic included (its bed is 'none': a quiet studio game).
+  // 2) Random venue: roll over ALL 12 rooms — Classic included (its bed is the studio's own recorded air: a quiet studio game).
   //    Locked venues (The Pj's) join the roll only when the player is entitled to them
   //    (`lockedVenues`, from the venue unlock state); the default keeps them out.
   if (o.seed !== undefined) {

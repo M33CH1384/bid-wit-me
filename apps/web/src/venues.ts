@@ -15,7 +15,7 @@ export type { VenueChoice, VenueId };
 export { VENUES };
 
 export type RailKind = 'wood' | 'marble' | 'crystal' | 'teak' | 'bamboo' | 'leather' | 'chrome' | 'metal';
-export type BedId = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street';
+export type BedId = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street' | 'studio';
 
 export interface VenueDef {
   id: VenueId;

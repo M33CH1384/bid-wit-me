@@ -155,7 +155,7 @@ const deckFile = (d: EngDeck) => (d.track === null ? null : TRACKS[d.track]!.fil
 const XFADE_MS = 4000; // XFADE in audio.ts
 
 const PJS = ['soul-epic', 'overreach', 'no-quit', 'busted-jazz', 'my-deal'];
-const CLASSIC_LEAN = ['windows-down', 'chillin-hard', 'glad-to-be-stuck-inside'];
+const CLASSIC_PIN = ['vicious', 'slow-jam', 'cold-sober', 'color-of-a-soul', 'reminders', 'warm-fuzz'];
 const inPool = (file: string | null) => file !== null && generalPool().some((i) => TRACKS[i]!.file === file);
 
 /** Every track the SoundDock has announced, in order (its title follows announce()). */
@@ -217,8 +217,10 @@ describe('music context switches', () => {
     // nothing was advancing and menu-soul simply played on.
     expect(eng().advancing).toBe(true);
     await settleFade();
-    // The venue's own signature (its armed lean) opened the session…
-    expect(CLASSIC_LEAN).toContain(nowFile());
+    // The venue's own signature (its closed rotation — the Classic
+    // Studio's lean retired into a pin with its wire-in, 2026-11-04)
+    // opened the session…
+    expect(CLASSIC_PIN).toContain(nowFile());
     expect(nowFile()).not.toBe('menu-soul');
     // …and nothing foreign is parked on the standby deck.
     expect(deckFile(standbyDeck())).not.toBe('menu-soul');
