@@ -80,13 +80,48 @@ export async function totalsFor(db: D1Database, userId: string, kind: RatingKind
  * current streak across kinds and names the kind it came from; a tie
  * keeps 'team' (the same deterministic rule the client's
  * homeStreakFromTotals pins). Self payload only — see cred/routes.ts.
+ *
+ * BLIZZARD (owner, 2026-11-04 — the fire "but backwards"): the same
+ * payload also carries the current LOSS streak as `lossCurrent` /
+ * `lossKind`. No stored counter exists for it (a loss zeroes
+ * cur_streak), so it is derived at read time from the same recorded
+ * finished-game history the totals backfill replays (see
+ * currentLossRun) and picked across kinds with the fire's exact rule —
+ * one derivation over one history, so the fire and the blizzard can
+ * never tell two stories about the same games.
  */
-export async function streakFireFor(db: D1Database, userId: string): Promise<{ current: number; kind: RatingKind | null; best: number }> {
+export async function streakFireFor(db: D1Database, userId: string): Promise<{ current: number; kind: RatingKind | null; best: number; lossCurrent: number; lossKind: RatingKind | null }> {
   const [team, cut] = await Promise.all([totalsFor(db, userId, 'team'), totalsFor(db, userId, 'cutthroat')]);
   const pick = cut.curStreak > team.curStreak
     ? { current: cut.curStreak, kind: 'cutthroat' as RatingKind }
     : { current: team.curStreak, kind: 'team' as RatingKind };
-  return { current: pick.current, kind: pick.current > 0 ? pick.kind : null, best: Math.max(team.bestStreak, cut.bestStreak) };
+  const [teamLoss, cutLoss] = await Promise.all([
+    currentLossRun(db, userId, 'team'),
+    currentLossRun(db, userId, 'cutthroat'),
+  ]);
+  const lossPick = cutLoss > teamLoss
+    ? { lossCurrent: cutLoss, lossKind: 'cutthroat' as RatingKind }
+    : { lossCurrent: teamLoss, lossKind: 'team' as RatingKind };
+  return {
+    current: pick.current, kind: pick.current > 0 ? pick.kind : null, best: Math.max(team.bestStreak, cut.bestStreak),
+    lossCurrent: lossPick.lossCurrent, lossKind: lossPick.lossCurrent > 0 ? lossPick.lossKind : null,
+  };
+}
+
+/**
+ * The current loss run for one kind: the leading run of losses over the
+ * player's recorded FINISHED games, most recent first (the h2h signed
+ * streak's ordering and 500-row cap — cred/routes.ts). Abandoned rows
+ * are excluded entirely, exactly as the totalsFor backfill's win replay
+ * excludes them: a rated self-abandon starts no run of either sign.
+ */
+async function currentLossRun(db: D1Database, userId: string, kind: RatingKind): Promise<number> {
+  const rows = (await db.prepare(`SELECT gp.won AS won FROM game_players gp JOIN games g ON g.id = gp.game_id
+    WHERE gp.user_id = ? AND gp.kind = ? AND COALESCE(g.end_reason, 'finished') != 'abandoned'
+    ORDER BY gp.ended_at DESC, gp.game_id DESC LIMIT 500`).bind(userId, kind).all<{ won: number }>()).results;
+  let run = 0;
+  for (const r of rows) { if (r.won) break; run++; }
+  return run;
 }
 
 async function bumpTotals(db: D1Database, userId: string, kind: RatingKind, won: boolean, shotsGiven: number, abandonedLeaver: boolean): Promise<Totals> {

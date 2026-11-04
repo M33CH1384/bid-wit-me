@@ -1,0 +1,52 @@
+/* BLIZZARD (owner, 2026-11-04): home-screen losing-streak weather.
+   PAINT BUDGET (the Social-crash lesson, pinned by test/blizzard.test.ts):
+   no retained-layer hints, no backdrop effects, no soft-focus fields
+   anywhere in this file. The frost is pure background gradients on ONE
+   div; the snow is ONE canvas-2D layer (snow/BlizzardLayer.tsx, flakes
+   hard-capped at 150). The wrapper is out of flow — no layout shift,
+   no scroll change — and never takes pointer events, so every home
+   control stays whole and tappable above it. */
+.home-blizzard { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+/* Neon stacking: styles.css forces every .wiz-home child above the
+   emblem paintings (`> *:not(.home-streak-fire):not(.home-blizzard) {
+   position: relative; z-index: 1 }`) — the weather layer is excluded
+   by name there, exactly like the fire band, so the absolute layer
+   above stands; this rule additionally parks it at z-index 0, behind
+   the splash and actions the blanket rule lifts. */
+html[data-theme="neon"] .wiz-home > .home-blizzard { position: absolute; z-index: 0; }
+.home-blizzard-canvas { display: block; width: 100%; height: 100%; }
+.home-blizzard-frost {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(to bottom, rgba(233, 243, 255, .55), rgba(233, 243, 255, 0) 15%),
+    linear-gradient(to top, rgba(233, 243, 255, .48), rgba(233, 243, 255, 0) 13%),
+    linear-gradient(to right, rgba(233, 243, 255, .40), rgba(233, 243, 255, 0) 9%),
+    linear-gradient(to left, rgba(233, 243, 255, .40), rgba(233, 243, 255, 0) 9%),
+    radial-gradient(95% 75% at 50% 50%, rgba(233, 243, 255, 0) 58%, rgba(233, 243, 255, .34) 100%);
+}
+/* Neon fitting: the same frost, tinted toward the theme's violet-white.
+   Behavior and geometry are identical — theme parity is visuals only. */
+html[data-theme="neon"] .home-blizzard-frost {
+  background:
+    linear-gradient(to bottom, rgba(216, 205, 255, .50), rgba(216, 205, 255, 0) 15%),
+    linear-gradient(to top, rgba(216, 205, 255, .42), rgba(216, 205, 255, 0) 13%),
+    linear-gradient(to right, rgba(216, 205, 255, .36), rgba(216, 205, 255, 0) 9%),
+    linear-gradient(to left, rgba(216, 205, 255, .36), rgba(216, 205, 255, 0) 9%),
+    radial-gradient(95% 75% at 50% 50%, rgba(216, 205, 255, 0) 58%, rgba(216, 205, 255, .30) 100%);
+}
+/* The chip: the fire chip's exact shape in a cold palette; it sits in
+   the same actions slot on the home step (Setup.tsx). */
+.home-blizzard-chip {
+  position: relative; z-index: 1;
+  align-self: center;
+  padding: 5px 14px 6px;
+  border-radius: 999px;
+  background: rgba(6, 10, 16, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(150, 205, 255, 0.7), 0 4px 14px rgba(0, 0, 0, 0.45);
+  color: #cfe8ff;
+  font-family: var(--display, sans-serif);
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}

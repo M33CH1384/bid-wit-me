@@ -28,6 +28,8 @@ import { STORY_OWNER_ONLY, fetchStoryAccess, storyLockedFor } from './story/stor
 import FireCanvas from './fire/FireCanvas';
 import EmblemSmoke from './neon/EmblemSmoke';
 import { HOME_FIRE_TIERS, fetchHomeStreak, homeFireLabel, homeFireTier, type HomeStreak } from './streakFire';
+import { homeBlizzardLabel, homeBlizzardTier } from './blizzard';
+import BlizzardLayer from './snow/BlizzardLayer';
 import { fx, useReduceEffects } from './fx';
 
 /** Streak-fire band heights (px) by tier: T1 licks the bottom edge, T4
@@ -335,10 +337,18 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     // emblem/card art painted by .wiz-home::before/::after — decoration
     // layered behind the splash, never DOM, never a destination.
     const fireTier = homeStreak ? homeFireTier(homeStreak.streak) : 0;
+    // BLIZZARD (owner, 2026-11-04): the fire read backwards — the same
+    // homeStreak payload's loss half drives the home weather. Independent
+    // of the fire (different kinds can run hot and cold at once); each
+    // renders on its own truth.
+    const blizTier = homeStreak ? homeBlizzardTier(homeStreak.lossStreak) : 0;
     const actions = (
       <div className="wiz-actions">
         {fireTier > 0 && homeStreak && (
           <div className="home-streak-chip" data-testid="home-streak-chip">{homeFireLabel(homeStreak.streak)}</div>
+        )}
+        {blizTier > 0 && homeStreak && (
+          <div className="home-blizzard-chip" data-testid="home-blizzard-chip">{homeBlizzardLabel(homeStreak.lossStreak)}</div>
         )}
         {onResume ? (
           <>
@@ -368,6 +378,13 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
             identical, inert wrapper; the canvas exists only in Neon
             with motion allowed) — never a control, never a destination. */}
         <EmblemSmoke />
+        {/* Blizzard weather (owner, 2026-11-04): an out-of-flow layer
+            behind the splash and actions — flakes and frost around the
+            content, never over a control. Calm (reduced motion) keeps
+            the static frost and drops the falling snow. */}
+        {blizTier > 0 && (
+          <BlizzardLayer tier={blizTier as 1 | 2 | 3} calm={reduceFx || fx.osReducedMotion} />
+        )}
         {fireTier > 0 && (
           <div className="home-streak-fire" data-testid="home-streak-fire" style={{ height: HOME_BAND_HEIGHTS[fireTier] }}>
             <FireCanvas mode="band" params={HOME_FIRE_TIERS[fireTier as 1 | 2 | 3 | 4]} calm={reduceFx || fx.osReducedMotion} />

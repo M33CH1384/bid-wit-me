@@ -38,16 +38,16 @@ describe('streakFireFor', () => {
   it('reads pre-stored totals: max current streak across kinds, kind named', async () => {
     await db.prepare(`INSERT INTO cred_totals (user_id, kind, games, wins, shots_given, cur_streak, best_streak)
       VALUES ('a', 'team', 20, 12, 0, 2, 8), ('a', 'cutthroat', 30, 20, 0, 6, 6)`).run();
-    await expect(streakFireFor(db, 'a')).resolves.toEqual({ current: 6, kind: 'cutthroat', best: 8 });
+    await expect(streakFireFor(db, 'a')).resolves.toEqual({ current: 6, kind: 'cutthroat', best: 8, lossCurrent: 0, lossKind: null });
   });
 
   it('backfills a missing row from real game history (W W W L W W → current 2, best 3)', async () => {
     const seq = [1, 1, 1, 0, 1, 1];
     for (let i = 0; i < seq.length; i++) await played(`g${i}`, NOW - (seq.length - i) * 1000, 'b', seq[i]!);
-    await expect(streakFireFor(db, 'b')).resolves.toEqual({ current: 2, kind: 'team', best: 3 });
+    await expect(streakFireFor(db, 'b')).resolves.toEqual({ current: 2, kind: 'team', best: 3, lossCurrent: 0, lossKind: null });
   });
 
   it('a player with no recorded games reads zero', async () => {
-    await expect(streakFireFor(db, 'a')).resolves.toEqual({ current: 0, kind: null, best: 0 });
+    await expect(streakFireFor(db, 'a')).resolves.toEqual({ current: 0, kind: null, best: 0, lossCurrent: 0, lossKind: null });
   });
 });

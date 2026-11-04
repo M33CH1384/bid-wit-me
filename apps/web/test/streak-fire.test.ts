@@ -58,29 +58,29 @@ describe('home streak derivation from stored totals', () => {
     expect(homeStreakFromTotals([
       { kind: 'team', curStreak: 2, bestStreak: 6 },
       { kind: 'cutthroat', curStreak: 5, bestStreak: 5 },
-    ])).toEqual({ streak: 5, kind: 'cutthroat', best: 6 });
+    ])).toEqual({ streak: 5, kind: 'cutthroat', best: 6, lossStreak: 0, lossKind: null });
     expect(homeStreakFromTotals([
       { kind: 'team', curStreak: 7, bestStreak: 7 },
       { kind: 'cutthroat', curStreak: 1, bestStreak: 9 },
-    ])).toEqual({ streak: 7, kind: 'team', best: 9 });
+    ])).toEqual({ streak: 7, kind: 'team', best: 9, lossStreak: 0, lossKind: null });
   });
 
   it('a tie keeps team (deterministic), no rows reads as zero', () => {
     expect(homeStreakFromTotals([
       { kind: 'cutthroat', curStreak: 4, bestStreak: 4 },
       { kind: 'team', curStreak: 4, bestStreak: 8 },
-    ])).toEqual({ streak: 4, kind: 'team', best: 8 });
-    expect(homeStreakFromTotals([])).toEqual({ streak: 0, kind: null, best: 0 });
+    ])).toEqual({ streak: 4, kind: 'team', best: 8, lossStreak: 0, lossKind: null });
+    expect(homeStreakFromTotals([])).toEqual({ streak: 0, kind: null, best: 0, lossStreak: 0, lossKind: null });
   });
 
   it('reads the profile payload field, and nothing else', () => {
     expect(homeStreakFromProfile({ streakFire: { current: 6, kind: 'team', best: 11 } }))
-      .toEqual({ streak: 6, kind: 'team', best: 11 });
+      .toEqual({ streak: 6, kind: 'team', best: 11, lossStreak: 0, lossKind: null });
     // the card's combined streak is NOT the fire's source
     expect(homeStreakFromProfile({ card: { stats: { streak: 9 } } })).toBeNull();
     expect(homeStreakFromProfile({ streakFire: { current: 'six', kind: 'team' } })).toBeNull();
     expect(homeStreakFromProfile({ streakFire: { current: 3, kind: 'bogus' } }))
-      .toEqual({ streak: 3, kind: null, best: 3 });
+      .toEqual({ streak: 3, kind: null, best: 3, lossStreak: 0, lossKind: null });
     expect(homeStreakFromProfile(null)).toBeNull();
     expect(homeStreakFromProfile({})).toBeNull();
   });

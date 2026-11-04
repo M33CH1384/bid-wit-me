@@ -158,6 +158,13 @@ export interface HomeStreak {
   kind: StreakKind | null;
   /** the best streak ever, max across kinds */
   best: number;
+  /** BLIZZARD (owner, 2026-11-04): the current LOSS streak (max across
+   *  kinds) — the fire read backwards. Server-derived from recorded
+   *  finished games (cred/hooks.ts currentLossRun); 0 when the latest
+   *  games aren't a skid, and 0 for payloads that predate the field. */
+  lossStreak: number;
+  /** which kind the loss max came from (null when lossStreak is 0) */
+  lossKind: StreakKind | null;
 }
 
 const KIND_ORDER: StreakKind[] = ['team', 'cutthroat'];
@@ -170,13 +177,16 @@ const KIND_ORDER: StreakKind[] = ['team', 'cutthroat'];
  * client tests pin it here.
  */
 export function homeStreakFromTotals(rows: readonly { kind: string; curStreak: number; bestStreak: number }[]): HomeStreak {
-  let best: HomeStreak = { streak: 0, kind: null, best: 0 };
+  // cred_totals carries no loss data — the loss half of the shape reads
+  // zero here by construction; the server's read-time derivation
+  // (streakFireFor) is the blizzard's only source.
+  let best: HomeStreak = { streak: 0, kind: null, best: 0, lossStreak: 0, lossKind: null };
   for (const kind of KIND_ORDER) {
     const r = rows.find((x) => x.kind === kind);
     if (!r) continue;
     const cur = Number.isFinite(r.curStreak) ? Math.max(0, Math.floor(r.curStreak)) : 0;
     const bst = Number.isFinite(r.bestStreak) ? Math.max(0, Math.floor(r.bestStreak)) : 0;
-    if (cur > best.streak) best = { streak: cur, kind, best: Math.max(best.best, bst) };
+    if (cur > best.streak) best = { streak: cur, kind, best: Math.max(best.best, bst), lossStreak: 0, lossKind: null };
     else best = { ...best, best: Math.max(best.best, bst) };
   }
   return best;
@@ -192,13 +202,18 @@ export function homeStreakFromProfile(payload: unknown): HomeStreak | null {
   if (!payload || typeof payload !== 'object') return null;
   const f = (payload as { streakFire?: unknown }).streakFire;
   if (!f || typeof f !== 'object') return null;
-  const { current, kind, best } = f as { current?: unknown; kind?: unknown; best?: unknown };
+  const { current, kind, best, lossCurrent, lossKind } = f as { current?: unknown; kind?: unknown; best?: unknown; lossCurrent?: unknown; lossKind?: unknown };
   if (typeof current !== 'number' || !Number.isFinite(current)) return null;
   const streak = Math.max(0, Math.floor(current));
   return {
     streak,
     kind: kind === 'team' || kind === 'cutthroat' ? kind : null,
     best: typeof best === 'number' && Number.isFinite(best) ? Math.max(0, Math.floor(best)) : streak,
+    // Blizzard members are additive: a payload from before the feature
+    // (or with malformed values) reads as NO loss streak — the weather
+    // never invents a number the payload didn't carry.
+    lossStreak: typeof lossCurrent === 'number' && Number.isFinite(lossCurrent) ? Math.max(0, Math.floor(lossCurrent)) : 0,
+    lossKind: lossKind === 'team' || lossKind === 'cutthroat' ? lossKind : null,
   };
 }
 
