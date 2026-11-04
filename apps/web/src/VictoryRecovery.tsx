@@ -3,7 +3,7 @@ import GameOverRewards, { type RewardsData } from './GameOverRewards';
 import { cardTakeoverKey, takeoverDismissed } from './CardTakeover';
 import { fx, useReduceEffects } from './fx';
 import { loadClaimResult, peekPendingClaim } from './pendingClaim';
-import { clearRewards, loadRewards, rematchPathFor, stashRewards, type RewardsPayload } from './rewardsStash';
+import { clearRewards, loadRewards, rematchPathFor, stashRematchSeats, stashRewards, type RewardsPayload } from './rewardsStash';
 
 /**
  * Reload recovery for the merged victory screen (2026-11-01 consolidation).
@@ -78,7 +78,15 @@ export default function VictoryRecovery() {
         claimGameId={payload.gameId}
         onClaimSwap={onClaimSwap}
         onHome={() => leave(payload.homePath)}
-        onRematch={() => { if (!takeoverPending(payload)) clearRewards(); location.href = rematchPathFor(payload); }}
+        onRematch={() => {
+          // A rematch deals the same table back (owner, 2026-11-04): hand the
+          // finished game's seats to the autostart this navigates to. Online
+          // rematches return to their room and story rematches to their stop —
+          // neither rides this hand-off.
+          if (!payload.online && !payload.storyStopId && payload.seatNames?.length) stashRematchSeats(payload.seatNames);
+          if (!takeoverPending(payload)) clearRewards();
+          location.href = rematchPathFor(payload);
+        }}
         onProfile={() => leave('/profile')}
         onOpenTables={() => leave('/online')}
       />

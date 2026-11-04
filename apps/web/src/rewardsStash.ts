@@ -24,6 +24,11 @@ export interface RewardsPayload {
   /** the finished offline match's client game id (localGameId) — ties an
    *  unsigned breakdown to its pending rewards claim. Absent online. */
   gameId?: string;
+  /** the finished offline match's seat names, in seat order ('You' first).
+   *  A recovery-surface Rematch deals this exact table back (see
+   *  stashRematchSeats below). Absent for online matches, story matches
+   *  and stashes written by older builds. */
+  seatNames?: string[];
 }
 
 /**
@@ -36,6 +41,31 @@ export interface RewardsPayload {
 export function rematchPathFor(p: RewardsPayload): string {
   if (p.storyStopId) return `/story?rematch=${encodeURIComponent(p.storyStopId)}`;
   return p.online ? '/online' : '/?autostart=1';
+}
+
+const REMATCH_SEATS_KEY = 'bwm.rematchSeats.v1';
+
+/**
+ * The recovery surface's Rematch hand-off (owner, 2026-11-04: a rematch
+ * must deal the same table back). VictoryRecovery's Rematch writes the
+ * finished offline game's seats here in the same click that navigates to
+ * the autostart; App's autostart branch consumes them (read + remove) and
+ * only then treats the start as a rematch — same table, series tally
+ * kept. Nothing else writes or reads this key, so a plain autostart (a
+ * test start, a bookmark) can never inherit another game's seats.
+ */
+export function stashRematchSeats(names: readonly string[]): void {
+  try { sessionStorage.setItem(REMATCH_SEATS_KEY, JSON.stringify([...names])); } catch { /* private mode: the rematch still starts, just at a fresh table */ }
+}
+
+export function consumeRematchSeats(): string[] | null {
+  try {
+    const raw = sessionStorage.getItem(REMATCH_SEATS_KEY);
+    sessionStorage.removeItem(REMATCH_SEATS_KEY); // consumed either way: a stale or bad value must not ride twice
+    if (!raw) return null;
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) && v.length >= 3 && v.every((x) => typeof x === 'string') ? (v as string[]) : null;
+  } catch { return null; }
 }
 
 const KEY = 'bwm.rewards.v1';

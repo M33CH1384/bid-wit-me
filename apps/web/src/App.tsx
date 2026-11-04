@@ -1,4 +1,5 @@
 import { saveSeries } from './Series';
+import { consumeRematchSeats } from './rewardsStash';
 import { clearTableChatOpen } from './chatView';
 import { useEffect, useState } from 'react';
 import { preloadTable } from './three/preload';
@@ -22,12 +23,17 @@ export default function App() {
   // both the wizard and the table — and the wizard's own tips toggle share one copy.
   const [tips, setTips] = useState<TipsPref>(loadTips);
   const applySettings = (s: Settings) => { setSettings(s); saveSettings(s); };
-  const [game, setGame] = useState<{ seed: string; settings: Settings; resume?: SavedGame; dealer?: number; continueSeries?: boolean } | null>(() => {
+  const [game, setGame] = useState<{ seed: string; settings: Settings; resume?: SavedGame; dealer?: number; continueSeries?: boolean; carryNames?: string[] } | null>(() => {
     const p = new URLSearchParams(location.search);
     if (p.get('autostart')) {
       history.replaceState(null, '', location.pathname); // a later refresh opens the menu, not this game
-      saveSeries(null); // a test start is a fresh game: 0–0, same as Deal me in
-      return { seed: p.get('seed') ?? secureSeed(), settings: loadSettings(), continueSeries: false };
+      // The victory recovery surface's Rematch lands here with the finished
+      // game's seats stashed (rewardsStash): that autostart IS a rematch —
+      // same table dealt back, series tally kept. Any other autostart
+      // consumes nothing and stays a test start: fresh game, 0–0.
+      const rematchSeats = consumeRematchSeats();
+      if (!rematchSeats) saveSeries(null); // a test start is a fresh game: 0–0, same as Deal me in
+      return { seed: p.get('seed') ?? secureSeed(), settings: loadSettings(), continueSeries: !!rematchSeats, ...(rematchSeats ? { carryNames: rematchSeats } : {}) };
     }
     // Opening the app and refreshing land on the menu. A saved bot game is not resumed.
     // Leave (including a spectator leaving an online table) also sets wiz:home.
@@ -85,6 +91,7 @@ export default function App() {
       seed={game.seed}
       resume={game.resume}
       continueSeries={game.continueSeries}
+      carryNames={game.carryNames}
       settings={game.settings}
       onExit={() => coverThen(() => { clearTableChatOpen(); history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }, 'table-exit')}
       onSuspend={() => coverThen(() => { clearTableChatOpen(); history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }, 'table-exit')}

@@ -83,6 +83,7 @@ import { TableLoading, type LoadingSeat } from './TableLoading';
 import { VersusIntro, markVersusShown, versusDismissReady, versusEligible, type VersusMember, type VersusModel } from './VersusIntro';
 import { buildPostgame, clearPinnedBefore, computeRewardsSettled, resolveBeforeSnapshot, VictoryReport, type RewardsData, VictoryXpStrip, RollNum, tallyTone, type RewardsProfile } from './GameOverRewards';
 import { stashRewards, type RewardsPayload } from './rewardsStash';
+import { carriedTableSeats } from './seatNames';
 import { flushLocalGames, localGameId } from './localStats';
 import { warmTableEffects } from './effects/warm';
 import { THIRD_SET_HEADLINE, endReasonText, onNoticeSides, shotChatLines, shotOutBannerFor, stickyNoticeSides } from './shotOut';
@@ -164,6 +165,13 @@ interface SceneSink {
    *  portal element to the shell's home node before the game's
    *  screen subtree is detached. */
   rehomeScene: () => void;
+  /** The sitting's seat carry (rematch = same table, owner 2026-11-04):
+   *  each offline TableGame records its dealt seat names here, and the
+   *  next game in the sitting — a rematch, which remounts TableGame
+   *  under a fresh seed — deals that exact table back instead of
+   *  drawing new names from its seed. Owned by the shell because the
+   *  shell is what survives the seed change. */
+  seatNamesRef: { current: string[] | null };
 }
 
 /**
@@ -346,6 +354,12 @@ interface Props {
   resume?: SavedGame;
   /** Rematch or resume: keep the series tally. A new game leaves this unset and starts at 0–0. */
   continueSeries?: boolean;
+  /** Seat carry handed in from OUTSIDE the session shell: the victory
+   *  recovery surface's Rematch (via App's autostart) passes the finished
+   *  game's seat names, and this table deals them back. Absent for every
+   *  ordinary start — the in-shell rematch carry rides the shell's
+   *  seatNamesRef instead. */
+  carryNames?: string[];
   online?: OnlineBinding;
   /** Game over → straight to the splash screen (offline: the finished save is cleared; online: leaves the table). */
   onMainMenu?: () => void;
@@ -378,12 +392,17 @@ interface Props {
 }
 
 /** Offline bot names: random per game (derived from the game seed), never your own online name; kept in the save.
- *  Preference off, the dealt names pass through untouched — same seeds, same names as always. */
-function offlineNames(n: number, seed: string, partnerships: boolean): string[] {
+ *  Preference off, the dealt names pass through untouched — same seeds, same names as always.
+ *  A rematch instead hands over the finished game's seats (`carry`, resolved by
+ *  seatNames.carriedTableSeats) and those are dealt back: same table, seat for seat. */
+function offlineNames(n: number, seed: string, partnerships: boolean, carry?: string[] | null): string[] {
   let mine = '';
   try { mine = (localStorage.getItem('bwm.online.name') ?? '').replace(/^"|"$/g, ''); } catch { /* ignore */ }
   const taken = mine ? [mine, 'You'] : ['You'];
   const picked = ['You', ...pickBotNames(n - 1, taken, seed, platePersona)];
+  // Rematch seat carry (owner, 2026-11-04): a resolved carry wins over the
+  // seed draw — the draw is only for a genuinely new table.
+  if (carry) return carry;
   // Fresh table talk (owner-approved, 2026-11-03): with the Deacon switch on, seat him across on
   // purpose — there is no bot picker, and his names surface in only ~1 game in 7 by chance.
   if (!talkStore.get().genDialogue) return picked;
@@ -886,7 +905,7 @@ function ViewAdjustChip() {
   );
 }
 
-function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onViewAdjust, onTurnUp, resume, continueSeries, online, onMainMenu, startDealer, story, publishScene, publishAnchor, rehomeScene }: Props & SceneSink) {
+function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onViewAdjust, onTurnUp, resume, continueSeries, carryNames, online, onMainMenu, startDealer, story, publishScene, publishAnchor, rehomeScene, seatNamesRef }: Props & SceneSink) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // Adjustable table view (owner, 2026-10-29): seed the tilt/zoom store from
   // the saved settings during this first render — before the Scene mounts and
@@ -922,7 +941,17 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const [tipOpen, setTipOpen] = useState(false);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
   const n0 = (resume?.state.rules ?? initialRules).playerCount;
-  const [botNames] = useState(() => (story?.names.length === n0 ? story.names : resume?.names?.length === n0 ? resume.names : offlineNames(n0, seed, initialRules.partnerships)));
+  // Rematch seat carry (owner, 2026-11-04): an explicit hand-in (the recovery
+  // surface's Rematch, via App) outranks the shell's record of the last game;
+  // either is resolved against THIS game's seat count and the current Deacon
+  // switch before the deal. A fresh sitting resolves to null and draws.
+  const liveCarry = carriedTableSeats(carryNames?.length === n0 ? carryNames : seatNamesRef.current, n0, seed, initialRules.partnerships, talkStore.get().genDialogue);
+  const [botNames] = useState(() => (story?.names.length === n0 ? story.names : resume?.names?.length === n0 ? resume.names : offlineNames(n0, seed, initialRules.partnerships, liveCarry)));
+  // Record this game's seats in the session shell: the next game in this
+  // sitting (a rematch under a fresh seed) deals this exact table back.
+  // Online seats belong to the room and story seats to the stop's cast —
+  // neither is recorded, and neither path reads the record.
+  useEffect(() => { if (!online && !story) seatNamesRef.current = botNames; }, [botNames, online, story, seatNamesRef]);
   // bot skill per seat: the table setting (Mixed = a hidden, seeded roll per seat) + persona floors (the Hustler is Pro+).
   // Story games override per seat instead: Dee scales with the stop, the pair plays the stop's tier.
   const levelFor = useCallback((seat: number) => (story ? story.levelFor(seat) : botSkillFor(settings.botLevel, seed, seat, botNames[seat] ?? '')), [story, settings.botLevel, seed, botNames]);
@@ -2444,7 +2473,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       // recovery Rematch returns to the same stop (story-scoped) instead of
       // a generic autostart game — kept for payload compatibility even
       // though story matches never compute a merged report.
-      const payload: RewardsPayload = { data, online: !!online, homePath: '/', storyStopId, gameId: online ? undefined : localGameId(matchSeed) };
+      const payload: RewardsPayload = { data, online: !!online, homePath: '/', storyStopId, gameId: online ? undefined : localGameId(matchSeed), seatNames: online ? undefined : names };
       mergedPayload.current = payload;
       stashRewards(payload);
       setMergedRewards(data);
@@ -3647,6 +3676,10 @@ export default function Table(props: Props) {
   const storeRef = useRef<ScenePropStore | null>(null);
   if (storeRef.current === null) storeRef.current = createScenePropStore();
   const store = storeRef.current;
+  // The sitting's seat carry (see SceneSink.seatNamesRef): starts empty —
+  // a new sitting is a new table — and each offline game records its seats
+  // for the rematch that may follow.
+  const seatNamesRef = useRef<string[] | null>(null);
   // The ONE portal element the Scene ever renders into, created once
   // for the shell's whole life: React keeps portal children mounted
   // only while the target element is the same, and each game used to
@@ -3681,7 +3714,7 @@ export default function Table(props: Props) {
         </Suspense>,
         portalEl,
       )}
-      <TableGame key={props.seed} {...props} publishScene={store.publish} publishAnchor={publishAnchor} rehomeScene={rehomeScene} />
+      <TableGame key={props.seed} {...props} publishScene={store.publish} publishAnchor={publishAnchor} rehomeScene={rehomeScene} seatNamesRef={seatNamesRef} />
       {/* the portal element's home between games (and its honest
           React parent at shell teardown) */}
       <div ref={homeRef} style={{ display: 'contents' }} />
