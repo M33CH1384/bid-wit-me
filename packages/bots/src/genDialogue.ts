@@ -300,13 +300,49 @@ export function factCheckLine(line: string, p: GenPayload): FactCheck {
 
 /* ------------------------------ the prompt ------------------------------ */
 
+/**
+ * TUNING PASS (2026-11-03, after the first real-model run): the card's six
+ * recorded lines were handed to the model verbatim and it handed them
+ * straight back — 10/10 lines were near-copies and none cited a fact. So:
+ * (1) the model now sees ONE recorded line per call, rotated by a hash of
+ * the event id, framed as a voice sample it must not reuse; (2) a
+ * fact-requirement line states the moment's real numbers and requires the
+ * reply to work them in. factCheckLine remains the enforcement — this
+ * only makes honest compliance the path of least resistance.
+ */
+export function voiceExampleFor(p: GenPayload): string | null {
+  const xs = p.personaCard.voiceExamples;
+  if (!xs.length) return null;
+  return xs[hashStr(p.event.id) % xs.length]!;
+}
+
+/** the numbers this moment turns on, stated plainly, with the requirement to cite them */
+export function genFactRequirement(p: GenPayload): string {
+  const f = p.facts;
+  if (p.event.kind === 'set' && f.contract) {
+    const who = p.subject.relation === 'opponents' ? 'The opposing side' : 'Your own side';
+    return `Ground the line in the numbers: ${who} bid ${f.contract.bid} and took only ${f.contract.books} books, so the bid was set. Your line MUST name that bid (${f.contract.bid}) and those books (${f.contract.books}) — work both numbers into the sentence itself, as digits or as words.`;
+  }
+  if (p.event.kind === 'nilBust' && f.nil) {
+    return `Ground the line in the numbers: ${f.nil.bidderName} bid nil — nothing at all — and still took ${f.nil.books} books, so the nil failed. Your line MUST name the nil and the ${f.nil.books} books — work the number into the sentence itself, as digits or as words.`;
+  }
+  if (p.event.kind === 'matchEnd' && f.match) {
+    const ours = f.match.finalScores[p.speaker.side] ?? 0;
+    const theirs = Math.max(0, ...f.match.finalScores.filter((_, i) => i !== p.speaker.side));
+    return `Ground the line in the numbers: the match is over, final score ${ours} to ${theirs}, your side ${f.match.speakerSideWon ? 'won' : 'lost'}. Your line MUST state that final score (${ours} to ${theirs}) — work both numbers into the sentence itself, as digits or as words.`;
+  }
+  return 'Ground the line in the numbers in the facts — name at least one of them in the sentence itself, as digits or as words.';
+}
+
 export function buildGenPrompt(p: GenPayload): { system: string; user: string } {
   const c = p.personaCard;
+  const example = voiceExampleFor(p);
   const system = [
     `You are ${c.tag}, a Spades player at a friendly but competitive table. You speak ONLY as this character.`,
     `Style: ${c.style.join(' ')}`,
     `Boundaries: ${c.boundaries.join(' ')}`,
-    `Your own recorded lines sound like: ${c.voiceExamples.map((l) => `"${l}"`).join(' / ')}`,
+    ...(example ? [`One of your recorded lines, for VOICE ONLY — match its cadence and warmth, but write a brand-new line in your own words; never reuse its words, its phrases, or its sentiment: "${example}"`] : []),
+    genFactRequirement(p),
     'React to the moment described in the JSON facts. Use ONLY those facts — never invent cards, scores, bids, books, or events.',
     'Reply with a single JSON object, no other text: {"line": string, "emotion": one of ' + GEN_EMOTIONS.join('|') + ', "animation": "lean" or null}.',
     'The line is one sentence (two at most), under 160 characters, no emojis.',
