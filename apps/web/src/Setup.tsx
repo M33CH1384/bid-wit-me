@@ -4,7 +4,6 @@ import { Seg, Toggle } from './MoreOptions';
 import { requestSettingsSheet } from './settingsSheet';
 import { type ModeKey, type Settings, MODES, modeTitle, rulesSummary, settingsToRules, targetScoreOptions } from './settings';
 import { type TipsPref, isFirstVisit, saveTips } from './tips';
-import { useBootReveal } from './bootReveal';
 import { splashAction } from './splashTap';
 import { coverThen } from './spray';
 import { serverUrl } from './online/config';
@@ -185,12 +184,6 @@ export function VenueSetupRow({ value, onChange }: { value: VenueChoice; onChang
 
 export default function Setup({ settings: s, onChange, tips, onTips, onStart, onResume, resumeLabel }: Props) {
   const [{ step, path, kind, view }, setWiz] = useState(readWiz);
-  // App-open reveal (owner, 2026-11-04): when the boot sting fires on the
-  // first unlock, this whole home surface fades in under the shuffle and
-  // snaps to full strength at the deck slam (bootReveal.ts). One surface,
-  // no stagger; silent opens never trigger it.
-  const wizardRef = useRef<HTMLDivElement>(null);
-  useBootReveal(wizardRef);
   // Story-mode owner lock: the home row is locked until the story-access
   // flag says otherwise (admins + the server's named player allowlist —
   // keyed off storyAccess, never dev, so an allowlisted player gets the
@@ -517,7 +510,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   }
 
   return (
-    <div className={`wizard step-${step}`} data-testid="wizard" ref={wizardRef}>
+    <div className={`wizard step-${step}`} data-testid="wizard">
       <header className="wiz-bar">
         {step !== 'home' ? (
           <span className="wiz-nav">

@@ -575,11 +575,6 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background: radial-gradient(ellipse at 50% -10%, rgba(var(--purple-rgb),.42) 0%, transparent 58%), radial-gradient(ellipse at 50% 115%, rgba(var(--gold-rgb),.14), transparent 50%), var(--bg);
 }
-/* App-open reveal (owner, 2026-11-04): while the boot sting's shuffle plays,
-   the home surface fades in (bootReveal.ts drives the opacity via WAAPI) and
-   is presentational — input goes live at the snap, when the deck slams and
-   this attribute clears. The attribute is never set on a silent open. */
-[data-boot-reveal] { pointer-events: none; }
 .wiz-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 0; position: relative; z-index: 2; }
 .icon-btn {
   width: 46px; height: 46px; border: 0; display: grid; place-items: center; font-size: 22px; color: var(--ink);

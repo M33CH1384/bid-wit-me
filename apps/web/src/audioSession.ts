@@ -22,11 +22,11 @@ export function soundRestorePending(state: string | null | undefined, unlocked: 
 }
 
 /**
- * App-open sting audibility (owner, 2026-11-04): the boot sting obeys the SFX
+ * App-open sting audibility (owner, 2026-11-04): the sting obeys the SFX
  * family's own controls — master switch off, a zeroed master volume or a
- * zeroed SFX category all mean it never sounds. The engine also consumes its
- * one-shot latch on a silent verdict: no sting, and no home-reveal fade
- * waiting on a sound that will not come.
+ * zeroed SFX category all mean it never sounds, and no home-reveal fade
+ * waits on a sound that will not come. Kept for the splash-driven sting:
+ * the splash tap consults this gate before firing.
  */
 export function bootStingAudible(on: boolean, volume: number, sfxCategory: number): boolean {
   return on && volume > 0 && sfxCategory > 0;
