@@ -274,10 +274,13 @@ export function spadePlayed(tricks: readonly Trick[], current?: Trick | null): b
 }
 
 /* --------------------------------------------------------------------------
- * 5. ON FIRE — the trailing run of consecutive trick wins inside the
- * CURRENT hand (st.tricks is exactly the current hand's completed tricks,
- * so a run can never leak across hands). At FIRE_STREAK the seat's plate
- * carries the hot rim until another seat takes a trick or the hand ends.
+ * 5. ON FIRE — trick wins inside the CURRENT hand (st.tricks is exactly
+ * the current hand's completed tricks, so a run can never leak across
+ * hands). trickStreak below is the SEAT-STRICT trailing run — THE SHUSH
+ * is defined on it and it does not change. The fire the plate actually
+ * shows is fireRun (§5a): since the owner's 2026-11-04 correction a
+ * partner's book is neutral to a seat's run, so the seat-strict run is
+ * no longer the fire's truth.
  * ------------------------------------------------------------------------ */
 export const FIRE_STREAK = 3;
 
@@ -294,20 +297,77 @@ export function trickStreak(tricks: readonly Trick[]): { seat: number; count: nu
   return seat === null ? null : { seat, count };
 }
 
-export function fireSeat(st: Pick<GameState, 'tricks'>): number | null {
-  const s = trickStreak(st.tricks);
+/* --------------------------------------------------------------------------
+ * 5a. THE FIRE RUN (owner correction, 2026-11-04 — "if a person is on
+ * fire and their partner wins a book it shouldn't extinguish their fire;
+ * that should only happen if an opponent wins a book"): the fire state
+ * the plate shows. A seat's count is its OWN books won since the last
+ * book won by an OPPONENT: scan the trailing segment of tricks won by
+ * one SIDE (sideOf) and count per seat inside it. A partner's book is
+ * therefore transparent — it neither adds to the holder's count nor
+ * breaks the run (neutral, nothing more) — and an opponent's book is
+ * the only reset. Still a pure derivation from the same trick history,
+ * so every client derives the identical state, for bots and humans
+ * alike, offline and online.
+ * Display seat: the FIRST seat to reach fire tier inside the segment
+ * keeps the plate (its count keeps growing on its own books; a
+ * partner's later books never displace or disturb it). With nobody at
+ * fire tier, a smolder (count 2) shows for its holder — the more recent
+ * winner when both partners hold 2, matching the old display. Below 2:
+ * null. Cutthroat: sideOf is the seat itself, the segment is the old
+ * seat-strict trailing run, and every result equals trickStreak's.
+ * ------------------------------------------------------------------------ */
+export function fireRun(tricks: readonly Trick[], rules: TableRules): { seat: number; count: number } | null {
+  // the trailing side segment: winners stay on the most recent winner's side
+  let side: number | null = null;
+  let start = tricks.length;
+  for (let i = tricks.length - 1; i >= 0; i--) {
+    const w = tricks[i]!.winner;
+    if (w === null) break; // an unresolved trick breaks the scan, as in trickStreak
+    const s = sideOf(w, rules);
+    if (side === null) { side = s; start = i; }
+    else if (s === side) start = i;
+    else break;
+  }
+  if (side === null) return null;
+  // per-seat counts inside the segment + who reached fire tier first
+  const counts = new Map<number, number>();
+  let firstFire: number | null = null;
+  for (let i = start; i < tricks.length; i++) {
+    const w = tricks[i]!.winner!;
+    const n = (counts.get(w) ?? 0) + 1;
+    counts.set(w, n);
+    if (n >= FIRE_STREAK && firstFire === null) firstFire = w;
+  }
+  if (firstFire !== null) return { seat: firstFire, count: counts.get(firstFire)! };
+  // smolder: a seat holding 2 — the most recent winner among the holders
+  for (let i = tricks.length - 1; i >= start; i--) {
+    const w = tricks[i]!.winner!;
+    if (counts.get(w) === 2) return { seat: w, count: 2 };
+  }
+  return null;
+}
+
+export function fireSeat(st: Pick<GameState, 'tricks' | 'rules'>): number | null {
+  const s = fireRun(st.tricks, st.rules);
   return s !== null && s.count >= FIRE_STREAK ? s.seat : null;
 }
 
 /* --------------------------------------------------------------------------
- * 5b. EXTINGUISHED — a seat's rendered streak fire (T1+) BROKEN by another
- * seat's trick win (owner, 2026-11-01: the put-out moment — steam, smoke,
- * hiss). Compares the trailing runs of two consecutive in-hand snapshots:
- * the previous run must have been real flames (trickFire kind 'fire' —
- * a SMOLDER guttering out is not a fire being put out), the tricks array
- * must have GROWN (a trick actually completed between the snapshots —
- * state corrections and rewinds are not deaths), and the trailing run
- * must no longer belong to that seat at its old count or better.
+ * 5b. EXTINGUISHED — a seat's rendered streak fire (T1+) PUT OUT by an
+ * OPPONENT's trick win (owner, 2026-11-01: the put-out moment — steam,
+ * smoke, hiss; owner correction, 2026-11-04: ONLY an opponent's book
+ * extinguishes — a partner's book is neutral and can never trip this).
+ * Compares the fire runs (fireRun, §5a) of two consecutive in-hand
+ * snapshots: the previous run must have been real flames (trickFire
+ * kind 'fire' — a SMOLDER guttering out is not a fire being put out),
+ * the tricks array must have GROWN (a trick actually completed between
+ * the snapshots — state corrections and rewinds are not deaths), and
+ * the fire must no longer belong to that seat at fire tier. Because
+ * fireRun only loses its holder when an opponent's book breaks the
+ * side segment, that last clause IS the opponent-only rule: partner
+ * books in between change nothing, and a partner book followed by an
+ * opponent book still dies — on the opponent's.
  * Hand-end deaths never reach here as a pair: the layer only feeds
  * same-hand, still-playing transitions, so a fire that dies because the
  * hand ended (or the view resynced) produces no moment — the hand-end
@@ -318,14 +378,15 @@ export interface StreakDeath { seat: number; tier: FireTier; count: number }
 export function streakDeath(
   prevTricks: readonly Trick[],
   nextTricks: readonly Trick[],
+  rules: TableRules,
 ): StreakDeath | null {
   if (nextTricks.length <= prevTricks.length) return null;
-  const prev = trickStreak(prevTricks);
+  const prev = fireRun(prevTricks, rules);
   if (!prev) return null;
   const fire = trickFire(prev.count);
   if (fire.kind !== 'fire') return null;
-  const next = trickStreak(nextTricks);
-  if (next && next.seat === prev.seat && next.count >= prev.count) return null;
+  const next = fireRun(nextTricks, rules);
+  if (next && next.seat === prev.seat && trickFire(next.count).kind === 'fire') return null;
   return { seat: prev.seat, tier: fire.tier, count: prev.count };
 }
 

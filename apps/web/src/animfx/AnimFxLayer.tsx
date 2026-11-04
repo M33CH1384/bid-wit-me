@@ -50,9 +50,9 @@ import { CoinIcon } from '../RepBlock';
 import { fetchWagerList } from '../social/wagerApi';
 import {
   UPSET_GAP, bagBrinkSides, bagPenaltySides, bigJokerSeat, blindNilSeats, bostonSides,
-  comebackSides, contractDeadSides, doubleMoonSides, heatSides, matchPointSides,
+  comebackSides, contractDeadSides, doubleMoonSides, fireRun, heatSides, matchPointSides,
   mirrorBidSides, newlyEliminated, nineLivesSides, paybackColdPairs, shushSides,
-  silentAssassinSeats, streakDeath, textbookSides, trickStreak,
+  silentAssassinSeats, streakDeath, textbookSides,
   nilBustedSeats, nilLiveSeats, ratingGap, runClaimerSeat, saveInTrick,
   sealedNilSeats, seatsOfSide, setSides, sideIndexOf, spadePlayed, syncSides,
   trickWasCut, wheelsSides, wireSides,
@@ -337,13 +337,15 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
   const [moons, setMoons] = useState<SeatSpot[]>([]);
   /* STREAK FIRE (owner, 2026-10-27): the wave-3 ON FIRE look, upgraded —
    * the CSS rim is now a photoreal canvas fire around the streaking
-   * seat's plate (fire/FireCanvas), fed by the SAME detector the rim
-   * used (trickStreak over the current hand's completed tricks). */
+   * seat's plate (fire/FireCanvas), fed by the fire detector (fireRun
+   * over the current hand's completed tricks — a seat's own books since
+   * an opponent's book; a partner's book is neutral, owner 2026-11-04). */
   const [fireFx, setFireFx] = useState<{ seat: number; count: number; spot: SeatSpot } | null>(null);
   /* EXTINGUISH (owner, 2026-11-01): the put-out moment for a streak fire
-   * broken by another seat's trick win — while it runs, the dead seat's
-   * plate-fire canvas stays mounted at the tier-0 row (flames fading
-   * under the engine's steam/smoke burst) and the hiss has fired. */
+   * broken by an OPPONENT's trick win (never a partner's, owner
+   * 2026-11-04) — while it runs, the dead seat's plate-fire canvas stays
+   * mounted at the tier-0 row (flames fading under the engine's
+   * steam/smoke burst) and the hiss has fired. */
   const [puffFx, setPuffFx] = useState<{ seat: number; count: number; tier: FireTier; spot: SeatSpot; nonce: number } | null>(null);
   const puffNonceRef = useRef(0);
   /* the previous layout pass's trick snapshot, for the streak-death
@@ -1079,10 +1081,11 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
     }
     setShade((prev) => (JSON.stringify(prev) === JSON.stringify(shadeNext) ? prev : shadeNext));
     /* wave 3 persistent looks, measured the same way: STREAK FIRE over
-       the streaking seat's plate (2 straight trick wins = smolder
-       pre-fire, 3+ = real flames by tier — streakFire.ts); STREAK HEAT /
-       BAG BRINK overlays over the scorebug cells */
-    const ts = st.phase === 'playing' ? trickStreak(st.tricks) : null;
+       the streaking seat's plate (2 of the seat's own books since an
+       opponent's book = smolder pre-fire, 3+ = real flames by tier —
+       streakFire.ts; a partner's books are neutral to the count, owner
+       2026-11-04); STREAK HEAT / BAG BRINK overlays over the scorebug cells */
+    const ts = st.phase === 'playing' ? fireRun(st.tricks, st.rules) : null;
     const tf = ts ? trickFire(ts.count) : null;
     const nf = ts && tf && tf.kind !== 'none'
       ? (measure([ts.seat]).map((spot) => ({ seat: ts.seat, count: ts.count, spot })))[0] ?? null
@@ -1103,7 +1106,7 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
      * old silent death — no burst, no hiss. */
     const prevFxRun = prevFxRunRef.current;
     if (prevFxRun && prevFxRun.hand === st.handNo && st.phase === 'playing' && !reduced) {
-      const death = streakDeath(prevFxRun.tricks, st.tricks);
+      const death = streakDeath(prevFxRun.tricks, st.tricks, st.rules);
       if (death) {
         const key = `${st.handNo}:${prevFxRun.tricks.length}:${death.seat}`;
         if (deathKeyRef.current !== key) {

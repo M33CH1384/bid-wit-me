@@ -86,8 +86,12 @@ describe('streak fire width == plate width (owner, 2026-11-01)', () => {
     // vertical untouched by the width fix: T1 rise = 38 + 1*12 = 50
     expect(box!.style.top).toBe('46px');      // plate top 96 − 50
     expect(box!.style.height).toBe('130px');  // 52 + 50 + 12 (padB) + 16 (glowPadB)
-    // the streak breaks: the extinguish puff rides the same box
-    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0)] }));
+    // the streak breaks: the extinguish puff rides the same box.
+    // (LEDGER 2026-11-04: the breaker is seat 1, an OPPONENT — it used to
+    // be seat 0, seat 2's partner, until the owner ruled a partner's book
+    // never extinguishes a fire. Only the breaker seat changed; the
+    // geometry pins below are the point of this test and are untouched.)
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(1)] }));
     expect(document.querySelector('[data-testid="animfx-extinguish"]')).not.toBeNull();
     const puff = fireBox();
     expect(puff).not.toBeNull();

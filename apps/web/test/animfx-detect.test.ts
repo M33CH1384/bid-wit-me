@@ -9,7 +9,7 @@ import { makeRules, type HandRecord, type Trick } from '@spades/rules';
 import {
   FIRE_STREAK, HEAT_STREAK, PHOTO_FINISH_MARGIN, UPSET_GAP, bagBrinkSides,
   bagPenaltySides, bagsCrossed, bigJokerSeat, blindNilSeats, bostonSides,
-  comebackSides, fireSeat, handWinnerSide, heatSides,
+  comebackSides, fireRun, fireSeat, handWinnerSide, heatSides,
   matchPointSides, newlyEliminated, nilBustedSeats, nilLiveSeats, photoFinish,
   ratingGap, runClaimerSeat, saveInTrick, sealedNilSeats, setSides,
   spadePlayed, streakDeath, syncSides, trickStreak, trickWasCut, wheelsSides, winMargin,
@@ -210,8 +210,8 @@ describe('wave 3 — on fire + streak heat', () => {
     expect(trickStreak([wt(2), wt(2), wt(2)])).toEqual({ seat: 2, count: 3 });
     expect(trickStreak([wt(1), wt(2), wt(2)])).toEqual({ seat: 2, count: 2 });
     expect(trickStreak([])).toBeNull();
-    expect(fireSeat({ tricks: [wt(2), wt(2), wt(2)] } as never)).toBe(2);
-    expect(fireSeat({ tricks: [wt(2), wt(1), wt(2), wt(2)] } as never)).toBeNull();
+    expect(fireSeat({ tricks: [wt(2), wt(2), wt(2)], rules: joker } as never)).toBe(2);
+    expect(fireSeat({ tricks: [wt(2), wt(1), wt(2), wt(2)], rules: joker } as never)).toBeNull();
     expect(FIRE_STREAK).toBe(3);
   });
   const hand = (p0: number, p1: number, handNo = 1) => rec({
@@ -231,41 +231,109 @@ describe('wave 3 — on fire + streak heat', () => {
   });
 });
 
-describe('extinguished — a streak fire broken by another seat (owner, 2026-11-01)', () => {
+describe('extinguished — a streak fire broken by an OPPONENT (owner, 2026-11-01; partner correction 2026-11-04)', () => {
   const wt = (winner: number): Trick => ({ leader: 0, plays: [], winner });
-  it('a T1+ fire broken by another seat\'s trick win is a death, with the died tier', () => {
-    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(0)]))
+  it('a T1+ fire broken by an OPPONENT\'s trick win is a death, with the died tier', () => {
+    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(1)], joker))
       .toEqual({ seat: 2, tier: 1, count: 3 });
-    expect(streakDeath([wt(1), wt(1), wt(1), wt(1)], [wt(1), wt(1), wt(1), wt(1), wt(3)]))
+    expect(streakDeath([wt(1), wt(1), wt(1), wt(1)], [wt(1), wt(1), wt(1), wt(1), wt(0)], joker))
       .toEqual({ seat: 1, tier: 2, count: 4 });
-    // a T4 wall (7 straight) broken by anyone
+    // a T4 wall (7 straight) broken by an opponent (seat 3's opponents are 0 and 2)
     const run7 = Array.from({ length: 7 }, () => wt(3));
-    expect(streakDeath(run7, [...run7, wt(0)])).toEqual({ seat: 3, tier: 4, count: 7 });
-    // the breaker being the dead seat's PARTNER still extinguishes that seat's fire
-    expect(streakDeath([wt(0), wt(0), wt(0)], [wt(0), wt(0), wt(0), wt(2)]))
-      .toEqual({ seat: 0, tier: 1, count: 3 });
+    expect(streakDeath(run7, [...run7, wt(0)], joker)).toEqual({ seat: 3, tier: 4, count: 7 });
+  });
+  it('a PARTNER\'s book NEVER extinguishes a fire (owner, 2026-11-04)', () => {
+    // LEDGER (2026-11-04): the 2026-11-01 pins below asserted the opposite
+    // ("the breaker being the dead seat's PARTNER still extinguishes that
+    // seat's fire"). The owner overruled that reading: only an opponent's
+    // book puts a fire out. These are the same trick sequences, now null.
+    // seat 0 is seat 2's partner — the fire burns straight through the book
+    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(0)], joker)).toBeNull();
+    // seat 3 is seat 1's partner
+    expect(streakDeath([wt(1), wt(1), wt(1), wt(1)], [wt(1), wt(1), wt(1), wt(1), wt(3)], joker)).toBeNull();
+    // the mirror: seat 2 is seat 0's partner
+    expect(streakDeath([wt(0), wt(0), wt(0)], [wt(0), wt(0), wt(0), wt(2)], joker)).toBeNull();
+    // partner books inside a multi-trick jump do not kill either
+    expect(streakDeath([wt(2), wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(2), wt(0), wt(0)], joker)).toBeNull();
   });
   it('a SMOLDER guttering out is not a death — embers were never a fire', () => {
-    expect(streakDeath([wt(2), wt(2)], [wt(2), wt(2), wt(1)])).toBeNull();
-    expect(streakDeath([wt(2)], [wt(2), wt(1)])).toBeNull();
-    expect(streakDeath([], [wt(1)])).toBeNull();
+    expect(streakDeath([wt(2), wt(2)], [wt(2), wt(2), wt(1)], joker)).toBeNull();
+    expect(streakDeath([wt(2)], [wt(2), wt(1)], joker)).toBeNull();
+    expect(streakDeath([], [wt(1)], joker)).toBeNull();
   });
   it('a run that grows or continues is not a death', () => {
-    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(2)])).toBeNull();
+    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(2)], joker)).toBeNull();
     // a multi-trick jump that ends with the same seat still running: alive
-    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(0), wt(2), wt(2), wt(2), wt(2)])).toBeNull();
+    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(0), wt(2), wt(2), wt(2), wt(2)], joker)).toBeNull();
   });
   it('no growth, no death: re-renders, corrections and hand-end resets stay silent', () => {
     const run = [wt(2), wt(2), wt(2)];
-    expect(streakDeath(run, run)).toBeNull();
-    expect(streakDeath(run, [wt(2), wt(2)])).toBeNull(); // a rewind is not a kill
-    expect(streakDeath(run, [])).toBeNull(); // the next hand's empty tricks: hand-end, gated upstream too
+    expect(streakDeath(run, run, joker)).toBeNull();
+    expect(streakDeath(run, [wt(2), wt(2)], joker)).toBeNull(); // a rewind is not a kill
+    expect(streakDeath(run, [], joker)).toBeNull(); // the next hand's empty tricks: hand-end, gated upstream too
   });
   it('a death inside a multi-trick jump still names the seat that died', () => {
-    // state jumped two tricks: seat 2's fire broke on the first, seat 0
-    // took the second too — the moment belongs to the fire that died
-    expect(streakDeath([wt(2), wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(2), wt(0), wt(0)]))
+    // state jumped two tricks: seat 2's fire broke on the first (an
+    // OPPONENT's book), seat 1 took the second too — the moment belongs
+    // to the fire that died
+    expect(streakDeath([wt(2), wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(2), wt(1), wt(1)], joker))
       .toEqual({ seat: 2, tier: 2, count: 4 });
+    // a partner book followed by an opponent book still dies — on the opponent's
+    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(0), wt(1)], joker))
+      .toEqual({ seat: 2, tier: 1, count: 3 });
+  });
+});
+
+describe('fire run — a partner\'s book is neutral (owner, 2026-11-04)', () => {
+  const wt = (winner: number): Trick => ({ leader: 0, plays: [], winner });
+  it('the holder\'s own books count exactly as before', () => {
+    expect(fireRun([wt(2), wt(2), wt(2)], joker)).toEqual({ seat: 2, count: 3 });
+    expect(fireRun([wt(0), wt(0)], joker)).toEqual({ seat: 0, count: 2 }); // smolder
+    expect(fireRun([wt(0)], joker)).toBeNull();
+    expect(fireRun([], joker)).toBeNull();
+  });
+  it('a partner book leaves the fire state untouched — same seat, same count', () => {
+    expect(fireRun([wt(2), wt(2), wt(2), wt(0)], joker)).toEqual({ seat: 2, count: 3 });
+    expect(fireRun([wt(0), wt(0), wt(0), wt(2)], joker)).toEqual({ seat: 0, count: 3 });
+    // the smolder survives a partner book too
+    expect(fireRun([wt(2), wt(2), wt(0)], joker)).toEqual({ seat: 2, count: 2 });
+  });
+  it('the holder\'s next book after a partner book grows the SAME run', () => {
+    expect(fireRun([wt(2), wt(2), wt(2), wt(0), wt(2)], joker)).toEqual({ seat: 2, count: 4 });
+    // and a run can form across a partner book: the partner's book is not
+    // a reset (it adds nothing either — the count is the holder's own)
+    expect(fireRun([wt(2), wt(0), wt(2), wt(2)], joker)).toEqual({ seat: 2, count: 3 });
+  });
+  it('an opponent book is the only thing that ends the run', () => {
+    expect(fireRun([wt(2), wt(2), wt(2), wt(1)], joker)).toBeNull();
+    // partner book, then an opponent book (seat 3 opposes seat 2): over
+    expect(fireRun([wt(2), wt(2), wt(2), wt(0), wt(3)], joker)).toBeNull();
+    expect(fireSeat({ tricks: [wt(2), wt(2), wt(2), wt(0)], rules: joker } as never)).toBe(2);
+    expect(fireSeat({ tricks: [wt(2), wt(2), wt(2), wt(1)], rules: joker } as never)).toBeNull();
+  });
+  it('the first seat to catch fire keeps the plate — partner books never move it', () => {
+    // alternating books: seat 2 catches fire first; seat 0's later books
+    // (even reaching 3 of its own) never displace the displayed fire
+    expect(fireRun([wt(2), wt(0), wt(2), wt(0), wt(2)], joker)).toEqual({ seat: 2, count: 3 });
+    expect(fireRun([wt(2), wt(0), wt(2), wt(0), wt(2), wt(0)], joker)).toEqual({ seat: 2, count: 3 });
+    // seat 0 catches first instead — same protection, mirrored
+    expect(fireRun([wt(0), wt(2), wt(0), wt(2), wt(0), wt(2)], joker)).toEqual({ seat: 0, count: 3 });
+  });
+});
+
+describe('extinguished — cutthroat has no partners: every other seat is an opponent', () => {
+  const wt = (winner: number): Trick => ({ leader: 0, plays: [], winner });
+  it('any non-holder book extinguishes, exactly as before the partner rule', () => {
+    expect(streakDeath([wt(2), wt(2), wt(2)], [wt(2), wt(2), wt(2), wt(0)], cutRules))
+      .toEqual({ seat: 2, tier: 1, count: 3 });
+    expect(streakDeath([wt(0), wt(0), wt(0)], [wt(0), wt(0), wt(0), wt(2)], cutRules))
+      .toEqual({ seat: 0, tier: 1, count: 3 });
+  });
+  it('fireRun is the old trailing run when there are no partners', () => {
+    expect(fireRun([wt(2), wt(2), wt(2)], cutRules)).toEqual({ seat: 2, count: 3 });
+    expect(fireRun([wt(1), wt(2), wt(2)], cutRules)).toEqual({ seat: 2, count: 2 });
+    expect(fireRun([wt(1), wt(1), wt(2)], cutRules)).toBeNull(); // a run of 1 shows nothing, as today
+    expect(fireRun([], cutRules)).toBeNull();
   });
 });
 

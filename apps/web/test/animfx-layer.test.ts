@@ -564,13 +564,21 @@ describe('wave 3 layer', () => {
     expect(Q('animfx-ember')).toBeNull();
   });
 
-  it('ON FIRE: the rim lives while the streak lives and dies with it', () => {
+  it('ON FIRE: the rim lives while the streak lives — a partner book cannot kill it, an opponent book does (owner, 2026-11-04)', () => {
+    // LEDGER (2026-11-04): this pin used to end the streak with seat 0's
+    // trick — seat 0 is seat 2's PARTNER, and the owner ruled a partner's
+    // book never extinguishes a fire. The partner step now asserts the
+    // rim STAYS; the death step moves to an opponent (seat 1).
     const wt = (winner: number) => ({
       leader: 0, plays: [{ seat: winner, card: 'AS' }], winner,
     }) as unknown as PlayerView['tricks'][number];
     mount(view({ tricks: [wt(2), wt(2), wt(2)] }));
     expect(Q('animfx-firering')).not.toBeNull();
+    // seat 0 is seat 2's PARTNER: the book is neutral, the fire stays
     rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0)] }));
+    expect(Q('animfx-firering')).not.toBeNull();
+    // seat 1 is an OPPONENT: that book ends the streak, rim gone
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0), wt(1)] }));
     expect(Q('animfx-firering')).toBeNull();
   });
 
@@ -582,8 +590,11 @@ describe('wave 3 layer', () => {
     expect(Q('animfx-firering')).not.toBeNull();
     const canvasBefore = document.querySelector('.animfx-platefire canvas');
     expect(canvasBefore).not.toBeNull();
-    // seat 0 takes a trick: seat 2's fire is extinguished, not just removed
-    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0)] }));
+    // seat 1, an OPPONENT, takes a trick: seat 2's fire is extinguished,
+    // not just removed. (LEDGER 2026-11-04: the breaker used to be seat 0 —
+    // seat 2's partner — until the owner ruled a partner's book never
+    // extinguishes a fire; only the breaker seat changed.)
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(1)] }));
     expect(Q('animfx-firering')).toBeNull();
     expect(Q('animfx-extinguish')).not.toBeNull();
     // the ON FIRE chip does not ride the smoke — the fire is out
@@ -592,7 +603,25 @@ describe('wave 3 layer', () => {
     // engine's burst starts on the fire's own surface with no gap frame
     expect(document.querySelector('.animfx-platefire canvas')).toBe(canvasBefore);
     // a re-render with no new trick never re-fires the moment
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(1)] }));
+    expect(Q('animfx-extinguish')).not.toBeNull();
+  });
+
+  it('EXTINGUISH: a PARTNER\'s book does NOT put the fire out — no steam, ring + chip stay (owner, 2026-11-04)', () => {
+    const wt = (winner: number) => ({
+      leader: 0, plays: [{ seat: winner, card: 'AS' }], winner,
+    }) as unknown as PlayerView['tricks'][number];
+    mount(view({ tricks: [wt(2), wt(2), wt(2)] }));
+    expect(Q('animfx-firering')).not.toBeNull();
+    expect(Q('animfx-firelabel')).not.toBeNull();
+    // seat 0 is seat 2's partner: the book is neutral — the fire burns on
     rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0)] }));
+    expect(Q('animfx-firering')).not.toBeNull();
+    expect(Q('animfx-firelabel')).not.toBeNull();
+    expect(Q('animfx-extinguish')).toBeNull();
+    // and when an OPPONENT (seat 1) finally takes one, the put-out fires
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0), wt(1)] }));
+    expect(Q('animfx-firering')).toBeNull();
     expect(Q('animfx-extinguish')).not.toBeNull();
   });
 
@@ -624,7 +653,9 @@ describe('wave 3 layer', () => {
     }) as unknown as PlayerView['tricks'][number];
     mount(view({ tricks: [wt(2), wt(2), wt(2)] }));
     expect(Q('animfx-firering')).not.toBeNull();
-    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(0)] }));
+    // an OPPONENT's book (seat 1) — a partner's would leave the fire lit
+    // under the 2026-11-04 rule, so it could not pin the silent death
+    rerender(view({ tricks: [wt(2), wt(2), wt(2), wt(1)] }));
     expect(Q('animfx-firering')).toBeNull();
     expect(Q('animfx-extinguish')).toBeNull();
   });

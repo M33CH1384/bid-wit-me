@@ -10,13 +10,14 @@
  *    migration 0007) — the same stored rows the Record Book's "Current
  *    win streak" honor reads. The home fire uses the MAX current streak
  *    across kinds and can name the kind it came from.
- *  - In-game: the trailing run of consecutive trick wins inside the
- *    current hand, from the existing animfx detector
- *    (animfx/detect.ts `trickStreak` — st.tricks is exactly the current
- *    hand's completed tricks, so a run resets when another seat takes a
- *    trick and can never leak across hands). Every client derives it
- *    from the same trick history, so all clients agree, offline and
- *    online, for bots and humans alike.
+ *  - In-game: a seat's own trick wins inside the current hand since the
+ *    last trick won by an OPPONENT, from the existing animfx detector
+ *    (animfx/detect.ts `fireRun` — st.tricks is exactly the current
+ *    hand's completed tricks, so a run can never leak across hands; a
+ *    PARTNER's trick win is neutral to the run and never resets it —
+ *    owner, 2026-11-04). Every client derives it from the same trick
+ *    history, so all clients agree, offline and online, for bots and
+ *    humans alike.
  *
  * Tier reconciliation (owner steer, 2026-10-27 — this build UPGRADES the
  * wave-3 "On Fire" CSS plate rim in animfx, it does not stack a second
@@ -241,7 +242,9 @@ export function trickFire(count: number): TrickFire {
 
 /* ------------------------------------------------------- extinguish ---
  * EXTINGUISH (owner, 2026-11-01): when a seat's rendered fire (T1+) is
- * broken by another seat's trick win, the fire doesn't just vanish —
+ * broken by an OPPONENT's trick win (owner correction, 2026-11-04: a
+ * partner's trick win is neutral and never puts a fire out), the fire
+ * doesn't just vanish —
  * it gets PUT OUT: a steam flash rolling into a gray smoke burst at
  * the plate (fire/fireEngine.ts's puff layer) plus a recorded steam
  * hiss (audio.ts 'fireOut'). Detection lives with the other animfx
