@@ -2,7 +2,7 @@ import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode,
 import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { Seg, Toggle } from './MoreOptions';
 import { requestSettingsSheet } from './settingsSheet';
-import { type ModeKey, type Settings, MODES, modeTitle, rulesSummary, settingsToRules } from './settings';
+import { type ModeKey, type Settings, MODES, modeTitle, rulesSummary, settingsToRules, targetScoreOptions } from './settings';
 import { type TipsPref, isFirstVisit, saveTips } from './tips';
 import { splashAction } from './splashTap';
 import { coverThen } from './spray';
@@ -145,8 +145,9 @@ export function SetupCard({ title, children }: { title: string; children: ReactN
 }
 
 /** What the bottom bar commits to, from the same settings the form edits:
- *  "Joker Spades · Harlem · Grandma's Kitchen" (+ "· Play to 500" vs bots,
- *  where the target is chosen on this step). */
+ *  "Joker Spades · Harlem · Grandma's Kitchen" (+ "· Play to 500" — the
+ *  target is chosen on this step on both paths: vs bots in Bots & score,
+ *  online in the create form's Rules card). */
 export function setupBarSummary(s: Settings, withTarget: boolean): string {
   const r = settingsToRules(s);
   const venue = !s.venue || s.venue === 'random' ? 'Random venue' : (VENUE_DEFS[s.venue as keyof typeof VENUE_DEFS]?.name ?? 'Random venue');
@@ -466,7 +467,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
               </div>
               <div className="ess-row">
                 <span className="ess-label">Play to</span>
-                <Seg label="Target score" value={s.targetScore} options={[250, 300, 500].map((x) => (x === (cut ? 300 : 500) ? ['default', String(x)] : [x, String(x)])) as [number | 'default', string][]} onChange={(v) => set('targetScore', v)} />
+                <Seg label="Target score" value={s.targetScore} options={targetScoreOptions(s)} onChange={(v) => set('targetScore', v)} />
               </div>
             </SetupCard>
             <SetupCard title="Deck & venue">
@@ -485,7 +486,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
             <SetupBar summary={setupBarSummary(s, true)}><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></SetupBar>
           </div>
         ) : (
-          <OnlineStep settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckGallery={<DeckGallery value={s.deck} onChange={(v) => set('deck', v)} />} barSummary={setupBarSummary(s, false)} onHouseRules={() => requestSettingsSheet()} summary={summary} tipsRow={tipsRow} view={view} onOpenCreate={() => go('table', 'online', kind, 'create')} />
+          <OnlineStep settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckGallery={<DeckGallery value={s.deck} onChange={(v) => set('deck', v)} />} barSummary={setupBarSummary(s, true)} onHouseRules={() => requestSettingsSheet()} onTargetScore={(v) => set('targetScore', v)} summary={summary} tipsRow={tipsRow} view={view} onOpenCreate={() => go('table', 'online', kind, 'create')} />
         )}
       </>
     );
@@ -555,9 +556,9 @@ export function RulesStatLine({ settings }: { settings: Settings }) {
  * wizard's Back returns here), regrouped ESPN-style into cards. Name and music
  * state live here so moving between the two screens keeps what you typed.
  */
-function OnlineStep({ settings, venue, onVenue, deck, deckGallery, barSummary, onHouseRules, summary, tipsRow, view, onOpenCreate }: {
+function OnlineStep({ settings, venue, onVenue, deck, deckGallery, barSummary, onHouseRules, onTargetScore, summary, tipsRow, view, onOpenCreate }: {
   settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckGallery: ReactNode;
-  barSummary: string; onHouseRules: () => void; summary: ReactNode; tipsRow: ReactNode; view: TableView; onOpenCreate: () => void;
+  barSummary: string; onHouseRules: () => void; onTargetScore: (v: Settings['targetScore']) => void; summary: ReactNode; tipsRow: ReactNode; view: TableView; onOpenCreate: () => void;
 }) {
   const [name, setName] = useState(loadName);
   const [code, setCode] = useState('');
@@ -610,6 +611,10 @@ function OnlineStep({ settings, venue, onVenue, deck, deckGallery, barSummary, o
         </SetupCard>
         <SetupCard title="Rules">
           <RulesStatLine settings={settings} />
+          <div className="ess-row">
+            <span className="ess-label">Play to<small>the end score for this table</small></span>
+            <Seg label="Target score" value={settings.targetScore} options={targetScoreOptions(settings)} onChange={onTargetScore} />
+          </div>
           {summary}
           <button type="button" className="quiet-row" data-testid="house-rules" onClick={onHouseRules}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
           {tipsRow}

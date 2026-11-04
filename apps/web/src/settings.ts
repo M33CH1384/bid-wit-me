@@ -94,6 +94,21 @@ export const MODES: { key: ModeKey; title: string; blurb: string; players: strin
 ];
 
 
+/**
+ * The end-score choices every table surface offers (SPEC: default 500 —
+ * cutthroat 300 — options 250 / 300 / 500). The mode's own preset number IS
+ * the 'default' choice: picking it stores 'default', so the target follows
+ * the mode if the mode changes later; the other two store the number.
+ * One source for the bots form, the create-a-table form and the Settings
+ * sheet's House rules (the room lobby offers the same values in its own
+ * select). Owner, 2026-11-03: the end score must be settable when creating
+ * a table.
+ */
+export function targetScoreOptions(s: Settings): [Settings['targetScore'], string][] {
+  const preset = s.mode.startsWith('cutthroat') ? 300 : 500;
+  return [250, 300, 500].map((x) => (x === preset ? ['default' as const, String(x)] : [x, String(x)])) as [Settings['targetScore'], string][];
+}
+
 export function settingsToRules(s: Settings): TableRules {
   const mode: Mode = s.mode === 'joker' ? 'joker' : s.mode === 'aceDown' ? 'aceDown' : 'cutthroat';
   const o: RulesOverrides = {

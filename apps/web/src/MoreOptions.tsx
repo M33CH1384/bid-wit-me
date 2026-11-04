@@ -6,7 +6,7 @@ import { BotTrashTalkRow, ChatSoundsRow, NukeIntensityRow, ReduceEffectsRow, Sou
 import { SetAnimRow } from './SetAnimPicker';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
-import { type Settings, settingsToRules } from './settings';
+import { type Settings, settingsToRules, targetScoreOptions } from './settings';
 import { type SectionOpenMap, type SettingsSectionId, loadSectionOpen, saveSectionOpen } from './settingsSections';
 import { TRUMP_SEP, trumpLadder, trumpLadderText } from './trumpLadder';
 import { type TipsPref, saveTips } from './tips';
@@ -162,6 +162,9 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
         </nav>
         <div className="scroll sheet-body">
           <SectionGroup railActive={tab === 'house'} label="House rules" open={isOpen('house')} onToggle={() => toggleSection('house')}>
+              <Row label="Target score" hint={`First to ${rules.targetScore} takes the game`}>
+                <Seg label="Target score" value={s.targetScore} options={targetScoreOptions(s)} onChange={(v) => set('targetScore', v)} />
+              </Row>
               <Row label="First hand: books bid themselves" hint="No bidding in hand 1 · 10 points per book">
                 <Toggle label="First hand: books bid themselves" value={s.firstHandBidsItself !== false} onChange={(v) => set('firstHandBidsItself', v)} />
               </Row>

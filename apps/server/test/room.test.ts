@@ -2307,3 +2307,36 @@ describe('live highlights (league data wave 6b)', () => {
     expect(env.highlights).toHaveLength(1);
   });
 });
+
+describe('end score (host-picked target)', () => {
+  // Owner, 2026-11-03: the end score is set at create-a-table (250 / 300 /
+  // 500 — the game's own list). The server takes the host's number through
+  // the same config hop as every other house rule; these pins hold that the
+  // number lands in the room, is what Open Tables reports, and is the number
+  // the started game plays to. (A full game ending AT a non-default target
+  // is pinned above: 'plays a complete 4-human game over the protocol' at
+  // targetScore 250.)
+  it('accepts each offered target and reports it in the listing', () => {
+    for (const target of [250, 300, 500]) {
+      const env = new FakeEnv();
+      env.join('a', 'Host');
+      env.send('a', { t: 'sit', seat: 0 });
+      env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: target }) });
+      expect(env.errors('a')).toEqual([]);
+      expect(env.room.data.rules.targetScore).toBe(target);
+      expect(env.room.listing()!.target).toBe(target);
+      // the started game plays to the same number
+      env.send('a', { t: 'start' });
+      expect(env.room.data.game!.rules.targetScore).toBe(target);
+    }
+  });
+
+  it('rejects a non-positive target and keeps the previous rules', () => {
+    const env = new FakeEnv();
+    env.join('a', 'Host');
+    env.send('a', { t: 'config', rules: makeRules('joker', { targetScore: 250 }) });
+    env.send('a', { t: 'config', rules: { ...makeRules('joker'), targetScore: 0 } as never });
+    expect(env.errors('a').at(-1)!.code).toBe('BAD_RULES');
+    expect(env.room.data.rules.targetScore).toBe(250);
+  });
+});
