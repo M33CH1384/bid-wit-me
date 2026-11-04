@@ -858,8 +858,21 @@ describe('layout pass v4: status up top, the portrait grows, courts fill the fie
     }
   });
 
-  it('the Ace keeps its hero pip: the pip drops to top 66% and the grown window rides above it', () => {
+  it('the Ace keeps its hero pip: the pip drops to top 66%', () => {
     expect(block('.plcard .pcard-field[data-field="ace"] .pcard-heropip {')).toContain('top: 66%');
+  });
+
+  it('the Ace window sits low on the card (owner 2026-11-04: "the photo should be moved a bit lower")', () => {
+    // Field box = card y 11.5% → 82% (70.5% of card height); the window
+    // is 33.8% of card height tall. At the old top: 37% of the field its
+    // center sat at 37.6% of the card (spanning 20.7% → 54.5%) — high,
+    // with the hero pip floating alone below it. The owner's outline
+    // asked for the photo ~1/3–1/2 of its own height lower, centered on
+    // the card: top: 54% of the field centers the window at 49.6% of
+    // the card (spanning 32.7% → 66.5%), a 12.0%-of-card shift = 0.36×
+    // the window's height. The window (z-index 2) overlaps the pip's
+    // top; the pip's base stays visible underneath it.
+    expect(block('.plcard .pcard-artwin.ace {')).toContain('top: 54%');
   });
 
   it('court figures fill the field keyline to keyline, indices backed in ivory, the tab inside the figure', async () => {

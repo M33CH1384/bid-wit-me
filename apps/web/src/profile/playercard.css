@@ -319,9 +319,12 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard .pcard-field[data-field="deuce"] .pcard-heropip { font-size: 63px; font-size: 21cqw; }
 .plcard .pcard-field[data-field="deuce"] .pcard-heropip.top { top: 15%; }
 .plcard .pcard-field[data-field="deuce"] .pcard-heropip.bot { top: 85%; transform: translate(-50%, -50%) rotate(180deg); }
-/* The Ace's hero pip drops to the field's lower center (v4): the grown
- * portrait window rides its upper field, and the pip's lower body stays
- * visible under the window — the Ace keeps its one-big-pip identity. */
+/* The Ace's hero pip drops to the field's lower center (v4): the pip
+ * stays put at 66%, and the portrait window — moved DOWN to the card's
+ * center on the owner's word (2026-11-04, "the photo should be moved a
+ * bit lower") — overlaps the pip's top half, its base (lower lobes +
+ * stem) still printing beneath the framed photo. The Ace keeps its
+ * one-big-pip identity: window in front (z-index 2), pip behind. */
 .plcard .pcard-field[data-field="ace"] .pcard-heropip { top: 66%; }
 
 /* The portrait art window: a framed rectangle of card art. On number
@@ -384,7 +387,12 @@ html[data-theme="neon"] .plcard[data-treatment="big-joker"] .pcard-front { borde
 .plcard .pcard-artwin.number.sparse { width: 68%; aspect-ratio: 4 / 4.5; }
 .plcard .pcard-artwin.number.dense { width: 46%; aspect-ratio: 4 / 4.6; }
 .plcard .pcard-artwin.number.tight { width: 46%; aspect-ratio: 4 / 3.6; }
-.plcard .pcard-artwin.ace { left: 50%; top: 37%; transform: translate(-50%, -50%); width: 56%; aspect-ratio: 4 / 4.7; }
+/* Ace window placement (owner, 2026-11-04): top 54% of the field centers
+ * the window at 49.6% of the CARD's height (it spans 32.7% → 66.5% of
+ * the card) — down 12.0% of the card (0.36× its own height) from the v4
+ * ride at top 37% (centered 37.6%, spanning 20.7% → 54.5%), which left
+ * the photo floating high over a lone pip. One number to re-tune. */
+.plcard .pcard-artwin.ace { left: 50%; top: 54%; transform: translate(-50%, -50%); width: 56%; aspect-ratio: 4 / 4.7; }
 .plcard .pcard-artwin.deuce { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 46%; aspect-ratio: 4 / 4.6; }
 .plcard .pcard-artwin.court { inset: 0; border-width: 2.5px; }
 .plcard .pcard-artwin.joker { top: 0; bottom: 0; right: 0; left: 9%; border-color: rgba(203, 184, 255, .7); background: linear-gradient(160deg, #3a2364, #170b2e); }
