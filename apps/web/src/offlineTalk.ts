@@ -41,6 +41,7 @@ import { type HistKind, type RevTributeEvent, type TalkEvent, type TalkLine, typ
 import { getActiveDeck } from './decks';
 import { histViewsForSeats } from './personaHistory';
 import { spokenClipDurationMs, talkPrefs } from './talkPrefs';
+import { genBanterHook, genMatchEndHook } from './genDialogue/wiring';
 
 /** why/how a generic line is being delivered — drives the gates + chain depth */
 interface EmitMeta {
@@ -302,7 +303,22 @@ export const offlineTalk = {
     const meta: EmitMeta = { humanReact: 'seat' in action && action.seat === humanSeat };
     let spoke = false;
     if (!bidSuppressed) {
-      for (const ev of momentsFor(before, action, after)) {
+      const evs = momentsFor(before, action, after);
+      // PROTOTYPE (genDialogue, flag-gated): the match-ending win event is
+      // claimed by the generated-dialogue hook before the generic loop —
+      // the hook draws the engine's line itself and races a generated
+      // wording for it when the winner's circle is the prototype persona.
+      let winClaimed = false;
+      if (after.result && !before.result) {
+        const w = evs.find((e) => e.kind === 'win');
+        if (w) {
+          w.handNo = after.handNo;
+          winClaimed = genMatchEndHook({ state: this.state, table: this.table!, ev: w, after, now: performance.now(), rnd: Math.random, emit: (l) => this.emit(l, meta) });
+          if (winClaimed) spoke = true;
+        }
+      }
+      for (const ev of evs) {
+        if (winClaimed && ev.kind === 'win') continue;
         // stamp the hand so the engine's per-hand repetition budget rolls
         ev.handNo = after.handNo;
         spoke = this.emit(botTalk(this.state, this.table!, ev, performance.now(), Math.random), meta) || spoke;
@@ -371,7 +387,12 @@ export const offlineTalk = {
     const lines = collectionBanter(this.state, this.table, after, performance.now(), Math.random, maxLines);
     // the cross-speaker dedupe covers banter too — it reaches the table by another road
     const now = performance.now();
-    return lines.filter((l) => !this.recentTexts.some((r) => r.text === l.text && r.seat !== l.seat && now - r.at < 60_000));
+    const fresh = lines.filter((l) => !this.recentTexts.some((r) => r.text === l.text && r.seat !== l.seat && now - r.at < 60_000));
+    // PROTOTYPE (genDialogue, flag-gated, inert when off): a set / busted-Nil
+    // line the engine awarded to the prototype persona is handed to the
+    // generated-dialogue director, which emits exactly one line for the
+    // moment through the sink; claimed lines leave the immediate delivery.
+    return fresh.filter((l) => !genBanterHook(l, after, this.table!, (x) => this.emit(x)));
   },
   /** before a bot plays: maybe a line (never sees the card); true = give it a beat */
   prePlay(seat: number): boolean { if (this.lastState) noteTalkHand(this.state, this.lastState.handNo); return this.on() && this.emit(prePlayLine(this.state, this.table!, seat, performance.now(), Math.random)); },

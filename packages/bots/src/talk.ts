@@ -227,7 +227,7 @@ export interface TalkEvent {
 export type GapBucket = 'close' | 'aheadBig' | 'behindBig';
 export type TricksLeftBucket = 'early' | 'mid' | 'late';
 /** `line`: stable id of the raw line, `<pool>.<kind>.<index>` (pool = persona id or 'common'): clients map it to a recorded clip */
-export interface TalkLine { seat: number; name: string; text: string; persona: PersonaId; reveal?: boolean; line?: string; /** the bid number in a '{bid}' line (picks the numbered clip) */ bid?: number; /** Voice Phase 3: a pre-voiced catalog alternative. The client uses it (text + clip together) only when its clip plays; otherwise the canned text/line above */ ai?: { id: string; text: string } }
+export interface TalkLine { seat: number; name: string; text: string; persona: PersonaId; reveal?: boolean; line?: string; /** the bid number in a '{bid}' line (picks the numbered clip) */ bid?: number; /** Voice Phase 3: a pre-voiced catalog alternative. The client uses it (text + clip together) only when its clip plays; otherwise the canned text/line above */ ai?: { id: string; text: string }; /** PROTOTYPE (genDialogue): model-generated wording that won the deadline race against this moment's curated line. Carries no `line` id — there is no recorded clip for it; it renders text-only unless the studio speech stage voiced it in time. `speech` says which: 'studio' = the persona's own cast voice via the Chatterbox chain, 'text' = no voice (fence default) */ gen?: { model: string; speech: 'studio' | 'text' } }
 
 /** The id of a raw (unfilled) line as picked for this persona + kind. */
 export function lineIdOf(persona: PersonaId, kind: TalkKind, raw: string): string | undefined {
