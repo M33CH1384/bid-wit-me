@@ -5055,6 +5055,13 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    and a folded group leaves the tab order via visibility. Reduced motion
    (the OS setting the app already honors) makes the fold instant. */
 .set-group-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
+/* Keyboard focus on the accordion toggle reads like the sheet's other
+   focus states (sheet-close, rail tabs): gold outline, offset so it
+   clears the group card's own rim (responsive audit C, 2026-11-05).
+   The sheet element itself takes programmatic focus on open (dialog
+   lifecycle) — that landing is not a visible focus stop. */
+.set-group-toggle:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+[data-testid="more-options"].sheet:focus { outline: none; }
 .set-chev { flex: none; color: var(--gold); font-size: 12px; line-height: 1; transform: rotate(-90deg); transition: transform .25s ease; }
 .set-chev.open { transform: rotate(0deg); }
 .set-group-body { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows .28s ease, visibility 0s linear .28s; }
