@@ -43,7 +43,9 @@
  *    holds the manifest + the sprite's COMPRESSED bytes (capped at
  *    VOICE_ENCODED_BUDGET_BYTES = 96 MiB) and decodes individual lines
  *    just ahead of playback into a clip cache hard-capped at
- *    VOICE_CLIP_CACHE_BUDGET_BYTES = 48 MiB. It ships behind the
+ *    VOICE_CLIP_CACHE_BUDGET_BYTES = 112 MiB (48 MiB until the
+ *    2026-11-05 starter warm repriced it for a full game's rotation —
+ *    see VOICE_WARM_BUDGET_BYTES in voices.ts). It ships behind the
  *    'bwm.voicePerClip' flag (default on) with the whole-sprite layer
  *    above intact: the legacy describes below run with the flag OFF and
  *    pin the old contracts unchanged; the per-clip describe runs with
@@ -226,13 +228,14 @@ describe('the derived budget', () => {
     expect(VOICE_RESIDENCY_BUDGET_BYTES).toBeLessThan(1024 * 1024 * 1024);
   });
 
-  it('the per-clip ceilings are 48 MiB decoded clips + 96 MiB compressed bytes', () => {
-    expect(VOICE_CLIP_CACHE_BUDGET_BYTES).toBe(48 * 1024 * 1024);
+  it('the per-clip ceilings are 112 MiB decoded clips + 96 MiB compressed bytes', () => {
+    expect(VOICE_CLIP_CACHE_BUDGET_BYTES).toBe(112 * 1024 * 1024);
     expect(VOICE_ENCODED_BUDGET_BYTES).toBe(96 * 1024 * 1024);
-    // The whole per-clip worst case is a rounding error next to the
-    // legacy budget it replaces.
+    // The whole per-clip worst case stays a fraction of the legacy
+    // budget it replaces (112 MiB holds a full table's starter-warmed
+    // rotation sets — see VOICE_WARM_BUDGET_BYTES in voices.ts).
     expect(VOICE_CLIP_CACHE_BUDGET_BYTES + VOICE_ENCODED_BUDGET_BYTES)
-      .toBeLessThan(VOICE_RESIDENCY_BUDGET_BYTES / 6);
+      .toBeLessThan(VOICE_RESIDENCY_BUDGET_BYTES / 4);
   });
 });
 
@@ -380,7 +383,13 @@ describe('per-clip decode layer (flag on)', () => {
     await playClip('og', 'Unc', CLIP, 1); // window 0..10 resident (11 clips)
     await playClip('og', 'Unc', 'clip 29', 1); // window 19..29 joins (22 clips)
     expect(residentClipBytes()).toBe(22 * PC_CLIP_BYTES);
-    await playClip('og', 'Unc', 'clip 15', 1); // window 5..25 overflows the cap
+    await playClip('og', 'Unc', 'clip 15', 1); // window 5..25 joins (30 clips)
+    // Two more talkers push the cache past the 112 MiB ceiling (the
+    // scenario was calibrated to the old 48 MiB cap; the overflow now
+    // needs a fuller table — the eviction contract is unchanged).
+    await playClip('mama', 'Queenie', CLIP, 1);
+    await playClip('mama', 'Queenie', 'clip 20', 1);
+    await playClip('deacon', 'Ford', CLIP, 1); // this pass overflows the cap
     expect(residentClipBytes()).toBeLessThanOrEqual(VOICE_CLIP_CACHE_BUDGET_BYTES);
     const ids = residentClipIds();
     expect(ids).toContain(pcClipIdOf('og-', 'clip 15')); // the just-played line survives

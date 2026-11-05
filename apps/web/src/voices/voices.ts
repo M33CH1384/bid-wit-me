@@ -15,8 +15,9 @@
  * iOS jetsam stack. The per-clip layer (bottom half of this file) keeps
  * only the sprite's COMPRESSED bytes resident (LRU-capped at 96 MiB) and
  * decodes individual lines just ahead of playback into a hard-capped
- * 48 MiB clip cache, warmed by the schedulers that know the next lines
- * (scene beats, the rundown, table preload). It ships behind a flag —
+ * clip cache (112 MiB since the 2026-11-05 starter warm — see
+ * VOICE_WARM_BUDGET_BYTES), warmed by the schedulers that know the next
+ * lines (scene beats, the rundown, table preload). It ships behind a flag —
  * VOICE_PER_CLIP_DEFAULT, per-device override localStorage
  * 'bwm.voicePerClip' = '0' — with this legacy layer intact and tested,
  * because decode latency on unwarmed lines could not be measured on the
@@ -25,7 +26,7 @@
  * the engine calls: same clips, same selection, same mix — only the
  * residency differs.
  */
-import { type PersonaId, lineById, storyCastForName, storyVoiceKey, voiceFor } from '@spades/bots';
+import { type PersonaId, CONFER_ASK, CONFER_RESP, CONSULT_FREE, INTRO_COMMON, TEXT_ONLY_KINDS, lineById, speakableLines, storyCastForName, storyVoiceKey, voiceFor, voiceGender } from '@spades/bots';
 import { decodeAudioBuffer, sound } from '../audio';
 import { audioElementPool } from '../audioPool';
 import { VERSION } from '../version';
@@ -407,16 +408,22 @@ export function voicePerClipEnabled(): boolean {
 
 /**
  * The hard ceiling on decoded voice clips held at once. Defense, from
- * the shipped manifests: the median clip is 3.56 s ≈ 342 KB decoded, so
- * 48 MiB holds ~140 clips — a full scene or consultation exchange for
- * four speakers (~60–100 clips ≈ 20–34 MB) with headroom — while being
- * ~5% of the legacy 896 MiB budget. A single clip larger than the cap
- * (the longest shipped take is 39.7 s ≈ 3.8 MB, so none is) would be
- * admitted alone. Clips are NOT seat-exempt: the cap is small enough
- * that eviction pressure is the point, and a clip in active use is
- * most-recently-used by construction.
+ * the shipped manifests: the median clip is ~2.4 s ≈ 230 KB decoded.
+ * The ceiling was 48 MiB when the layer shipped (2026-11-02) — sized
+ * for scene beats and a consultation exchange (~60–100 clips). The
+ * 2026-11-05 sparse-talk measurement repriced it: a full game at one
+ * table draws only ~70 distinct clips (~17 MB), but the preload
+ * starter warm (below) pre-slices each seated sprite's rotation set at
+ * ~28 MiB per sprite, so a four-sprite table warms to ~110 MiB. At
+ * 112 MiB the combined worst case (112 decoded + 96 compressed) is
+ * 208 MiB — under a quarter of the legacy 896 MiB budget and below the
+ * ~345 MiB a typical table held under whole-sprite residency. A single
+ * clip larger than the cap (the longest shipped take is 39.7 s ≈
+ * 3.8 MB, so none is) would be admitted alone. Clips are NOT
+ * seat-exempt: eviction pressure is the point, and a clip in active
+ * use is most-recently-used by construction.
  */
-export const VOICE_CLIP_CACHE_BUDGET_BYTES = 48 * 1024 * 1024;
+export const VOICE_CLIP_CACHE_BUDGET_BYTES = 112 * 1024 * 1024;
 /**
  * The ceiling on resident COMPRESSED sprite bytes. The worst seated set
  * (AAC on Safari) is ~45–50 MB of m4a; 96 MiB holds a full table plus a
@@ -430,8 +437,48 @@ export const VOICE_ENCODED_BUDGET_BYTES = 96 * 1024 * 1024;
  *  takes, the consultation grid, story lines), so a wanted line's
  *  manifest neighbours are its likeliest next lines. */
 const PC_WINDOW = 10;
-/** Starter clips warmed per seated sprite by the table preload. */
+/** Starter clips warmed per seated sprite by the table preload — the
+ *  manifest head is the scene front door (a scene's first beats live
+ *  there) and always warms, inside the warm budget below. */
 const PC_HEAD_WARM = 12;
+/**
+ * The starter-warm budget per seated sprite (2026-11-05, the
+ * sparse-talk fix). A decode pass costs a whole-sprite decode —
+ * measured 6–12 s for a talker's sprite on desktop Chromium, slower on
+ * a throttled phone — while a line that waits >1.5 s for its clip is
+ * dropped silent. Warming only the head window left the table
+ * rotation (which the engine draws near-without-repeat, so most lines
+ * are first plays) paying that decode on the critical path: roughly
+ * half of a table's lines never sounded. The preload therefore pays
+ * ONE pass per seated sprite up front and slices the sprite's
+ * table-rotation set into the clip cache: the head window, the
+ * consultation's conversational lines, then the generic talk pools in
+ * the kind order below (rig-measured delivered share first, big-moment
+ * kinds ahead of the tail), whole pools at a time, until this budget
+ * is spent. 28 MiB ≈ 120 clips per sprite; a four-sprite table warms
+ * to ~110 MiB against the 112 MiB clip ceiling above.
+ */
+export const VOICE_WARM_BUDGET_BYTES = 28 * 1024 * 1024;
+/** Talk kinds in starter-warm priority order (see above). Text-only
+ *  kinds never appear here — they render as text by design and are
+ *  excluded again at selection time via TEXT_ONLY_KINDS. */
+const VOICE_WARM_KIND_ORDER: readonly string[] = [
+  'prePlay', 'roast', 'cut', 'setThem', 'win', 'wheels', 'nuke',
+  'gotCut', 'overcut', 'made', 'hypePartner', 'slam', 'gotSet',
+  'joker', 'badHand', 'runIt', 'gotNuked', 'nilBust', 'blindNil',
+  'nilMade', 'boston', 'shotOut', 'matchPoint', 'lose', 'gotRan',
+  'partnerBlunder', 'bidTooHigh', 'roastBid', 'bigBid', 'nilBid',
+  'streak', 'bags', 'duck', 'slow', 'loudLoser', 'onNotice',
+  'rematch', 'newbie', 'reveal',
+];
+/** The consultation's conversational clips (the number-free lines and
+ *  the intro/confer glue) warmed with the rotation set. The numbered
+ *  grid takes are deliberately NOT pre-warmed — there are ~21 cells
+ *  per template; they warm through play as cells recur. */
+const VOICE_WARM_CONSULT_RAWS: readonly string[] = [
+  ...Object.values(CONSULT_FREE).flatMap((ls) => [...ls]),
+  ...INTRO_COMMON, ...CONFER_ASK, ...CONFER_RESP,
+];
 
 interface PcManifest { clips: Record<string, [number, number]>; order: string[] }
 const pcManifests = new Map<string, Promise<PcManifest | null>>();
@@ -630,6 +677,18 @@ function pcAddWant(key: string, clipKey: string): void {
   set.add(clipKey);
 }
 
+/** Exact wants: clips a pass must slice AS THEMSELVES, with no ±10
+ *  window expansion. The starter warm registers ~120 clips per sprite;
+ *  window-expanding those would inflate the pass toward the whole
+ *  sprite and blow the warm budget. Fired-line wants (pcAddWant) keep
+ *  the window — their neighbours are that line's likeliest followers. */
+const pcExactWants = new Map<string, Set<string>>();
+function pcAddExactWant(key: string, clipKey: string): void {
+  let set = pcExactWants.get(key);
+  if (!set) { set = new Set(); pcExactWants.set(key, set); }
+  set.add(clipKey);
+}
+
 /** Queue a decode pass for a sprite. Passes are SERIALIZED — never two
  *  sprites decoding at once — and a sprite already queued or running
  *  is not queued twice (a running pass re-kicks itself if wants landed
@@ -645,7 +704,7 @@ function pcKickPass(key: string): void {
     // Wants that landed while this pass decoded belong to a follow-up
     // pass (a kick during the run no-ops against pcRunningKey, so the
     // chain tail is where the follow-up is armed).
-    if ((pcPendingWants.get(key)?.size ?? 0) > 0 || (pcWaiters.get(key)?.length ?? 0) > 0) pcKickPass(key);
+    if ((pcPendingWants.get(key)?.size ?? 0) > 0 || (pcExactWants.get(key)?.size ?? 0) > 0 || (pcWaiters.get(key)?.length ?? 0) > 0) pcKickPass(key);
   });
 }
 
@@ -663,9 +722,11 @@ function pcAwaitClip(key: string, clipKey: string): Promise<{ buf: AudioBuffer; 
 async function pcRunPass(key: string): Promise<void> {
   const wants = pcPendingWants.get(key) ?? new Set<string>();
   pcPendingWants.delete(key);
+  const exactWants = pcExactWants.get(key) ?? new Set<string>();
+  pcExactWants.delete(key);
   const waiters = pcWaiters.get(key) ?? [];
   pcWaiters.delete(key);
-  if (!wants.size && !waiters.length) return;
+  if (!wants.size && !exactWants.size && !waiters.length) return;
   const t0 = performance.now();
   const finish = (failed: boolean) => {
     pcPasses++;
@@ -682,7 +743,8 @@ async function pcRunPass(key: string): Promise<void> {
   };
   const man = await pcManifest(key);
   if (!man) { finish(true); return; }
-  // Expand each want to its manifest neighbourhood (minus what's held).
+  // Expand each fired-line want to its manifest neighbourhood (minus
+  // what's held); exact wants (the starter warm) slice as themselves.
   const sliceSet = new Set<string>();
   for (const ck of wants) {
     if (pcClipsMap.has(pcClipId(key, ck)) || pcWholeMap.has(key)) continue;
@@ -692,6 +754,9 @@ async function pcRunPass(key: string): Promise<void> {
       const nk = man.order[j]!;
       if (!pcClipsMap.has(pcClipId(key, nk))) sliceSet.add(nk);
     }
+  }
+  for (const ck of exactWants) {
+    if (!pcClipsMap.has(pcClipId(key, ck)) && !pcWholeMap.has(key)) sliceSet.add(ck);
   }
   if (!sliceSet.size) { finish(false); return; }
   const data = await pcFetchBytes(key);
@@ -740,6 +805,7 @@ function pcEvictNonSeated(): void {
   for (const id of [...pcClipsMap.keys()]) if (!seatedKeys.has(pcIdKey(id))) pcDropClip(id);
   for (const k of [...pcWholeMap.keys()]) if (!seatedKeys.has(k)) pcDropWhole(k);
   for (const k of [...pcRetries.keys()]) if (!seatedKeys.has(k)) pcRetries.delete(k);
+  for (const k of [...pcExactWants.keys()]) if (!seatedKeys.has(k)) pcExactWants.delete(k);
   publishVoiceProbe();
 }
 
@@ -784,10 +850,60 @@ async function clipDurationMsPc(persona: PersonaId, name: string, raw: string | 
   return clipKey ? man.clips[clipKey]![1] : null;
 }
 
+/** The starter warm's clip set for one sprite (see
+ *  VOICE_WARM_BUDGET_BYTES): head window first, then the consultation's
+ *  conversational lines, then the persona's recordable talk pools in
+ *  warm-priority kind order — each line together with every take the
+ *  bake recorded for it — until the per-sprite budget is spent.
+ *  Text-only kinds are excluded: their lines render as text by design
+ *  and warming them would spend budget on clips that never play. */
+function pcStarterClips(persona: PersonaId, name: string, man: PcManifest): string[] {
+  const inManifest = (k: string) => man.clips[k] !== undefined;
+  const bytesOf = (k: string) => (man.clips[k]![1] / 1000) * VOICE_DECODE_RATE * 4;
+  const takesByBase = new Map<string, string[]>();
+  for (const k of man.order) {
+    const hash = k.indexOf('#');
+    if (hash < 0) continue;
+    const base = k.slice(0, hash);
+    const arr = takesByBase.get(base) ?? [];
+    arr.push(k);
+    takesByBase.set(base, arr);
+  }
+  const picked: string[] = [];
+  const seen = new Set<string>();
+  let spent = 0;
+  /** Offer one clip to the warm. Returns false only when the budget is
+   *  spent (the caller stops); duplicates and absences are free. */
+  const offer = (k: string): boolean => {
+    if (seen.has(k) || !inManifest(k)) return true;
+    const b = bytesOf(k);
+    if (spent + b > VOICE_WARM_BUDGET_BYTES) return false;
+    seen.add(k);
+    picked.push(k);
+    spent += b;
+    return true;
+  };
+  for (const ck of man.order.slice(0, PC_HEAD_WARM)) if (!offer(ck)) return picked;
+  for (const raw of VOICE_WARM_CONSULT_RAWS) if (!offer(raw)) return picked;
+  const byKind = new Map<string, string[]>();
+  for (const l of speakableLines(persona, voiceGender(name))) {
+    if (TEXT_ONLY_KINDS.includes(l.kind) || l.raw === '…') continue;
+    const keys = [l.raw, ...(takesByBase.get(l.raw) ?? [])];
+    const arr = byKind.get(l.kind) ?? [];
+    arr.push(...keys);
+    byKind.set(l.kind, arr);
+  }
+  for (const kind of VOICE_WARM_KIND_ORDER) {
+    for (const ck of byKind.get(kind) ?? []) if (!offer(ck)) return picked;
+  }
+  return picked;
+}
+
 /** Preload through the per-clip layer: fetch the manifest + compressed
- *  bytes in the background (NO whole-sprite decode) and queue one
- *  starter pass — pending wants plus a head window of the manifest —
- *  so the first lines of the loading/deal/bidding window hit cache. */
+ *  bytes in the background and queue ONE starter pass that slices the
+ *  sprite's table-rotation set (pcStarterClips) into the clip cache,
+ *  so the lines a game actually draws are resident before the first
+ *  hand instead of each paying a whole-sprite decode on its moment. */
 function preloadVoicePc(persona: PersonaId, name: string): void {
   const key = keyFor(persona, name);
   if (pcBytesMap.has(key)) return;
@@ -796,7 +912,7 @@ function preloadVoicePc(persona: PersonaId, name: string): void {
       const man = await pcManifest(key);
       if (!man) return;
       await pcFetchBytes(key);
-      for (const ck of man.order.slice(0, PC_HEAD_WARM)) pcAddWant(key, ck);
+      for (const ck of pcStarterClips(persona, name, man)) pcAddExactWant(key, ck);
       pcKickPass(key);
     })();
   };
