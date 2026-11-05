@@ -3374,13 +3374,31 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
             <>
               <div className="menu-scrim" onPointerDown={(e) => runLeaveMenu(e, 'scrim')} onPointerUp={(e) => runLeaveMenu(e, 'scrim')} onClick={(e) => runLeaveMenu(e, 'scrim')} />
               <div className="game-menu glass" role="menu" data-testid="game-menu" ref={escMenu}>
-                <button type="button" role="menuitem" className={help ? 'on' : ''} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
-                <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
-                <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
-                <button type="button" role="menuitem" data-testid="view-toggle" onClick={toggleView}>{effView === 'sitting' ? '🪑' : '🧍'} View: {effView === 'sitting' ? 'Sitting' : 'Standing'}</button>
-                <button type="button" role="menuitem" data-testid="turnup-toggle" aria-pressed={turnUp} onClick={toggleTurnUp}>🔥 Turn up: {turnUp ? 'On — Standing slams' : 'Off — gentle plays'}</button>
-                {[1, 2, 3].map((seat) => seat < names.length ? <button key={seat} type="button" role="menuitem" data-testid={`voice-mute-${seat}`} aria-pressed={sound.voiceMuted(names[seat]!)} onClick={() => { sound.setVoiceMuted(names[seat]!, !sound.voiceMuted(names[seat]!)); setMuteTick((t) => t + 1); }}>{sound.voiceMuted(names[seat]!) ? '🔇' : '🔊'} {names[seat]} voice: {sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}</button> : null)}
+                {/* Finding G grouping (presentation only — every label,
+                    testid and handler is the flat menu's own): the two
+                    mid-hand reaches first and prominent, then DISPLAY,
+                    then VOICES as compact per-player chips under one
+                    heading, Social full-width, Leave separated last. */}
+                <div className="menu-primary">
+                  <button type="button" role="menuitem" className={`menu-act${help ? ' on' : ''}`} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
+                  <button type="button" role="menuitem" className="menu-act" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
+                </div>
+                <div className="menu-group" role="group" aria-label="Display">
+                  <div className="menu-group-head" aria-hidden="true">Display</div>
+                  <div className="menu-group-items">
+                    <button type="button" role="menuitem" className="menu-act" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
+                    <button type="button" role="menuitem" className="menu-act" data-testid="view-toggle" onClick={toggleView}>{effView === 'sitting' ? '🪑' : '🧍'} View: {effView === 'sitting' ? 'Sitting' : 'Standing'}</button>
+                    <button type="button" role="menuitem" className="menu-act" data-testid="turnup-toggle" aria-pressed={turnUp} onClick={toggleTurnUp}>🔥 Turn up: {turnUp ? 'On — Standing slams' : 'Off — gentle plays'}</button>
+                  </div>
+                </div>
+                <div className="menu-group menu-voices" role="group" aria-label="Player voices">
+                  <div className="menu-group-head" aria-hidden="true">Voices</div>
+                  <div className="menu-group-items">
+                    {[1, 2, 3].map((seat) => seat < names.length ? <button key={seat} type="button" role="menuitem" className="menu-act voice-chip" data-testid={`voice-mute-${seat}`} aria-pressed={sound.voiceMuted(names[seat]!)} aria-label={`${names[seat]} voice: ${sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}`} title={names[seat]} onClick={() => { sound.setVoiceMuted(names[seat]!, !sound.voiceMuted(names[seat]!)); setMuteTick((t) => t + 1); }}><span className="voice-chip-icon" aria-hidden="true">{sound.voiceMuted(names[seat]!) ? '🔇' : '🔊'}</span><span className="voice-chip-name">{names[seat]}</span><span className="voice-chip-state">{sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}</span></button> : null)}
+                  </div>
+                </div>
                 <div className="menu-social"><SocialButton className="compact" /></div>
+                <div className="menu-divider" aria-hidden="true" />
                 <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); runLeaveMenu(e, 'leave'); }} onPointerUp={(e) => runLeaveMenu(e, 'leave')} onClick={(e) => runLeaveMenu(e, 'leave')}>🚪 Leave table</button>
               </div>
             </>
