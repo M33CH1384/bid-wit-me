@@ -8,10 +8,18 @@
  * SLAM), the home UI fades in slowly under the shuffle and SNAPS to full
  * at the slam.
  *
- * Cold-open only. The claim latch below lives for exactly one page load:
- * the first surface of the load claims the decision, and no later mount —
- * resume, route change, back-navigation — can show the splash again. A
- * fresh page load is a fresh module, so the splash shows again there.
+ * Cold-open only. The claim latch below lives for exactly one app
+ * SESSION: the first surface of the session claims the decision, and no
+ * later mount — resume, route change, back-navigation — can show the
+ * splash again. The claim is remembered in sessionStorage, so it also
+ * survives a same-session document reload (the chunk self-heal spends
+ * one reload per build on a page a deploy stranded; post-game surfaces
+ * navigate with location.href; iOS can discard and reload a backgrounded
+ * page). A genuinely fresh session — the app fully closed and relaunched,
+ * a new tab — starts with empty sessionStorage, so the splash shows
+ * again there: that is the cold open (owner, 2026-11-05: leaving a game
+ * for the menu re-showed the splash after such a reload; the latch used
+ * to live in module state alone and every reload re-armed it).
  */
 
 /** Fade endpoints (pinned with styles.css's [data-splash-reveal] rules):
@@ -56,17 +64,37 @@ export function planBootSplash(input: {
 
 let claimed = false;
 
-/** Claim this page load's splash decision. The first caller wins (true);
- *  every later caller in the same load gets false. Boot into a resumed
- *  game claims it too (consumed, never shown) so exiting to the menu
- *  mid-session can't splash either. */
+/** The session flag: sessionStorage is the tab-scoped lifetime the chunk
+ *  self-heal's own reload flag already trusts (chunkLoad.ts), and the
+ *  StoryHome mode gate set the precedent of remembering a gate's answer
+ *  there so a heal reload never re-asks it. Storage can throw (private
+ *  mode); every access is guarded and the claim falls back to the
+ *  in-memory latch alone rather than breaking the gate. */
+export const BOOT_SPLASH_SESSION_KEY = 'bwm.boot-splash';
+
+function sessionClaimed(): boolean {
+  try { return sessionStorage.getItem(BOOT_SPLASH_SESSION_KEY) === '1'; } catch { return false; }
+}
+
+function persistSessionClaim(): void {
+  try { sessionStorage.setItem(BOOT_SPLASH_SESSION_KEY, '1'); } catch { /* private mode: the in-memory latch still holds for this load */ }
+}
+
+/** Claim this session's splash decision. The first caller wins (true);
+ *  every later caller in the session gets false — in this load, and in
+ *  any same-session reload of it. Boot into a resumed game claims it too
+ *  (consumed, never shown) so exiting to the menu mid-session can't
+ *  splash either. */
 export function claimBootSplash(): boolean {
   if (claimed) return false;
   claimed = true;
+  if (sessionClaimed()) return false;
+  persistSessionClaim();
   return true;
 }
 
 /** Test seam, following the engine's __setSfxDelayForTest precedent. */
 export function __resetBootSplashClaimForTest(): void {
   claimed = false;
+  try { sessionStorage.removeItem(BOOT_SPLASH_SESSION_KEY); } catch { /* ignore */ }
 }

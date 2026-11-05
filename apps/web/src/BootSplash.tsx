@@ -18,8 +18,9 @@ type Phase = 'show' | 'armed' | 'fading' | 'done';
  * Straight-in paths: sound off (the boot gate) or reduced motion → the
  * tap dismisses the splash at full strength, no sting, no fade. Audio
  * that never comes up also lands there (fail open to the app, never a
- * stuck splash). The claim lives in bootSplash.ts: one decision per page
- * load, so resume / route changes / back-nav never re-show it.
+ * stuck splash). The claim lives in bootSplash.ts: one decision per app
+ * session (sessionStorage-backed), so resume / route changes / back-nav
+ * — and same-session reloads — never re-show it.
  *
  * It wraps Setup from App rather than living inside it so the wizard's
  * own render stays exactly what the theme-parity guardrail inventories;

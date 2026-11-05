@@ -60,6 +60,52 @@ describe('the plan (pure)', () => {
   });
 });
 
+describe('the claim across same-session reloads (owner, 2026-11-05)', () => {
+  // The owner left a game for the menu and got "Touch to begin" again. The
+  // latch used to live in module state alone, so any same-session document
+  // reload re-armed it — and this app reloads itself by design (the chunk
+  // self-heal spends one location.reload() per build on a page a deploy
+  // stranded; post-game surfaces navigate with location.href). The claim
+  // must be scoped to the SESSION, not the document: sessionStorage is
+  // the tab-scoped lifetime the heal's own flag already trusts (the
+  // StoryHome mode-gate precedent, 2026-10-22).
+  it('a claim survives a document reload inside the same session', async () => {
+    sessionStorage.clear();
+    vi.resetModules();
+    let m = await import('../src/bootSplash');
+    expect(m.claimBootSplash()).toBe(true); // the cold open's claim
+    // A document reload: fresh module registry, same sessionStorage.
+    vi.resetModules();
+    m = await import('../src/bootSplash');
+    expect(m.claimBootSplash()).toBe(false); // leaving to the menu must not splash
+    expect(m.claimBootSplash()).toBe(false);
+  });
+
+  it('a fresh session claims again — the cold-open boundary is a new session', async () => {
+    sessionStorage.clear();
+    vi.resetModules();
+    const m = await import('../src/bootSplash');
+    expect(m.claimBootSplash()).toBe(true);
+  });
+
+  it('the test reset clears the session flag too', async () => {
+    sessionStorage.clear();
+    vi.resetModules();
+    let m = await import('../src/bootSplash');
+    expect(m.claimBootSplash()).toBe(true);
+    m.__resetBootSplashClaimForTest();
+    vi.resetModules();
+    m = await import('../src/bootSplash');
+    expect(m.claimBootSplash()).toBe(true);
+  });
+
+  it('the session flag rides sessionStorage under a bwm.* key (chunk-heal precedent)', () => {
+    const src = read('../src/bootSplash.ts');
+    expect(src).toContain('sessionStorage');
+    expect(src).toMatch(/bwm\.boot-splash/);
+  });
+});
+
 describe('choreography constants', () => {
   it('the fade runs 0.14 → 0.88 and the slam offset is the owner\'s pick (sting-B: 1050 ms)', async () => {
     const { SPLASH_FADE_FROM, SPLASH_FADE_TO, SPLASH_SLAM_MS } = await import('../src/bootSplash');
