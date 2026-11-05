@@ -5,11 +5,15 @@
  * plays for those triggers (sound + ducking, pop-ups, CSS, camera shake, Nuke3D on desktop) keeps
  * playing — the overlay only adds the picture, so a module that fails to load leaves the old effect.
  *
- * Fit: every overlay is anchored and scaled from the live table on screen (window.__bwmLayout.table,
- * the felt + rail projected with the 3D camera by Scene's LayoutProbe), never a fixed overlay. The
- * modules size themselves from min(canvas W, H) and assume a table ≈ 0.92 W wide, so the canvas is
- * CSS-scaled about ground zero by k = (real table half-width) / (module table half-width); the nuke
- * goes a further NUKE_ENGULF so the cap engulfs the table.
+ * Fit: every overlay is anchored from the live table on screen (window.__bwmLayout.table,
+ * the felt + rail projected with the 3D camera by Scene's LayoutProbe): ground zero and the
+ * table radii are passed to the module in true screen pixels, and the canvas itself covers
+ * the full mount box, so the modules' full-canvas paints (lightning's pre-strike dim,
+ * meteor's fade, quake's wash) wash edge to edge in every orientation. The canvas used to
+ * be CSS-scaled about ground zero by the fit ratio k — in landscape k < 1, and those paints
+ * shrank with it into a bounded rectangle over the table (owner, 2026-11-05). Only the nuke
+ * keeps a world-scale: k × NUKE_ENGULF, so the cap engulfs the table; its k is > 1 by
+ * construction, so its paints already covered the screen.
  *
  * Lazy: this file and the modules load from Scene's AfterTable (idle, after the felt is up); nothing
  * here is in the first script. Reduce effects → no overlays (and the nuke follows the nuke mode).
@@ -70,7 +74,8 @@ interface TableBox { cx: number; cy: number; x0: number; x1: number; y0: number;
 interface Layout { w?: number; h?: number; table?: TableBox; trick?: { x: number; y: number; w: number; h: number }[] }
 const layout = (): Layout | null => (window as unknown as { __bwmLayout?: Layout }).__bwmLayout ?? null;
 
-/** Placement for one overlay in mount CSS px: ground zero, table radii, and the CSS scale k. Pure (tests). */
+/** Table fit for one overlay in mount CSS px: ground zero, the true table radii, and the fit
+ *  ratio k — now consumed only by the nuke's world-scale (see overlayPlacement). Pure (tests). */
 export function fitToTable(name: PhotorealName, W: number, H: number, L: Layout | null): { gx: number; gy: number; rx: number; ry: number; k: number } {
   const t = L?.table;
   const rx = t ? (t.x1 - t.x0) / 2 : W * 0.42, ry = t ? (t.y1 - t.y0) / 2 : rx * 0.42;
@@ -85,6 +90,27 @@ export function fitToTable(name: PhotorealName, W: number, H: number, L: Layout 
   return { gx, gy, rx, ry, k };
 }
 
+export interface OverlayPlacement { gx: number; gy: number; drawRx: number; drawRy: number; scale: number }
+
+/**
+ * How one overlay is placed: ground zero, the table radii the module
+ * draws at (CSS px, before the backing-store scale), and the CSS scale
+ * on the canvas element. Pure (tests).
+ *
+ * Non-nuke overlays are NOT css-scaled (scale 1) and draw at the true
+ * table radii: their table-anchored art (cracks, the strike point,
+ * the crater) lands exactly where it landed under the old fit
+ * transform, while their full-canvas dim/flash paints cover the full
+ * viewport instead of shrinking into the fit rectangle. The nuke
+ * alone keeps its world-scale — NUKE_ENGULF is the effect — with its
+ * draw radii compensated by that scale, exactly as before.
+ */
+export function overlayPlacement(name: PhotorealName, W: number, H: number, L: Layout | null): OverlayPlacement {
+  const f = fitToTable(name, W, H, L);
+  if (name === 'nuke') return { gx: f.gx, gy: f.gy, drawRx: f.rx / f.k, drawRy: f.ry / f.k, scale: f.k };
+  return { gx: f.gx, gy: f.gy, drawRx: f.rx, drawRy: f.ry, scale: 1 };
+}
+
 let seed = 1;
 const running = new Map<PhotorealName, () => void>();
 
@@ -97,14 +123,14 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
     const ios = isIosWebKit(currentNukeDevice());
     const low = ios || loadSettings().quality === 'low';
     const pr = Math.min(window.devicePixelRatio || 1, 2) * (ios ? IPHONE_RENDER_SCALE : 1);
-    const f = fitToTable(name, W, H, layout());
+    const p = overlayPlacement(name, W, H, layout());
     const c = document.createElement('canvas');
     c.className = `photoreal-fx photoreal-${name}`;
     c.dataset.testid = `photoreal-${name}`;
     c.width = Math.round(W * pr); c.height = Math.round(H * pr);
-    Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: `${W}px`, height: `${H}px`, pointerEvents: 'none', zIndex: '4', transformOrigin: `${f.gx}px ${f.gy}px`, transform: `scale(${f.k})` });
+    Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: `${W}px`, height: `${H}px`, pointerEvents: 'none', zIndex: '4', ...(p.scale !== 1 ? { transformOrigin: `${p.gx}px ${p.gy}px`, transform: `scale(${p.scale})` } : {}) });
     mount.appendChild(c);
-    const inst = mod.createFx(c, { seed: seed++, lowPower: low, x: f.gx * pr, y: f.gy * pr, tableRx: (f.rx / f.k) * pr, tableRy: (f.ry / f.k) * pr });
+    const inst = mod.createFx(c, { seed: seed++, lowPower: low, x: p.gx * pr, y: p.gy * pr, tableRx: p.drawRx * pr, tableRy: p.drawRy * pr });
     let raf = 0, T = 0, last: number | null = null, flashed = false, cracked = false, first = true, done = false;
     const stop = () => {
       if (done) return; done = true; cancelAnimationFrame(raf); c.remove(); running.delete(name);
