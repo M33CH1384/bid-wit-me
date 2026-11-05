@@ -8,11 +8,11 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PERSONAS, buildStoryTape, storyStopById } from '@spades/bots';
 import {
-  PAIR_HEADLINE_MIN_GAMES, VERSUS_CARD_STAGGER_MS, VERSUS_CUES, VERSUS_HOLD_MS, VERSUS_IMPACT_MS, VERSUS_RESOLVE_CUE, VERSUS_ROW_STAGGER_MS,
-  VERSUS_STORY_MS, VERSUS_TAPE_MS,
+  PAIR_HEADLINE_MIN_GAMES, VERSUS_CARD_STAGGER_MS, VERSUS_CUES, VERSUS_HOLD_MS, VERSUS_IMPACT_MS, VERSUS_RESOLVE_CUE, VERSUS_ROW_FADE_MS, VERSUS_ROW_STAGGER_MS,
+  VERSUS_SETTLE_BUFFER_MS, VERSUS_STORY_MS, VERSUS_TAPE_MS,
   VersusCards, VersusIntro, VersusStoryTape, VersusTape, bestIndex, botMemberColumns, botMemberSegments, humanMemberColumns, humanMemberSegments, markVersusShown, pairHeadline, rowWinner, scoutFromConfig, scoutSegments, statLineFromCredProfile,
-  summarizeSide, versusAlreadyShown, versusCardsStartDelay, versusCueSchedule, versusDismissReady, versusEligible,
-  winPctOf, type VersusModel, type VersusSideView,
+  summarizeSide, versusAlreadyShown, versusCardDelays, versusCardsStartDelay, versusCueSchedule, versusDismissReady, versusEligible, versusSettleAtMs, versusStoryTapeDelays,
+  winPctOf, type VersusCardBlock, type VersusModel, type VersusSideView,
 } from '../src/VersusIntro';
 import { PERSONA_LEDGER_KEY, type PersonaLedger } from '../src/personaLedger';
 
@@ -662,5 +662,217 @@ describe('versus cards rendering: the owner’s screenshot table (you + bot part
     expect(online).toContain('versusPairNote: versusPairNote ?? null');
     const room = read('../src/story/StoryRoom.tsx');
     expect(room).toContain('coopPairNote(stop.name');
+  });
+});
+
+/* --------------------------------- the settle guarantee (owner, 2026-11-05)
+ * Owner report: at The Pj's (offline team game, partner Kwame, opponents Moe
+ * & Darius) the DARIUS scouting line stayed grayed out for the whole card —
+ * the first two lines faded in, the last line's fade never completed on his
+ * phone, and nothing in the card ever forced it in: the only snap to full
+ * was .done (story end / skip), which lands inside the dismissal fade. The
+ * versus intro plays inside the loader while the 3D scene loads behind it —
+ * peak main-thread/GPU load — so a CSS fade CAN be frozen, starved, or never
+ * started by the engine. The guarantee below is therefore not "the fade
+ * usually finishes" but a deadline the component owns: once every scheduled
+ * beat should have landed, a .settled class forces every beat to its end
+ * state by CSS, whatever the animation engine did. happy-dom runs no CSS
+ * animations at all, which makes it the frozen engine by default: if a line
+ * is fully visible there after the deadline, the guarantee — not the fade —
+ * put it there. */
+describe('versus settle guarantee: a frozen animation engine cannot strand a line dim', () => {
+  // The owner's table, as the cards are built BEFORE his profile lands:
+  // his own line has no content yet and renders nothing.
+  const ownerBlocks: VersusCardBlock[] = [
+    { headline: null, members: [
+      { name: 'You', rel: [], traits: [] },
+      { name: 'Kwame', rel: ['with you 0–1'], traits: ['Novice', 'won’t Nil'] },
+    ] },
+    { headline: null, members: [
+      { name: 'Moe', rel: ['vs you 4–5'], traits: ['W2', 'Regular', 'hunts Nils'] },
+      { name: 'Darius', rel: ['vs you 8–11'], traits: ['W2', 'Regular', 'won’t Nil'] },
+    ] },
+  ];
+  // …and after his profile lands, his line takes the first slot.
+  const ownerBlocksLanded: VersusCardBlock[] = [
+    { headline: null, members: [
+      { name: 'You', rel: ['10–5', '67%'], traits: ['Rating 1,540'] },
+      { name: 'Kwame', rel: ['with you 0–1'], traits: ['Novice', 'won’t Nil'] },
+    ] },
+    ownerBlocks[1]!,
+  ];
+
+  it('the card delays are the shipped stagger, from one shared schedule', () => {
+    expect(versusCardDelays(ownerBlocks, versusCardsStartDelay(0))).toEqual([
+      { headline: null, lines: [null, 2320] },
+      { headline: null, lines: [2770, 3220] },
+    ]);
+    const html = renderToStaticMarkup(createElement(VersusCards, { blocks: ownerBlocks, startDelay: versusCardsStartDelay(0) }));
+    const delays = [...html.matchAll(/animation-delay:(\d+)ms/g)].map((m) => Number(m[1]));
+    expect(delays).toEqual([2320, 2770, 3220]); // KWAME, MOE, DARIUS — the owner's screenshot order
+  });
+
+  it('the settle deadline is the last scheduled beat + its fade + buffer — no earlier, no later', () => {
+    // his game: no tape rows, last line (Darius) at 3220, fade 350, buffer 250
+    expect(versusSettleAtMs({ tapeRows: false, cardBlocks: ownerBlocks, cardStartDelay: versusCardsStartDelay(0) }))
+      .toBe(3220 + VERSUS_ROW_FADE_MS + VERSUS_SETTLE_BUFFER_MS);
+    // his profile landed: every later line shifts one step, the deadline follows
+    expect(versusSettleAtMs({ tapeRows: false, cardBlocks: ownerBlocksLanded, cardStartDelay: versusCardsStartDelay(0) }))
+      .toBe(3670 + VERSUS_ROW_FADE_MS + VERSUS_SETTLE_BUFFER_MS);
+    // worst case (tape shown, six card steps): still lands inside the story floor
+    const worst: VersusCardBlock[] = [
+      { headline: 'TOGETHER 5–4 · 9 games', members: [
+        { name: 'A', rel: ['1–0'], traits: ['Pro'] },
+        { name: 'B', rel: ['1–0'], traits: ['Pro'] },
+      ] },
+      { headline: null, members: [
+        { name: 'C', rel: ['0–1'], traits: ['Pro'] },
+        { name: 'D', rel: ['0–1'], traits: ['Pro'] },
+        { name: 'E', rel: ['0–1'], traits: ['Pro'] },
+      ] },
+    ];
+    const at = versusSettleAtMs({ tapeRows: true, cardBlocks: worst, cardStartDelay: versusCardsStartDelay(4) });
+    expect(at).toBe(7370 + VERSUS_ROW_FADE_MS + VERSUS_SETTLE_BUFFER_MS);
+    expect(at).toBeLessThan(VERSUS_STORY_MS);
+    // a story card: the deadline covers the story tape's last line too
+    const king = storyStopById('king')!;
+    const tape = buildStoryTape(king, { attempts: 0, cleared: false });
+    const sd = versusStoryTapeDelays(tape);
+    const storyLast = Math.max(sd.stakes, ...sd.rows, sd.threat, sd.terms ?? 0, sd.history ?? 0);
+    expect(versusSettleAtMs({ tapeRows: false, cardBlocks: [], cardStartDelay: 0, storyTape: tape }))
+      .toBe(storyLast + VERSUS_ROW_FADE_MS + VERSUS_SETTLE_BUFFER_MS);
+  });
+
+  it('CSS: the settled state forces every beat to its end state, like done — but mid-story', () => {
+    const css = read('../src/styles.css');
+    expect(css).toContain('.versus.settled .versus-card-line');
+    expect(css).toContain('.versus.settled .versus-card-headline');
+    expect(css).toContain('.versus.settled .versus-row');
+    expect(css).toContain('.versus.settled .versus-story-row');
+    expect(css).toContain('.versus.settled .versus-story-line');
+    expect(css).toContain('.versus.settled .versus-side');
+    const block = css.slice(css.indexOf('/* Settle guarantee'), css.indexOf('@media (prefers-reduced-motion: reduce)', css.indexOf('/* Settle guarantee')));
+    expect(block).toContain('animation: none');
+    expect(block).toContain('opacity: 1'); // a stranded line is forced VISIBLE, not just un-animated
+  });
+
+  describe('DOM: the deadline lands even when no animation ever advances', () => {
+    let rafQ: { id: number; cb: FrameRequestCallback }[] = [];
+    let rafSeq = 0;
+    let container: HTMLDivElement;
+    let root: Root | null = null;
+    const grayModel: VersusModel = {
+      mode: 'team', kind: 'team', online: false,
+      sides: [
+        { label: 'Homies', members: [
+          { name: 'You', uid: null, isBot: false, me: true },
+          { name: 'Kwame', uid: null, isBot: true, persona: 'lilcuz', skill: 'novice' },
+        ] },
+        { label: 'The Closers', members: [
+          { name: 'Moe', uid: null, isBot: true, persona: 'gambler', skill: 'regular' },
+          { name: 'Darius', uid: null, isBot: true, persona: 'hustler', skill: 'regular' },
+        ] },
+      ],
+    };
+    const pumpFrame = (ts: number) => {
+      const q = rafQ;
+      rafQ = [];
+      act(() => { for (const f of q) f.cb(ts); });
+    };
+    const advance = (ms: number) => { act(() => { vi.advanceTimersByTime(ms); }); };
+    const mount = (model: VersusModel, onStoryComplete: () => void) => {
+      container = document.createElement('div');
+      document.body.appendChild(container);
+      root = createRoot(container);
+      act(() => { root!.render(createElement(VersusIntro, { model, reduced: false, ready: true, onStoryComplete })); });
+      return container.querySelector('[data-testid="versus-intro"]')!;
+    };
+    beforeEach(() => {
+      rafQ = [];
+      rafSeq = 0;
+      vi.useFakeTimers();
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { const id = ++rafSeq; rafQ.push({ id, cb }); return id; });
+      vi.stubGlobal('cancelAnimationFrame', (id: number) => { rafQ = rafQ.filter((f) => f.id !== id); });
+      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {}))); // profiles never land unless a test says so
+      window.localStorage.setItem(PERSONA_LEDGER_KEY, JSON.stringify({ v: 1, personas: {
+        lilcuz: { together: { games: 1, wins: 0, losses: 1, streak: -1 } },
+        gambler: { vs: { games: 9, wins: 4, losses: 5, streak: 0 } },
+        hustler: { vs: { games: 19, wins: 8, losses: 11, streak: 2 } },
+      } }));
+    });
+    afterEach(() => {
+      act(() => { root?.unmount(); });
+      root = null;
+      container?.remove();
+      window.localStorage.removeItem(PERSONA_LEDGER_KEY);
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    it('the whole card settles at the deadline — Darius included — while the story still runs', () => {
+      const done = vi.fn();
+      const el = mount(grayModel, done);
+      pumpFrame(16);
+      pumpFrame(32);
+      expect(el.className).toContain('play');
+      // the three scouting lines are in the DOM on the shipped stagger
+      const lines = [...container.querySelectorAll('.versus-card-line')];
+      expect(lines.map((l) => (l as HTMLElement).style.animationDelay)).toEqual(['2320ms', '2770ms', '3220ms']);
+      // happy-dom advances NO css animation: without the guarantee the last
+      // line would sit at its first keyframe forever — exactly the report.
+      advance(3220 + VERSUS_ROW_FADE_MS + VERSUS_SETTLE_BUFFER_MS - 100);
+      expect(el.className).not.toContain('settled');
+      advance(200);
+      expect(el.className).toContain('settled');
+      expect(el.className).not.toContain('done'); // settling is not finishing: no cue, no completion
+      expect(done).not.toHaveBeenCalled();
+      advance(VERSUS_STORY_MS);
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(el.className).toContain('done');
+    });
+
+    it('a headline landing mid-card pushes the deadline out to cover the lines it reshuffled', async () => {
+      // The pair-record fetch is the late arrival: when it lands at t=3000 a
+      // headline appears above the owner's side and every line below it sits
+      // one step deeper. Profile fetches hang forever, so no tape appears and
+      // the only moving parts are the steps themselves.
+      let resolvePair: ((v: unknown) => void) | null = null;
+      vi.stubGlobal('fetch', vi.fn((url: unknown) => (String(url).includes('/api/profile/pair/')
+        ? new Promise((res) => { resolvePair = res as (v: unknown) => void; })
+        : new Promise(() => {}))));
+      const pairModel: VersusModel = {
+        mode: 'team', kind: 'team', online: false,
+        sides: [
+          { label: 'Homies', members: [
+            { name: 'You', uid: 'u-me', isBot: false, me: true },
+            { name: 'Pat', uid: 'u-p', isBot: false },
+          ] },
+          grayModel.sides[1]!,
+        ],
+      };
+      const done = vi.fn();
+      const el = mount(pairModel, done);
+      pumpFrame(16);
+      pumpFrame(32);
+      // before the landing: only the two opponent lines render (2320, 2770)
+      expect([...container.querySelectorAll('.versus-card-line')].map((l) => (l as HTMLElement).style.animationDelay))
+        .toEqual(['2320ms', '2770ms']);
+      advance(3000); // mid-reveal; the pre-landing deadline (3370) has not hit yet
+      await act(async () => {
+        resolvePair!({ ok: true, json: async () => ({ games: 9, wins: 5, losses: 4, streak: 3 }) });
+      });
+      expect(container.querySelector('.versus-card-headline')?.textContent).toContain('TOGETHER 5–4 · 9 games · W3');
+      expect([...container.querySelectorAll('.versus-card-line')].map((l) => (l as HTMLElement).style.animationDelay))
+        .toEqual(['2770ms', '3220ms']);
+      // past BOTH naive deadlines (3370 pre-landing, 3820 on the new schedule
+      // measured from the gate) the card must NOT have settled yet: a sibling
+      // whose delay changed at t=3000 is only guaranteed in at
+      // 3000 + its new delay + fade + buffer on an engine that restarts it.
+      advance(920); // t = 3920
+      expect(el.className).not.toContain('settled');
+      advance(3000); // t = 6920 > 3000 + 3220 + 350 + 250 = 6820
+      expect(el.className).toContain('settled');
+      expect(done).not.toHaveBeenCalled();
+    });
   });
 });

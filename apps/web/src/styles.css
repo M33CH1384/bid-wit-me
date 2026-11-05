@@ -2285,6 +2285,30 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .versus.done .versus-quad.q2, .versus.reduced .versus-quad.q2 { transform: translate(9%, -7%); }
 .versus.done .versus-quad.q3, .versus.reduced .versus-quad.q3 { transform: translate(-9%, -7%); }
 .versus.done .versus-vs, .versus.reduced .versus-vs { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+/* Settle guarantee (owner report 2026-11-05 — a scouting line stayed gray for
+   the whole card): the reveal above is CSS animation, and on a loaded phone
+   the engine can freeze, starve, or never start a fade — the intro plays
+   inside the loader while the 3D scene loads behind it. VersusIntro's own
+   deadline (versusSettleAtMs) therefore puts .settled on the card once every
+   scheduled beat should have landed, and from there these rules hold every
+   beat at its end state by CSS, not by animation completion. The story is
+   untouched: no resolve cue, no completion — the hold continues, just never
+   with a beat stranded mid-flight. */
+.versus.settled .versus-shake, .versus.settled .versus-side, .versus.settled .versus-quad, .versus.settled .versus-vs,
+.versus.settled .versus-flash, .versus.settled .versus-tape, .versus.settled .versus-row, .versus.settled .versus-story-row,
+.versus.settled .versus-story-line, .versus.settled .versus-pot, .versus.settled .versus-card-headline, .versus.settled .versus-card-line,
+.versus.settled .versus-skip { animation: none; }
+.versus.settled .versus-row, .versus.settled .versus-story-row, .versus.settled .versus-story-line,
+.versus.settled .versus-card-headline, .versus.settled .versus-card-line { opacity: 1; transform: none; }
+.versus.settled .versus-tape { opacity: 1; transform: translateY(0); }
+.versus.settled .versus-flash { opacity: 0; }
+.versus.settled .versus-side.left { transform: translateX(6%); }
+.versus.settled .versus-side.right { transform: translateX(-6%); }
+.versus.settled .versus-quad.q0 { transform: translate(9%, 7%); }
+.versus.settled .versus-quad.q1 { transform: translate(-9%, 7%); }
+.versus.settled .versus-quad.q2 { transform: translate(9%, -7%); }
+.versus.settled .versus-quad.q3 { transform: translate(-9%, -7%); }
+.versus.settled .versus-vs { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .versus-shake, .versus-side, .versus-quad, .versus-vs, .versus-flash, .versus-tape, .versus-row, .versus-story-row, .versus-story-line, .versus-pot.only, .versus-card-headline, .versus-card-line, .versus-skip { animation: none !important; }
   .versus-flash { opacity: 0 !important; }

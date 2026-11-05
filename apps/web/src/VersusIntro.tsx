@@ -299,6 +299,77 @@ export function versusCardsStartDelay(tapeRows: number): number {
   return VERSUS_TAPE_MS + 120 + tapeRows * VERSUS_ROW_STAGGER_MS;
 }
 
+/** The versus-row-in fade's duration (styles.css) — every row-shaped beat
+ *  (tape rows, card headlines/lines, story rows/lines) rides it. */
+export const VERSUS_ROW_FADE_MS = 350;
+/** Slack after the last scheduled beat before the settle deadline (below)
+ *  declares the reveal over — absorbs clock granularity, never pacing. */
+export const VERSUS_SETTLE_BUFFER_MS = 250;
+
+/**
+ * The delays VersusCards actually assigns, in render order — one entry per
+ * SHOWN block (the same filter the component renders by): the headline's
+ * delay (null when the block has none) and one delay per member (null for a
+ * member with no honest content, which doesn't render and consumes no step).
+ * Single source of truth: the component renders from this list, and the
+ * settle deadline is computed from it, so the two can never drift apart.
+ */
+export function versusCardDelays(blocks: VersusCardBlock[], startDelay: number): { headline: number | null; lines: (number | null)[] }[] {
+  let step = 0;
+  const next = () => startDelay + step++ * VERSUS_CARD_STAGGER_MS;
+  return blocks
+    .filter((b) => b.headline || b.members.some((m) => m.rel.length || m.traits.length))
+    .map((b) => ({
+      headline: b.headline ? next() : null,
+      lines: b.members.map((m) => (m.rel.length || m.traits.length ? next() : null)),
+    }));
+}
+
+/** The delays VersusStoryTape assigns, in render order (same idea: one
+ *  source for the component's styles and the settle deadline). */
+export function versusStoryTapeDelays(tape: StoryTape): { stakes: number; rows: number[]; threat: number; terms: number | null; history: number | null } {
+  const rows = [...tape.pair, tape.dee];
+  const base = VERSUS_TAPE_MS + 120;
+  return {
+    stakes: base,
+    rows: rows.map((_, i) => base + (i + 1) * VERSUS_ROW_STAGGER_MS),
+    threat: base + (rows.length + 1) * VERSUS_ROW_STAGGER_MS,
+    terms: tape.terms ? base + (rows.length + 2) * VERSUS_ROW_STAGGER_MS : null,
+    history: tape.history ? base + (rows.length + 2 + (tape.terms ? 1 : 0)) * VERSUS_ROW_STAGGER_MS : null,
+  };
+}
+
+/**
+ * The settle deadline (settle guarantee, owner report 2026-11-05): the
+ * moment, measured from the paint gate, by which every scheduled beat has
+ * reached its end state — the last delay among the tape rows, the card
+ * headlines/lines, and the story lines, plus the fade itself, plus a small
+ * buffer. When the story clock passes it, VersusIntro puts .settled on the
+ * card and CSS forces every beat home: a fade the engine froze, starved, or
+ * never started can no longer strand a line mid-flight (the DARIUS line
+ * stayed gray for a whole card on a loaded phone — the only snap was .done,
+ * which lands inside the dismissal fade).
+ */
+export function versusSettleAtMs(o: {
+  tapeRows: boolean;
+  cardBlocks: VersusCardBlock[];
+  cardStartDelay: number;
+  storyTape?: StoryTape | null;
+}): number {
+  let last = VERSUS_TAPE_MS + 450; // the tape card itself (versus-tape-in) / pot-only line
+  if (o.tapeRows) last = Math.max(last, VERSUS_TAPE_MS + 120 + 3 * VERSUS_ROW_STAGGER_MS + VERSUS_ROW_FADE_MS);
+  const cardDelays = versusCardDelays(o.cardBlocks, o.cardStartDelay)
+    .flatMap((b) => [b.headline, ...b.lines])
+    .filter((d): d is number => d !== null);
+  if (cardDelays.length) last = Math.max(last, Math.max(...cardDelays) + VERSUS_ROW_FADE_MS);
+  if (o.storyTape) {
+    const sd = versusStoryTapeDelays(o.storyTape);
+    const storyLast = Math.max(sd.stakes, ...sd.rows, sd.threat, sd.terms ?? 0, sd.history ?? 0);
+    last = Math.max(last, storyLast + VERSUS_ROW_FADE_MS);
+  }
+  return last + VERSUS_SETTLE_BUFFER_MS;
+}
+
 export interface VersusCardMember { name: string; rel: string[]; traits: string[] }
 export interface VersusCardBlock { headline: string | null; headlineStory?: boolean; members: VersusCardMember[] }
 
@@ -401,17 +472,16 @@ export function VersusCards({ blocks, startDelay }: { blocks: VersusCardBlock[];
   // not leave a stray divider or gap in the stack.
   const shown = blocks.filter((b) => b.headline || b.members.some((m) => m.rel.length || m.traits.length));
   if (!shown.length) return null;
-  let step = 0;
-  const delay = () => startDelay + step++ * VERSUS_CARD_STAGGER_MS;
+  const delays = versusCardDelays(blocks, startDelay);
   return (
     <div className={`versus-cards${blocks.length === 2 ? ' team' : ' solo'}`} data-testid="versus-cards">
       {shown.map((b, bi) => (
         <div key={bi} className="versus-card-side">
           {b.headline && (
-            <div className={`versus-card-headline${b.headlineStory ? ' story' : ''}`} style={{ animationDelay: `${delay()}ms` }}>{b.headline}</div>
+            <div className={`versus-card-headline${b.headlineStory ? ' story' : ''}`} style={{ animationDelay: `${delays[bi]!.headline}ms` }}>{b.headline}</div>
           )}
           {b.members.map((m, mi) => (m.rel.length || m.traits.length ? (
-            <div key={mi} className="versus-card-line" style={{ animationDelay: `${delay()}ms` }}>
+            <div key={mi} className="versus-card-line" style={{ animationDelay: `${delays[bi]!.lines[mi]}ms` }}>
               <span className="versus-card-name">{m.name}</span>
               <span className="versus-card-rel">{m.rel.join(' · ')}</span>
               <span className="versus-card-segs">{m.traits.map((t, ti) => (
@@ -435,22 +505,23 @@ export function VersusCards({ blocks, startDelay }: { blocks: VersusCardBlock[];
  */
 export function VersusStoryTape({ tape }: { tape: StoryTape }) {
   const rows = [...tape.pair, tape.dee];
+  const delays = versusStoryTapeDelays(tape);
   return (
     <div className="versus-tape story" data-testid="versus-story-tape">
       <div className="versus-tape-title">TALE OF THE TAPE</div>
-      <p className="versus-story-line stakes" style={{ animationDelay: `${VERSUS_TAPE_MS + 120}ms` }}>{tape.stakes}</p>
+      <p className="versus-story-line stakes" style={{ animationDelay: `${delays.stakes}ms` }}>{tape.stakes}</p>
       {rows.map((e, i) => (
-        <div key={e.id} className="versus-story-row" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (i + 1) * VERSUS_ROW_STAGGER_MS}ms` }}>
+        <div key={e.id} className="versus-story-row" style={{ animationDelay: `${delays.rows[i]}ms` }}>
           <span className="versus-story-name">{e.name}</span>
           <span className="versus-story-text">{e.knownFor} {e.style}</span>
         </div>
       ))}
-      <p className="versus-story-line threat" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (rows.length + 1) * VERSUS_ROW_STAGGER_MS}ms` }}>{tape.threat}</p>
+      <p className="versus-story-line threat" style={{ animationDelay: `${delays.threat}ms` }}>{tape.threat}</p>
       {tape.terms && (
-        <p className="versus-story-line terms" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (rows.length + 2) * VERSUS_ROW_STAGGER_MS}ms` }}>{tape.terms}</p>
+        <p className="versus-story-line terms" style={{ animationDelay: `${delays.terms}ms` }}>{tape.terms}</p>
       )}
       {tape.history && (
-        <p className="versus-story-line history" style={{ animationDelay: `${VERSUS_TAPE_MS + 120 + (rows.length + 2 + (tape.terms ? 1 : 0)) * VERSUS_ROW_STAGGER_MS}ms` }}>{tape.history}</p>
+        <p className="versus-story-line history" style={{ animationDelay: `${delays.history}ms` }}>{tape.history}</p>
       )}
     </div>
   );
@@ -482,6 +553,11 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
   const [done, setDone] = useState(reduced);
   const [play, setPlay] = useState(false);
   const [canSkip, setCanSkip] = useState(false);
+  // Settle guarantee (versusSettleAtMs): flips when the intro's own timeline
+  // passes the last scheduled beat's landing. Pure presentation — it neither
+  // fires the resolve cue nor completes the story; it only makes a dim
+  // resting state impossible (see the .settled rules in styles.css).
+  const [settled, setSettled] = useState(reduced);
   const [profiles, setProfiles] = useState<ReadonlyMap<string, CredProfileSlice | null>>(new Map());
   const timers = useRef<number[]>([]);
   const finished = useRef(false);
@@ -489,6 +565,8 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
   const canSkipRef = useRef(false);
   const completeRef = useRef(onStoryComplete);
   completeRef.current = onStoryComplete;
+  const playStartRef = useRef<number | null>(null);
+  const blocksStampRef = useRef(0);
 
   const finish = (withResolve: boolean) => {
     if (finished.current) return;
@@ -532,6 +610,7 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
   useEffect(() => {
     if (reduced) { finish(false); return; }
     if (!play) return;
+    if (playStartRef.current === null) playStartRef.current = performance.now();
     for (const c of versusCueSchedule(false)) {
       timers.current.push(window.setTimeout(() => {
         try { sound.play(c.cue, { versusSide: c.side, ...(c.gain !== undefined ? { gain: c.gain } : {}) }); } catch { /* locked context: fail silent */ }
@@ -628,8 +707,46 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
   }, [model, profiles, pairRec, ledger]);
   const tapeHasRows = sides.some((s) => s.stats && (s.stats.rating !== null || s.stats.wins !== null));
 
+  // Settle deadline (see versusSettleAtMs): armed off the same clock the beat
+  // sheet rides, so beats still measure visible time from the paint gate.
+  const cardStartDelay = versusCardsStartDelay(tapeHasRows ? 4 : 0);
+  const settleAtMs = versusSettleAtMs({
+    tapeRows: tapeHasRows,
+    cardBlocks: model.story ? [] : cardBlocks,
+    cardStartDelay,
+    storyTape: model.story?.tape ?? null,
+  });
+  useEffect(() => { blocksStampRef.current = performance.now(); }, [cardBlocks]);
+  useEffect(() => {
+    if (reduced || done || settled || !play) return;
+    const start = playStartRef.current;
+    if (start === null) return;
+    let deadline = start + settleAtMs;
+    // A late landing (a profile or the pair record resolving mid-card) can
+    // insert a beat after the gate opened: the new beat's fade starts at
+    // insertion, and an engine that restarts a sibling when its delay
+    // changes owes that sibling a full delay from the change too. Cover the
+    // later of the two schedules. (The story end backstops anything later:
+    // .done forces the same end states.)
+    const stamp = blocksStampRef.current;
+    if (stamp > start && !model.story) {
+      const delays = versusCardDelays(cardBlocks, cardStartDelay)
+        .flatMap((b) => [b.headline, ...b.lines])
+        .filter((d): d is number => d !== null);
+      if (delays.length) {
+        deadline = Math.max(deadline, stamp + Math.max(...delays) + VERSUS_ROW_FADE_MS + VERSUS_SETTLE_BUFFER_MS);
+      }
+    }
+    // …but never past the story's own end: a reshuffle landing very late
+    // must not push the guarantee into a race with finish() — .done forces
+    // the same end states, and settled must visibly precede it.
+    deadline = Math.min(deadline, start + VERSUS_STORY_MS - 500);
+    const id = window.setTimeout(() => setSettled(true), Math.max(0, deadline - performance.now()));
+    return () => window.clearTimeout(id);
+  }, [reduced, done, settled, play, settleAtMs, cardBlocks, cardStartDelay, model.story]);
+
   const skip = () => { if (!doneRef.current && canSkipRef.current) finish(true); };
-  const cls = `versus ${model.mode}${play ? ' play' : ''}${done ? ' done' : ''}${reduced ? ' reduced' : ''}`;
+  const cls = `versus ${model.mode}${play ? ' play' : ''}${done ? ' done' : ''}${reduced ? ' reduced' : ''}${settled ? ' settled' : ''}`;
 
   return (
     <div className={cls} data-testid="versus-intro" onPointerDown={skip} role="button" aria-label={canSkip ? 'Match intro — tap to skip' : 'Match intro'}>
