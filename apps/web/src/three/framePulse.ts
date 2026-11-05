@@ -58,12 +58,47 @@ export function sceneIsActive(now: number = performance.now()): boolean {
   return now - lastActivityAt < ACTIVITY_WINDOW_MS;
 }
 
+/* Scene rest (perf round 3, 2026-11-05): while a full-screen post-hand
+ * overlay (hand recap / results) covers the table, the Scene rests —
+ * frameloop 'never' plus this gate, so no life ticker even asks for a
+ * frame. The work was invisible (the recap sheet is opaque) and, on a
+ * struggling phone, it was the load that lost the WebGL context. */
+let sceneCovered = false;
+
+/** The Scene reports whether a post-hand overlay covers it. While
+ *  covered, every continuous-life pulse is denied. */
+export function setSceneCovered(covered: boolean): void {
+  sceneCovered = covered;
+}
+
+/* Governor life-hold (perf round 3): at the deepest adaptive trim the
+ * idle-life pulses (figure breath/sway, venue ambience) are held. Real
+ * game flow never rides pulseDue — it invalidates itself — so gameplay
+ * animation is untouched; only decoration stills. */
+let lifeHeld = false;
+
+/** The perf governor reports whether idle life is held at its trim. */
+export function setLifeHeld(held: boolean): void {
+  lifeHeld = held;
+}
+
+/** True while any full-stop gate (covered / governor life-hold) is on. */
+export function lifeGateClosed(): boolean {
+  return sceneCovered || lifeHeld;
+}
+
 /**
  * Ask whether a continuous-life ticker may invalidate now. Active
  * tables always may; settled tables share one pulse slot per
- * SETTLED_PULSE_MS no matter how many tickers ask.
+ * SETTLED_PULSE_MS no matter how many tickers ask. A covered scene or
+ * a governor life-hold denies every pulse.
  */
 export function pulseDue(now: number = performance.now()): boolean {
+  if (lifeGateClosed()) {
+    probe.skipped++;
+    publishProbe();
+    return false;
+  }
   if (sceneIsActive(now)) {
     probe.fired++;
     publishProbe();
@@ -84,6 +119,8 @@ export function pulseDue(now: number = performance.now()): boolean {
 export function resetFramePulseForTest(): void {
   lastActivityAt = -Infinity;
   lastPulseAt = -Infinity;
+  sceneCovered = false;
+  lifeHeld = false;
   probe.fired = 0;
   probe.skipped = 0;
 }

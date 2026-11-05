@@ -3108,6 +3108,10 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     onHandLive,
     onDealDone,
     quality: settings.quality,
+    // Scene rest (perf round 3): the two full-screen post-hand surfaces
+    // — the hand recap and the results screen — cover the table with
+    // opaque sheets; while either is up the scene renders nothing.
+    covered: showRecap || showResults,
     n,
     handNo: st.handNo,
     dealer: st.dealer,

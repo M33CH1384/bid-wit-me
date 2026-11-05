@@ -7,7 +7,8 @@ import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick 
 import Card3D, { createLitCardMaterial, createRestCardMaterial } from './Card3D';
 import { enterFigureLeanMode } from './figureResidency';
 import { perfCrumb, publishPerfCensus } from '../perfCensus';
-import { noteSceneActivity } from './framePulse';
+import { noteSceneActivity, sceneIsActive, setSceneCovered, setLifeHeld } from './framePulse';
+import { perfGovernor, applyCaps, capsFor } from './perfGovernor';
 import { createBackCardMaterial } from './cardBack';
 import DeuceFxLayer from './DeuceFxLayer';
 import { CUT_FACE_ANGLE, setDeuceCutPose } from './deuceImpact';
@@ -164,6 +165,12 @@ export interface SceneProps {
    *  loaded and acquired, instead of at a scene unmount that no longer
    *  happens per game. */
   loadSettled?: boolean;
+  /** A full-screen post-hand overlay (hand recap / results) covers the
+   *  table (perf round 3, 2026-11-05). Once the load has settled the
+   *  scene rests completely — frameloop 'never', life pulses gated —
+   *  because every render under the opaque sheet is invisible work,
+   *  and on a struggling phone it was the load that lost the context. */
+  covered?: boolean;
   /** A tap on the cloth, not on a card. Puts the raised card down. */
   onFeltTap?: () => void;
   renderSeat: (seat: number) => ReactNode;
@@ -2152,6 +2159,22 @@ function HandPointer({ onTap, onDrop, legal, onDragging, view = 'standing', turn
   return null;
 }
 
+/** Scene rest gate (perf round 3): mirrors the Scene's resting state
+ *  into framePulse (so every continuous-life ticker stops asking for
+ *  frames while a post-hand overlay covers the table) and repaints
+ *  once when the overlay lifts, so the table is live the moment the
+ *  player is back. Unmount clears the gate — a departing scene must
+ *  never leave the next one gated. */
+function RestGate({ resting }: { resting: boolean }) {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    setSceneCovered(resting);
+    if (!resting) invalidate();
+    return () => { setSceneCovered(false); };
+  }, [resting, invalidate]);
+  return null;
+}
+
 export default function Scene(props: SceneProps) {
   const [fontsReady, setFontsReady] = useState(false);
   const [aspect, setAspect] = useState(() => window.innerWidth / window.innerHeight);
@@ -2230,6 +2253,51 @@ export default function Scene(props: SceneProps) {
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
   const [dprCap, setDprCap] = useState(1);
+  // Adaptive effects governor (perf round 3): the level the measured-
+  // performance governor has trimmed to. The ramp state above stays the
+  // ceiling — the governor's caps combine through applyCaps (Math.min)
+  // and can only ever trim below it, never raise.
+  const [govLevel, setGovLevel] = useState(() => perfGovernor.level);
+  const govCaps = applyCaps(dprCap, shadowSize, govLevel);
+  // Scene rest (perf round 3): covered by a post-hand overlay AND the
+  // load settled — the load gate always finishes first, so a cold
+  // resume straight into a recap still loads the table Continue needs.
+  const resting = !!props.covered && !!props.loadSettled;
+  const restingRef = useRef(false);
+  restingRef.current = resting;
+  // Governor level changes land here: React state for the caps, the
+  // life-hold for the deepest trim, a breadcrumb so a future crash row
+  // shows the governor working, and the window probe for device checks.
+  useEffect(() => {
+    const publish = (level: number) => {
+      setGovLevel(level);
+      setLifeHeld(capsFor(level).holdLife);
+      try {
+        (window as unknown as { __bwmPerfGovernor?: unknown }).__bwmPerfGovernor = perfGovernor.probe();
+      } catch { /* probe publication is never load-bearing */ }
+    };
+    publish(perfGovernor.level);
+    perfGovernor.onLevelChange = (level) => { publish(level); noteCrumb('perf-gov', `level=${level}`); };
+    return () => { perfGovernor.onLevelChange = null; };
+  }, []);
+  // The governor's feeder: rAF deltas sampled ONLY while the table is
+  // active (framePulse's window — under a demand loop an idle gap is
+  // not a frame cost and is never sampled), never while the scene
+  // rests under an overlay, never while the tab is hidden.
+  useEffect(() => {
+    let raf = 0;
+    let last = performance.now();
+    const loop = (now: number) => {
+      raf = requestAnimationFrame(loop);
+      const delta = now - last;
+      last = now;
+      if (document.hidden || restingRef.current) return;
+      if (!sceneIsActive(now)) return;
+      perfGovernor.sample(delta, now);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
   const [textured, setTextured] = useState(false);
   const [hallGo, setHallGo] = useState(false);
   // WebGL context-loss recovery (crash hardening, 2026-10-30): when the
@@ -2319,7 +2387,12 @@ export default function Scene(props: SceneProps) {
   // breadcrumb per game (see perfCensus.ts).
   const glRef = useRef<{ info: { memory: { textures: number; geometries: number }; programs?: unknown[] | null } } | null>(null);
   const censusSeedRef = useRef(props.gameSeed ?? '');
-  const censusDoneRef = useRef(true);
+  // Perf round 3: this started as useRef(true) — the shed's shape, where
+  // skipping the first game is correct — but for the census it meant a
+  // session's FIRST game never published (the seed ref starts at the
+  // mount seed, so the seed never "changes"), which is half of why no
+  // census ever reached the server. The first settled game publishes.
+  const censusDoneRef = useRef(false);
   useEffect(() => {
     const seed = props.gameSeed ?? '';
     if (seed !== censusSeedRef.current) { censusSeedRef.current = seed; censusDoneRef.current = false; }
@@ -2340,6 +2413,11 @@ export default function Scene(props: SceneProps) {
       waapi: (document as unknown as { getAnimations(o: { subtree: boolean }): Animation[] }).getAnimations({ subtree: true }).length,
     });
     noteCrumb('perf', perfCrumb(census));
+    // Census delivery repair (perf round 3): the crumb alone never
+    // reached the server — crumbs ride crash reports and the ring
+    // evicts them — so the latest census also rides every later
+    // report's context, where it cannot be evicted.
+    setCrashContext({ perf: perfCrumb(census) });
   }, [props.gameSeed, props.loadSettled]);
   // A lifted drag card belongs to the game that lifted it.
   useEffect(() => { setDragCard(null); }, [props.gameSeed]);
@@ -2359,9 +2437,9 @@ export default function Scene(props: SceneProps) {
     <div className="table-canvas-wrap">
     <Canvas
       className="table-canvas"
-      frameloop="demand"
-      shadows={shadowSize > 0 ? 'soft' : false}
-      dpr={hi ? [1, dprCap] : 1}
+      frameloop={resting ? 'never' : 'demand'}
+      shadows={govCaps.shadow > 0 ? 'soft' : false}
+      dpr={hi ? [1, govCaps.dpr] : 1}
       gl={{ antialias: hi, powerPreference: 'high-performance', toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       camera={{ fov: 50, near: 0.05, far: 60, position: [0, 4, 3.5] }}
       onCreated={({ gl, size }) => {
@@ -2480,7 +2558,8 @@ export default function Scene(props: SceneProps) {
       <OwnChairHiddenContext.Provider value={ownSeatView}>
       <color attach="background" args={[def.clear]} />
       {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
-      <Lights quality={props.quality} def={def} shadowSize={shadowSize} />
+      <Lights quality={props.quality} def={def} shadowSize={govCaps.shadow} />
+      <RestGate resting={resting} />
       {/* The hall is filtered one mip per frame, and only after the cloth maps are on the table.
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
