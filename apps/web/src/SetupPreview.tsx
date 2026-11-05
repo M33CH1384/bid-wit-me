@@ -10,9 +10,11 @@ import { VENUE_DEFS, type VenueChoice } from './venues';
  * felt/rail colours, with the chosen deck's K♠ face and back on it.
  * No three.js and no new art: it reads VENUE_DEFS + the deck URL helpers only.
  * Two hosts, one component: the bots setup (direct child of .ess-barred —
- * hidden, display:none so the backdrop never downloads, except in the
- * tablet/desktop landscape layout) and the online create form (inside its
- * Deck & venue card, where card-scoped CSS in styles.css turns it on).
+ * hidden at phone sizes, display:none so the backdrop never downloads;
+ * shown as the tall panel in the tablet/desktop landscape layout and as a
+ * compact horizontal strip on portrait tablets, W3 Finding H, responsive
+ * audit 2026-11-05) and the online create form (inside its Deck & venue
+ * card, where card-scoped CSS in styles.css turns it on).
  * It updates live as the deck/venue change on either host.
  */
 export function SetupPreview({ deck, venue }: { deck: string; venue: VenueChoice }) {

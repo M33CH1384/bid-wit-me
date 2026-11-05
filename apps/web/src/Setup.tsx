@@ -2,7 +2,7 @@ import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode,
 import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { Seg, Toggle } from './MoreOptions';
 import { requestSettingsSheet } from './settingsSheet';
-import { type ModeKey, type Settings, MODES, modeTitle, rulesSummary, settingsToRules, targetScoreOptions } from './settings';
+import { type ModeKey, type Settings, MODES, houseRulesDiff, modeTitle, rulesSummary, settingsToRules, targetScoreOptions } from './settings';
 import { type TipsPref, isFirstVisit, saveTips } from './tips';
 import { splashAction } from './splashTap';
 import { coverThen } from './spray';
@@ -146,6 +146,32 @@ export function SetupCard({ title, children }: { title: string; children: ReactN
       </h3>
       <div className="setup-card-body"><div className="setup-card-body-in">{children}</div></div>
     </section>
+  );
+}
+
+/**
+ * The HOUSE RULES row shared by the bots setup and the online create form
+ * (Finding E, responsive audit 2026-11-05 — the two sites used to carry a
+ * hardcoded "Standard" literal each). The chip is derived, never stored:
+ * houseRulesDiff(settings) is empty only when the effective rules match
+ * the mode's defaults. When custom, the differing facets list under the
+ * row in the rules-summary idiom, capped at three with a "+N more" tail
+ * (the full set is one tap away in the sheet the row opens). The
+ * commit-bar summary line is owner-locked and deliberately untouched —
+ * a target-score-only difference still reads Custom here, because Target
+ * score is a House rules row in the sheet.
+ */
+export function HouseRulesRow({ settings, onOpen }: { settings: Settings; onOpen: () => void }) {
+  const diff = houseRulesDiff(settings);
+  const shown = diff.slice(0, 3);
+  const more = diff.length - shown.length;
+  return (
+    <>
+      <button type="button" className="quiet-row" data-testid="house-rules" onClick={onOpen}><span>HOUSE RULES</span><span className="value-chip">{diff.length === 0 ? 'Standard' : 'Custom'}</span><i className="corner-tab" aria-hidden /></button>
+      {diff.length > 0 && (
+        <p className="rules-summary" data-testid="house-rules-diff">{`Custom: ${shown.join(' · ')}${more > 0 ? ` · +${more} more` : ''}`}</p>
+      )}
+    </>
   );
 }
 
@@ -543,7 +569,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
               <VenueSetupRow value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} />
             </SetupCard>
             <SetupCard title="Rules">
-              <button type="button" className="quiet-row" data-testid="house-rules" onClick={() => requestSettingsSheet()}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
+              <HouseRulesRow settings={s} onOpen={() => requestSettingsSheet()} />
               {cutRules}
               <RulesStatLine settings={s} />
               <div className="ess-row">
@@ -733,7 +759,7 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
             <Seg label="Target score" value={settings.targetScore} options={targetScoreOptions(settings)} onChange={onTargetScore} />
           </div>
           {summary}
-          <button type="button" className="quiet-row" data-testid="house-rules" onClick={onHouseRules}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
+          <HouseRulesRow settings={settings} onOpen={onHouseRules} />
           {tipsRow}
         </SetupCard>
         <SetupCard title="Sound">
