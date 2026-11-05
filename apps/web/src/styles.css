@@ -392,8 +392,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .bid-panel { width: min(520px, 100%); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center; }
 .bid-panel p { margin: 0; color: var(--muted); }
 .bid-panel .bid-block { margin: 0; max-width: 100%; font-size: 13px; line-height: 1.35; color: var(--gold-hi); text-wrap: wrap; }
-.bid-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; width: 100%; }
-.bid-grid button { padding: 9px 0; font-size: 20px; }
+.bid-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; }
+.bid-grid button { padding: 9px 0; font-size: 20px; min-height: 44px; }
 .bid-grid .nil { grid-column: span 2; background: linear-gradient(180deg, var(--purple-hot), rgb(var(--purple-deep-rgb))); box-shadow: 0 0 12px rgba(var(--purple-rgb),.6); }
 .bid-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
@@ -1679,8 +1679,10 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .bid-coach-float .bid-coach { display: flex; flex-direction: column; min-height: 0; }
 .bid-coach-float .bc-body { min-height: 0; overflow-y: auto; }
 .me.over-chat { z-index: 12; }
-/* 13 bids + Nil in two rows (8 across) instead of three */
-.table-screen:not(.short) .bid-panel.with-coach .bid-grid { grid-template-columns: repeat(8, 1fr); }
+/* W1 (responsive audit 2026-11-05): the with-coach grid uses the same 5
+   columns as the no-coach grid — the old 8-across switch rendered ~32px
+   buttons at 390px. 13 bids + Nil (span 2) now flow 5 / 5 / 3+Nil. */
+.table-screen:not(.short) .bid-panel.with-coach .bid-grid { grid-template-columns: repeat(5, 1fr); }
 /* little room (short desktop windows, phones): smaller buttons, tighter gaps, no "YOUR BID" line when the coach is open */
 .me > .bid-panel.tight { gap: 5px; padding-top: 6px; padding-bottom: 8px; }
 .me > .bid-panel.tight .bid-grid button { padding: 5px 0; font-size: 17px; }
@@ -5344,11 +5346,21 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    placement. The same overlap reproduced in portrait (393x852: the rail
    covered Send there too), so the offset applies in every orientation;
    only the 330px/42vw width is landscape-only. */
+/* W1 (responsive audit 2026-11-05, Finding B): the offset above stranded
+   the panel off the left edge below ~368px portrait — it moved `right`
+   to 68px+inset in every orientation but left the portrait width at
+   min(300px, 82vw), a formula written when `right` was 8px. The offset
+   now lives ONCE in --chat-right on .table-screen, and the width in the
+   very same rule derives from it (panel + offset + an 8px left margin
+   exactly fills the viewport), so the pair can never drift apart again.
+   At >=376px (zero insets) the 300px cap takes over and behaviour is
+   byte-identical to before; .recap-chat keeps its own sheet placement. */
+.table-screen { --chat-right: calc(var(--rail-w, 60px) + 8px + env(safe-area-inset-right)); }
 .table-screen .chat:not(.recap-chat),
-.table-screen.short .chat:not(.recap-chat) { right: calc(var(--rail-w, 60px) + 8px + env(safe-area-inset-right)); }
+.table-screen.short .chat:not(.recap-chat) { right: var(--chat-right); width: min(300px, calc(100dvw - var(--chat-right) - 8px - env(safe-area-inset-left))); }
 @media (orientation: landscape) and (max-height: 540px) {
   .table-screen .chat:not(.recap-chat),
-  .table-screen.short .chat:not(.recap-chat) { width: min(330px, 42vw); }
+  .table-screen.short .chat:not(.recap-chat) { width: min(330px, 42vw, calc(100dvw - var(--chat-right) - 8px - env(safe-area-inset-left))); }
 }
 
 /* S1 hand recap, 3 columns (design audit 2026-10-25, HANDOFF.md "Hand
@@ -5514,3 +5526,66 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .rw-turning { font-weight: 700; color: var(--ink); }
 .rw-timeline { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12.5px; color: var(--ink-dim); }
 .rw-timeline-row { white-space: nowrap; }
+/* ---------- W1 bid hit-area repair (responsive audit 2026-11-05, Finding A) ----------
+   The bid buttons carried the shared slant clip-path (styles.css button
+   rule), which clips HIT area with paint — on a ~32px button the 8px
+   corner triangles were a quarter of its width, exactly where a thumb
+   aiming at a neighbour lands. Same repair as 84ab0298 for menu/speaker:
+   the PAINT (fill, inset ring, slant clip) moves onto a
+   pointer-events:none ::before at the exact button geometry, and the
+   element itself becomes a transparent, UN-clipped hit box. No layout
+   moves: the grid tracks, gaps and panel are untouched by this block. */
+.bid-grid button {
+  position: relative; isolation: isolate;
+  background: transparent; box-shadow: none; clip-path: none;
+}
+.bid-grid button::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; inset: 0;
+  background: rgba(var(--purple-rgb), 0.16); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.bid-grid button:hover::before { background: rgba(var(--purple-rgb), 0.35); }
+.bid-grid button.nil { background: transparent; box-shadow: none; }
+.bid-grid button.nil::before {
+  background: linear-gradient(180deg, var(--purple-hot), rgb(var(--purple-deep-rgb)));
+  box-shadow: 0 0 12px rgba(var(--purple-rgb),.6);
+}
+/* select-then-confirm (gated, see bidConfirmGate.ts): the chosen bid
+   reads in the gold primary language with a hard ring on the hit box */
+.bid-grid button.selected { color: #1d1204; box-shadow: inset 0 0 0 2px var(--gold-hi); }
+.bid-grid button.selected::before {
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold-deep));
+  box-shadow: 0 0 18px rgba(var(--gold-rgb),.35);
+}
+/* the Blind Nil panel's bid-row buttons share the same clipped rule */
+.bid-panel .bid-row button {
+  position: relative; isolation: isolate;
+  background: transparent; box-shadow: none; clip-path: none;
+}
+.bid-panel .bid-row button::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; inset: 0;
+  background: rgba(var(--purple-rgb), 0.16); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.bid-panel .bid-row button.primary::before {
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold-deep));
+  box-shadow: 0 0 18px rgba(var(--gold-rgb),.35);
+}
+.bid-panel .bid-row button.danger::before { background: linear-gradient(180deg, #ff6b88, #c2183c); }
+/* the gated confirm control: a full-width >=44px gold commit button */
+.bid-confirm-row { width: 100%; display: flex; }
+.bid-panel .bid-confirm {
+  position: relative; isolation: isolate; flex: 1; min-height: 44px;
+  background: transparent; box-shadow: none; clip-path: none; color: #1d1204;
+}
+.bid-panel .bid-confirm::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; inset: 0;
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold-deep));
+  box-shadow: 0 0 18px rgba(var(--gold-rgb),.35);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.bid-panel .bid-confirm:disabled { opacity: .45; }
+/* short landscape keeps its compact one-row strip: the 44px portrait
+   floor does not apply there (the panel budget cannot hold it — the
+   landscape-fit pins read this rule's padding/font, kept identical) */
+.table-screen.short .bid-grid button { padding: 3px 0; font-size: 15px; min-height: 0; }
