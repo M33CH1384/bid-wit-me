@@ -451,6 +451,20 @@ const XFADE = 4; // seconds of crossfade between tracks
 /** Dropout watchdog cadence: how often the engine verifies its stems are
  *  actually sounding (see watchdogTick). */
 const WATCHDOG_MS = 2000;
+/** Splash sting: how long the splash entry point may wait for the sting's
+ *  buffer to finish decoding before failing closed. The SFX load only
+ *  starts inside the unlocking gesture's ensure(), so the wait is the
+ *  race's whole point. Rig-measured decode landings: ~260 ms local,
+ *  ~1.14 s on a throttled link (the fetch queues behind the other SFX)
+ *  — the bound covers the throttled tail and still stays inside the
+ *  splash's own 1500 ms race, so the splash always wins the decision. */
+const STING_BUFFER_WAIT_MS = 1250;
+/** Splash sting hold: the self-heal deadline, stamped by the first sync
+ *  the hold blocks (the tap's own wake — before unlock the hold is inert,
+ *  so a slow tapper is never stranded by it). A release that never comes
+ *  lets the music in this long after the tap instead of muting a session;
+ *  the splash's own timers release far sooner. */
+const STING_HOLD_BACKSTOP_MS = 5000;
 /** A deck fetch that never settles (a connection silently reaped while the
  *  page was backgrounded) must fail like any other load error, not wedge the
  *  crossfade state machine forever. Generous enough for a slow network. */
@@ -1098,6 +1112,12 @@ class Engine {
   private unlockInstalled = false;
   private recreating = false;
   private wakeGen = 0;
+  /** Splash sting hold (see the seam methods below): while armed, syncMusic
+   *  starts nothing. The generation guards the splash entry point's buffer
+   *  wait — an arm or a release while it waits means the moment has moved. */
+  private stingHold = false;
+  private stingHoldGen = 0;
+  private stingHoldTimer: number | null = null;
   /** Last context rebuild (performance.now ms): rebuilds are rate-limited while an interruption persists. */
   private lastRecreateAt = 0;
   /** The crash-resume heal (healCrashResumedAudio) fires at most once per page. */
@@ -1585,6 +1605,20 @@ class Engine {
       if (this.musicStatus !== 'off') { this.musicStatus = 'off'; this.emit(); }
       return;
     }
+    // Splash sting hold (owner, 2026-11-04): the splash's tap is this
+    // engine's first unlock, so an ungated sync here starts the menu
+    // music from the very gesture that is supposed to play the sting
+    // alone — rig-measured, the deck was sounding ~240 ms after the tap
+    // and swelling through the sting's whole second. While the hold is
+    // armed and nothing is sounding yet, start nothing; the release at
+    // the slam re-runs this sync, and the ordinary start below (its own
+    // 1.5 s fade-in included) brings the music in from the slam. A deck
+    // already sounding is never touched, and the OFF branch above runs
+    // first, so the music toggle keeps its authority under a hold.
+    if (this.stingHold && this.playingDeckCount() === 0) {
+      this.armStingHoldBackstop();
+      return;
+    }
     this.ensureDecks();
     if (!this.decks.length || !this.musicBus) return;
     this.musicBus.gain.setTargetAtTime(this.settings.musicVolume ** 1.6 * 0.85, this.ctx.currentTime, 0.1);
@@ -1782,14 +1816,74 @@ class Engine {
    */
   async beginFromSplash(): Promise<boolean> {
     this.wake('gesture');
+    const holdGen = this.stingHoldGen;
     const c = this.ctx;
     if (c && c.state !== 'running') {
       try { await c.resume(); } catch { /* the state check below decides */ }
     }
     if (!this.stingAudible()) return false;
     if (!this.ctx || this.ctx.state !== 'running') return false;
+    // The buffer races this call (see waitForStingBuffer): a play()
+    // issued before it decodes is silently dropped, yet an earlier cut
+    // of this seam resolved true over a sting that never sounded.
+    if (!await this.waitForStingBuffer(holdGen)) return false;
+    if (holdGen !== this.stingHoldGen) return false;
     this.play('deckSlam');
     return true;
+  }
+
+  /** Bounded wait for the sting's buffer to finish decoding. The SFX
+   *  load only started inside this same gesture's ensure() — rig-
+   *  measured, the buffer lands ~200 ms after the tap on a local link
+   *  and ~1.1 s on a throttled one, always after the play() it used to
+   *  beat. Polls the buffer map and bails the moment the hold's
+   *  generation moves: a release during the wait means the splash
+   *  already let the player in, and a sting landing late over the menu
+   *  is worse than none. False = fail closed; the splash goes straight
+   *  in and the music follows as it does on every other path. */
+  private async waitForStingBuffer(holdGen: number): Promise<boolean> {
+    const names = FILES['deckSlam']!;
+    const deadline = performance.now() + STING_BUFFER_WAIT_MS;
+    for (;;) {
+      if (names.every((n) => this.buffers.has(n))) return true;
+      if (holdGen !== this.stingHoldGen) return false;
+      if (performance.now() >= deadline) return false;
+      await new Promise((res) => { window.setTimeout(res, 25); });
+    }
+  }
+
+  /** Arm the sting hold: the boot splash calls this when its plan is
+   *  the sting — and only then — at mount, before any tap can land.
+   *  Idempotent: a second arm changes nothing, generation included. */
+  armStingHold(): void {
+    if (this.stingHold) return;
+    this.stingHold = true;
+    this.stingHoldGen++;
+  }
+
+  /** Release the sting hold and let the music in: the splash calls
+   *  this at the slam, and on every path that lets the player in
+   *  without one. The re-run sync performs the ordinary music start,
+   *  so what enters does so with the music system's own fade. A
+   *  release with no hold armed is a no-op. */
+  releaseStingHold(): void {
+    if (!this.stingHold) return;
+    this.stingHold = false;
+    this.stingHoldGen++;
+    if (this.stingHoldTimer !== null) { window.clearTimeout(this.stingHoldTimer); this.stingHoldTimer = null; }
+    this.syncMusic();
+  }
+
+  /** The hold's self-heal, stamped by the first sync the hold blocks.
+   *  Blocking can only happen after an unlock — before it the hold is
+   *  inert and costs nothing, however long the player studies the
+   *  splash — so the deadline runs from the tap, not the arm. */
+  private armStingHoldBackstop(): void {
+    if (this.stingHoldTimer !== null || typeof window === 'undefined') return;
+    this.stingHoldTimer = window.setTimeout(() => {
+      this.stingHoldTimer = null;
+      this.releaseStingHold();
+    }, STING_HOLD_BACKSTOP_MS);
   }
 
   private blip(c: AudioContext) {

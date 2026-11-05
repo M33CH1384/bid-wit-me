@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { sound } from './audio';
 import { claimBootSplash, planBootSplash, SPLASH_SLAM_MS } from './bootSplash';
 import { fx } from './fx';
@@ -34,6 +34,19 @@ export default function BootSplashGate({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>(plan.show ? 'show' : 'done');
   const busy = useRef(false);
 
+  // Sting mode only: hold the menu music at the engine until the slam.
+  // The tap that dismisses this splash is also the engine's first
+  // unlock, and its wake would otherwise start the music from the same
+  // gesture (the owner's verdict on the first ship: "the menu music
+  // plays immediately with no shuffle"). Armed at mount, before any
+  // tap can land; the cleanup is the guarantee that no unmount can
+  // strand the hold — the engine's own backstop is the second one.
+  useEffect(() => {
+    if (!plan.show || plan.mode !== 'sting') return;
+    sound.armStingHold();
+    return () => { sound.releaseStingHold(); };
+  }, [plan]);
+
   const begin = () => {
     if (busy.current || phase !== 'show') return;
     busy.current = true;
@@ -44,9 +57,9 @@ export default function BootSplashGate({ children }: { children: ReactNode }) {
         sound.beginFromSplash(),
         new Promise<boolean>((res) => { window.setTimeout(() => res(false), 1500); }),
       ]);
-      if (!fired) { setPhase('done'); return; }
+      if (!fired) { sound.releaseStingHold(); setPhase('done'); return; }
       setPhase('fading');
-      window.setTimeout(() => setPhase('done'), SPLASH_SLAM_MS);
+      window.setTimeout(() => { sound.releaseStingHold(); setPhase('done'); }, SPLASH_SLAM_MS);
     })();
   };
 

@@ -138,6 +138,13 @@ describe('the engine seam', () => {
     e['play'] = (n: string) => { played.push(n); };
     e['ctx'] = { state: 'running', resume: async () => {} };
     e['settings'] = { on: true, volume: 0.7, volumes: { sfx: 1 } };
+    // The seam now awaits its buffer before firing (the music-race fix:
+    // a play() issued before the decode lands is silently dropped, and
+    // the first ship's seam resolved true over a sting that never
+    // sounded). Seed the decoded buffer so this pin keeps its meaning —
+    // running + audible ⇒ fires. The wait itself is pinned in
+    // splash-music-race.test.ts.
+    e['buffers'] = new Map([['deck-slam', {}]]);
     await expect(sound.beginFromSplash()).resolves.toBe(true);
     expect(played).toEqual(['deckSlam']);
   });
