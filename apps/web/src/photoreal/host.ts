@@ -16,6 +16,7 @@
  * iPhone defaults to the low-power profile: the modules' lowPower particle cut and a 0.6× backing store.
  */
 import { advancePresentedClock, fx, type FxEvent } from '../fx';
+import { sound } from '../audio';
 import { currentNukeDevice, isIosWebKit } from '../three/nukeVisual';
 import { importChunk } from '../chunkLoad';
 import { loadSettings } from '../settings';
@@ -37,6 +38,15 @@ export const IPHONE_RENDER_SCALE = 0.6;
 export const NUKE_ENGULF = 1.9;
 /** Module ground-zero time of the nuke flash (nuke.js T0): the card sweep + Full-mode HUD blow fire here. */
 const NUKE_FLASH_T = 0.28;
+/** Module time (s, presented clock) at which the quake's table cracks get
+ * their fracture sound: quake.js grows its five cracks from the table
+ * centre with first-point times t0 = .45 + rr()*.25, so the fracture
+ * opens across .45–.70 s of module time. The recorded glassCrack (the
+ * plate crack's cue, 87bcbba4) fires once as presented T crosses this
+ * point — inside the opening beat on every seed, and on the presented
+ * clock so a stalled frame stretches the picture and its sound
+ * together. Change it only with quake.js's t0. */
+export const QUAKE_CRACK_T = 0.55;
 
 /** iPhone / iPad Safari: the 2D nuke replaces Nuke3D. `bwm.fx.nuke2d` = '1' forces it anywhere (QA / captures). */
 export function nuke2D(): boolean {
@@ -95,7 +105,7 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
     Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: `${W}px`, height: `${H}px`, pointerEvents: 'none', zIndex: '4', transformOrigin: `${f.gx}px ${f.gy}px`, transform: `scale(${f.k})` });
     mount.appendChild(c);
     const inst = mod.createFx(c, { seed: seed++, lowPower: low, x: f.gx * pr, y: f.gy * pr, tableRx: (f.rx / f.k) * pr, tableRy: (f.ry / f.k) * pr });
-    let raf = 0, T = 0, last: number | null = null, flashed = false, first = true, done = false;
+    let raf = 0, T = 0, last: number | null = null, flashed = false, cracked = false, first = true, done = false;
     const stop = () => {
       if (done) return; done = true; cancelAnimationFrame(raf); c.remove(); running.delete(name);
       if (name === 'nuke') { fx.blast = null; fx.nukeT = null; }
@@ -116,6 +126,15 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
           fx.blast = { start: performance.now(), hand: !!opts.full, ...(opts.mega ? { mega: true as const } : {}) };
           if (opts.full && opts.at === undefined) void importChunk(() => import('../three/Nuke3D')).then((m) => m.blowHud(), () => {});
         }
+      }
+      // the quake's cracks fracture audibly as they open (QUAKE_CRACK_T);
+      // live runs only — a pinned capture frame stays silent, like the
+      // rest of the preview hook. The 1.1 gain is the bigger-beat lift:
+      // this crack spans the table, not a plate (effective .85 x 1.1
+      // staging, spectrally clear of the synth rumble it layers over).
+      if (name === 'quake' && !cracked && opts.at === undefined && T >= QUAKE_CRACK_T) {
+        cracked = true;
+        try { sound.play('glassCrack', { gain: 1.1 }); } catch { /* audio never blocks the picture */ }
       }
       if (opts.at !== undefined) return; // a pinned capture frame stays up until the next call
       if (T >= inst.duration) { stop(); return; }
