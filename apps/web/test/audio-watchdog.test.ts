@@ -207,6 +207,12 @@ beforeAll(async () => {
   ({ sound } = await import('../src/audio'));
   sound.set({ music: true, ambient: false });
   sound.enterTable();
+  // This suite's subject is TABLE music (the dropout watchdog at a
+  // table). It used to boot in the default menu context, when menus
+  // had a theme of their own to sound; since the menu theme was
+  // retired (2026-11-05) the menus start nothing, so the suite takes
+  // the table context a real table mount takes.
+  sound.enterContext('game');
 });
 
 /* ---------- the arc ---------- */
