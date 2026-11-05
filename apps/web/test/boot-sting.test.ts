@@ -34,7 +34,15 @@ describe('app-open sting: the retired trigger stays retired', () => {
     expect(audio).not.toContain('BOOT_STING_EVENT');
     expect(audio).not.toContain('BOOT_STING_WINDOW_MS');
     expect(audio).not.toContain('bootStingFired');
-    expect(audio).not.toContain('bootStingAudible'); // the gate lives in audioSession.ts only
+    // The gate itself lives in audioSession.ts. Since the splash build
+    // (WS2) the engine references it exactly twice — the import and the
+    // one call inside stingAudible(), the splash seam's plan question —
+    // and never in wake(): the wake path stays sting-free.
+    expect(audio.split('bootStingAudible').length - 1).toBe(2);
+    const wakeAt = audio.indexOf("wake(kind: 'gesture' | 'show')");
+    const wakeBody = audio.slice(wakeAt, audio.indexOf('Would the app-open sting', wakeAt));
+    expect(wakeBody).not.toContain('bootStingAudible');
+    expect(wakeBody).not.toContain('deckSlam');
   });
 
   it('the old reveal module is absent', () => {

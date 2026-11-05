@@ -13,7 +13,7 @@
 import { useSyncExternalStore } from 'react';
 import { Spatializer, STORY_STOP_AUDIO, irSpec, isVoiceMuted, normalizeCategoryVolumes, pickPanningModel, pickVariant, seatCompensation, seatPoint, sessionRoom, surfaceHz, voiceLineGain, withVoiceMuted, type RoomStyle, type SeatPos, type StoryMood, type VenueEvent } from './spatial';
 import { audioElementPool } from './audioPool';
-import { RESTORE_HEAL_MS, audioContextAction, cancelActiveSpeech, claimPlaybackSession, recreateDue, settleAudio, soundRestorePending } from './audioSession';
+import { RESTORE_HEAL_MS, audioContextAction, bootStingAudible, cancelActiveSpeech, claimPlaybackSession, recreateDue, settleAudio, soundRestorePending } from './audioSession';
 import { consumeUncleanBoot } from './diagnostics';
 
 /**
@@ -612,11 +612,13 @@ const FILES: Record<string, string[]> = {
   // thunder crack for the big over-cut's bolt. Same fetch/decode path, so
   // SFX_COUNT counts it automatically.
   thunder: ['thunder'],
-  // App-open sting (freesound recordings, CC0 — CREDITS.md): the shuffle +
-  // whole-deck slam. Registered and decoded like every one-shot (SFX_COUNT
-  // counts it automatically), but currently UNCALLED: the wake()-latch
-  // trigger was retired on the owner's 2026-11-04 device verdict. The
-  // splash wire-in will call it with a re-picked asset.
+  // App-open sting (the owner's sting-B pick, 2026-11-04 — Kenney riffle +
+  // SSE barrel thud, CC0; CREDITS.md): the shuffle + whole-deck slam.
+  // Registered and decoded like every one-shot (SFX_COUNT counts it
+  // automatically). Called ONLY from the boot splash's tap, through the
+  // splash entry point below — the wake()-latch trigger that fired it off the
+  // audio-settings path was retired on the owner's 2026-11-04 verdict,
+  // and no settings path may ever call it again (pinned).
   deckSlam: ['deck-slam'],
 };
 /** Total one-shot SFX buffers a complete load() decodes (the watchdog's readiness bar). */
@@ -1757,6 +1759,37 @@ class Engine {
       if (this.liveState(this.ctx) === 'running') { this.resyncAll(); }
       this.publishRestore();
     });
+  }
+
+  /** Would the app-open sting be audible for this player right now? The
+   *  boot splash's plan question — the same gate the splash entry point
+   *  fires under, kept in one place so the two can never disagree. */
+  stingAudible(): boolean {
+    return bootStingAudible(this.settings.on, this.settings.volume, normalizeCategoryVolumes(this.settings.volumes).sfx);
+  }
+
+  /**
+   * Splash-driven unlock (owner, 2026-11-04): the boot splash's tap is
+   * the one place the app-open sting may fire from. Wakes the engine IN
+   * the gesture — synchronously, before any await, because the unlock
+   * only counts while the tap is still being handled — then waits for
+   * the context to reach running and plays the deckSlam slot. Resolves
+   * true exactly when the sting fired; false means the splash lets the
+   * player straight in (their sound is off, or audio never came up).
+   * wake() itself and every settings path stay sting-free: the rejected
+   * build fired off the audio settings button, and this seam exists so
+   * that can never happen again.
+   */
+  async beginFromSplash(): Promise<boolean> {
+    this.wake('gesture');
+    const c = this.ctx;
+    if (c && c.state !== 'running') {
+      try { await c.resume(); } catch { /* the state check below decides */ }
+    }
+    if (!this.stingAudible()) return false;
+    if (!this.ctx || this.ctx.state !== 'running') return false;
+    this.play('deckSlam');
+    return true;
   }
 
   private blip(c: AudioContext) {

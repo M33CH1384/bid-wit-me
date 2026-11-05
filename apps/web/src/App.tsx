@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { preloadTable } from './three/preload';
 import { secureSeed } from '@spades/rules';
 import Setup from './Setup';
+import BootSplashGate from './BootSplash';
+import { claimBootSplash } from './bootSplash';
 import SettingsSheetHost from './SettingsSheetHost';
 import { type TipsPref, loadTips } from './tips';
 import { usePresence } from './social/Social';
@@ -33,6 +35,7 @@ export default function App() {
       // consumes nothing and stays a test start: fresh game, 0–0.
       const rematchSeats = consumeRematchSeats();
       if (!rematchSeats) saveSeries(null); // a test start is a fresh game: 0–0, same as Deal me in
+      claimBootSplash(); // booting straight into a game consumes the load's splash decision
       return rematchSeats
         ? { seed: p.get('seed') ?? secureSeed(), settings: loadSettings(), continueSeries: true, carryNames: rematchSeats }
         : { seed: p.get('seed') ?? secureSeed(), settings: loadSettings(), continueSeries: false };
@@ -41,7 +44,11 @@ export default function App() {
     // Leave (including a spectator leaving an online table) also sets wiz:home.
     const saved = resumeOnLoad(history.state, loadGame(), false, wasInGame());
     if (!saved) markInGame(false);
-    return saved ? { seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true } : null;
+    const g = saved ? { seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true } : null;
+    // A resumed game is this load's first surface, not the menu: consume the
+    // splash decision so leaving to the menu later can't splash mid-session.
+    if (g) claimBootSplash();
+    return g;
   });
 
   // Release 9 presence: on the start screen = Online; in an offline game = At a table (vs bots)
@@ -68,6 +75,7 @@ export default function App() {
     return (
       <>
       <NowPlaying />
+      <BootSplashGate>
       <Setup
         settings={settings}
         onChange={applySettings}
@@ -77,6 +85,7 @@ export default function App() {
         onResume={saved ? () => { history.replaceState({ wiz: 'home', d: 0 }, '', location.pathname); coverTableEntry(); setGame({ seed: saved.seed, settings: saved.settings, resume: saved, continueSeries: true }); } : null}
         resumeLabel={saved ? `${MODES.find((m) => m.key === saved.settings.mode)?.title ?? 'game'} · hand ${saved.state.handNo}` : undefined}
       />
+      </BootSplashGate>
       <SettingsSheetHost settings={settings} onChange={applySettings} tips={tips} onTips={setTips} />
       </>
     );

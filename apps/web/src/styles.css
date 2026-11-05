@@ -575,6 +575,38 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background: radial-gradient(ellipse at 50% -10%, rgba(var(--purple-rgb),.42) 0%, transparent 58%), radial-gradient(ellipse at 50% 115%, rgba(var(--gold-rgb),.14), transparent 50%), var(--bg);
 }
+/* Boot splash reveal (owner, 2026-11-04): while the splash's sting plays,
+   the home surface fades in under the shuffle (0.14 → 0.88 across the slam
+   offset) and snaps to full at the slam. The numbers are pinned with
+   bootSplash.ts (SPLASH_FADE_FROM / SPLASH_FADE_TO / SPLASH_SLAM_MS). */
+.boot-gate[data-splash-reveal='armed'] { opacity: .14; }
+.boot-gate[data-splash-reveal='fading'] { opacity: .88; transition: opacity var(--splash-fade-ms, 1050ms) linear; }
+.boot-gate[data-splash-reveal='done'] { opacity: 1; }
+/* The splash itself: one whole-surface button — the wordmark over the
+   felt, a single prompt, light layers only (the fan-crash lesson: no
+   heavyweight compositing hints, no blur filters, no backdrop filters).
+   Both themes wear the same surface through the theme tokens; Neon adds
+   its emblem art as decoration behind the wordmark, like the home splash. */
+.boot-splash {
+  position: fixed; inset: 0; z-index: 1500; width: 100%; height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
+  border: 0; cursor: pointer; color: var(--ink); font: inherit;
+  background: radial-gradient(ellipse at 50% -10%, rgba(var(--purple-rgb),.42) 0%, transparent 58%), radial-gradient(ellipse at 50% 115%, rgba(var(--gold-rgb),.16), transparent 50%), var(--bg);
+}
+html[data-theme="neon"] .boot-splash::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: url('/assets/neon/spade-emblem.webp') no-repeat 50% 18% / auto 46%;
+  opacity: .5;
+}
+.boot-splash-logo { width: min(300px, 68vw); height: auto; position: relative; }
+.boot-splash-prompt {
+  position: relative; font-size: 15px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  padding: 12px 22px; border: 1px solid rgba(var(--edge-rgb),.55); border-radius: 999px;
+  animation: boot-splash-pulse 1.6s ease-in-out infinite;
+}
+@keyframes boot-splash-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@media (prefers-reduced-motion: reduce) { .boot-splash-prompt { animation: none; } }
+.boot-splash-shield { position: fixed; inset: 0; z-index: 1500; }
 .wiz-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 0; position: relative; z-index: 2; }
 .icon-btn {
   width: 46px; height: 46px; border: 0; display: grid; place-items: center; font-size: 22px; color: var(--ink);
