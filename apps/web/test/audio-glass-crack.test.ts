@@ -5,7 +5,7 @@
  * REAL Engine on a fake AudioContext, proving the cue the AnimFxLayer
  * fires for the plate crack is a fully registered one-shot —
  *
- *  - the whole SFX set including glass-crack decodes (loaded = 22);
+ *  - the whole SFX set including glass-crack decodes (loaded = 23 since fire-ignite joined 2026-11-05);
  *  - play('glassCrack') at a table starts its buffer source at EXACTLY
  *    ctx.currentTime — offset 0. The crack visual's fracture onset is
  *    its mount instant (the main vein carries no CSS delay), so the
@@ -104,12 +104,12 @@ beforeAll(async () => {
   sound.set({ music: false, ambient: true });
   sound.enterTable();
   sound.wake('gesture');
-  await untilLoaded(22);
+  await untilLoaded(23);
 });
 
 describe('glassCrack at the engine', () => {
   it('the full SFX set decodes with the crack in it', () => {
-    expect(sound.loaded).toBe(22); // 21 + glass-crack (2026-11-04)
+    expect(sound.loaded).toBe(23); // 21 + glass-crack (2026-11-04) + fire-ignite (2026-11-05)
   });
 
   it('play starts the source at exactly ctx.currentTime — offset 0 from the fracture frame', () => {

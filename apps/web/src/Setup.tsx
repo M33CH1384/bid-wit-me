@@ -31,6 +31,8 @@ import { sound } from './audio';
 import { homeBlizzardLabel, homeBlizzardTier } from './blizzard';
 import BlizzardLayer from './snow/BlizzardLayer';
 import { fx, useReduceEffects } from './fx';
+import { FIRE_CALM_FADE_MS, entranceDecision, useEntranceElapsedMs, useIgnitedFireParams } from './homeEntrance';
+import { whenBootRevealed } from './bootSplash';
 
 /** Streak-fire band heights (px) by tier: T1 licks the bottom edge, T4
  *  earns the tall wall. The flames stay BEHIND the home column (the
@@ -244,6 +246,50 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     });
     return () => { live = false; };
   }, [storyUserId]);
+  // The home atmosphere's tiers, from the one payload (fire + blizzard
+  // are independent signals — different kinds can run hot and cold at
+  // once; each renders on its own truth).
+  const fireTier = homeStreak ? homeFireTier(homeStreak.streak) : 0;
+  const blizTier = homeStreak ? homeBlizzardTier(homeStreak.lossStreak) : 0;
+  const calmHome = reduceFx || fx.osReducedMotion;
+  // MENU WEATHER / FIRE ENTRANCE (owner, 2026-11-05): the atmosphere
+  // must ARRIVE, not snap on. The gate (homeEntrance.ts owns the
+  // decision + curves): once per arrival, keyed to the streak state's
+  // first presentation with an active atmosphere, and only once Home
+  // is actually revealed — on the cold-open path the entrance waits
+  // for the boot gate's reveal mark (the slam seam), so it never
+  // starts under the splash or against the sting. Leaving the home
+  // step resets the gate: a return is a new arrival and replays.
+  const [entranceAt, setEntranceAt] = useState<number | null>(null);
+  // The layers mount only once the gate has DECIDED for this arrival —
+  // before that (payload in flight, or the reveal still pending on the
+  // cold-open path) they simply aren't on screen yet, so the fire can
+  // never flash at full strength for a frame and then drop to kindling.
+  const [entranceDecided, setEntranceDecided] = useState(false);
+  const entrancePlayedRef = useRef(false);
+  useEffect(() => {
+    if (step !== 'home') { entrancePlayedRef.current = false; setEntranceAt(null); setEntranceDecided(false); return; }
+    if (!homeStreak) return; // payload pending: nothing presented yet, nothing armed
+    if (entranceDecision(entrancePlayedRef.current, fireTier > 0 || blizTier > 0) !== 'play') { setEntranceDecided(true); return; }
+    let live = true;
+    void whenBootRevealed().then(() => {
+      if (!live) return;
+      entrancePlayedRef.current = true;
+      setEntranceDecided(true);
+      setEntranceAt(performance.now());
+      // The ignition cue: once, at the build's first frame, and never
+      // under calm (the fireOut hiss's reduce-effects gate). The
+      // engine's own SFX settings rule it from there (off = silent).
+      if (fireTier > 0 && !calmHome) sound.play('fireIgnite');
+    });
+    return () => { live = false; };
+  }, [step, homeStreak, fireTier, blizTier, calmHome]);
+  // The band's live params: kindling → tier row across the entrance
+  // (settled / calm read the tier row as-is; calm fades the band in
+  // instead — the reduced-motion fallback).
+  const ignitedFireParams = useIgnitedFireParams(HOME_FIRE_TIERS[fireTier], entranceAt, !calmHome);
+  const calmFireElapsed = useEntranceElapsedMs(calmHome ? entranceAt : null, FIRE_CALM_FADE_MS);
+  const fireBandOpacity = calmHome && entranceAt != null ? Math.min(1, calmFireElapsed / FIRE_CALM_FADE_MS) : 1;
   const offlineTeamName = useTeamNameFor(OFFLINE_PAIR_KEY);
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const [ask, setAsk] = useState(isFirstVisit);
@@ -337,12 +383,10 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
     // ink behind the column, glass on the shared elements, and the
     // emblem/card art painted by .wiz-home::before/::after — decoration
     // layered behind the splash, never DOM, never a destination.
-    const fireTier = homeStreak ? homeFireTier(homeStreak.streak) : 0;
-    // BLIZZARD (owner, 2026-11-04): the fire read backwards — the same
-    // homeStreak payload's loss half drives the home weather. Independent
-    // of the fire (different kinds can run hot and cold at once); each
-    // renders on its own truth.
-    const blizTier = homeStreak ? homeBlizzardTier(homeStreak.lossStreak) : 0;
+    // fireTier / blizTier are computed at component level (the entrance
+    // gate and its hooks need them outside this branch): the fire from
+    // the payload's win half, the blizzard its loss half — the fire
+    // read backwards (owner, 2026-11-04).
     const actions = (
       <div className="wiz-actions">
         {fireTier > 0 && homeStreak && (
@@ -383,12 +427,12 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
             behind the splash and actions — flakes and frost around the
             content, never over a control. Calm (reduced motion) keeps
             the static frost and drops the falling snow. */}
-        {blizTier > 0 && (
-          <BlizzardLayer tier={blizTier as 1 | 2 | 3} calm={reduceFx || fx.osReducedMotion} />
+        {blizTier > 0 && entranceDecided && (
+          <BlizzardLayer tier={blizTier as 1 | 2 | 3} calm={calmHome} entranceStartedAt={entranceAt} />
         )}
-        {fireTier > 0 && (
-          <div className="home-streak-fire" data-testid="home-streak-fire" style={{ height: HOME_BAND_HEIGHTS[fireTier] }}>
-            <FireCanvas mode="band" params={HOME_FIRE_TIERS[fireTier as 1 | 2 | 3 | 4]} calm={reduceFx || fx.osReducedMotion} />
+        {fireTier > 0 && entranceDecided && (
+          <div className="home-streak-fire" data-testid="home-streak-fire" style={{ height: HOME_BAND_HEIGHTS[fireTier], opacity: fireBandOpacity }}>
+            <FireCanvas mode="band" params={ignitedFireParams} calm={calmHome} />
           </div>
         )}
         <div className="splash">

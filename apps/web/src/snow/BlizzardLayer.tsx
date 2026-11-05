@@ -24,9 +24,19 @@
  * useReduceEffects() || fx.osReducedMotion), the canvas never mounts;
  * the static frost vignette renders alone at tier strength, so the
  * skid's depth still reads with zero motion.
+ *
+ * Entrance (owner, 2026-11-05 — the weather must not snap on): on an
+ * arrival, Setup hands the layer its entrance start time and the
+ * wrapper's opacity rides homeEntrance's snow ramp — nothing, then
+ * the frost and the flakes build together to the tier's full settled
+ * strength over SNOW_ENTRANCE_MS. Settled arrivals pass no start time
+ * and render exactly as before (no inline opacity at all). The calm
+ * path takes the same gentle opacity fade on the frost alone — the
+ * reduced-motion fallback the owner asked for is a fade, not a pop.
  */
 import { useEffect, useRef } from 'react';
 import { BLIZZARD_TIERS, type BlizzardTier, type BlizzardTierParams } from '../blizzard';
+import { SNOW_ENTRANCE_MS, snowEntranceAt, useEntranceElapsedMs } from '../homeEntrance';
 import './snow.css';
 
 interface Flake {
@@ -131,10 +141,26 @@ function SnowCanvas({ params }: { params: BlizzardTierParams }) {
   return <canvas ref={ref} className="home-blizzard-canvas" />;
 }
 
-export default function BlizzardLayer({ tier, calm }: { tier: Exclude<BlizzardTier, 0>; calm: boolean }) {
+export default function BlizzardLayer({ tier, calm, entranceStartedAt }: {
+  tier: Exclude<BlizzardTier, 0>;
+  calm: boolean;
+  /** MENU WEATHER ENTRANCE (owner, 2026-11-05): the arrival's entrance
+   *  start (performance.now clock), or null/undefined when this mount
+   *  is settled — no ramp, no inline opacity, the layer as it was. */
+  entranceStartedAt?: number | null;
+}) {
   const params = BLIZZARD_TIERS[tier];
+  const entranceElapsed = useEntranceElapsedMs(entranceStartedAt ?? null, SNOW_ENTRANCE_MS);
+  const entering = entranceStartedAt != null && entranceElapsed < SNOW_ENTRANCE_MS;
   return (
-    <div className="home-blizzard" data-testid="home-blizzard" data-tier={tier} aria-hidden="true">
+    <div
+      className="home-blizzard"
+      data-testid="home-blizzard"
+      data-tier={tier}
+      data-entering={entering ? 'true' : undefined}
+      aria-hidden="true"
+      style={entering ? { opacity: snowEntranceAt(entranceElapsed) } : undefined}
+    >
       <div className="home-blizzard-frost" style={{ opacity: params.frost }} />
       {!calm && <SnowCanvas params={params} />}
     </div>

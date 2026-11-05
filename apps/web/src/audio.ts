@@ -73,6 +73,15 @@ export type Sfx =
   // its first cue, fired at the fracture's onset frame (offset 0 — the
   // main vein carries no CSS delay).
   | 'glassCrack'
+  // Menu fire entrance (owner 2026-11-05: the home fire should "light
+  // like a real fire, with sound"): a RECORDED ignition build (SSE
+  // Library, CC0 — CREDITS.md) — a gas-jet strike catching over a flare
+  // whoosh into heavy crackle, swelling across the fire band's 2.6 s
+  // visual build and settling in its last second. Played ONCE per
+  // arrival at Home, from Setup's entrance gate, when a win-streak
+  // fire presents (never under calm / reduce-effects — the fireOut
+  // hiss's gate). A UI_SFX: it sounds on the home screen by design.
+  | 'fireIgnite'
   // App-open sting slot (owner 2026-11-04): a RECORDED card shuffle resolving
   // into a whole-deck slam (freesound CC0 — CREDITS.md), never synthesized.
   // The first cut's wake()-latch trigger was RETIRED the same day on the
@@ -703,6 +712,10 @@ const FILES: Record<string, string[]> = {
   // fracture for the animfx plate crack. Same fetch/decode path, so
   // SFX_COUNT counts it automatically.
   glassCrack: ['glass-crack'],
+  // Menu fire entrance one-shot (SSE Library recordings, CREDITS.md):
+  // the home fire's ignition build. Same fetch/decode path, so
+  // SFX_COUNT counts it automatically.
+  fireIgnite: ['fire-ignite'],
   // Lightning one-shot (SSE Library recording, CREDITS.md): the recorded
   // thunder crack for the big over-cut's bolt. Same fetch/decode path, so
   // SFX_COUNT counts it automatically.
@@ -2602,8 +2615,9 @@ class Engine {
   }
   /** Settings previews that may sound on Home. Chat notifications live here too: a DM must
    *  ding no matter where in the app you are, not only at a table. The boot sting lives here
-   *  too — it sounds on the home screen by design; only the wake() latch ever calls it. */
-  private static readonly UI_SFX: ReadonlySet<string> = new Set(['tap', 'bid', 'dmChime', 'chatBlip', 'deckSlam']);
+   *  too — it sounds on the home screen by design; only the wake() latch ever calls it. The
+   *  home fire's ignition lives here too — the menu is the only place it can ever sound. */
+  private static readonly UI_SFX: ReadonlySet<string> = new Set(['tap', 'bid', 'dmChime', 'chatBlip', 'deckSlam', 'fireIgnite']);
   /** Cut every live voice line (one in serial play, two while a cross-talk overlap runs). */
   stopVoice() {
     const slots = this.voiceSlots; this.voiceSlots = [];
@@ -2845,6 +2859,12 @@ class Engine {
       // play() already set t = ctx.currentTime, and the fracture's first
       // visible frame is the shot's mount instant.
       case 'glassCrack': return this.sample('glassCrack', t, 0.85 * g, 0.98 + Math.random() * 0.04);
+      // Menu fire entrance: the ignition build, centred (it belongs to
+      // the whole home screen, no seat) and staged at the family's
+      // level — the file is mastered to the event-SFX staging, so no
+      // rate jitter: the swell's timing is composed into the recording
+      // and a detune would bend it against the visual build it tracks.
+      case 'fireIgnite': return this.sample('fireIgnite', t, 0.9 * g, 1);
       case 'tap': return this.sample('tap', t, 0.5 * g, 1.1);
       case 'flip': this.sample('deal', t, 0.32 * g, 1.55); this.sample('deal', t + 0.07, 0.22 * g, 1.75); return this.whoosh(t, 0.06 * g);
       case 'sweep': this.sample('sweep', t, 0.55 * g, 1.05, undefined, opts.seat, opts.playerCount); return this.whoosh(t, 0.18 * g);

@@ -336,12 +336,12 @@ describe('the dropout watchdog', () => {
   });
 
   it('an SFX set with a hole is completed by the watchdog retry', async () => {
-    expect(sound.loaded).toBe(22); // the full FILES set (deuce-thump + trump-cut joined it 2026-10-30, fire-out 2026-11-01, thunder + deuce-duel + deck-slam + glass-crack 2026-11-04)
+    expect(sound.loaded).toBe(23); // the full FILES set (deuce-thump + trump-cut joined it 2026-10-30, fire-out 2026-11-01, thunder + deuce-duel + deck-slam + glass-crack 2026-11-04, fire-ignite 2026-11-05)
     eng().buffers.delete('pop'); // a fetch failed during first load; the hole used to be permanent
-    expect(sound.loaded).toBe(21);
+    expect(sound.loaded).toBe(22);
     await step(2000); // one tick: the loader re-runs (its in-flight marker now clears on settle)
     await vi.advanceTimersByTimeAsync(10);
-    expect(sound.loaded).toBe(22);
+    expect(sound.loaded).toBe(23);
   });
 
   it('a venue bed that loses its nodes is rebuilt', async () => {

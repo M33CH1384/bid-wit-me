@@ -93,8 +93,50 @@ export function claimBootSplash(): boolean {
   return true;
 }
 
+/* ------------------------------------------------------ reveal signal ---
+ * MENU WEATHER / FIRE ENTRANCE (owner, 2026-11-05): the home streak
+ * atmosphere's entrance must begin as Home becomes VISIBLE — never
+ * before the splash tap, and on the sting path never against the
+ * sting (it starts at the slam seam, under the home reveal). The gate
+ * (BootSplash.tsx) owns the visible truth, so it marks the reveal
+ * here the moment its phase reaches 'done'; Setup's entrance gate
+ * waits on it. In-app arrivals (no splash this session) mark revealed
+ * at the gate's mount — its plan does not show, so its phase starts
+ * at 'done'. A document with no gate at all (a bare Home mount in a
+ * test, a non-menu surface) has nothing covering Home: revealed by
+ * definition, decided by the absence of `.boot-gate`. */
+
+let revealedFlag = false;
+let revealWaiters: Array<() => void> = [];
+
+/** The gate marks Home revealed. Idempotent; later marks are no-ops. */
+export function markBootRevealed(): void {
+  if (revealedFlag) return;
+  revealedFlag = true;
+  const waiters = revealWaiters;
+  revealWaiters = [];
+  for (const resolve of waiters) resolve();
+}
+
+export function bootRevealed(): boolean {
+  return revealedFlag;
+}
+
+/** Resolves when Home is revealed (immediately, if it already is — or
+ *  if no boot gate exists in this document to cover it). */
+export function whenBootRevealed(): Promise<void> {
+  if (revealedFlag) return Promise.resolve();
+  if (typeof document !== 'undefined' && !document.querySelector('.boot-gate')) {
+    markBootRevealed();
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => { revealWaiters.push(resolve); });
+}
+
 /** Test seam, following the engine's __setSfxDelayForTest precedent. */
 export function __resetBootSplashClaimForTest(): void {
   claimed = false;
+  revealedFlag = false;
+  revealWaiters = [];
   try { sessionStorage.removeItem(BOOT_SPLASH_SESSION_KEY); } catch { /* ignore */ }
 }
