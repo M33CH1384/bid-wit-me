@@ -20,7 +20,7 @@ describe('music playlist', () => {
     expect(CC_BY_LINE).toBe('"Chillin Hard" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/');
   });
   it('the story score rides along as original, story-only tracks — never in the general pool, never CC-BY', () => {
-    expect(TRACKS.length).toBe(82);
+    expect(TRACKS.length).toBe(83);
     const story = TRACKS.filter((t) => t.storyOnly);
     expect(story.map((t) => t.file)).toEqual(['story-theme', 'story-theme-sparse', 'story-danger', 'story-king', 'porch-theme']);
     for (const t of story) { expect(t.license).toBe('Original'); expect(t.credit).toBeUndefined(); }

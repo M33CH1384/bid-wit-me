@@ -26,7 +26,8 @@ import { OFFLINE_PAIR_KEY, TeamNameField, pairTeamNames, useTeamNameFor } from '
 import { STORY_OWNER_ONLY, fetchStoryAccess, storyLockedFor } from './story/storyApi';
 import FireCanvas from './fire/FireCanvas';
 import EmblemSmoke from './neon/EmblemSmoke';
-import { HOME_FIRE_TIERS, fetchHomeStreak, homeFireLabel, homeFireTier, type HomeStreak } from './streakFire';
+import { HOME_FIRE_TIERS, fetchHomeStreak, homeFireLabel, homeFireTier, menuMusicBend, type HomeStreak } from './streakFire';
+import { sound } from './audio';
 import { homeBlizzardLabel, homeBlizzardTier } from './blizzard';
 import BlizzardLayer from './snow/BlizzardLayer';
 import { fx, useReduceEffects } from './fx';
@@ -233,7 +234,14 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   const reduceFx = useReduceEffects();
   useEffect(() => {
     let live = true;
-    void fetchHomeStreak().then((hs) => { if (live) setHomeStreak(hs); });
+    void fetchHomeStreak().then((hs) => {
+      if (!live) return;
+      setHomeStreak(hs);
+      // The same streak bends the menu theme (owner, 2026-11-05): the
+      // engine holds it as state and applies it through its menu-gated
+      // chain insert; no payload (guest / signed out) derives neutral.
+      sound.setMenuStreakBend(menuMusicBend(hs));
+    });
     return () => { live = false; };
   }, [storyUserId]);
   const offlineTeamName = useTeamNameFor(OFFLINE_PAIR_KEY);

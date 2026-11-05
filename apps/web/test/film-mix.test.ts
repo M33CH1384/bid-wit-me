@@ -14,12 +14,14 @@ import {
  * pins below hold the other eleven stops and all twelve venues to their
  * pre-sample identities verbatim.
  *
- * Menu surface RETIRED (owner, 2026-11-05: "Scrap that sound altogether —
- * start fresh"): the menu theme no longer plays — menu context resolves
- * to NO track (pickNext answers -1) until a replacement theme is picked.
- * The catalog pins below still hold (the entry is retained: TRACKS is
- * append-only because host-music beat stamps are raw indices), and the
- * Porch surface stands untouched.
+ * Menu surface RE-THEMED (owner, 2026-11-05): the morning's retirement
+ * ("Scrap that sound altogether — start fresh") ended the same day —
+ * the owner picked "Eat" (HoliznaCC0, CC0) from the fresh auditions,
+ * approved its T1 tweak and the streak bends, and said "Wire it". Menu
+ * context resolves to that appended menuOnly entry again; the retired
+ * entry stays catalogued beside it (TRACKS is append-only because
+ * host-music beat stamps are raw indices), and the Porch surface
+ * stands untouched.
  */
 describe('the sample touches exactly two surfaces', () => {
   it('every story stop keeps its pre-sample identity except the Porch', () => {
@@ -86,16 +88,18 @@ describe('the two new tracks', () => {
   });
 });
 
-describe('menu music resolution (theme retired 2026-11-05)', () => {
+describe('menu music resolution (Eat wired in 2026-11-05)', () => {
   const pick = () => (sound as unknown as { pickNext(): number }).pickNext();
 
-  it('menu context resolves to NO track, every pick — never a pool draw', () => {
+  it("menu context resolves to the menu theme, every pick — never a pool draw", () => {
     sound.setStoryStop(null);
     sound.enterContext('menu');
-    for (let i = 0; i < 3; i++) expect(pick()).toBe(-1);
+    const eatIdx = TRACKS.findIndex((t) => t.file === 'eat');
+    expect(eatIdx).toBeGreaterThanOrEqual(0);
+    for (let i = 0; i < 3; i++) expect(pick()).toBe(eatIdx);
   });
 
-  it('a story mood still outranks the empty menu (story scenes keep their score)', () => {
+  it('a story mood still outranks the menu theme (story scenes keep their score)', () => {
     sound.setStoryStop('king');
     expect(TRACKS[pick()]!.file).toBe('story-king');
     sound.setStoryStop('porch');

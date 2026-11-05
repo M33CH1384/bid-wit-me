@@ -15,6 +15,7 @@ import { Spatializer, STORY_STOP_AUDIO, irSpec, isVoiceMuted, normalizeCategoryV
 import { audioElementPool } from './audioPool';
 import { RESTORE_HEAL_MS, audioContextAction, bootStingAudible, cancelActiveSpeech, claimPlaybackSession, recreateDue, settleAudio, soundRestorePending } from './audioSession';
 import { consumeUncleanBoot } from './diagnostics';
+import type { MenuMusicBend } from './streakFire';
 
 /**
  * decodeAudioData completion runs on the main thread. Decoding every stinger and voice sprite in
@@ -183,7 +184,7 @@ export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSe
 export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street' | 'rec' | 'porch' | 'studio';
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
 
-export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string; /** story-score tracks: excluded from the general shuffle, reached only via the story mood (setStoryStop) */ storyOnly?: boolean; /** a menu theme: excluded from the general shuffle, reached only in menu context (pickNext). No context picks one since the 2026-11-05 retirement — the slot waits for a replacement theme. */ menuOnly?: boolean }
+export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string; /** story-score tracks: excluded from the general shuffle, reached only via the story mood (setStoryStop) */ storyOnly?: boolean; /** a menu theme: excluded from the general shuffle, reached only in menu context (pickNext names MENU_TRACK_FILE specifically). 'menu-soul' stays catalogued but unpicked — the branch names one file, so a second menuOnly entry is inert. */ menuOnly?: boolean }
 /** Background playlist (lazy-loaded, 128 kbps MP3). Credits: see CREDITS.md and the in-game Credits screen. */
 export const TRACKS: Track[] = [
   { file: 'windows-down', title: 'Windows Down', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
@@ -223,8 +224,9 @@ export const TRACKS: Track[] = [
   { file: 'porch-theme', title: 'Porch Party (Porch Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
   // RETIRED as the menu theme (owner, 2026-11-05: "Scrap that sound altogether —
   // start fresh"). The ENTRY stays — TRACKS is append-only because host-music
-  // beat stamps are raw indices — but no context can pick it: pickNext's menu
-  // branch answers "no track" and the general pool has always excluded it.
+  // beat stamps are raw indices — but no context picks it: pickNext's menu
+  // branch names the replacement theme ('eat', appended at the end of this
+  // catalog) and the general pool has always excluded menuOnly entries.
   { file: 'menu-soul', title: 'Come On In (Menu Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', menuOnly: true },
   // The Pj's rotation (owner, 2026-10-30): mid-to-late-90s rap instrumentals for the
   // night-street venue — Ketsa's soul-chop boom bap (CC BY 4.0, via Free Music Archive)
@@ -421,9 +423,84 @@ export const TRACKS: Track[] = [
   { file: 'color-of-a-soul', title: 'Color Of A Soul', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/color-of-a-soul-lofi-calm-nostalgic/' },
   { file: 'reminders', title: 'Reminders', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/reminders-lofi-calm-nostalgic/' },
   { file: 'warm-fuzz', title: 'Warm Fuzz', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/warm-fuzz-lofi-retro/' },
+  // The menu theme (owner pick, 2026-11-05 — the "Wire it" wire-in that
+  // replaced the retired 'menu-soul'): "Eat" by HoliznaCC0 (CC0), the
+  // audition's Juice-flavoured instrumental hip-hop loop, shipped with
+  // the owner's T1 "Deeper" tweak baked in (low-end weight + warmth,
+  // rendered from the artist's own Bandcamp stream — the source of
+  // record for every audition he approved). menuOnly: pickNext's menu
+  // branch names it specifically and the general pool never draws it.
+  // Appended last so every existing track index keeps its meaning.
+  { file: 'eat', title: 'Eat', artist: 'HoliznaCC0', license: 'CC0 1.0', source: 'https://holiznacc0.bandcamp.com/track/eat', menuOnly: true },
 ];
 /** Story mood → the score track that carries it (spatial.ts STORY_STOP_AUDIO picks the mood per stop). */
 export const STORY_TRACK_FILE: Record<'theme' | 'sparse' | 'danger' | 'king' | 'porch', string> = { theme: 'story-theme', sparse: 'story-theme-sparse', danger: 'story-danger', king: 'story-king', porch: 'porch-theme' };
+/** The menu theme's file (owner pick, 2026-11-05): the one track pickNext's menu branch may name. */
+export const MENU_TRACK_FILE = 'eat';
+
+/* ---------- The menu theme's room + streak bends (owner, 2026-11-05) ----------
+ * The theme never plays dry: a menu-gated insert in the music chain (see
+ * buildMusicChain) runs the decks through a shelf pair + lowpass (dry
+ * path) and a convolver send (wet path), driven by the owner's
+ * cross-game streak via setMenuStreakBend. NEUTRAL is the wet palette's
+ * LIGHT room (≈1.6 s tail, ~12% wet) — the depth he settled by picking
+ * the dry T1 tweak over the medium-room T3. FIRE adds the presence
+ * shelf pair and a short bright tail; COLD closes a 2.8 kHz lowpass
+ * and a long dark tail (recipes: the bends audition he approved with
+ * "Wire it"). The impulses are GENERATED (seeded noise through an
+ * exponential decay + progressive damping, normalized to unit energy
+ * so a send value reads as the wet/dry amplitude ratio) — no IR file,
+ * no license surface. Outside menu context the insert holds its bypass
+ * values (shelves 0 dB, lowpass open, send 0), so the shared chain's
+ * table and story behaviour is unchanged. */
+export interface MenuBendTargets { lowDb: number; highDb: number; lpHz: number; wetLpHz: number; send: number; rt60: number; dampHz: number; preDelayMs: number }
+export const MENU_BEND_TARGETS: Record<MenuMusicBend, MenuBendTargets> = {
+  neutral: { lowDb: 0, highDb: 0, lpHz: 18000, wetLpHz: 18000, send: 0.12, rt60: 1.6, dampHz: 4500, preDelayMs: 0 },
+  fire: { lowDb: 1, highDb: 2.5, lpHz: 18000, wetLpHz: 18000, send: 0.35, rt60: 1.2, dampHz: 6000, preDelayMs: 18 },
+  cold: { lowDb: 0, highDb: 0, lpHz: 2800, wetLpHz: 2200, send: 0.6, rt60: 2.6, dampHz: 1800, preDelayMs: 0 },
+};
+const MENU_BEND_SEEDS: Record<MenuMusicBend, number> = { neutral: 20261107, fire: 20261105, cold: 20261106 };
+/** Deterministic PRNG (mulberry32): the same impulse on every client, every rebuild. */
+function menuBendRand(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+/**
+ * One bend's impulse response, as raw channels: seeded noise through a
+ * one-pole damper (the recipe's HF damping) under an exponential decay
+ * that reaches −60 dB at the recipe's RT60, the fire tail's pre-delay
+ * baked into the head, the whole thing normalized to unit L2 energy.
+ * Pure — the engine wraps it in an AudioBuffer; the tests pin its shape.
+ */
+export function menuIrChannels(kind: MenuMusicBend, sampleRate: number): [Float32Array, Float32Array] {
+  const tg = MENU_BEND_TARGETS[kind];
+  const len = Math.max(1, Math.floor(sampleRate * (tg.rt60 + 0.1)));
+  const pre = Math.floor((sampleRate * tg.preDelayMs) / 1000);
+  const rand = menuBendRand(MENU_BEND_SEEDS[kind]);
+  const a = 1 - Math.exp((-2 * Math.PI * tg.dampHz) / sampleRate);
+  const chans: [Float32Array, Float32Array] = [new Float32Array(len), new Float32Array(len)];
+  let energy = 0;
+  for (const ch of chans) {
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      if (i < pre) continue;
+      lp += a * (rand() * 2 - 1 - lp);
+      const env = Math.pow(10, (-3 * (i - pre)) / (sampleRate * tg.rt60));
+      const v = lp * env;
+      ch[i] = v;
+      energy += v * v;
+    }
+  }
+  const scale = energy > 0 ? 1 / Math.sqrt(energy) : 1;
+  for (const ch of chans) for (let i = 0; i < len; i++) ch[i] = ch[i]! * scale;
+  return chans;
+}
 /** The story signature motif (D–F–A–C over Dm): the same four notes open the theme track and
  *  this sting; played at scene-in / stop clear / unlock so story mode sounds like one production. */
 export const STORY_MOTIF_HZ = [587.33, 698.46, 880, 1046.5];
@@ -1183,6 +1260,10 @@ class Engine {
     // room's). A track carried over from the previous context must not play out
     // its remaining minutes here — reconcile the decks against the new identity.
     this.queueContextRetarget();
+    // The menu insert's gate follows the context: entering the menus
+    // arms the current bend over the theme; leaving flattens the stage
+    // to bypass so no bend or room rides into a table or story scene.
+    this.applyMenuBend();
   }
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   get = () => this.settings;
@@ -1291,6 +1372,25 @@ class Engine {
   private filmPhase = 'playing';
   private filmSeq = 0;
   private filmTimer: number | null = null;
+  /* Menu theme insert (2026-11-05 wire-in): the menu-gated stage in the
+   * music chain (see buildMusicChain / applyMenuBend). The nodes are
+   * rebuilt with the chain on a context rebuild; applyMenuBend at the
+   * end of buildMusicChain re-applies the current state to the fresh
+   * nodes, mirroring the film stage. */
+  private menuLow: BiquadFilterNode | null = null;
+  private menuHigh: BiquadFilterNode | null = null;
+  private menuLp: BiquadFilterNode | null = null;
+  private menuSend: GainNode | null = null;
+  private menuVerb: ConvolverNode | null = null;
+  private menuWetLp: BiquadFilterNode | null = null;
+  /** the owner's streak bend for the menu theme (streakFire derivation, fed by Setup) */
+  private menuBendState: MenuMusicBend = 'neutral';
+  /** which bend's impulse currently sits in the convolver */
+  private menuIrKind: MenuMusicBend | null = null;
+  /** IR morph bookkeeping: a bend change fades the send down, swaps the
+   *  impulse, and fades back up — the generation coalesces rapid changes. */
+  private menuMorphGen = 0;
+  private menuMorphTimer: number | null = null;
   /** the current venue's music lean is armed: the next pick is one of its signature tracks */
   private leanArmed = false;
   private musicBus: GainNode | null = null;
@@ -1341,7 +1441,21 @@ class Engine {
     outL.connect(merge, 0, 0); outR.connect(merge, 0, 1);
     const bus = c.createGain();
     this.musicDuck = c.createGain();
-    merge.connect(bus).connect(this.musicDuck);
+    // Menu theme insert (2026-11-05 wire-in): between the bus and the
+    // duck, the decks pass a shelf pair + lowpass (dry path) with a
+    // convolver send in parallel (wet path), both summed into the duck.
+    // The stage is gated to menu context by applyMenuBend — everywhere
+    // else it holds flat shelves, an open lowpass and a zero send, so
+    // the shared chain's table/story behaviour is unchanged.
+    this.menuLow = c.createBiquadFilter(); this.menuLow.type = 'lowshelf'; this.menuLow.frequency.value = 220;
+    this.menuHigh = c.createBiquadFilter(); this.menuHigh.type = 'highshelf'; this.menuHigh.frequency.value = 6000;
+    this.menuLp = c.createBiquadFilter(); this.menuLp.type = 'lowpass'; this.menuLp.frequency.value = 18000; this.menuLp.Q.value = 0.4;
+    this.menuSend = c.createGain(); this.menuSend.gain.value = 0;
+    this.menuVerb = c.createConvolver();
+    this.menuWetLp = c.createBiquadFilter(); this.menuWetLp.type = 'lowpass'; this.menuWetLp.frequency.value = 18000; this.menuWetLp.Q.value = 0.4;
+    merge.connect(bus);
+    bus.connect(this.menuLow).connect(this.menuHigh).connect(this.menuLp).connect(this.musicDuck);
+    bus.connect(this.menuSend).connect(this.menuVerb).connect(this.menuWetLp).connect(this.musicDuck);
     // The music path's own output witness (see the musicAnalyser field):
     // the decks reach the destination here, never through the master bus,
     // so the watchdog's silence verdict about a playing deck must be read
@@ -1356,6 +1470,7 @@ class Engine {
     } catch { this.musicAnalyser = null; this.musicDuck.connect(c.destination); }
     this.musicBus = bus;
     this.applyFilmMix();
+    this.applyMenuBend(true);
     return input;
   }
 
@@ -1399,6 +1514,13 @@ class Engine {
     this.decks = [];
     this.fading = false;
     this.active = 0;
+    // The menu insert's nodes die with the chain that owned them;
+    // buildMusicChain re-creates them (and applyMenuBend re-applies the
+    // bend state) when the decks are next ensured.
+    this.menuLow = this.menuHigh = this.menuLp = this.menuSend = this.menuVerb = this.menuWetLp = null;
+    this.menuIrKind = null;
+    if (this.menuMorphTimer !== null) { window.clearTimeout(this.menuMorphTimer); this.menuMorphTimer = null; }
+    this.menuMorphGen++;
   }
 
   /** iOS: an <audio> element must first be played inside a user gesture; prime both decks with a silent blip. */
@@ -1485,10 +1607,10 @@ class Engine {
       const files = Array.isArray(music.pin) ? music.pin : [music.pin];
       if (files.some((f) => TRACKS.some((t) => t.file === f))) return files.includes(file);
     }
-    // Menus have NO music track (the theme was retired 2026-11-05):
-    // nothing loaded belongs here, so a track carried in from a table
-    // is foreign and the retarget fades it out to silence.
-    if (this.context === 'menu') return false;
+    // Menus own exactly one track — the menu theme (MENU_TRACK_FILE):
+    // it belongs here and nothing else does, so a track carried in
+    // from a table is foreign and the retarget crossfades it out.
+    if (this.context === 'menu') return file === MENU_TRACK_FILE;
     // Everywhere else the general shuffle is the identity, plus the venue's
     // own signature (lean) tracks, which pickNext can also return here.
     if (generalPool().includes(track)) return true;
@@ -1538,14 +1660,14 @@ class Engine {
       const idxs = music.lean.map((f) => TRACKS.findIndex((t) => t.file === f)).filter((i) => i >= 0 && i !== this.lastTrack);
       if (idxs.length) { const pick = idxs[Math.floor(Math.random() * idxs.length)]!; this.lastTrack = pick; return pick; }
     }
-    // Menus have NO theme (owner, 2026-11-05: "Scrap that sound
-    // altogether — start fresh"): the 2026-10-23 menu signature was
-    // retired, and menus stay silent until a replacement is picked.
-    // The picker's answer here is -1 — NO TRACK exists for this
-    // context — and every load path treats that as "start nothing".
-    // It must never fall through to the general shuffle below: menu
-    // silence is the identity now, not an absence of one.
-    if (this.context === 'menu') return -1;
+    // The menu theme (owner pick, 2026-11-05 — "Eat", HoliznaCC0, CC0,
+    // with his T1 "Deeper" tweak baked into the shipped file): menu
+    // context names this one track, every pick. The decks crossfade it
+    // into itself at its end like any single-track rotation. The answer
+    // must never fall through to the general shuffle below: a menu is
+    // not a room, and its theme is not a room's music either
+    // (trackInContext fences it out of every other context).
+    if (this.context === 'menu') return TRACKS.findIndex((t) => t.file === MENU_TRACK_FILE);
     // General shuffle — over the general pool only: story-score tracks are storyOnly and
     // never drift into menus or normal games. The bag holds positions in the pool.
     const pool = generalPool();
@@ -1582,11 +1704,13 @@ class Engine {
     }
     if (!this.settings.music) { this.musicStatus = 'off'; this.fading = false; this.advancing = false; this.emit(); return; } // the owner turned music off mid-load: a clean off, not a load failure
     if (!ok && noPick) {
-      // No next track exists in this context (menus, since the theme
-      // was retired 2026-11-05): the crossfade becomes a fade-OUT. The
-      // sounding deck ramps down over the usual XFADE and parks; the
-      // standby stays empty. The music switch is still ON — there is
-      // simply nothing to play here — so the status settles to 'off'
+      // No next track exists in this context (defensive: since the
+      // 2026-11-05 wire-in every context resolves a track, but a
+      // missing catalog entry would land here): the crossfade becomes
+      // a fade-OUT. The sounding deck ramps down over the usual XFADE
+      // and parks; the standby stays empty. The music switch is still
+      // ON — there is simply nothing to play here — so the status
+      // settles to 'off'
       // (silence), never 'error'. The closing syncMusic re-reads the
       // identity fresh: if the context changed again mid-fade (a
       // bounce straight back into a game), the ordinary first start
@@ -1693,15 +1817,29 @@ class Engine {
       // play() an element with no source yet — the phantom again.
       return;
     }
+    if (cur.track !== null && cur.el.paused && !this.trackInContext(cur.track)) {
+      // A foreign track left PAUSED on the active deck: music was
+      // switched off in another context (the OFF branch pauses the
+      // decks at the end of its fade) and the player walked here
+      // before switching it back on. The resume branch below would
+      // play it into a context that would never pick it — the menu
+      // theme sounding at a table, a venue's track at the wrong room —
+      // and no retarget runs after a resume to correct it.
+      // trackInContext is the deck-identity authority: clear the deck
+      // and let the ordinary first start below draw this context's own
+      // track instead.
+      if (cur.url) { try { URL.revokeObjectURL(cur.url); } catch { /* already revoked */ } cur.url = null; }
+      cur.track = null; cur.ready = null;
+    }
     if (cur.track === null) {
       const firstPick = this.pickNext();
       if (firstPick < 0) {
-        // No track exists for this context (menus, since the theme was
-        // retired 2026-11-05): music is switched on but there is
-        // nothing to play — settle silent. Not an error, and never a
-        // fall-through into another context's pool. This is also what
-        // makes the splash sting hold's release safe in the menus:
-        // the release re-runs this sync, and it simply starts nothing.
+        // No track exists for this context (defensive: since the
+        // 2026-11-05 wire-in every context resolves a track — the
+        // menus name the theme — but a missing catalog entry would
+        // land here): music is switched on but there is nothing to
+        // play — settle silent. Not an error, and never a fall-through
+        // into another context's pool.
         if (this.musicStatus !== 'off') { this.musicStatus = 'off'; this.emit(); }
         return;
       }
@@ -3715,6 +3853,78 @@ class Engine {
     const tg = this.filmActive() ? filmTargets(this.filmPhase) : FILM_NEUTRAL;
     if (this.filmFilter) this.filmFilter.frequency.setValueAtTime(tg.scoreHz, c.currentTime);
     if (this.filmGain) this.filmGain.gain.setValueAtTime(tg.scoreGain, c.currentTime);
+  }
+
+  /** Wrap one bend's generated impulse channels in an AudioBuffer on the live context. */
+  private menuIrBuffer(kind: MenuMusicBend): AudioBuffer | null {
+    const c = this.ctx; if (!c) return null;
+    const [l, r] = menuIrChannels(kind, c.sampleRate);
+    const buf = c.createBuffer(2, l.length, c.sampleRate);
+    buf.getChannelData(0).set(l);
+    buf.getChannelData(1).set(r);
+    return buf;
+  }
+
+  /**
+   * Feed the owner's streak bend into the menu insert (Setup calls this
+   * when the home streak lands). State changes only: repeating the
+   * current state is a no-op, so a re-read of the same payload never
+   * re-ramps the chain. The bend is STATE, not sound — the gate is the
+   * context, applied in applyMenuBend.
+   */
+  setMenuStreakBend(bend: MenuMusicBend) {
+    if (bend === this.menuBendState) return;
+    this.menuBendState = bend;
+    this.applyMenuBend();
+  }
+
+  /**
+   * Ride the menu insert toward the state the context + bend demand.
+   * In menu context the bend's recipe applies (shelves/lowpass ramped,
+   * the convolver send at the recipe's depth); anywhere else the stage
+   * holds bypass (flat, open, send at zero) so the shared chain's table
+   * and story behaviour is unchanged. A change of impulse morphs: the
+   * send fades down, the buffer swaps, the send fades back up at the
+   * new depth — the playing loop is never cut or restarted. The
+   * instant variant serves a freshly built chain (no ramp from stale
+   * defaults), mirroring applyFilmMix.
+   */
+  private applyMenuBend(instant = false) {
+    const c = this.ctx; if (!c) return;
+    const inMenu = this.context === 'menu';
+    const kind = inMenu ? this.menuBendState : 'neutral';
+    const tg = MENU_BEND_TARGETS[kind];
+    const now = c.currentTime;
+    const ramp = (p: AudioParam, v: number) => { if (instant) p.setValueAtTime(v, now); else p.setTargetAtTime(v, now, 0.3); };
+    if (this.menuLow) ramp(this.menuLow.gain, inMenu ? tg.lowDb : 0);
+    if (this.menuHigh) ramp(this.menuHigh.gain, inMenu ? tg.highDb : 0);
+    if (this.menuLp) ramp(this.menuLp.frequency, inMenu ? tg.lpHz : 18000);
+    if (this.menuWetLp) ramp(this.menuWetLp.frequency, inMenu ? tg.wetLpHz : 18000);
+    if (!this.menuSend || !this.menuVerb) return;
+    const sendTarget = inMenu ? tg.send : 0;
+    if (instant) {
+      const buf = this.menuIrBuffer(kind);
+      if (buf) { this.menuVerb.buffer = buf; this.menuIrKind = kind; }
+      this.menuSend.gain.setValueAtTime(sendTarget, now);
+      return;
+    }
+    if (inMenu && this.menuIrKind !== kind) {
+      const gen = ++this.menuMorphGen;
+      this.menuSend.gain.setTargetAtTime(0, now, 0.1);
+      if (this.menuMorphTimer !== null) window.clearTimeout(this.menuMorphTimer);
+      this.menuMorphTimer = window.setTimeout(() => {
+        this.menuMorphTimer = null;
+        if (gen !== this.menuMorphGen || !this.menuVerb || !this.menuSend || !this.ctx) return;
+        const buf = this.menuIrBuffer(kind);
+        if (buf) { this.menuVerb.buffer = buf; this.menuIrKind = kind; }
+        // Re-check the gate at landing time: if the player left the
+        // menus mid-morph, the send stays at zero (the impulse is
+        // pre-loaded for the return, inaudibly).
+        if (this.context === 'menu') this.menuSend.gain.setTargetAtTime(MENU_BEND_TARGETS[kind].send, this.ctx.currentTime, 0.3);
+      }, 450);
+    } else {
+      this.menuSend.gain.setTargetAtTime(sendTarget, now, 0.3);
+    }
   }
 
   /** A momentary film move (a set lands, the blast): dive to the target, hold, then

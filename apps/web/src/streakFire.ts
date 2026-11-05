@@ -232,6 +232,27 @@ export function homeFireLabel(streak: number): string {
   return `On fire — ${streak}-game win streak`;
 }
 
+/* ------------------------------------------------- menu music bend ---
+ * MENU MUSIC BEND (owner, 2026-11-05): the menu theme ("Eat") bends
+ * with the same cross-game streak that drives the home fire band and
+ * the blizzard — win streak ≥ 3 bends it ON FIRE, loss streak ≥ 3
+ * bends it ICE COLD. When both runs are live the larger run wins; a
+ * tie is neutral. No payload (guest / signed out) is neutral: the bend
+ * never invents a streak the server didn't report. The engine
+ * (audio.ts) realizes the bend as menu-gated chain settings; this
+ * module owns only the derivation, from the same HomeStreak shape the
+ * fire and the weather already read. */
+export type MenuMusicBend = 'neutral' | 'fire' | 'cold';
+
+export function menuMusicBend(hs: HomeStreak | null): MenuMusicBend {
+  if (!hs) return 'neutral';
+  const win = Number.isFinite(hs.streak) ? Math.max(0, Math.floor(hs.streak)) : 0;
+  const loss = Number.isFinite(hs.lossStreak) ? Math.max(0, Math.floor(hs.lossStreak)) : 0;
+  if (win >= 3 && win > loss) return 'fire';
+  if (loss >= 3 && loss > win) return 'cold';
+  return 'neutral';
+}
+
 /* --------------------------------------------------------- in-game side */
 
 export type TrickFireKind = 'none' | 'smolder' | 'fire';

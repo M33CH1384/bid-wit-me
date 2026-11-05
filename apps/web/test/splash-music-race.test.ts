@@ -25,10 +25,11 @@
  *    while it waits — no late sting over the menu, no dropped sting
  *    reported as fired.
  *
- * RETIREMENT (2026-11-05): the menu theme is gone — menu context has no
- * track at all now. The hold mechanics are unchanged; what the release
- * runs INTO changed: in the menus it starts nothing (R2), and the
- * first-start pins live at a table, where a first start exists (R3+).
+ * WIRE-IN (2026-11-05): the menus have a theme again — "Eat"
+ * (HoliznaCC0, CC0), picked and tweaked by the owner the same day the
+ * old theme was retired. The hold mechanics never changed; what the
+ * release runs INTO is the ordinary first start in the menus too (R2),
+ * with the table first start pinned alongside it (R3).
  */
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -181,28 +182,37 @@ describe('the sting hold: music waits for the slam', () => {
     expect(sound.playingDeckCount()).toBe(0);
   });
 
-  it('R2: the release (the slam) starts NOTHING in the menus — the gate opens onto silence (theme retired 2026-11-05)', async () => {
-    // The splash lives over the menus, and the menus have no music track
-    // since the retirement: the release re-runs syncMusic, whose first
-    // start meets the picker's "no track" answer and simply starts
-    // nothing. Safe and silent — no fetch, no sounding deck, no error.
+  it('R2: the release (the slam) runs the ordinary first start in the menus — the theme fades in from the slam', async () => {
+    // The splash lives over the menus, and the menus have a theme again
+    // (Eat, wired in 2026-11-05 after the morning's retirement): the
+    // release re-runs syncMusic, and its ordinary first start brings
+    // the theme in on its own 1.5 s ramp — from the slam, not the tap.
     const fetches = musicFetches;
     eng().releaseStingHold();
     await step(300);
-    await step(1500);
-    expect(musicFetches).toBe(fetches);
-    expect(eng().decks.every((d) => d.track === null)).toBe(true);
-    expect(status()).toBe('off');
-    expect(sound.playingDeckCount()).toBe(0);
+    expect(musicFetches).toBeGreaterThan(fetches);
+    await step(1000);
+    expect(status()).toBe('playing');
+    expect(sound.playingDeckCount()).toBe(1);
+    expect(activeDeck().el.paused).toBe(false);
+    // the first start's own automation: a 1.5 s linear ramp 0.0001 → 1 —
+    // the music fades in from the slam, it is not hard-cut at the release.
+    expect(activeDeck().gain.gain.calls).toContain('ramp:1');
   });
 
   it('R3: at a table (a context WITH music), the hold blocks the first start until the release runs it, with its own fade-in ramp', async () => {
+    // R2 left the menu theme sounding, and a hold by design never
+    // touches a sounding deck (R4) — a first-start pin needs unloaded
+    // decks, so reset through the same teardown a context rebuild
+    // performs, then arm before the switch, as the splash arms before
+    // any tap.
+    (sound as unknown as { releaseDecks(): void }).releaseDecks();
     eng().armStingHold(); // armed before the context switch, as the splash arms before any tap
     sound.enterContext('game'); // its applying sync is the blocked one
     const fetches = musicFetches;
     await step(1000);
     expect(musicFetches).toBe(fetches); // still held: no load began
-    expect(status()).not.toBe('playing');
+    expect(eng().decks.length).toBe(0); // the gate sits before any deck work
     expect(sound.playingDeckCount()).toBe(0);
     eng().releaseStingHold();
     await step(300);
