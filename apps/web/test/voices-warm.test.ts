@@ -1,4 +1,6 @@
 /**
+ * @vitest-environment happy-dom
+ *
  * STARTER WARM (2026-11-05, the sparse-bot-talk conviction).
  *
  * The per-clip voice layer decodes a whole sprite per pass (measured
@@ -138,6 +140,7 @@ beforeEach(async () => {
   vi.stubGlobal('OfflineAudioContext', FakeOffline);
   h.decode.mockReset();
   h.decode.mockImplementation(async () => fakeSprite());
+  h.playVoice.mockClear();
   h.playVoiceCrossTalk.mockClear();
   setSeatedVoiceKeys([]);
   await flush(); await flush();
@@ -175,7 +178,7 @@ describe('starter warm at preload', () => {
     expect(h.decode).toHaveBeenCalledTimes(1);
     await expect(playClip('deacon', 'Darius', WIN_RAW, 1)).resolves.toBe(true);
     expect(h.decode).toHaveBeenCalledTimes(1);
-    expect(h.playVoiceCrossTalk).toHaveBeenCalled();
+    expect(h.playVoice).toHaveBeenCalled(); // the clip actually sounded
   });
 
   it('stays inside the per-sprite warm budget even when the corpus is bigger than the budget', async () => {
