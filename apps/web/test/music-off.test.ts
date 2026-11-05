@@ -137,6 +137,12 @@ beforeAll(async () => {
   (window as unknown as { Audio: unknown }).Audio = FakeAudioEl;
   ({ sound } = await import('../src/audio'));
   sound.set({ music: true, ambient: false, venueSound: false });
+  // The suite needs SOUNDING music to toggle. It used to get it from
+  // the menu theme (the engine boots in menu context); since the
+  // theme's retirement (2026-11-05) the menus are silent, so the suite
+  // sits at a table instead — the game scene patch is these same three
+  // values, and the OFF contract pinned here is context-agnostic.
+  sound.enterContext('game');
   sound.enterTable();
   sound.wake('gesture');
   await step(1000);

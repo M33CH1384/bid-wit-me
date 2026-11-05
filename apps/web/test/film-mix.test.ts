@@ -13,6 +13,13 @@ import {
  * mega ducking everything). Everything else keeps its sound byte-for-byte; the
  * pins below hold the other eleven stops and all twelve venues to their
  * pre-sample identities verbatim.
+ *
+ * Menu surface RETIRED (owner, 2026-11-05: "Scrap that sound altogether —
+ * start fresh"): the menu theme no longer plays — menu context resolves
+ * to NO track (pickNext answers -1) until a replacement theme is picked.
+ * The catalog pins below still hold (the entry is retained: TRACKS is
+ * append-only because host-music beat stamps are raw indices), and the
+ * Porch surface stands untouched.
  */
 describe('the sample touches exactly two surfaces', () => {
   it('every story stop keeps its pre-sample identity except the Porch', () => {
@@ -79,16 +86,16 @@ describe('the two new tracks', () => {
   });
 });
 
-describe('menu music resolution', () => {
+describe('menu music resolution (theme retired 2026-11-05)', () => {
   const pick = () => (sound as unknown as { pickNext(): number }).pickNext();
 
-  it('menu context resolves to the menu theme, every pick', () => {
+  it('menu context resolves to NO track, every pick — never a pool draw', () => {
     sound.setStoryStop(null);
     sound.enterContext('menu');
-    for (let i = 0; i < 3; i++) expect(TRACKS[pick()]!.file).toBe('menu-soul');
+    for (let i = 0; i < 3; i++) expect(pick()).toBe(-1);
   });
 
-  it('a story mood still outranks the menu theme (story scenes keep their score)', () => {
+  it('a story mood still outranks the empty menu (story scenes keep their score)', () => {
     sound.setStoryStop('king');
     expect(TRACKS[pick()]!.file).toBe('story-king');
     sound.setStoryStop('porch');

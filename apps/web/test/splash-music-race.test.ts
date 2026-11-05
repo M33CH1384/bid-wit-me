@@ -24,6 +24,11 @@
  *    deckSlam buffer before playing, and aborts if the hold is released
  *    while it waits — no late sting over the menu, no dropped sting
  *    reported as fired.
+ *
+ * RETIREMENT (2026-11-05): the menu theme is gone — menu context has no
+ * track at all now. The hold mechanics are unchanged; what the release
+ * runs INTO changed: in the menus it starts nothing (R2), and the
+ * first-start pins live at a table, where a first start exists (R3+).
  */
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -176,10 +181,32 @@ describe('the sting hold: music waits for the slam', () => {
     expect(sound.playingDeckCount()).toBe(0);
   });
 
-  it('R2: the release (the slam) runs the ordinary first start, with its own fade-in ramp', async () => {
+  it('R2: the release (the slam) starts NOTHING in the menus — the gate opens onto silence (theme retired 2026-11-05)', async () => {
+    // The splash lives over the menus, and the menus have no music track
+    // since the retirement: the release re-runs syncMusic, whose first
+    // start meets the picker's "no track" answer and simply starts
+    // nothing. Safe and silent — no fetch, no sounding deck, no error.
+    const fetches = musicFetches;
     eng().releaseStingHold();
     await step(300);
-    expect(musicFetches).toBeGreaterThanOrEqual(1);
+    await step(1500);
+    expect(musicFetches).toBe(fetches);
+    expect(eng().decks.every((d) => d.track === null)).toBe(true);
+    expect(status()).toBe('off');
+    expect(sound.playingDeckCount()).toBe(0);
+  });
+
+  it('R3: at a table (a context WITH music), the hold blocks the first start until the release runs it, with its own fade-in ramp', async () => {
+    eng().armStingHold(); // armed before the context switch, as the splash arms before any tap
+    sound.enterContext('game'); // its applying sync is the blocked one
+    const fetches = musicFetches;
+    await step(1000);
+    expect(musicFetches).toBe(fetches); // still held: no load began
+    expect(status()).not.toBe('playing');
+    expect(sound.playingDeckCount()).toBe(0);
+    eng().releaseStingHold();
+    await step(300);
+    expect(musicFetches).toBeGreaterThan(fetches);
     await step(1000);
     expect(status()).toBe('playing');
     expect(activeDeck().el.paused).toBe(false);
@@ -188,7 +215,7 @@ describe('the sting hold: music waits for the slam', () => {
     expect(activeDeck().gain.gain.calls).toContain('ramp:1');
   });
 
-  it('R3: an armed hold never touches music that is already sounding', async () => {
+  it('R4: an armed hold never touches music that is already sounding', async () => {
     eng().armStingHold();
     sound.wake('gesture');
     await step(1000);
@@ -197,7 +224,7 @@ describe('the sting hold: music waits for the slam', () => {
     eng().releaseStingHold();
   });
 
-  it('R4: a stranded hold self-heals on its backstop — music starts without any release', async () => {
+  it('R5: a stranded hold self-heals on its backstop — music starts without any release', async () => {
     sound.set({ music: false });
     await step(1600);
     expect(status()).toBe('off');
@@ -212,7 +239,7 @@ describe('the sting hold: music waits for the slam', () => {
     expect(sound.playingDeckCount()).toBe(1);
   });
 
-  it('R5: the OFF branch still outranks the hold, in both directions (01c3680e joint intact)', async () => {
+  it('R6: the OFF branch still outranks the hold, in both directions (01c3680e joint intact)', async () => {
     eng().armStingHold();
     sound.set({ music: false });
     await step(1600);

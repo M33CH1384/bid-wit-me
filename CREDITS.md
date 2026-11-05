@@ -115,7 +115,7 @@ The spray-transition sounds are cuts of those two recordings, stereo 112 kbps MP
 | `story-danger.mp3` | The Corner (Danger Bed) | Bid Wit Me — original score, composed & rendered for this game (no samples) | Original |
 | `story-king.mp3` | The King of the Block | Bid Wit Me — original score, composed & rendered for this game (no samples) | Original |
 | `porch-theme.mp3` | Porch Party (Porch Theme) | Bid Wit Me — original score, composed & rendered for this game (no samples); the Porch film-mix pilot (sound sample, 2026-10-23). Second take (2026-10-23): the sample's "Porchlight" was replaced at the owner's direction with an upbeat old-school R&B groove from the same renderer | Original |
-| `menu-soul.mp3` | Come On In (Menu Theme) | Bid Wit Me — original score, composed & rendered for this game (no samples); the menu theme (sound sample, 2026-10-23) | Original |
+| `menu-soul.mp3` | Come On In (Menu Theme) | Bid Wit Me — original score, composed & rendered for this game (no samples); the menu theme from the 2026-10-23 sound sample — retired as the menu theme on the owner's word 2026-11-05 and no longer played in menus (catalog entry retained so track indices stay stable) | Original |
 | `soul-epic.mp3` | Soul Epic | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/soul-epic/ | CC BY 4.0 |
 | `overreach.mp3` | Overreach | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/overreach/ | CC BY 4.0 |
 | `no-quit.mp3` | No Quit | Ketsa — https://freemusicarchive.org/music/Ketsa/cc-by-free-to-use-for-anything/no-quit/ | CC BY 4.0 |

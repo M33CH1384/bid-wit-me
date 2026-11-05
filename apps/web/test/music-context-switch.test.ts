@@ -24,6 +24,14 @@
  * track crossfades out through advance() itself; an in-context track is
  * never touched. This suite drives the REAL engine through the exact call
  * sequences Table.tsx / App.tsx make and pins that contract.
+ *
+ * Menu identity CHANGED (2026-11-05): the menu theme was retired on the
+ * owner's word ("Scrap that sound altogether — start fresh"). The menu's
+ * music identity is now NO TRACK: pickNext answers -1 there, everything
+ * loaded is foreign there, and advance()'s crossfade becomes a fade-OUT
+ * to silence. The reconciliation contract above is unchanged — only
+ * what the menu legs can expect has moved: silence in the menus, and an
+ * ordinary first start when walking into a table.
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
@@ -186,8 +194,9 @@ beforeAll(async () => {
     const f = sound.getSnapshot().nowPlaying?.track.file;
     if (f && announced[announced.length - 1] !== f) announced.push(f);
   });
-  // The owner's setup: he has menu music ON (an explicit menu choice), so the
-  // menu theme is sounding when he walks into a game.
+  // The owner's setup: he has menu music ON (an explicit menu choice).
+  // Since the theme's retirement that leaves the menus SILENT with the
+  // switch on — and walking into a game is an ordinary first start.
   sound.set({ music: true, ambient: false });
   sound.enterTable();
 });
@@ -195,27 +204,27 @@ beforeAll(async () => {
 /* ---------- the arc ---------- */
 
 describe('music context switches', () => {
-  it('boots in the menus with the menu theme on BOTH decks (the carry-over setup)', async () => {
+  it('boots in the menus SILENT: music is wanted, but the menu has no track (theme retired)', async () => {
     sound.wake('gesture');
     await step(1000);
-    await step(5000); // the look-ahead lands too
-    expect(status()).toBe('playing');
-    expect(nowFile()).toBe('menu-soul');
-    expect(deckFile(activeDeck())).toBe('menu-soul');
-    // The standby holds a second copy of the menu theme: without a retarget,
-    // entering a table would play the theme out here AND once more there.
-    expect(deckFile(standbyDeck())).toBe('menu-soul');
-    activeDeck().el.currentTime = 30;
+    await step(5000); // even the look-ahead window passes: there is nothing to look ahead to
+    expect(status()).toBe('off');
+    expect(sound.playingDeckCount()).toBe(0);
+    expect(nowFile()).toBeNull();
+    expect(deckFile(activeDeck())).toBeNull();
+    expect(deckFile(standbyDeck())).toBeNull();
   });
 
-  it('menu → table: the menu theme crossfades out promptly, the venue opens', async () => {
+  it('menu → table: from the silent menu, the venue opens with an ordinary first start', async () => {
     const mark = announced.length;
     sound.enterContext('game'); // Table.tsx mount effect
     sound.applySoundscape('ctx-test', undefined, 'classic', false); // Table.tsx soundscape effect
     await tick();
-    // THE regression assertion: a crossfade is now running. Before the fix,
-    // nothing was advancing and menu-soul simply played on.
-    expect(eng().advancing).toBe(true);
+    // The first start begins under the pre-soundscape identity, so the
+    // retarget crossfades its pick into the venue's rotation as it
+    // lands — two fades to settle, as with any identity landing
+    // mid-start.
+    await settleFade();
     await settleFade();
     // The venue's own signature (its closed rotation — the Classic
     // Studio's lean retired into a pin with its wire-in, 2026-11-04)
@@ -242,18 +251,27 @@ describe('music context switches', () => {
     expect(activeDeck().el.currentTime).toBeGreaterThanOrEqual(before.at); // never rewound
   });
 
-  it("menu → The Pj's: the first in-game pick comes from the closed rotation, and the rotation stays pure", async () => {
-    // Back to the menus first (Table cleanup), let the menu theme take over.
-    sound.enterContext('menu');
+  it('classic → menu: the venue track fades OUT and the menu settles silent (nothing rides in)', async () => {
+    sound.enterContext('menu'); // Table cleanup
     await tick();
+    // A crossfade IS running — but it is a fade-out: the picker has no
+    // menu track, so advance() ramps the sounding deck down to silence
+    // instead of fading a new track in.
+    expect(eng().advancing).toBe(true);
     await settleFade();
-    expect(nowFile()).toBe('menu-soul');
-    // Into the Pj's.
-    const mark = announced.length;
+    expect(status()).toBe('off');
+    expect(sound.playingDeckCount()).toBe(0);
+    expect(deckFile(activeDeck())).toBeNull();
+    expect(deckFile(standbyDeck())).toBeNull();
+  });
+
+  it("menu → The Pj's: the first in-game pick comes from the closed rotation, and the rotation stays pure", async () => {
+    // From the silent menu, into the Pj's: a first start, retargeted
+    // into the closed rotation as it lands.
     sound.enterContext('game');
     sound.applySoundscape('ctx-test', undefined, 'blockAfterDark', false);
     await tick();
-    expect(eng().advancing).toBe(true);
+    await settleFade();
     await settleFade();
     expect(PJS).toContain(nowFile());
     // The look-ahead inside the closed rotation is one of the five — no
@@ -261,6 +279,7 @@ describe('music context switches', () => {
     expect(PJS.includes(deckFile(standbyDeck()) ?? '') || deckFile(standbyDeck()) === null).toBe(true);
     // Play the rotation forward: the next track is also one of the five,
     // and never an immediate repeat.
+    const mark = announced.length;
     const first = nowFile();
     activeDeck().el.currentTime = activeDeck().el.duration - 1;
     activeDeck().el.fire('timeupdate');
@@ -272,33 +291,36 @@ describe('music context switches', () => {
     activeDeck().el.currentTime = 30;
   });
 
-  it("The Pj's → menu: the venue track does not ride into the menus", async () => {
+  it("The Pj's → menu: the closed-rotation track does not ride into the menus — it fades out", async () => {
     sound.enterContext('menu'); // Table.tsx unmount cleanup
     await tick();
-    expect(eng().advancing).toBe(true);
+    expect(eng().advancing).toBe(true); // the fade-out is running
     await settleFade();
-    expect(nowFile()).toBe('menu-soul');
-    await step(100);
-    expect(deckFile(standbyDeck()) === 'menu-soul' || deckFile(standbyDeck()) === null).toBe(true);
-    activeDeck().el.currentTime = 30;
+    expect(status()).toBe('off');
+    expect(sound.playingDeckCount()).toBe(0);
+    expect(deckFile(activeDeck())).toBeNull();
+    expect(deckFile(standbyDeck())).toBeNull();
   });
 
-  it('re-entering the menu with the menu theme playing is a no-op', async () => {
-    const before = { active: eng().active, at: activeDeck().el.currentTime };
+  it('re-entering the menu while it sits silent is a no-op', async () => {
+    const before = { active: eng().active };
     sound.enterContext('menu');
     await tick();
     await step(300);
     expect(eng().advancing).toBe(false);
     expect(eng().active).toBe(before.active);
-    expect(nowFile()).toBe('menu-soul');
-    expect(activeDeck().el.currentTime).toBeGreaterThanOrEqual(before.at);
+    expect(status()).toBe('off');
+    expect(sound.playingDeckCount()).toBe(0);
+    expect(deckFile(activeDeck())).toBeNull();
   });
 
   it('a same-tick venue → venue hop collapses to one switch (no menu-theme detour)', async () => {
-    // Sit at a classic table first.
+    // Sit at a classic table first (from the silent menu: first start
+    // plus the retarget crossfade into the venue's rotation).
     sound.enterContext('game');
     sound.applySoundscape('ctx-test', undefined, 'classic', false);
     await tick();
+    await settleFade();
     await settleFade();
     expect(inPool(nowFile())).toBe(true);
     activeDeck().el.currentTime = 30;
@@ -310,7 +332,9 @@ describe('music context switches', () => {
     await tick();
     await settleFade();
     expect(PJS).toContain(nowFile());
-    // The menu theme was never announced during the hop: the burst coalesced.
+    // Nothing but the destination rotation was announced during the
+    // hop: the burst coalesced onto the final identity.
+    expect(announced.slice(mark).every((f) => PJS.includes(f))).toBe(true);
     expect(announced.slice(mark)).not.toContain('menu-soul');
     expect(eng().advancing).toBe(false);
     expect(eng().fading).toBe(false);
@@ -319,7 +343,7 @@ describe('music context switches', () => {
   });
 
   it('rapid switches mid-crossfade do not wedge the decks', async () => {
-    // Start a switch to the menus; the crossfade begins…
+    // Start a switch to the menus; the fade-out begins…
     sound.enterContext('menu');
     await tick();
     expect(eng().advancing).toBe(true);
@@ -335,7 +359,7 @@ describe('music context switches', () => {
     expect(eng().fading).toBe(false);
     expect(status()).toBe('playing');
     expect(sound.playingDeckCount()).toBe(1);
-    // The LAST identity wins: a classic-context track, not the menu theme
+    // The LAST identity wins: a classic-context track — not the silence
     // the first fade was heading for, and no story score.
     expect(nowFile()).not.toBe('menu-soul');
     expect(inPool(nowFile())).toBe(true);

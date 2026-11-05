@@ -183,7 +183,7 @@ export function settingsForContext(s: SoundSettings, ctx: SoundContext): SoundSe
 export type VenueBed = 'none' | 'cookout' | 'mansion' | 'barbershop' | 'basement' | 'rooftop' | 'jazz' | 'casino' | 'beach' | 'kitchen' | 'yacht' | 'street' | 'rec' | 'porch' | 'studio';
 export type MusicStatus = 'off' | 'loading' | 'playing' | 'error';
 
-export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string; /** story-score tracks: excluded from the general shuffle, reached only via the story mood (setStoryStop) */ storyOnly?: boolean; /** the menu theme: excluded from the general shuffle, reached only in menu context (pickNext) */ menuOnly?: boolean }
+export interface Track { file: string; title: string; artist: string; license: string; source: string; /** exact attribution line (CC BY) */ credit?: string; /** story-score tracks: excluded from the general shuffle, reached only via the story mood (setStoryStop) */ storyOnly?: boolean; /** a menu theme: excluded from the general shuffle, reached only in menu context (pickNext). No context picks one since the 2026-11-05 retirement — the slot waits for a replacement theme. */ menuOnly?: boolean }
 /** Background playlist (lazy-loaded, 128 kbps MP3). Credits: see CREDITS.md and the in-game Credits screen. */
 export const TRACKS: Track[] = [
   { file: 'windows-down', title: 'Windows Down', artist: 'Holizna', license: 'CC0', source: 'https://opengameart.org/content/lo-fi-and-chill-collection' },
@@ -221,6 +221,10 @@ export const TRACKS: Track[] = [
   // Porch Party, an upbeat old-school R&B groove (100 BPM, backbeat, walking bass)
   // from the same renderer. The film mix and its reactivity are unchanged.
   { file: 'porch-theme', title: 'Porch Party (Porch Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', storyOnly: true },
+  // RETIRED as the menu theme (owner, 2026-11-05: "Scrap that sound altogether —
+  // start fresh"). The ENTRY stays — TRACKS is append-only because host-music
+  // beat stamps are raw indices — but no context can pick it: pickNext's menu
+  // branch answers "no track" and the general pool has always excluded it.
   { file: 'menu-soul', title: 'Come On In (Menu Theme)', artist: 'Bid Wit Me', license: 'Original', source: '', menuOnly: true },
   // The Pj's rotation (owner, 2026-10-30): mid-to-late-90s rap instrumentals for the
   // night-street venue — Ketsa's soul-chop boom bap (CC BY 4.0, via Free Music Archive)
@@ -1412,6 +1416,17 @@ class Engine {
    */
   private loadDeck(deckIdx: number, track: number): Promise<boolean> {
     const d = this.decks[deckIdx]!;
+    if (track < 0 || !TRACKS[track]) {
+      // No track to load (the picker answered -1: this context has no
+      // music). Never let a sentinel reach the deck — a non-null track
+      // with no file behind it is the phantom state the deck heals
+      // exist to fight. The deck simply stays empty, and the load
+      // "fails" so callers settle instead of spinning.
+      d.track = null;
+      d.loading = false;
+      d.ready = Promise.resolve(false);
+      return d.ready;
+    }
     d.track = track;
     d.loading = true;
     d.ready = (async () => {
@@ -1470,8 +1485,10 @@ class Engine {
       const files = Array.isArray(music.pin) ? music.pin : [music.pin];
       if (files.some((f) => TRACKS.some((t) => t.file === f))) return files.includes(file);
     }
-    // Menus have one signature: the menu theme, and nothing else.
-    if (this.context === 'menu') return file === 'menu-soul';
+    // Menus have NO music track (the theme was retired 2026-11-05):
+    // nothing loaded belongs here, so a track carried in from a table
+    // is foreign and the retarget fades it out to silence.
+    if (this.context === 'menu') return false;
     // Everywhere else the general shuffle is the identity, plus the venue's
     // own signature (lean) tracks, which pickNext can also return here.
     if (generalPool().includes(track)) return true;
@@ -1521,15 +1538,14 @@ class Engine {
       const idxs = music.lean.map((f) => TRACKS.findIndex((t) => t.file === f)).filter((i) => i >= 0 && i !== this.lastTrack);
       if (idxs.length) { const pick = idxs[Math.floor(Math.random() * idxs.length)]!; this.lastTrack = pick; return pick; }
     }
-    // Menu theme (sound sample, 2026-10-23): menus have ONE signature — the original soul
-    // instrumental — instead of a draw from the general pool. Only menu context reaches
-    // this branch; at a table the context is 'game', and the track is menuOnly so the
-    // shuffle below can never pick it either. Like the looping story moods, returning the
-    // same index every pick makes the decks crossfade the track into itself.
-    if (this.context === 'menu') {
-      const idx = TRACKS.findIndex((t) => t.file === 'menu-soul');
-      if (idx >= 0) return idx;
-    }
+    // Menus have NO theme (owner, 2026-11-05: "Scrap that sound
+    // altogether — start fresh"): the 2026-10-23 menu signature was
+    // retired, and menus stay silent until a replacement is picked.
+    // The picker's answer here is -1 — NO TRACK exists for this
+    // context — and every load path treats that as "start nothing".
+    // It must never fall through to the general shuffle below: menu
+    // silence is the identity now, not an absence of one.
+    if (this.context === 'menu') return -1;
     // General shuffle — over the general pool only: story-score tracks are storyOnly and
     // never drift into menus or normal games. The bag holds positions in the pool.
     const pool = generalPool();
@@ -1548,10 +1564,49 @@ class Engine {
     const c = this.ctx;
     const fromIdx = this.active, toIdx = 1 - this.active;
     const from = this.decks[fromIdx]!, to = this.decks[toIdx]!;
-    if (to.track === null || !to.ready) this.loadDeck(toIdx, this.pickNext());
-    let ok = await to.ready!;
-    for (let tries = 0; !ok && tries < TRACKS.length; tries++) ok = await this.loadDeck(toIdx, this.pickNext());
+    let ok: boolean;
+    let noPick = false;
+    if (to.track !== null && to.ready) {
+      ok = await to.ready;
+    } else {
+      let p = this.pickNext();
+      if (p < 0) { noPick = true; ok = false; }
+      else {
+        ok = await this.loadDeck(toIdx, p);
+        for (let tries = 0; !ok && tries < TRACKS.length; tries++) {
+          p = this.pickNext();
+          if (p < 0) { noPick = true; break; }
+          ok = await this.loadDeck(toIdx, p);
+        }
+      }
+    }
     if (!this.settings.music) { this.musicStatus = 'off'; this.fading = false; this.advancing = false; this.emit(); return; } // the owner turned music off mid-load: a clean off, not a load failure
+    if (!ok && noPick) {
+      // No next track exists in this context (menus, since the theme
+      // was retired 2026-11-05): the crossfade becomes a fade-OUT. The
+      // sounding deck ramps down over the usual XFADE and parks; the
+      // standby stays empty. The music switch is still ON — there is
+      // simply nothing to play here — so the status settles to 'off'
+      // (silence), never 'error'. The closing syncMusic re-reads the
+      // identity fresh: if the context changed again mid-fade (a
+      // bounce straight back into a game), the ordinary first start
+      // brings the music in there — the same re-run the sting hold's
+      // release performs.
+      const now = c.currentTime;
+      from.gain.gain.cancelScheduledValues(now);
+      from.gain.gain.setValueAtTime(Math.max(0.0001, from.gain.gain.value), now);
+      from.gain.gain.linearRampToValueAtTime(0.0001, now + XFADE);
+      window.setTimeout(() => {
+        from.el.pause();
+        from.track = null; from.ready = null;
+        this.musicStatus = 'off';
+        this.fading = false;
+        this.advancing = false;
+        this.emit();
+        this.syncMusic();
+      }, XFADE * 1000 + 150);
+      return;
+    }
     if (!ok) { this.musicStatus = 'error'; this.fading = false; this.advancing = false; this.emit(); return; }
     const now = c.currentTime;
     to.gain.gain.cancelScheduledValues(now); to.gain.gain.setValueAtTime(0.0001, now); to.gain.gain.linearRampToValueAtTime(1, now + XFADE);
@@ -1565,7 +1620,7 @@ class Engine {
       from.track = null; from.ready = null;
       this.fading = false;
       this.advancing = false;
-      if (this.settings.music) this.loadDeck(fromIdx, this.pickNext()); // look-ahead
+      if (this.settings.music) this.loadDeck(fromIdx, this.pickNext()); // look-ahead (loadDeck itself refuses the no-track answer: the deck stays empty)
     }, XFADE * 1000 + 150);
   }
 
@@ -1639,13 +1694,24 @@ class Engine {
       return;
     }
     if (cur.track === null) {
+      const firstPick = this.pickNext();
+      if (firstPick < 0) {
+        // No track exists for this context (menus, since the theme was
+        // retired 2026-11-05): music is switched on but there is
+        // nothing to play — settle silent. Not an error, and never a
+        // fall-through into another context's pool. This is also what
+        // makes the splash sting hold's release safe in the menus:
+        // the release re-runs this sync, and it simply starts nothing.
+        if (this.musicStatus !== 'off') { this.musicStatus = 'off'; this.emit(); }
+        return;
+      }
       // first start happens inside the user's tap: prime both decks for iOS, then fetch + play
       this.primeDecks();
       this.musicStatus = 'loading'; this.emit();
       const startIdx = this.active;
       void (async () => {
-        let ok = await this.loadDeck(startIdx, this.pickNext());
-        for (let tries = 0; !ok && tries < TRACKS.length; tries++) ok = await this.loadDeck(startIdx, this.pickNext());
+        let ok = await this.loadDeck(startIdx, firstPick);
+        for (let tries = 0; !ok && tries < TRACKS.length; tries++) { const p = this.pickNext(); if (p < 0) break; ok = await this.loadDeck(startIdx, p); }
         if (!this.ctx || !this.settings.music || this.active !== startIdx) return;
         if (!ok) { this.musicStatus = 'error'; this.emit(); return; }
         const t = this.ctx.currentTime;
@@ -1653,7 +1719,7 @@ class Engine {
         void cur.el.play().catch(() => undefined);
         this.announce(cur.track!);
         // look-ahead: fetch the next track while this one plays
-        window.setTimeout(() => { if (this.settings.music && this.decks[1 - this.active]!.track === null) this.loadDeck(1 - this.active, this.pickNext()); }, 5000);
+        window.setTimeout(() => { if (this.settings.music && this.decks[1 - this.active]!.track === null) { const p = this.pickNext(); if (p >= 0) this.loadDeck(1 - this.active, p); } }, 5000);
       })();
     } else if (cur.el.paused) {
       cur.gain.gain.setTargetAtTime(1, this.ctx.currentTime, 0.3);
@@ -1690,7 +1756,7 @@ class Engine {
     if (!d || d.track === null || this.deckLoading(d)) return;
     this.musicStatus = 'loading'; this.emit();
     let ok = await this.loadDeck(idx, d.track);
-    for (let tries = 0; !ok && tries < 3; tries++) ok = await this.loadDeck(idx, this.pickNext());
+    for (let tries = 0; !ok && tries < 3; tries++) { const p = this.pickNext(); if (p < 0) break; ok = await this.loadDeck(idx, p); }
     if (!this.ctx || !wantsMusic(this.settings) || this.active !== idx) return;
     if (!ok) { this.musicStatus = 'error'; this.emit(); return; }
     const t = this.ctx.currentTime;
