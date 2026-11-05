@@ -598,8 +598,10 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
 
 /**
  * The house-rules stat line (ESPN pattern, owner 2026-10-20): the numbers that
- * define the table at a glance — mode, target, players, timers — as strong
- * cells over the full rules summary's fine print.
+ * define the table at a glance — mode, target, players, timers — over the
+ * full rules summary's fine print. Since 2026-11-05 (owner) the four facts
+ * STACK as full-width rows, label left / value right: the old 4-across grid
+ * ellipsized the values ("Joker Spa…", "30s bid · 3…") at phone widths.
  */
 export function RulesStatLine({ settings }: { settings: Settings }) {
   const r = settingsToRules(settings);
