@@ -39,7 +39,19 @@ export const WHEELS_CAR_DIMS = { len: WHEELS_CAR_LEN, wid: WHEELS_CAR_LEN * (0.4
 export const WHEELS_CAR_METALNESS = 0;
 export const WHEELS_CAR_ROUGHNESS = 0.4;
 
-export function normalizeWheelsCar(scene: Group): Group {
+/** Anisotropic-sampling cap for the car's bake — the app's GLB standard
+ *  (the figures' prepareFigure raises every GLB map to the device max
+ *  capped at 8, because three.js's default anisotropy of 1 smears GLB
+ *  textures at grazing angles). The car is ALWAYS seen tilted or
+ *  grazing, and in motion: the results stage looks down ~36° at it,
+ *  the table rig sees it across the felt, and the doughnuts keep its
+ *  screen-space footprint rotating — the worst case for aniso 1. It
+ *  read SUPER BLURRY in its animation (owner, 2026-11-05) while every
+ *  neighbouring surface sampled at 4–8. Mounts pass
+ *  min(this cap, their renderer's getMaxAnisotropy()). */
+export const WHEELS_CAR_ANISOTROPY_CAP = 8;
+
+export function normalizeWheelsCar(scene: Group, maxAniso = 1): Group {
   const o = scene.clone(true) as Group;
   o.updateMatrixWorld(true);
   const box0 = new Box3().setFromObject(o);
@@ -64,6 +76,19 @@ export function normalizeWheelsCar(scene: Group): Group {
       if (m instanceof MeshStandardMaterial) {
         m.metalness = WHEELS_CAR_METALNESS;
         m.roughness = WHEELS_CAR_ROUGHNESS;
+        // The sampling raise above, at the same shared point: the
+        // bake's texture is shared with the loader cache across
+        // mounts, so the assignment is idempotent, and needsUpdate
+        // makes an already-uploaded texture re-upload at the new cap.
+        if (maxAniso > 1) {
+          for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap'] as const) {
+            const tex = m[key];
+            if (tex && tex.anisotropy !== maxAniso) {
+              tex.anisotropy = maxAniso;
+              tex.needsUpdate = true;
+            }
+          }
+        }
       }
     }
   });

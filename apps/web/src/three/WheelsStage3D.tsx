@@ -28,7 +28,7 @@ import {
   WHEELS3D_DONUT_END_S, WHEELS3D_SHOW_S,
   wheelPoints3d, wheelsPose3dAt, type WheelsPose3d,
 } from './wheelsCar3d';
-import { WHEELS_CAR_DIMS, WHEELS_CAR_URL, normalizeWheelsCar } from './wheelsCarModel';
+import { WHEELS_CAR_ANISOTROPY_CAP, WHEELS_CAR_DIMS, WHEELS_CAR_URL, normalizeWheelsCar } from './wheelsCarModel';
 
 interface StageProbe { t: number; phase: string; smoke: number }
 function probe(): StageProbe {
@@ -79,6 +79,7 @@ function StageRig({ neon, onDone }: { neon: boolean; onDone: () => void }) {
   const invalidate = useThree((s) => s.invalidate);
   const size = useThree((s) => s.size);
   const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
   const outer = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const startRef = useRef<number | null>(null);
@@ -90,7 +91,7 @@ function StageRig({ neon, onDone }: { neon: boolean; onDone: () => void }) {
   /* The same GLB the table rig mounts — by results time it sits in the
    * loader and HTTP caches, so the stage adds no fetch of consequence. */
   const gltf = useLoader(GLTFLoader, WHEELS_CAR_URL);
-  const model = useMemo(() => normalizeWheelsCar(gltf.scene), [gltf]);
+  const model = useMemo(() => normalizeWheelsCar(gltf.scene, Math.min(WHEELS_CAR_ANISOTROPY_CAP, gl.capabilities.getMaxAnisotropy())), [gltf, gl]);
 
   const smoke = useMemo(() => {
     const geo = new BufferGeometry();

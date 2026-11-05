@@ -17,10 +17,15 @@ function glbJson(buf: Buffer): Record<string, never> {
 }
 
 describe('the Wheels roadster asset', () => {
-  it('exists at ship size — same class as the 559,500-byte supercar it replaces', () => {
+  it('exists at ship size — the 2048² bake restored, one hero asset', () => {
+    // The 2026-11-04 build squeezed the 2048² Forge bake to 1024²/99 KB
+    // (617,044 B total) and the car read SUPER BLURRY (owner,
+    // 2026-11-05). The texture is restored at native res, WebP q95 —
+    // the figures program's cure for the same squeeze — so the bound
+    // now reflects the full-res asset (~1.06 MB), not the squeezed one.
     const buf = readFileSync(GLB_PATH);
-    expect(buf.length).toBeGreaterThan(100_000);
-    expect(buf.length).toBeLessThan(900_000);
+    expect(buf.length).toBeGreaterThan(900_000);
+    expect(buf.length).toBeLessThan(1_250_000);
   });
 
   it('the old supercar is gone — from disk and from the rig', () => {

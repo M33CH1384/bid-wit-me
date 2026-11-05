@@ -39,7 +39,7 @@ import {
   WHEELS3D_DONUT_END_S, WHEELS3D_FLASH_S, WHEELS3D_SHOW_S,
   wheelPoints3d, wheelsCarBlastLen, wheelsCarBlastPoseAt, wheelsPose3dAt, type WheelsPose3d,
 } from './wheelsCar3d';
-import { WHEELS_CAR_DIMS, WHEELS_CAR_URL, normalizeWheelsCar } from './wheelsCarModel';
+import { WHEELS_CAR_ANISOTROPY_CAP, WHEELS_CAR_DIMS, WHEELS_CAR_URL, normalizeWheelsCar } from './wheelsCarModel';
 
 interface WheelsProbe {
   loaded: boolean;
@@ -109,13 +109,14 @@ function WheelsCarRig() {
   const invalidate = useThree((s) => s.invalidate);
   const size = useThree((s) => s.size);
   const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
   const outer = useRef<Group>(null);
   const inner = useRef<Group>(null);
   const [show, setShow] = useState<{ id: number; at: number } | null>(null);
   const showRef = useRef<{ id: number; at: number } | null>(null);
   const blastRef = useRef<{ atShowT: number; mega: boolean; calm: boolean } | null>(null);
 
-  const model = useMemo(() => normalizeWheelsCar(gltf.scene), [gltf]);
+  const model = useMemo(() => normalizeWheelsCar(gltf.scene, Math.min(WHEELS_CAR_ANISOTROPY_CAP, gl.capabilities.getMaxAnisotropy())), [gltf, gl]);
 
   /* ---- smoke pool (one Points draw) ---- */
   const smoke = useMemo(() => {
