@@ -48,7 +48,7 @@ describe('metric-based leaderboard: no named tiers, no Elo', () => {
     expect(compete).not.toContain("pills('lb-board'");
   });
   it('the data-wave boards are tabs too: Win %, Books/hand, Nils made (league data wave, item 2)', () => {
-    expect(compete).toContain("'rating', 'wins', 'winpct', 'accuracy', 'books', 'nils', 'pace', 'duos'");
+    expect(compete).toContain("'rating', 'wins', 'tkos', 'winpct', 'accuracy', 'books', 'nils', 'pace', 'duos'");
     expect(compete).toContain("winpct: 'Win %'");
     expect(compete).toContain("books: 'Books/hand'");
     expect(compete).toContain("nils: 'Nils made'");

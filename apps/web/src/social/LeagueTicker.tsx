@@ -100,13 +100,15 @@ export interface TickerLine { text: string; live?: boolean }
  *    that could drift from the record),
  *  - the Win % board for the current kind (top 3, the board's own 10-game
  *    minimum already applied server-side),
+ *  - the 1st Round TKOs board for the current kind (top 3, dealt counts
+ *    from the server's per-game TKO counters),
  *  - the live presence list (who's online / at a table right now),
  *  - the signed-in viewer's own stat line (/api/social/me/stats).
  */
 export function buildTickerLines(o: {
   kind: TickerKind; top: TickerTopRow[]; online: TickerOnline[]; mine: TickerMine | null;
   power?: { name: string; power: number }[]; results?: RecentResult[]; highlights?: LiveHighlight[];
-  streaks?: TickerTopRow[]; winPct?: TickerTopRow[];
+  streaks?: TickerTopRow[]; winPct?: TickerTopRow[]; tkos?: TickerTopRow[];
 }): TickerLine[] {
   const lines: TickerLine[] = [];
   for (const h of (o.highlights ?? []).slice(0, 3)) lines.push({ text: `LIVE — ${h.text}`, live: true });
@@ -123,6 +125,9 @@ export function buildTickerLines(o: {
   }
   if (o.winPct?.length) {
     lines.push({ text: `Win % · ${kindLabel} — ${o.winPct.slice(0, 3).map((r) => `${r.name} ${r.value}%`).join(' · ')}` });
+  }
+  if (o.tkos?.length) {
+    lines.push({ text: `1st Round TKOs · ${kindLabel} — ${o.tkos.slice(0, 3).map((r) => `${r.name} ${r.value}`).join(' · ')}` });
   }
   if (o.power?.length) {
     lines.push({ text: `Power Rankings — ${o.power.slice(0, 3).map((r, i) => `#${i + 1} ${r.name} (${r.power})`).join(' · ')}` });
@@ -183,6 +188,7 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
   const [top, setTop] = useState<TickerTopRow[]>([]);
   const [streakTop, setStreakTop] = useState<TickerTopRow[]>([]);
   const [winPctTop, setWinPctTop] = useState<TickerTopRow[]>([]);
+  const [tkoTop, setTkoTop] = useState<TickerTopRow[]>([]);
   const [powerTop, setPowerTop] = useState<{ name: string; power: number }[]>([]);
   const [results, setResults] = useState<RecentResult[]>([]);
   const [highlights, setHighlights] = useState<LiveHighlight[]>([]);
@@ -203,6 +209,9 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
         .catch(() => { /* same */ });
       get(`/api/social/leaderboard?board=winpct&kind=${kind}&scope=global&period=all`)
         .then((j) => { if (!stop) setWinPctTop((j.rows ?? []) as TickerTopRow[]); })
+        .catch(() => { /* same */ });
+      get(`/api/social/leaderboard?board=tkos&kind=${kind}&scope=global&period=all`)
+        .then((j) => { if (!stop) setTkoTop((j.rows ?? []) as TickerTopRow[]); })
         .catch(() => { /* same */ });
       get(`/api/social/power?kind=${kind}`)
         .then((j) => { if (!stop) setPowerTop(((j.rows ?? []) as { name: string; power: number }[]).map((r) => ({ name: r.name, power: r.power }))); })
@@ -239,7 +248,7 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
     .filter((u) => !u.guest)
     .map((u) => ({ name: u.name, detail: statusLabel(u.status) }))
     .sort((a, b) => Number(a.detail === 'Online') - Number(b.detail === 'Online') || a.name.localeCompare(b.name)), [s.users]);
-  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine, power: powerTop, results, highlights, streaks: streakTop, winPct: winPctTop }), [kind, top, online, mine, powerTop, results, highlights, streakTop, winPctTop]);
+  const lines = useMemo(() => buildTickerLines({ kind, top, online, mine, power: powerTop, results, highlights, streaks: streakTop, winPct: winPctTop, tkos: tkoTop }), [kind, top, online, mine, powerTop, results, highlights, streakTop, winPctTop, tkoTop]);
   const reduced = reduceFx || osReduced;
 
   useEffect(() => {

@@ -463,6 +463,42 @@ export function shotOutResult(scores: readonly number[], out: readonly number[])
 }
 
 /**
+ * The sides put out ON HAND 1 — the fact under the game's "1ST ROUND TKO"
+ * ending name (the presentation layer's shotOutPathFor reads 'first-hand'
+ * off the same facts; the finale plaque headlines a side whose cover
+ * outHand is 1 with that name). One derivation, read by the stats layer
+ * so the career TKO count can never disagree with the name the game
+ * itself stamps:
+ *  - Partnership: the game must have ENDED by shotOut with the final
+ *    record on hand 1 (a hand-1 double-shot at equal scores returns null
+ *    from shotOutResult and the game plays on — not a TKO). The out
+ *    sides are the final hand's own out-and-shot rows when a record
+ *    stamps them, else the result's shotOut list (the game-over
+ *    banner's fresh-first derivation).
+ *  - Cutthroat: the sides whose row on the hand-1 record is `out` — the
+ *    engine's hand-1 elimination. Not gated on the game's final
+ *    endReason: the knockout is the elimination itself (the recap prints
+ *    it as that player's "Time of death: Hand 1" whatever the match's
+ *    ending), and a tiebreaker-restored player's row reads out: false.
+ */
+export function tkoOutSides(
+  r: TableRules,
+  history: readonly { handNo: number; sides: readonly SideHandResult[] }[],
+  result?: GameResult | null,
+): number[] {
+  if (!history.length) return [];
+  if (r.partnerships) {
+    if (!result || result.endReason !== 'shotOut') return [];
+    const last = history[history.length - 1];
+    if (!last || last.handNo !== 1) return [];
+    const fresh = last.sides.filter((s) => s.out && s.shot).map((s) => s.side);
+    return fresh.length ? fresh : [...(result.shotOut ?? [])];
+  }
+  const first = history.find((h) => h.handNo === 1) ?? history[0];
+  return first?.sides.filter((s) => s.out).map((s) => s.side) ?? [];
+}
+
+/**
  * Third set ends the game (game-wide rule, always on — separate from the Shot = out house rule):
  * a side whose cumulative set count (shotCounts) reaches 3 on THIS hand is knocked out. `prev` is
  * the count before this hand, `counts` after it; only a side crossing to 3 right now is fresh-out.

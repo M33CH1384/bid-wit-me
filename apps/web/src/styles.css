@@ -4055,6 +4055,7 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .rw-postgame { margin: 4px 0 14px; text-align: left; }
 .rw-pg-title { font-size: 15px; margin: 0 0 4px; letter-spacing: .02em; }
 .rw-moments { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-dim); }
+.rw-tko-note { margin: 0 0 14px; font-size: 13px; color: var(--ink-dim); text-align: left; }
 .rw-moments li { margin: 2px 0; }
 
 /* Rewards reveal gate (owner, 2026-10-20): the reveal animations on the

@@ -162,6 +162,11 @@ export interface PlayerCardData {
      *  ended a rated game — optional only so a stale cached payload
      *  degrades to no line instead of breaking the card */
     quits?: CardQuitStats;
+    /** career 1st Round TKOs (owner, 2026-11-05 — a major stat): dealt is
+     *  the card's headline number; suffered rides the profile's detailed
+     *  stats. Optional only so a stale cached payload degrades to no row
+     *  instead of breaking the card */
+    tkos?: { dealt: number; suffered: number };
   };
   vsViewer?: { games: number; wins: number; losses: number };
 }
@@ -491,6 +496,12 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
                         <th scope="row">Streak</th>
                         <td colSpan={4}>{s.streak > 0 ? `W${s.streak}` : '—'}{s.bestStreak > 1 ? ` · best W${s.bestStreak}` : ''}</td>
                       </tr>
+                      {s.tkos && (
+                        <tr className="tkorow" data-testid="pcard-row-tko">
+                          <th scope="row">1st Round TKOs</th>
+                          <td colSpan={4}>{s.tkos.dealt}</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                   {data.vsViewer && (

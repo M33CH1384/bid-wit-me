@@ -2,7 +2,7 @@
  * Release 9: online game records → per-player stats + Elo. Pure (no Cloudflare imports) so it's unit-tested.
  * Only seats linked to an account (signed-in players) get stats rows; guests and bots appear in the game's seat list.
  */
-import { type GameState, sideCount, sideOf } from '@spades/rules';
+import { type GameState, sideCount, sideOf, tkoOutSides } from '@spades/rules';
 import { processGameCred } from '../cred/hooks';
 import type { CredPushEvent } from '../push/notify';
 
@@ -42,6 +42,14 @@ export interface PlayerGameStats {
   runItClaims: number;
   /** own side got shot (set) / opponents shot while this player was at the table */
   shotsTaken: number; shotsGiven: number;
+  /** 1st Round TKOs (owner, 2026-11-05 — a major stat): opposing sides put
+   *  out on hand 1 / own side put out on hand 1, from the engine's own
+   *  hand-1 out fact (rules tkoOutSides — the fact under the game's
+   *  '1ST ROUND TKO' ending name). Counted per opposing side, the way
+   *  shotsGiven counts; both partners share their side's counts. Games
+   *  recorded before these keys existed count 0 (the ending fact was
+   *  never stored for them) — the stat starts at ship. */
+  tkoDealt: number; tkoSuffered: number;
   wheels: number;
   /** tricks won with the Big Joker */
   bjWins: number;
@@ -70,12 +78,14 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
   const n = r.playerCount;
   const kind: RatingKind = r.partnerships ? 'team' : 'cutthroat';
   const winners = g.result?.winners ?? [];
+  // 1st Round TKO outs for this game (empty unless a side went out on hand 1)
+  const tkoOuts = tkoOutSides(r, g.history, g.result);
   const players: GameRecord['players'] = [];
   for (let seat = 0; seat < n; seat++) {
     const ref = o.seats[seat];
     if (!ref || ref.kind !== 'user' || !ref.uid) continue;
     const side = sideOf(seat, r);
-    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0, books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0, shotsTaken: 0, shotsGiven: 0, wheels: 0, bjWins: o.live?.bj[seat] ?? 0, bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
+    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0, books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0, shotsTaken: 0, shotsGiven: 0, tkoDealt: tkoOuts.filter((o2) => o2 !== side).length, tkoSuffered: tkoOuts.includes(side) ? 1 : 0, wheels: 0, bjWins: o.live?.bj[seat] ?? 0, bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
     for (const h of g.history) {
       const b = h.bids[seat];
       const tw = h.tricksWon[seat] ?? 0;
@@ -185,7 +195,7 @@ export interface SaveMeta {
 const emptyStats = (hands: number): PlayerGameStats => ({
   won: false, hands, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0,
   books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0,
-  shotsTaken: 0, shotsGiven: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0,
+  shotsTaken: 0, shotsGiven: 0, tkoDealt: 0, tkoSuffered: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0,
 });
 
 /** An in-progress game that will not be finished by these seats. Nobody won. Stats stay empty so accuracy is untouched. */

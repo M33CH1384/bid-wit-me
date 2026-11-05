@@ -1,5 +1,5 @@
 /** Release 9b: leaderboards, server stats, personal stat lines (D1 aggregates over game_players). */
-export type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils' | 'streak' | 'pace';
+export type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils' | 'streak' | 'pace' | 'tkos';
 export type Period = 'all' | 'month' | 'week';
 export interface BoardRow { rank: number; id: string; name: string; value: number; games: number; extra?: string; vsPlayers?: number; vsBots?: number; trend?: number }
 
@@ -92,6 +92,20 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
       FROM best b JOIN totals t ON t.uid = b.uid JOIN users u ON u.id = b.uid
       WHERE b.value >= 3 AND t.games >= 5 ${decl}
       ORDER BY b.value DESC, t.games DESC, u.username ASC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+  } else if (o.board === 'tkos') {
+    // 1st Round TKOs dealt (owner, 2026-11-05 — a major stat). A totals
+    // board like Wins: ranked by the stored per-game tkoDealt counter,
+    // no games floor (the Wins precedent for a marquee counting stat —
+    // a new player's first TKO still shows), the row's games column is
+    // the sample size, and the extra line carries the suffered side of
+    // the record ('taken N'). Games recorded before the counter shipped
+    // have no tko keys and contribute 0 — the stat starts at ship,
+    // because the ending fact was never stored for them.
+    rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
+        SUM(json_extract(x.stats, '$.tkoDealt')) AS value, COUNT(*) AS games,
+        'taken ' || COALESCE(SUM(json_extract(x.stats, '$.tkoSuffered')), 0) AS extra
+      FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING value > 0 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'books') {
     // Books per hand from the stored per-game books/hands counters. A
     // 5-game minimum keeps one hot night off a rate board.
@@ -203,7 +217,7 @@ export interface PersonalStats {
   /** every deal this player was in, including ones that were abandoned */
   started: number;
   wins: number; streak: number; bestStreak: number;
-  accuracy: number | null; bags: number; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; wheels: number; bjWins: number;
+  accuracy: number | null; bags: number; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; tkoDealt: number; tkoSuffered: number; wheels: number; bjWins: number;
   bidSec: number | null; playSec: number | null;
   bids: number;
   /** wins (and games) split by who the opponents were; a win against only guests is in neither */
@@ -216,7 +230,7 @@ export async function personalStats(db: D1Database, uid: string, kind?: 'team' |
     FROM game_players gp JOIN games g ON g.id = gp.game_id
     WHERE gp.user_id = ? ${kind ? 'AND gp.kind = ?' : ''} ORDER BY gp.ended_at ASC, g.id ASC`)
     .bind(...(kind ? [uid, kind] : [uid])).all<{ won: number; stats: string; side: number; seats: string; ended_at: number; end_reason: string; leaver_id: string | null; rated: number; family: string }>()).results;
-  const s = { games: 0, started: 0, wins: 0, streak: 0, bestStreak: 0, bids: 0, made: 0, books: 0, hands: 0, bags: 0, nilBids: 0, nilMade: 0, shotsGiven: 0, shotsTaken: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0, winsVsPlayers: 0, winsVsBots: 0, gamesVsPlayers: 0, gamesVsBots: 0 };
+  const s = { games: 0, started: 0, wins: 0, streak: 0, bestStreak: 0, bids: 0, made: 0, books: 0, hands: 0, bags: 0, nilBids: 0, nilMade: 0, shotsGiven: 0, shotsTaken: 0, tkoDealt: 0, tkoSuffered: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0, winsVsPlayers: 0, winsVsBots: 0, gamesVsPlayers: 0, gamesVsBots: 0 };
   const order: string[] = [];
   const groups = new Map<string, typeof rows>();
   for (const r of rows) {
@@ -256,7 +270,7 @@ export async function personalStats(db: D1Database, uid: string, kind?: 'team' |
       if (bucket === 'players') s.winsVsPlayers++;
       else if (bucket === 'bots') s.winsVsBots++;
     } else run = 0;
-    for (const k of ['bids', 'made', 'books', 'hands', 'bags', 'nilBids', 'nilMade', 'shotsGiven', 'shotsTaken', 'wheels', 'bjWins', 'bidMs', 'bidN', 'playMs', 'playN'] as const) s[k] += Number(st[k]) || 0;
+    for (const k of ['bids', 'made', 'books', 'hands', 'bags', 'nilBids', 'nilMade', 'shotsGiven', 'shotsTaken', 'tkoDealt', 'tkoSuffered', 'wheels', 'bjWins', 'bidMs', 'bidN', 'playMs', 'playN'] as const) s[k] += Number(st[k]) || 0;
   }
   s.streak = run;
   return {
@@ -264,7 +278,7 @@ export async function personalStats(db: D1Database, uid: string, kind?: 'team' |
     accuracy: s.bids ? Math.round((1000 * s.made) / s.bids) / 10 : null,
     bags: s.bags,
     booksPerHand: s.hands ? Math.round((100 * s.books) / s.hands) / 100 : null,
-    nil: `${s.nilMade}/${s.nilBids}`, shotsGiven: s.shotsGiven, shotsTaken: s.shotsTaken, wheels: s.wheels, bjWins: s.bjWins,
+    nil: `${s.nilMade}/${s.nilBids}`, shotsGiven: s.shotsGiven, shotsTaken: s.shotsTaken, tkoDealt: s.tkoDealt, tkoSuffered: s.tkoSuffered, wheels: s.wheels, bjWins: s.bjWins,
     bidSec: s.bidN ? Math.round(s.bidMs / s.bidN / 100) / 10 : null, playSec: s.playN ? Math.round(s.playMs / s.playN / 100) / 10 : null,
     bids: s.bids, winsVsPlayers: s.winsVsPlayers, winsVsBots: s.winsVsBots, gamesVsPlayers: s.gamesVsPlayers, gamesVsBots: s.gamesVsBots,
   };

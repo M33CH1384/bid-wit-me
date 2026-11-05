@@ -240,6 +240,12 @@ export interface PlayerCardData {
      *  contest — stats/quits.ts owns the definition (rated-only, human
      *  opposition, first leaver of a deal; disconnects never count) */
     quits: PersonalQuitStats;
+    /** 1st Round TKOs (owner, 2026-11-05 — a major stat): career dealt /
+     *  suffered across both modes, from the same personalStats sums the
+     *  profile shows (stats/record.ts owns the per-game counters; games
+     *  recorded before the counter shipped count 0 — the ending fact was
+     *  never stored for them) */
+    tkos: { dealt: number; suffered: number };
   };
   /** head-to-head vs the viewer, FROM THE VIEWER'S perspective
    *  ({games, wins: viewer's wins, losses: viewer's losses}); present only
@@ -348,6 +354,7 @@ export async function cardFor(
       bestStreak: combined.bestStreak,
       team, cutthroat,
       quits,
+      tkos: { dealt: combined.tkoDealt, suffered: combined.tkoSuffered },
     },
   };
 

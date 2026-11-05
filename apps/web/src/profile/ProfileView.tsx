@@ -166,7 +166,7 @@ interface SocialProfileData {
   teams?: TeamStatData[];
   ratings: { team?: number; cutthroat?: number }; totals: { games: number; wins: number };
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[]; vsYou?: { games: number; wins: number; losses: number }; champion: number;
-  stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; wheels: number; bjWins: number; bidSec: number | null; playSec: number | null };
+  stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; tkoDealt: number; tkoSuffered: number; wheels: number; bjWins: number; bidSec: number | null; playSec: number | null };
   awards?: { label: string; ref: string; at: number }[];
 }
 
@@ -372,7 +372,7 @@ function SeasonSection({ season, onClaim, claimingIds, justClaimedIds }: {
 const STAT_LABELS: Record<string, string> = {
   games: 'Games', wins: 'Wins', streak: 'Win streak', bestStreak: 'Best streak',
   accuracy: 'Bid accuracy', bags: 'Bags', booksPerHand: 'Books/hand', nil: 'Nil made',
-  shotsGiven: 'Shots given', shotsTaken: 'Shots taken', wheels: 'Wheels', bjWins: 'Blackjack wins',
+  shotsGiven: 'Shots given', shotsTaken: 'Shots taken', tkoDealt: '1st Round TKOs', tkoSuffered: 'TKOs taken', wheels: 'Wheels', bjWins: 'Blackjack wins',
   winsVsPlayers: 'Wins vs players', winsVsBots: 'Wins vs bots',
 };
 
@@ -1062,6 +1062,8 @@ export function ProfileView({ host, name, id }: {
                     ['Nils made', socialP.stats.nil],
                     ['Shots given', String(socialP.stats.shotsGiven)],
                     ['Shots taken', String(socialP.stats.shotsTaken)],
+                    ['1st Round TKOs', String(socialP.stats.tkoDealt ?? 0)],
+                    ['TKOs taken', String(socialP.stats.tkoSuffered ?? 0)],
                     ['Wheels', String(socialP.stats.wheels)],
                     ['Big Joker wins', String(socialP.stats.bjWins)],
                     ['Avg bid', `${socialP.stats.bidSec ?? '—'}s`],

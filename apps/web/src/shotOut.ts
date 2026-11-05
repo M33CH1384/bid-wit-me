@@ -1,4 +1,4 @@
-import { isShot, sideCount } from '@spades/rules';
+import { isShot, sideCount, tkoOutSides } from '@spades/rules';
 import type { GameState, HandRecord, TableRules } from '@spades/rules';
 
 /**
@@ -99,6 +99,29 @@ export function shotOutBannerFor(st: Pick<GameState, 'result' | 'history'>): str
   const outs = fresh.length ? fresh : res.shotOut ?? [];
   const names = new Set(outs.map((side) => shotOutEndingName(st.history, side)));
   return names.size === 1 ? [...names][0]! : SHOT_OUT_NAMES.sticky;
+}
+
+/**
+ * The viewer's direction in a finished game's 1st Round TKO, if any —
+ * the postgame mirror of the career stat's pinned definition (the
+ * engine's tkoOutSides: the same hand-1 out fact the banner above names
+ * '1ST ROUND TKO'). 'dealt' is claimed only by a WINNER whose opponents
+ * went out (a surviving non-winner in cutthroat still banks the stat
+ * server-side; the postgame note is the winner's line). 'suffered' when
+ * the viewer's own side went out and didn't win — in a both-out team
+ * game the score-winner reads 'dealt' and the loser 'suffered', the
+ * W–L pattern the stat itself keeps. Null when no side went out on
+ * hand 1 — including the hand-1 double-shot that tied and played on,
+ * which the ending logic never names a TKO.
+ */
+export function tkoDirectionFor(st: Pick<GameState, 'rules' | 'history' | 'result'>, mySide: number): 'dealt' | 'suffered' | null {
+  const outs = tkoOutSides(st.rules, st.history, st.result);
+  if (!outs.length) return null;
+  const won = st.result?.winners.includes(mySide) ?? false;
+  if (outs.includes(mySide) && !won) return 'suffered';
+  if (won && outs.some((o) => o !== mySide)) return 'dealt';
+  if (outs.includes(mySide)) return 'suffered';
+  return null;
 }
 
 /** Chat lines after a hand: who got shot, who's on notice, who's out. `label(side)` = team / player name. */
