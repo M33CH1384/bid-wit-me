@@ -585,18 +585,14 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* The splash itself: one whole-surface button — the wordmark over the
    felt, a single prompt, light layers only (the fan-crash lesson: no
    heavyweight compositing hints, no blur filters, no backdrop filters).
-   Both themes wear the same surface through the theme tokens; Neon adds
-   its emblem art as decoration behind the wordmark, like the home splash. */
+   Both themes wear the same surface through the theme tokens; Neon's
+   emblem-art override lives in the Neon section below, like every
+   [data-theme="neon"] rule. */
 .boot-splash {
   position: fixed; inset: 0; z-index: 1500; width: 100%; height: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
   border: 0; cursor: pointer; color: var(--ink); font: inherit;
   background: radial-gradient(ellipse at 50% -10%, rgba(var(--purple-rgb),.42) 0%, transparent 58%), radial-gradient(ellipse at 50% 115%, rgba(var(--gold-rgb),.16), transparent 50%), var(--bg);
-}
-html[data-theme="neon"] .boot-splash::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: url('/assets/neon/spade-emblem.webp') no-repeat 50% 18% / auto 46%;
-  opacity: .5;
 }
 .boot-splash-logo { width: min(300px, 68vw); height: auto; position: relative; }
 .boot-splash-prompt {
@@ -3359,6 +3355,15 @@ html[data-theme="neon"] {
   --lav: #a9c6ff;
   --ink-deep: #05060f;
 }
+
+/* Boot splash: Neon's emblem art behind the wordmark (the splash block
+   itself lives in the shared region above). */
+html[data-theme="neon"] .boot-splash::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: url('/assets/neon/spade-emblem.webp') no-repeat 50% 18% / auto 46%;
+  opacity: .5;
+}
+
 /* Shape: Classic cuts corners (clip-path slants); Neon rounds them. */
 html[data-theme="neon"] .slant { clip-path: none; border-radius: 14px; }
 html[data-theme="neon"] .slant.glass { box-shadow: 0 0 0 1px var(--edge), 0 0 18px rgba(var(--purple-rgb), .35), inset 0 1px 0 rgba(255,255,255,.08); }
