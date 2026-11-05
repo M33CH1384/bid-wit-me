@@ -1543,3 +1543,57 @@ html[data-theme="neon"] .animfx-tornchip .tornchip-pip.lit { animation-name: ani
   from { background: rgba(255, 255, 255, .25); box-shadow: none; }
   to { background: #5bdfff; box-shadow: 0 0 8px rgba(91, 223, 255, .8); }
 }
+
+/* ---- BWM Central Phase 3 -----------------------------------------------
+ * CONTRACT SECURED: a gold seal stamps the plate (post-trick beat, once
+ * per hand per side). NIL IN DANGER: a restrained pulse on a still-clean
+ * nil's plate with ≤4 tricks left. The nilseal's luminous ZERO draws
+ * itself (dash) as the seal lands. Still/calm variants hold the final
+ * state briefly, per the layer's reduced-motion discipline. */
+.animfx-contractseal { position: fixed; width: 0; height: 0; pointer-events: none; z-index: 2; }
+.animfx-contractseal .contract-ring {
+  position: absolute; left: -40px; top: -40px; width: 80px; height: 80px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 214, 110, .45) 0%, rgba(255, 196, 90, .15) 55%, rgba(255, 196, 90, 0) 72%);
+  box-shadow: 0 0 22px 5px rgba(255, 196, 90, .32), inset 0 0 0 2px rgba(255, 224, 150, .8);
+  animation: animfx-nilseal 1.45s ease-out forwards;
+}
+.animfx-contractseal .contract-disc {
+  position: absolute; left: -20px; top: -20px; width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 17px; color: rgba(122, 82, 8, .95);
+  background: radial-gradient(circle at 34% 28%, rgba(255, 240, 190, .9), rgba(240, 190, 80, .85) 55%, rgba(196, 138, 30, .9));
+  box-shadow: inset 0 2px 4px rgba(120, 78, 6, .5), 0 2px 8px rgba(0, 0, 0, .4);
+  animation: animfx-sealdisc 1.45s cubic-bezier(.2, 1.2, .4, 1) forwards;
+}
+.animfx-contractseal .contract-word {
+  position: absolute; left: 0; top: 26px; transform: translateX(-50%); white-space: nowrap;
+  font-family: var(--display, sans-serif); font-weight: 800; font-size: 9px; letter-spacing: .14em;
+  color: #ffe9a8; text-shadow: 0 1px 3px rgba(0, 0, 0, .65);
+  animation: animfx-fadeout 1.45s ease forwards;
+}
+.animfx-contractseal.still .contract-ring, .animfx-contractseal.still .contract-disc, .animfx-contractseal.still .contract-word { animation: animfx-fadeout 1.05s ease forwards; }
+.animfx-nildanger {
+  position: fixed; pointer-events: none; z-index: 1; border-radius: 14px;
+  box-shadow: inset 0 0 0 2px rgba(255, 120, 90, .55);
+  animation: animfx-nildanger 1.6s ease-in-out infinite;
+}
+.animfx-nildanger.calm { animation: none; box-shadow: inset 0 0 0 2px rgba(255, 120, 90, .4); }
+@keyframes animfx-nildanger {
+  0%, 100% { box-shadow: inset 0 0 0 2px rgba(255, 120, 90, .35); }
+  50% { box-shadow: inset 0 0 0 2px rgba(255, 120, 90, .75), 0 0 10px rgba(255, 120, 90, .25); }
+}
+.animfx-nilseal .seal-zero {
+  position: absolute; left: -30px; top: -42px; width: 60px; height: 84px; pointer-events: none;
+  filter: drop-shadow(0 0 6px rgba(255, 224, 150, .85));
+  animation: animfx-fadeout 1.3s ease forwards;
+}
+.animfx-nilseal .seal-zero ellipse {
+  fill: none; stroke: #ffe9a8; stroke-width: 5; stroke-linecap: round;
+  stroke-dasharray: 100; stroke-dashoffset: 0;
+  animation: animfx-nilzero-draw 1.05s ease-out forwards;
+}
+.animfx-nilseal.still .seal-zero { animation: animfx-fadeout 1s ease forwards; }
+.animfx-nilseal.still .seal-zero ellipse { animation: none; stroke-dashoffset: 0; }
+@keyframes animfx-nilzero-draw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+html[data-theme="neon"] .animfx-nildanger { box-shadow: inset 0 0 0 2px rgba(255, 110, 160, .55); }
+html[data-theme="neon"] .animfx-nilseal .seal-zero ellipse { stroke: #a8e6ff; }

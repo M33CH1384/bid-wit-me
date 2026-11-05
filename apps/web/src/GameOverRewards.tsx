@@ -10,6 +10,10 @@ import { PlayerCard, type CardRankData, type PlayerCardData } from './profile/Pl
 import { loadAccount, useAccount } from './account/api';
 import { SignInSheet, UsernamePicker } from './account/AccountUI';
 import { clearPendingClaim, loadClaimResult, peekPendingClaim, setClaimSurfaceGameId, submitPendingClaim } from './pendingClaim';
+import { analyzeScoreTimeline, type TurningPoint } from './turningPoint';
+import { social } from './social/store';
+import { celebrationPresentation } from './social/celebration';
+import { perfGovernor } from './three/perfGovernor';
 
 /** Minimal profile shape (mirrors /api/profile/me) for reward deltas. */
 export interface RewardsProfile {
@@ -19,8 +23,12 @@ export interface RewardsProfile {
   card?: PlayerCardData;
   coins: { balance: number };
   rank: {
-    team: { elo: number };
-    cutthroat: { elo: number };
+    /** peak is the season peak rating (cred payload SeasonRank.peak).
+     *  Optional: a before-snapshot pinned by an older build lacks it,
+     *  and a missing peak must yield NO personal-best plaque, never an
+     *  invented one (BWM Central Phase 3). */
+    team: { elo: number; peak?: number };
+    cutthroat: { elo: number; peak?: number };
   };
   achievements: { id: string; title: string; xp: number; coins: number; unlockedAt: number | null }[];
   challenges: {
@@ -50,6 +58,14 @@ export interface PostgameData {
   myNilsMade: number;
   /** plain-language best moments, in hand order (max 4) */
   moments: string[];
+  /** score after each hand, per side (cumulative hand points) — BWM
+   *  Central Phase 1. Optional: stashes written by older builds lack it. */
+  timeline?: { hand: number; scores: number[] }[];
+  /** the MECHANICAL turning point off that timeline (biggest swing /
+   *  final lead change) — never a strategic judgement */
+  turning?: TurningPoint;
+  /** the first opposing seat's label — the postgame Compare target */
+  topOpponent?: string;
 }
 
 /** The structural slice of the engine's HandRecord the report needs. */
@@ -103,11 +119,33 @@ export function buildPostgame(input: {
     }
   }
   if (bestHand > 0) moments.push(`Your best hand: +${bestHand} points in hand ${bestHandNo}`);
+  /* Score timeline + mechanical turning point: cumulative hand points
+   * ARE the score progression (each hand's sides carry totalScore the
+   * same way), so the timeline is exact, not reconstructed. The swing
+   * delta is re-signed into the VIEWER's perspective for a 2-side game
+   * (analyzeScoreTimeline speaks side 0). */
+  const running = finalScores.map(() => 0);
+  const timeline = history.map((h) => {
+    for (const s of h.sides) running[s.side] = (running[s.side] ?? 0) + s.points;
+    return { hand: h.handNo, scores: [...running] };
+  });
+  const rawTurning = analyzeScoreTimeline(timeline);
+  const turning: TurningPoint = mySide !== 0 && finalScores.length === 2 && rawTurning.swing
+    ? { ...rawTurning, swing: { ...rawTurning.swing, delta: -rawTurning.swing.delta } }
+    : rawTurning;
+  /* Top opponent: the first seat on another side. Seat→side follows the
+   * table's own layout — partnership seats alternate sides, cutthroat
+   * seats are their own side. */
+  const sideOfSeat = (seat: number) => (finalScores.length === 2 ? seat % 2 : seat);
+  const topOpponent = seatLabels.find((label, seat) => seat !== mySeat && sideOfSeat(seat) !== mySide && label !== seatLabels[mySeat]);
   return {
     sides,
     myBooks: history.reduce((a, h) => a + (h.tricksWon[mySeat] ?? 0), 0),
     myNilsMade: history.reduce((a, h) => a + h.sides.reduce((x, s) => x + s.nils.filter((n) => n.seat === mySeat && n.made).length, 0), 0),
     moments: moments.slice(0, 4),
+    timeline,
+    turning,
+    ...(topOpponent ? { topOpponent } : {}),
   };
 }
 
@@ -140,6 +178,16 @@ export interface RewardsData {
   coinsGained: number;
   eloBefore: number | null;
   eloAfter: number | null;
+  /** BWM Central Phase 1: the match was rated-eligible and, after every
+   *  retry (including the longer finalize re-fetch), the rating still
+   *  shows no movement — the row says "Rating finalizing…" instead of
+   *  claiming there was no change. Optional: older stashes lack it. */
+  ratingPending?: boolean;
+  /** BWM Central Phase 3: the viewer's season PEAK rating rose in this
+   *  match (after-peak strictly above before-peak, both snapshots
+   *  carrying a peak) — ReportBody's "New personal best" plaque reads
+   *  this. Null whenever either snapshot lacks a peak. */
+  personalBest?: { peak: number } | null;
   eloKindLabel: string;
   achievements: UnlockedItem[];
   challenges: UnlockedItem[];
@@ -178,6 +226,7 @@ export function computeRewards(
     coinsGained: 0,
     eloBefore: null,
     eloAfter: null,
+    personalBest: null,
     eloKindLabel: opts.kind === 'team' ? 'Partnership' : 'Cutthroat',
     achievements: [],
     challenges: [],
@@ -203,6 +252,9 @@ export function computeRewards(
   const ra = opts.kind === 'team' ? after.rank.team.elo : after.rank.cutthroat.elo;
   base.eloBefore = rb;
   base.eloAfter = ra;
+  const peakB = opts.kind === 'team' ? before.rank.team.peak : before.rank.cutthroat.peak;
+  const peakA = opts.kind === 'team' ? after.rank.team.peak : after.rank.cutthroat.peak;
+  base.personalBest = typeof peakB === 'number' && typeof peakA === 'number' && peakA > peakB ? { peak: peakA } : null;
   const beforeUnlocked = new Set(before.achievements.filter((a) => a.unlockedAt != null).map((a) => a.id));
   base.achievements = after.achievements
     .filter((a) => a.unlockedAt != null && !beforeUnlocked.has(a.id))
@@ -303,6 +355,9 @@ export const AFTER_RETRY_DELAYS_MS = [400, 600, 1000];
 
 const sleepMs = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
 
+/** The longer timer for the ONE extra rating-finalize re-fetch. */
+export const RATING_FINALIZE_DELAY_MS = 4000;
+
 export async function computeRewardsSettled(
   before: RewardsProfile | null,
   opts: { won: boolean; headline: string; sub: string; kind: 'team' | 'cutthroat' },
@@ -311,6 +366,14 @@ export async function computeRewardsSettled(
     fetchProfile?: () => Promise<RewardsProfile | null>;
     sleep?: (ms: number) => Promise<void>;
     delaysMs?: number[];
+    /** BWM Central Phase 1: after the standard retries, if NOTHING has
+     *  settled (no XP, no coins, no rating movement) for a signed-in
+     *  online match, quietly re-fetch once more on the longer finalize
+     *  timer; if it still hasn't landed, mark ratingPending so the
+     *  rating row says "Rating finalizing…" honestly. Opt-in so the
+     *  bounded-retry contract above stays exact for other callers. */
+    finalizeRating?: boolean;
+    finalizeDelayMs?: number;
   },
 ): Promise<RewardsData> {
   const fetchProfile = cfg.fetchProfile ?? fetchRewardsProfile;
@@ -326,6 +389,15 @@ export async function computeRewardsSettled(
     await sleep(delay);
     after = await fetchProfile();
     data = computeRewards(before, after, opts);
+  }
+  if (cfg.finalizeRating && data.xpGained === 0 && data.coinsGained === 0
+    && data.eloBefore != null && data.eloAfter === data.eloBefore) {
+    await sleep(cfg.finalizeDelayMs ?? RATING_FINALIZE_DELAY_MS);
+    after = await fetchProfile();
+    data = computeRewards(before, after, opts);
+    if (data.xpGained === 0 && data.coinsGained === 0 && data.eloBefore != null && data.eloAfter === data.eloBefore) {
+      data.ratingPending = true;
+    }
   }
   return data;
 }
@@ -766,13 +838,15 @@ function EloRow({ d, index, play, reduced }: { d: RewardsData; index: number; pl
   if (delta === 0) {
     return (
       <div className="rw-row" style={{ animationDelay: `${index * 160}ms` }}>
-        <div className="rw-icon">➖</div>
+        <div className="rw-icon">{d.ratingPending ? '⏳' : '➖'}</div>
         <div className="rw-body">
           <div className="rw-top">
             <span>{label}</span>
             <b className="rw-num">{d.eloAfter.toLocaleString()}</b>
           </div>
-          <div className="rw-sub">No change — ratings only move in rated games vs. real opponents</div>
+          <div className="rw-sub">{d.ratingPending
+            ? 'Rating finalizing…'
+            : 'No change — ratings only move in rated games vs. real opponents'}</div>
         </div>
       </div>
     );
@@ -1059,7 +1133,40 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
               {d.postgame.moments.map((m) => <li key={m}>{m}</li>)}
             </ul>
           )}
+          {/* Mechanical turning point + score timeline (BWM Central
+              Phase 1): read straight off the hand-by-hand score line,
+              labelled as the measurement it is — never a "best play". */}
+          {d.postgame.turning && (d.postgame.timeline?.length ?? 0) > 1 && (
+            <ul className="rw-moments rw-turning" data-testid="postgame-turning">
+              {d.postgame.turning.wireToWire
+                ? <li>No turning point — one side led wire to wire.</li>
+                : (<>
+                  {d.postgame.turning.swing && <li>Biggest swing: Hand {d.postgame.turning.swing.hand}, {d.postgame.turning.swing.delta > 0 ? '+' : ''}{d.postgame.turning.swing.delta}</li>}
+                  {d.postgame.turning.leadChangeHand !== null && <li>Final lead change: Hand {d.postgame.turning.leadChangeHand}</li>}
+                </>)}
+            </ul>
+          )}
+          {(d.postgame.timeline?.length ?? 0) > 1 && (
+            <div className="rw-timeline" data-testid="postgame-timeline">
+              {d.postgame.timeline!.map((t) => (
+                <span key={t.hand} className="rw-timeline-row">Hand {t.hand} · {t.scores.join('–')}</span>
+              ))}
+            </div>
+          )}
         </div>
+      )}
+      {/* PERSONAL BEST plaque (BWM Central Phase 3, postgame-level
+          celebration): the rewards diff proved the viewer's season peak
+          rating rose in this match. Rendered in place on the postgame
+          surface under its own reveal gates — reduced motion and the
+          perf governor's deepest trim both collapse it to the static
+          plaque (celebrationPresentation), exactly as the hub host
+          treats its badges. */}
+      {d.personalBest && (
+        <div
+          className={`rw-personal-best mode-${celebrationPresentation({ kind: 'personal-best' }, { governorLevel: perfGovernor.level, reducedMotion: reduced })}`}
+          data-testid="postgame-personal-best"
+        >🏆 New personal best — Rating {d.personalBest.peak.toLocaleString()}</div>
       )}
       <div className="rw-rows" ref={rowsRef}>
         {d.signedIn ? rows : guestClaim && (guestClaim.held || guestClaim.claiming) ? (
@@ -1122,6 +1229,7 @@ export default function GameOverRewards({
   onRematch,
   onProfile,
   onOpenTables,
+  onCompare,
   guestClaim,
   claimGameId,
   onClaimSwap,
@@ -1131,6 +1239,9 @@ export default function GameOverRewards({
   onRematch: () => void;
   onProfile: () => void;
   onOpenTables: () => void;
+  /** Compare next-action: opens the top opponent's profile compare in
+   *  BWM Central. Defaults to the social store action. */
+  onCompare?: () => void;
   guestClaim?: GuestClaimUi;
   claimGameId?: string;
   onClaimSwap?: (d: RewardsData) => void;
@@ -1177,6 +1288,10 @@ export default function GameOverRewards({
             <button type="button" className="ghost-btn rw-rematch-btn" data-testid="rewards-rematch" onClick={onRematch}>Rematch</button>
             <div className="rw-actions-row">
               <button type="button" className="ghost-btn" data-testid="rewards-profile" onClick={onProfile}>Profile</button>
+              {data.postgame?.topOpponent && (
+                <button type="button" className="ghost-btn" data-testid="rewards-compare"
+                  onClick={onCompare ?? (() => social.openCompare(data.postgame!.topOpponent!))}>Compare</button>
+              )}
               <button type="button" className="ghost-btn" data-testid="rewards-tables" onClick={onOpenTables}>Open Tables</button>
             </div>
           </div>
@@ -1270,6 +1385,10 @@ export function VictoryReport({ data: initial, gameId, onDataSwap, links, omitXp
       {links && (
         <div className="rw-links">
           <button type="button" className="ghost-btn" data-testid="victory-profile" onClick={() => { location.href = '/profile'; }}>Profile</button>
+          {d.postgame?.topOpponent && (
+            <button type="button" className="ghost-btn" data-testid="victory-compare"
+              onClick={() => social.openCompare(d.postgame!.topOpponent!)}>Compare</button>
+          )}
           <button type="button" className="ghost-btn" data-testid="victory-tables" onClick={() => { location.href = '/online'; }}>Open Tables</button>
         </div>
       )}

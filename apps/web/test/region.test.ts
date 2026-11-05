@@ -63,7 +63,7 @@ describe('region wiring', () => {
   it('leaderboard: Regions scope exists, is server-backed, joins rotation only with a region', () => {
     const c = compete();
     expect(c).toContain("regions: 'Regions'");
-    expect(c).toContain("scope === 'regions' ? 'regions' : 'global'");
+    expect(c).toContain("scope === 'regions' ? 'regions' : scope === 'friends' && signedIn ? 'friends' : 'global'");
     expect(c).toContain("myRegion ? [...ROTATION, 'regions'] : ROTATION");
     expect(c).toContain("['regions', 'Regions']");
   });

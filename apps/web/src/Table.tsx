@@ -2508,7 +2508,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
         headline: head,
         sub: `${st.history.length} hand${st.history.length === 1 ? '' : 's'} played`,
         kind: r.partnerships ? 'team' : 'cutthroat',
-      }, { online: !!online });
+      }, { online: !!online, finalizeRating: true });
       // Postgame Report (league P-D): your line vs the other sides + best
       // moments, from the finished game's hand history.
       if (st.result) {

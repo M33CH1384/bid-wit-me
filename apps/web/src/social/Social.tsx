@@ -17,6 +17,11 @@ import { type MyTable, type SocialTab, type Toast, NOT_FRIENDS_TEXT, badgeCount,
 import { applyMention, mentionQueryAt, rankMentionCandidates, splitMentionText } from './mentions';
 import { openPlayerProfile, profileTargetOf } from '../profileTap';
 import { Leaderboards, Tournaments } from './Compete';
+import { FavoritePartners, Headlines, MatchupsHome, MatchView } from './Central';
+import { CelebrationHost } from './CelebrationHost';
+import { Crews } from './Crews';
+import { FavoriteStar } from './FavoriteStar';
+import { CENTRAL_DESTS, destOfTab, hubNavMode } from './central';
 import { LeagueTicker } from './LeagueTicker';
 import { WagerChallenges } from './Wager';
 import { UnlockPopups } from './UnlockPopups';
@@ -171,7 +176,11 @@ function InviteToast({ inv }: { inv: InviteMsg }) {
 
 /* ------------------------------------------------------------------ panel */
 
-const TABS: [SocialTab, string][] = [['players', 'Players'], ['chat', 'Chat'], ['friends', 'Friends'], ['leaders', 'Ranks']];
+/* BWM Central (Phase 1): the panel's destinations live in central.ts
+ * (CENTRAL_DESTS); the legacy tab ids remain the view keys underneath —
+ * 'leaders' is Rankings, 'players'/'friends' are Crew, tournaments and
+ * challenges belong to Matchups, and chat/messages/settings are header
+ * utilities, not destinations. */
 /** share a link: native share sheet when there is one, else copy */
 async function shareLink(url: string, text: string) {
   if (navigator.share) { try { await navigator.share({ title: 'Bid Wit Me', text, url }); return; } catch { return; } }
@@ -189,6 +198,30 @@ function SocialPanel() {
   }, []);
   const unreadDm = Object.values(s.unread).reduce((a, b) => a + b, 0);
   const counts: Partial<Record<SocialTab, number>> = { chat: globalUnread(s) + unreadDm, friends: s.friends?.incoming.length ?? 0 };
+  const chatBadge = globalUnread(s) + unreadDm;
+  /* Central nav form: labeled bottom bar on phone portrait, compact
+   * (labels kept, slimmer) in landscape / short heights, top tabs on
+   * tablet/desktop widths — hubNavMode is the pure rule, tested at
+   * 390×844, 844×390 and desktop sizes. */
+  const [navMode, setNavMode] = useState(() => hubNavMode(window.innerWidth, window.innerHeight));
+  useEffect(() => {
+    const onResize = () => setNavMode(hubNavMode(window.innerWidth, window.innerHeight));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  /* Profile Back restores the destination AND its scroll: the body
+   * reports scroll into the store as it moves; when a profile closes,
+   * the captured profileReturn scroll goes back on. */
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const wasProfile = useRef(false);
+  useEffect(() => {
+    if (s.profile) { wasProfile.current = true; return; }
+    if (wasProfile.current) {
+      wasProfile.current = false;
+      const el = bodyRef.current;
+      if (el) el.scrollTop = s.profileReturn?.scroll ?? 0;
+    }
+  }, [s.profile, s.profileReturn]);
   // Neon Royale: the tab indicator glides — measure the active tab button and
   // park --tab-x/--tab-w on the nav; CSS (Neon-scoped) animates the move.
   // Classic never reads the vars, and the glide span is display:none there.
@@ -208,7 +241,8 @@ function SocialPanel() {
   const [gear, setGear] = useState(false);
   const [drag, setDrag] = useState(0);
   const start = useRef<number | null>(null);
-  const tabOn = (k: SocialTab) => !s.profile && (s.tab === k || (k === 'chat' && s.tab === 'messages'));
+  const activeDest = destOfTab(s.tab) ?? s.dest;
+  const destOn = (d: (typeof CENTRAL_DESTS)[number]['id']) => !s.profile && activeDest === d;
   const grab = {
     onPointerDown: (e: React.PointerEvent) => { if ((e.target as HTMLElement).closest('button')) return; start.current = e.clientY; (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); },
     onPointerMove: (e: React.PointerEvent) => { if (start.current !== null) setDrag(Math.max(0, e.clientY - start.current)); },
@@ -221,25 +255,30 @@ function SocialPanel() {
         style={drag ? { transform: `translateY(${drag}px)`, transition: 'none' } : undefined}>
         <div className="soc-grab" {...grab}><span className="soc-handle" aria-hidden /></div>
         <header className="soc-head" {...grab}>
-          <span className="panel-title">SOCIAL</span>
+          <span className="panel-title">BWM CENTRAL</span>
           <span className={`soc-conn ${s.status}`} title={s.status}>{s.status === 'open' ? `${Object.keys(s.users).length} online` : s.status === 'off' ? '' : 'connecting…'}</span>
+          {/* Header utilities — NOT destinations: messages/global chat with
+              its unread badge, and the settings gear. */}
+          <button type="button" className={`icon-btn soc-chat-btn ${s.tab === 'chat' || s.tab === 'messages' ? 'on' : ''}`} aria-label={`Messages and global chat${chatBadge ? ` (${chatBadge} new)` : ''}`} data-testid="central-chat-btn" onClick={() => social.tab(s.dmWith ? 'messages' : 'chat')}>
+            💬{chatBadge > 0 && <i className="soc-count">{chatBadge > 99 ? '99+' : chatBadge}</i>}
+          </button>
           <span className="soc-gear-wrap">
-            <button type="button" className={`icon-btn ${s.tab === 'tournaments' || s.tab === 'challenges' || s.tab === 'settings' ? 'on' : ''}`} aria-label="Events and settings" aria-expanded={gear} data-testid="social-gear" onClick={() => setGear(!gear)}><GearIcon /></button>
+            <button type="button" className={`icon-btn ${s.tab === 'settings' ? 'on' : ''}`} aria-label="Social settings" aria-expanded={gear} data-testid="social-gear" onClick={() => setGear(!gear)}><GearIcon /></button>
             {gear && (
               <span className="soc-gear-menu" role="menu">
-                <button type="button" role="menuitem" data-testid="soc-tab-tournaments" onClick={() => { social.tab('tournaments'); setGear(false); }}>🏆 Events &amp; tournaments</button>
-                <button type="button" role="menuitem" data-testid="soc-tab-challenges" onClick={() => { social.tab('challenges'); setGear(false); }}>🏦 Big Bank challenges</button>
                 <button type="button" role="menuitem" data-testid="soc-tab-settings" onClick={() => { social.tab('settings'); setGear(false); }}><GearIcon size={15} /> Social settings</button>
               </span>
             )}
           </span>
           <button type="button" className="sheet-close" aria-label="Close" data-testid="social-close" onClick={() => social.close()}>✕</button>
         </header>
-        <nav className="soc-tabs" role="tablist" ref={tabsRef}>
+        <nav className={`soc-tabs central-nav ${navMode}`} role="tablist" aria-label="BWM Central" ref={tabsRef} data-testid="central-nav" data-nav-mode={navMode}>
           <span className="soc-tab-glide" aria-hidden="true" />
-          {TABS.map(([k, label]) => (
-            <button key={k} type="button" role="tab" aria-selected={tabOn(k)} className={tabOn(k) ? 'on' : ''} data-testid={`soc-tab-${k}`} onClick={() => social.tab(k)}>
-              {label}{!!counts[k] && <i className="soc-count">{counts[k]}</i>}
+          {CENTRAL_DESTS.map((d) => (
+            <button key={d.id} type="button" role="tab" aria-selected={destOn(d.id)} className={destOn(d.id) ? 'on' : ''} data-testid={`central-nav-${d.id}`} onClick={() => social.dest(d.id)}>
+              <span className="central-nav-ico" aria-hidden>{d.icon}</span>
+              <span className="central-nav-lbl">{d.label}</span>
+              {d.id === 'crew' && !!counts.friends && <i className="soc-count">{counts.friends}</i>}
             </button>
           ))}
         </nav>
@@ -249,17 +288,36 @@ function SocialPanel() {
             <button type="button" role="tab" aria-selected={s.tab === 'messages'} className={s.tab === 'messages' ? 'on' : ''} data-testid="soc-tab-messages" onClick={() => social.tab('messages')}>✉ Messages{unreadDm > 0 && <i className="soc-count">{unreadDm}</i>}</button>
           </div>
         )}
-        <div className="soc-body">
+        {/* Crew keeps both of its pre-Central tabs: the destination lands
+            on Players, and Friends (requests / blocks / mutes) stays one
+            tap away here — same segment pattern as Chat above. */}
+        {(s.tab === 'players' || s.tab === 'friends') && !s.profile && (
+          <div className="soc-seg" role="tablist" aria-label="Crew">
+            <button type="button" role="tab" aria-selected={s.tab === 'players'} className={s.tab === 'players' ? 'on' : ''} data-testid="crew-seg-players" onClick={() => social.tab('players')}>👥 Players</button>
+            <button type="button" role="tab" aria-selected={s.tab === 'friends'} className={s.tab === 'friends' ? 'on' : ''} data-testid="crew-seg-friends" onClick={() => social.tab('friends')}>🤝 Friends{!!counts.friends && <i className="soc-count">{counts.friends}</i>}</button>
+          </div>
+        )}
+        <div className="soc-body" ref={bodyRef} onScroll={(e) => social.noteScroll(e.currentTarget.scrollTop)}>
           {s.profile ? <ProfileView host="panel" name={s.profile} id={s.profileId ?? undefined} /> :
+            s.tab === 'headlines' ? <Headlines signedIn={signedIn} /> :
             s.tab === 'players' ? <Players signedIn={signedIn} /> :
             s.tab === 'chat' ? <GlobalChat signedIn={signedIn} /> :
             s.tab === 'messages' ? <Messages signedIn={signedIn} /> :
             s.tab === 'friends' ? <Friends signedIn={signedIn} /> :
             s.tab === 'leaders' ? <Leaderboards /> :
+            s.tab === 'matchups' ? <MatchupsHome signedIn={signedIn} /> :
+            s.tab === 'match' ? (s.matchId ? <MatchView id={s.matchId} /> : <MatchupsHome signedIn={signedIn} />) :
             s.tab === 'tournaments' ? <Tournaments signedIn={signedIn} /> :
             s.tab === 'challenges' ? <WagerChallenges signedIn={signedIn} /> :
+            s.tab === 'career' ? (signedIn && acct.user?.username
+              ? <ProfileView host="panel" name={acct.user.username} noBack />
+              : <SignInNote what="see your career profile" />) :
             <SettingsTab signedIn={signedIn} />}
         </div>
+        {/* BWM Central Phase 3: the celebration host — the hub queue's
+            current item, tap to dismiss; unmounting with the panel
+            cancels the queue (see CelebrationHost). */}
+        <CelebrationHost />
         {/* The BottomLine as the panel's own footer (league data wave 6a):
             the same shared component as the app-wide root bar, in flow so
             it reserves its height. Hidden while a composer owns the panel's
@@ -863,6 +921,8 @@ function Friends({ signedIn }: { signedIn: boolean }) {
   const Section = ({ title, children, testid }: { title: string; children: ReactNode; testid: string }) => <section className="soc-sec" data-testid={testid}><h4>{title}</h4>{children}</section>;
   return (
     <div className="soc-friends">
+      <FavoritePartners signedIn={signedIn} />
+      <Crews signedIn={signedIn} />
       {!!f?.incoming.length && (
         <Section title="Friend requests" testid="friend-requests">
           {f.incoming.map((r) => (
@@ -882,6 +942,7 @@ function Friends({ signedIn }: { signedIn: boolean }) {
           return (
             <div key={r.id} className="soc-frow" data-testid={`friend-${r.name}`}>
               <button type="button" className="soc-frow-name link" onClick={() => social.showProfile(r.name, r.id)} data-testid={`friend-name-${r.name}`}>{pv.online && <i className="soc-online" title="Online" />}{r.name}{muted && <i className="soc-tag muted" title="You muted this player (they don't know)">Muted</i>}<small>{pv.label}</small></button>
+              <FavoriteStar userId={r.id} name={r.name} testid={`fav-star-${r.name}`} />
               <button type="button" onClick={() => social.openDm(r.id)}>💬</button>
               {online(r.id) && <button type="button" onClick={() => void inviteTo(r.id, s.myTable)} data-testid={`finvite-${r.name}`}>➕</button>}
               <button type="button" onClick={() => social.mute(r.id, !muted)} data-testid={`fmute-${r.name}`} aria-label={muted ? `Unmute ${r.name}` : `Mute ${r.name}`} title={muted ? `Unmute ${r.name}` : `Mute ${r.name} (they won't know)`}>{muted ? '🔊' : '🔇'}</button>
@@ -908,6 +969,7 @@ function Friends({ signedIn }: { signedIn: boolean }) {
               lead={<>{online(r.id) && <i className="soc-online" />}{r.name}<small>{r.games} game{r.games === 1 ? '' : 's'}{r.partner ? ' · partner' : ''} · {timeAgo(r.last)}</small></>}
               actions={
                 <>
+                  <FavoriteStar userId={r.id} name={r.name} testid={`fav-star-recent-${r.name}`} />
                   <button type="button" className="primary" disabled={!online(r.id)} title={online(r.id) ? 'Invite to a table' : 'Offline'} onClick={(e) => { e.stopPropagation(); void inviteTo(r.id, s.myTable); }} data-testid={`again-${r.name}`}>Play again</button>
                   {!f?.friends.some((x) => x.id === r.id) && <button type="button" onClick={(e) => { e.stopPropagation(); social.friend('request', r.id); }}>👋</button>}
                 </>

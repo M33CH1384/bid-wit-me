@@ -4030,6 +4030,12 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 
 /* Postgame Report (league P-D) on the rewards screen. */
 .rw-postgame { margin: 4px 0 14px; text-align: left; }
+/* Personal-best plaque (BWM Central Phase 3): motion rises once; the
+   static (governor deepest trim) and instant (reduced motion) modes are
+   the same plaque with no animation — the final state IS the show. */
+.rw-personal-best { margin: 4px 0 12px; padding: 9px 12px; border-radius: 12px; border: 1px solid rgba(232,201,106,.55); background: rgba(232,201,106,.12); font-weight: 800; text-align: left; }
+.rw-personal-best.mode-motion { animation: celebration-in .45s cubic-bezier(.2, 1.2, .4, 1); }
+@keyframes celebration-in { from { transform: translateY(-8px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
 .rw-pg-title { font-size: 15px; margin: 0 0 4px; letter-spacing: .02em; }
 .rw-moments { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-dim); }
 .rw-moments li { margin: 2px 0; }
@@ -5321,3 +5327,8 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   background: rgba(20,11,34,.85); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.55);
   clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
 }
+
+/* BWM Central Phase 1 — postgame turning point + score timeline */
+.rw-turning { font-weight: 700; color: var(--ink); }
+.rw-timeline { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12.5px; color: var(--ink-dim); }
+.rw-timeline-row { white-space: nowrap; }

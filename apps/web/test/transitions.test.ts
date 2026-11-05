@@ -272,7 +272,7 @@ describe('the Card Fan (stage 2)', () => {
     expect(main).toContain('const move = routeMoveClass(cur, next);');
     expect(main).toContain("}, move ?? 'menu-nav');");
     const store = read('social/store.ts');
-    expect(store.split("coverThen(apply, 'profile-social')")).toHaveLength(6); // all five swaps
+    expect(store.split("coverThen(apply, 'profile-social')")).toHaveLength(8); // all seven swaps (BWM Central added openMatch + openCompare, same fan pattern)
   });
 
   it('construction: nine abstract card backs, compositor-only, the game spade as the mark', () => {

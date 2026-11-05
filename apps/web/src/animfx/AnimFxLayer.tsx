@@ -50,7 +50,8 @@ import { CoinIcon } from '../RepBlock';
 import { fetchWagerList } from '../social/wagerApi';
 import {
   UPSET_GAP, bagBrinkSides, bagPenaltySides, bigJokerSeat, blindNilSeats, bostonSides,
-  comebackSides, contractDeadSides, doubleMoonSides, fireRun, heatSides, matchPointSides,
+  comebackSides, contractDeadSides, contractSecuredSides, doubleMoonSides, fireRun, heatSides, matchPointSides,
+  nilDangerSeats,
   mirrorBidSides, newlyEliminated, nineLivesSides, paybackColdPairs, shushSides,
   silentAssassinSeats, streakDeath, textbookSides,
   nilBustedSeats, nilLiveSeats, ratingGap, runClaimerSeat, saveInTrick,
@@ -103,7 +104,9 @@ type ShotKind = 'bjring' | 'glint' | 'coinflip' | 'shock' | 'broom' | 'wheel' | 
   | 'boardedge' | 'setbrick' | 'syncbeam' | 'firstbook' | 'misdeal' | 'ripple' | 'payback' | 'upset'
   | 'savebeam' | 'nilseal' | 'ember' | 'wire' | 'photofinish' | 'confetti' | 'tornchip'
   /* wave B §C: the eight new scenarios */
-  | 'doublemoon' | 'shush' | 'ninelives' | 'assassin' | 'guillotine' | 'textbook';
+  | 'doublemoon' | 'shush' | 'ninelives' | 'assassin' | 'guillotine' | 'textbook'
+  /* BWM Central Phase 3: contract secured (the nil-zero treatment rides nilseal) */
+  | 'contractseal';
 interface CoinFlight { x: number; y: number; tx: number; ty: number; d: number }
 interface Shot { id: number; kind: ShotKind; x: number; y: number; w?: number; h?: number; still?: boolean; label?: string; coins?: CoinFlight[]; rects?: Rect[]; x2?: number; y2?: number; level?: number; name?: string; seat?: number; cold?: boolean; scores?: [number, number, number] }
 
@@ -364,6 +367,10 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
    * (their bug-cell numbers grey for the rest of the hand — information). */
   const [sealedSeats, setSealedSeats] = useState<{ hand: number; seats: number[] } | null>(null);
   const [sealedSpots, setSealedSpots] = useState<SeatSpot[]>([]);
+  /* NIL IN DANGER (BWM Central Phase 3): measured spots for the live
+   * nils that are still clean with ≤4 tricks remaining — a restrained
+   * pulse ring on the nil indicator (the plate), public info only. */
+  const [dangerSpots, setDangerSpots] = useState<SeatSpot[]>([]);
   const [mirrorCells, setMirrorCells] = useState<CellFx[]>([]);
   const [deadSides, setDeadSides] = useState<number[]>([]);
   /* SESSION TALK LOG (§C/§D.5 — client session-derived, labelled as such):
@@ -690,6 +697,23 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
     if (spadePlayed(st.tricks, st.trick)) {
       if (spadeRef.current === false && !calm()) addShot({ kind: 'ember', x: 0, y: trickCenterPt().y }, 950);
       spadeRef.current = true;
+    }
+
+    // CONTRACT SECURED (BWM Central Phase 3): the first moment a side's
+    // made contract is mathematically certain (engine arithmetic via
+    // detect.contractSecuredSides; non-nil contracts only, never a
+    // no-bidding hand) — a gold seal lands on the side's first plate,
+    // once per hand per side. A post-trick beat: it can only become true
+    // when a trick completes, and it never blocks input.
+    if (st.phase === 'playing') {
+      for (const side of contractSecuredSides(st)) {
+        const k = `contract:${st.handNo}:${side}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const seat = seatsOfSide(st.rules, side)[0];
+        const pt = seat !== undefined ? platePt(seat) : null;
+        if (pt) addShot({ kind: 'contractseal', x: pt.x, y: pt.y, still: calm() }, calm() ? 1100 : 1500);
+      }
     }
 
     // DOWN TO THE WIRE: the last book decides a contract — one edge pulse
@@ -1146,6 +1170,8 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
        resolves, then gone (the hand has started for real) */
     const ss = sealedSeats && sealedSeats.hand === st.handNo ? measure(sealedSeats.seats) : [];
     setSealedSpots((prev) => (JSON.stringify(prev) === JSON.stringify(ss) ? prev : ss));
+    const dg = st.phase === 'playing' ? measure(nilDangerSeats(st)) : [];
+    setDangerSpots((prev) => (JSON.stringify(prev) === JSON.stringify(dg) ? prev : dg));
     const mirror = st.phase === 'playing' && st.tricks.length === 0 && !st.result ? mirrorBidSides(st) : [];
     const nmc: CellFx[] = mirror.flatMap((side) => {
       const el = bugTeamEl(side);
@@ -1302,11 +1328,30 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
       }
       case 'nilseal':
         // a wax-seal bloom: the ring stamps down and embosses, the NIL
-        // sits IN the wax (inset shadow), one foil shine sweeps it
+        // sits IN the wax (inset shadow), one foil shine sweeps it.
+        // BWM Central Phase 3 adds the brief's luminous ZERO: an ellipse
+        // of light DRAWS itself over the plate as the seal lands — the
+        // nil's clean sheet, drawn, not stamped (the draw is the CSS
+        // dash animation on .seal-zero; still = the completed zero).
         return (
           <div key={s.id} data-testid="animfx-nilseal" className={`animfx-nilseal${s.still ? ' still' : ''}`} style={{ left: s.x, top: s.y }}>
             <span className="seal-ring" />
+            <svg className="seal-zero" data-testid="animfx-nilzero" viewBox="0 0 60 84" aria-hidden="true">
+              <ellipse cx="30" cy="42" rx="24" ry="36" pathLength={100} />
+            </svg>
             <span className="seal-disc">NIL</span>
+          </div>
+        );
+      case 'contractseal':
+        // CONTRACT SECURED (BWM Central Phase 3): a gold seal stamps the
+        // side's plate the first moment its contract is mathematically
+        // certain. Word + check only — the plate already shows the bid
+        // numbers; the seal certifies them, it does not restate them.
+        return (
+          <div key={s.id} data-testid="animfx-contractseal" className={`animfx-contractseal${s.still ? ' still' : ''}`} style={{ left: s.x, top: s.y }}>
+            <span className="contract-ring" />
+            <span className="contract-disc">✓</span>
+            <span className="contract-word">CONTRACT SECURED</span>
           </div>
         );
       case 'tornchip':
@@ -1433,6 +1478,9 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
         ))}
         {sealedSpots.map((s) => (
           <div key={`seal${s.seat}`} data-testid="animfx-sealmark" className="animfx-sealmark" style={{ left: s.x + s.w / 2 - 26, top: s.y - s.h / 2 - 7 }}>NIL</div>
+        ))}
+        {dangerSpots.map((s) => (
+          <div key={`danger${s.seat}`} data-testid="animfx-nildanger" className={`animfx-nildanger${reduced ? ' calm' : ''}`} style={{ left: s.x - s.w / 2 - 4, top: s.y - s.h / 2 - 4, width: s.w + 8, height: s.h + 8 }} />
         ))}
         {mirrorCells.map((c) => (
           <div key={`mir${c.side}`} data-testid="animfx-mirrorframe" className={`animfx-mirrorframe${reduced ? ' calm' : ''}`} style={{ left: c.x - 3, top: c.y - 3, width: c.w + 6, height: c.h + 6 }} />

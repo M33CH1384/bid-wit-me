@@ -220,7 +220,7 @@ html[data-theme="neon"] .soc-wire-byline { color: #5BDFFF; }
 /* Tappable team names (owner, 2026-11-04): the chip is a real button; the
    open team carries the stronger gold ring, and its record renders inline
    directly under the chip row in the profile's stat language. */
-.soc-badge-chip.team-chip { font: inherit; color: inherit; cursor: pointer; min-height: 32px; }
+.soc-badge-chip.team-chip { font: inherit; color: inherit; cursor: pointer; min-height: 32px; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .soc-badge-chip.team-chip.on { background: rgba(var(--gold-rgb),.3); border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
 .team-detail { margin-top: 10px; display: grid; gap: 8px; }
 .team-detail-name { font-family: var(--display); font-size: 17px; letter-spacing: .02em; }
@@ -997,3 +997,157 @@ html[data-theme="neon"] .featured { border-color: rgba(128, 84, 255, .45); }
    on the Accept button's testid so no other state changes geometry;
    the modal host already grids every state and is untouched. */
 .soc-panel .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]), .profile-page .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]) { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 6px; }
+
+/* ---------- BWM Central (Phase 1): five-destination hub ----------
+   The destination nav reuses the .soc-tabs chrome (glide included);
+   only its PLACEMENT changes by mode: 'bar' = labeled bottom nav on
+   phone portrait, 'compact' = the same labels slimmer in landscape /
+   short heights, 'tabs' = top tabs on tablet/desktop widths. DOM order
+   stays header → nav → body; flex order moves the bar to the bottom. */
+.central-nav button { flex-direction: column; gap: 1px; }
+.central-nav .central-nav-ico { font-size: 17px; line-height: 1.1; }
+.central-nav .central-nav-lbl { font-size: 11.5px; letter-spacing: .02em; white-space: nowrap; }
+.central-nav.bar, .central-nav.compact { order: 9; border-bottom: 0; border-top: 1px solid rgba(var(--edge-rgb),.25); }
+.central-nav.bar button { min-height: 56px; padding: 6px 2px 8px; }
+.central-nav.compact button { min-height: 40px; padding: 3px 2px 4px; flex-direction: row; gap: 5px; }
+.central-nav.compact .central-nav-ico { font-size: 14px; }
+.central-nav.compact .central-nav-lbl { font-size: 11px; }
+.central-nav.tabs button { flex-direction: row; gap: 6px; }
+.soc-chat-btn { position: relative; }
+.soc-chat-btn .soc-count { position: absolute; top: -4px; right: -6px; }
+.soc-chat-btn.on { color: var(--gold); }
+/* Headlines cards */
+.central-headlines { display: flex; flex-direction: column; gap: 12px; }
+.headline-card { border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 14px; padding: 10px 12px; background: rgba(255,255,255,.03); }
+.headline-card h3 { margin: 0; font-size: 15px; }
+.headline-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.headline-list li { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
+.headline-result { background: none; border: 0; color: var(--ink); font: inherit; font-size: 13.5px; text-align: left; padding: 0; cursor: pointer; }
+.headline-result:hover { text-decoration: underline; }
+.headline-live-badge { color: #ff6b6b; font-weight: 800; font-size: 12px; letter-spacing: .06em; display: inline-flex; align-items: center; gap: 5px; }
+.headline-asof { margin: 6px 0 0; font-size: 11.5px; }
+.headline-move .trend.up { color: #7dff9a; }
+.headline-move .trend.down { color: #ff8a8a; }
+/* Matchups home */
+.central-matchups { display: flex; flex-direction: column; gap: 18px; }
+.central-matchups h3 { margin: 0 0 6px; font-size: 16px; }
+.central-matchups h4 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.matchup-search { display: flex; gap: 8px; }
+.matchup-search input { flex: 1; min-width: 0; }
+.matchup-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.matchup-pick { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; background: rgba(255,255,255,.04); border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 10px; color: var(--ink); padding: 10px 12px; font: inherit; font-weight: 700; cursor: pointer; text-align: left; }
+/* Broadcast match view */
+.match-view h4 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.match-final td { font-weight: 800; font-size: 17px; text-align: right; width: 4em; }
+.match-winner th { color: var(--gold); }
+.match-turning { font-weight: 700; margin: 10px 0 0; }
+.match-players { display: flex; flex-direction: column; gap: 12px; }
+.match-player { border: 1px solid rgba(var(--edge-rgb),.2); border-radius: 12px; padding: 8px 10px; }
+.match-timeline td, .match-timeline th { text-align: right; }
+.match-timeline th:first-child, .match-timeline td:first-child { text-align: left; }
+/* BWM Central (Phase 2): engine headline cards, rivalries, favorites, pair block */
+.headline-text { margin: 6px 0 8px; font-size: 14px; }
+.headline-new { color: var(--gold); font-weight: 800; font-size: 11px; letter-spacing: .08em; }
+.headline-invite-acts { display: inline-flex; gap: 8px; }
+.rivalry-list, .favorite-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rivalry-card, .favorite-card { border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 12px; padding: 9px 11px; background: rgba(255,255,255,.03); }
+.rivalry-tied { color: var(--gold); font-weight: 800; font-size: 12px; letter-spacing: .07em; }
+.rivalry-line { margin: 5px 0 0; }
+.rivalry-acts, .favorite-acts { display: inline-flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.rivalry-acts { margin-top: 8px; }
+.rivalry-rerun { margin: 6px 0 0; font-size: 12px; }
+.favorite-card { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.favorite-rec { flex: 1; min-width: 140px; }
+.fav-star { background: none; border: 0; color: var(--muted); font-size: 17px; line-height: 1; padding: 3px; cursor: pointer; }
+.fav-star.on { color: var(--gold); }
+.matchup-invite { display: flex; align-items: center; justify-content: space-between; gap: 9px; border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 12px; padding: 9px 11px; margin-bottom: 8px; background: rgba(255,255,255,.03); }
+.matchup-sent { margin: 4px 0; }
+.pair-together { border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 12px; padding: 9px 11px; margin: 12px 0; }
+.pair-together h4 { margin: 0; }
+.pair-rec { margin: 6px 0 0; }
+.pair-praise { margin: 6px 0 0; font-weight: 700; color: var(--gold); }
+/* Neon: same hub, Neon ink — visuals only, per the append-only pattern. */
+html[data-theme="neon"] .headline-card { background: rgba(120,90,255,.07); border-color: rgba(160,130,255,.3); }
+html[data-theme="neon"] .rivalry-card, html[data-theme="neon"] .favorite-card, html[data-theme="neon"] .matchup-invite, html[data-theme="neon"] .pair-together { background: rgba(120,90,255,.07); border-color: rgba(160,130,255,.3); }
+html[data-theme="neon"] .matchup-pick { background: rgba(120,90,255,.07); border-color: rgba(160,130,255,.3); }
+html[data-theme="neon"] .match-winner th { color: var(--gold); }
+html[data-theme="neon"] .central-nav.bar, html[data-theme="neon"] .central-nav.compact { border-top-color: rgba(160,130,255,.3); }
+/* BWM Central (Phase 3): celebration host, ALL SQUARE once-animation, duos, crews, personal bests */
+.celebration-badge { display: flex; align-items: center; gap: 8px; margin: 8px 12px 0; padding: 9px 12px; border-radius: 12px; border: 1px solid rgba(232,201,106,.55); background: rgba(232,201,106,.12); color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; text-align: left; }
+.celebration-badge.mode-motion { animation: celebration-in .45s cubic-bezier(.2, 1.2, .4, 1); }
+.celebration-badge.mode-static, .celebration-badge.mode-instant { animation: none; }
+.celebration-text { font-weight: 600; color: var(--muted); }
+.celebration-emblem { display: inline-flex; align-items: center; gap: 8px; }
+.celebration-emblem .emblem-old { color: var(--muted); }
+.celebration-badge.mode-motion .emblem-new { animation: celebration-emblem-pop .8s ease .25s both; color: var(--gold); }
+.celebration-emblem .emblem-new { color: var(--gold); }
+@keyframes celebration-in { from { transform: translateY(-8px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes celebration-emblem-pop { 0% { transform: scale(.7); opacity: .4; } 60% { transform: scale(1.18); } 100% { transform: scale(1); opacity: 1; } }
+.rivalry-tied.celebrating-motion { animation: celebration-allsquare 1.1s ease; display: inline-block; }
+.rivalry-tied.celebrating-static { text-decoration: underline; text-underline-offset: 3px; }
+@keyframes celebration-allsquare { 0% { transform: scale(1); } 35% { transform: scale(1.35) rotate(-2deg); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+.duo-standings { margin-top: 16px; }
+.duo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.duo-card { display: flex; align-items: center; gap: 10px; border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 12px; padding: 8px 11px; background: rgba(255,255,255,.03); }
+.duo-names { flex: 1; min-width: 0; font-weight: 700; display: flex; flex-direction: column; }
+.duo-rec { flex: none; display: flex; flex-direction: column; text-align: right; }
+.duo-rec small { color: var(--muted); }
+.crew-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.crew-card { border: 1px solid rgba(var(--edge-rgb),.25); border-radius: 12px; padding: 9px 11px; background: rgba(255,255,255,.03); }
+.crew-members { margin: 4px 0 0; }
+.crew-invite-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.crew-create { display: flex; gap: 8px; margin-top: 10px; }
+.crew-create input { flex: 1; min-width: 0; }
+.crew-sels { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.crew-sel { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.crew-optin { margin: 6px 0; font-size: 12px; }
+.personal-bests { margin: 12px 0; }
+.personal-bests h4 { margin: 0 0 6px; }
+html[data-theme="neon"] .celebration-badge { background: rgba(120,90,255,.12); border-color: rgba(160,130,255,.45); }
+html[data-theme="neon"] .duo-card, html[data-theme="neon"] .crew-card { background: rgba(120,90,255,.07); border-color: rgba(160,130,255,.3); }
+
+/* ---------- BWM Central verification fixes (V1–V4, 2026-11-05) ----------
+   Evidence: NOTES-VERIFY.md + geometry.json + rig2-findings.json;
+   pins: apps/web/test/central-fix-css.test.ts; behavioural proof:
+   the fix lane's Playwright rig (390×844, both themes). Geometry and
+   paint only — no theme variants, so Classic/Neon parity holds. */
+
+/* V1 — the match timeline measured 443px inside a 390px panel with
+   long side names (auto table layout sizes columns to the longest
+   unbreakable name). Fixed layout: the Hand column keeps 5.4em
+   (room for the HAND label itself at thead size + letter-spacing), the side columns
+   share what remains and their headers ellipsize — every hand's
+   scores stay on the card. The final-score table gets the same
+   treatment (its score column is pinned by .match-final td). */
+.match-timeline { table-layout: fixed; }
+.match-timeline th, .match-timeline td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.match-timeline th:first-child { width: 5.4em; }
+.match-final { table-layout: fixed; }
+.match-final th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* V1b — the match-player header's result/seat/team line clipped past
+   the panel with a long team name; as a flex item it must be allowed
+   to shrink and ellipsize (the name button keeps its full width). */
+.match-player .power-head .soc-muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* V2 — bare buttons in Central's action rows (Featured Watch, the
+   favorite unstar, crew Decline / Standings / friend-invite names,
+   rivalry Profile / Compare, headline + matchup invite Decline) had
+   NO paint of their own: the global button rule sets font/color only,
+   so the platform buttonface rgb(239,239,239) leaked through under
+   the near-white theme ink — white-on-white in BOTH themes (measured
+   contrast 1.04:1). This is the player-row secondary idiom from the
+   top of this file (.soc-pl-acts button), appearance reset included
+   — the same recipe the .ot-acts note documents for Open Tables.
+   .primary keeps the gold fill; .ghost keeps its transparency. */
+.featured-acts button:not(.primary):not(.ghost), .favorite-acts button:not(.primary):not(.ghost), .rivalry-acts button:not(.primary):not(.ghost), .headline-invite-acts button:not(.primary):not(.ghost), .crew-invite-row button:not(.primary):not(.ghost) { -webkit-appearance: none; appearance: none; background: rgba(var(--edge-rgb),.14); border: 1px solid rgba(var(--edge-rgb),.45); color: var(--ink); border-radius: 8px; padding: 6px 10px; font-size: 13px; min-height: 44px; }
+.featured-acts button:disabled, .favorite-acts button:disabled, .rivalry-acts button:disabled, .headline-invite-acts button:disabled, .crew-invite-row button:disabled { opacity: .4; }
+
+/* V3 — duo pair names ellipsize in their own span (the .ranks-name-txt
+   idiom); .duo-names yields via min-width:0 (above) and .duo-rec is
+   flex:none (above), so the record column is never the part that clips. */
+.duo-names-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* V4 — badge chips in a .soc-badges row cap at the row's width (the
+   tappable team chip carries the same cap + ellipsis in its own rule
+   above, where the 41-char name measured 391px / 13–15px of overflow). */
+.soc-badges .soc-badge-chip { max-width: 100%; box-sizing: border-box; overflow: hidden; }

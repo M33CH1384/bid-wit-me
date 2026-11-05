@@ -48,6 +48,9 @@ export interface PlayerGameStats {
   bidMs: number; bidN: number; playMs: number; playN: number;
 }
 
+/** One game_hands row (migration 0036): a side's cumulative score after a hand, and the books that side took in it. */
+export interface HandTimelineRow { hand: number; side: number; scoreAfter: number; books: number }
+
 export interface GameRecord {
   id: string;
   room: string;
@@ -61,6 +64,14 @@ export interface GameRecord {
   seats: SeatRef[];
   /** per seat (users only) */
   players: { seat: number; uid: string; side: number; won: boolean; partner: string | null; teamName: string | null; stats: PlayerGameStats }[];
+  /**
+   * Per-hand per-side timeline folded from game.history by buildRecord
+   * (SideHandResult.totalScore / .tricks) — saveRecord persists it to
+   * game_hands. Optional: hand-constructed records (series backfill, tests)
+   * carry no history to fold, so they write no game_hands rows rather than
+   * a reconstructed timeline. Abandoned records carry none either.
+   */
+  timeline?: HandTimelineRow[];
   tournamentId?: string;
 }
 
@@ -115,9 +126,11 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
     st.runItClaims = (g.runItClaims ?? []).filter((s) => s === seat).length;
     players.push({ seat, uid: ref.uid, side, won: st.won, partner: p?.kind === 'user' && p.uid ? p.uid : null, teamName: r.partnerships ? (o.teamNames?.[side] ?? null) : null, stats: st });
   }
+  const timeline: HandTimelineRow[] = [];
+  for (const h of g.history) for (const s of h.sides) timeline.push({ hand: h.handNo, side: s.side, scoreAfter: s.totalScore, books: s.tricks });
   return {
     id: o.id, room: o.room, mode: r.mode ?? 'joker', kind, endedAt: o.endedAt, hands: g.history.length,
-    final: [...(g.result?.finalScores ?? g.scores)], winners: [...winners], names: [...o.names], seats: o.seats, players, ...(o.tournamentId ? { tournamentId: o.tournamentId } : {}),
+    final: [...(g.result?.finalScores ?? g.scores)], winners: [...winners], names: [...o.names], seats: o.seats, players, timeline, ...(o.tournamentId ? { tournamentId: o.tournamentId } : {}),
   };
 }
 
@@ -210,7 +223,7 @@ export function abandonedRecord(o: { id: string; room: string; game: GameState; 
   }
   return {
     id: o.id, room: o.room, mode: r.mode ?? 'joker', kind, endedAt: o.endedAt, hands: g.history.length,
-    final: [...g.scores], winners: [], names: [...o.names], seats: o.seats, players,
+    final: [...g.scores], winners: [], names: [...o.names], seats: o.seats, players, timeline: [],
     ...(o.tournamentId ? { tournamentId: o.tournamentId } : {}),
   };
 }
@@ -250,6 +263,17 @@ export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean
       const peak = Math.max(cur[p.uid]?.peak ?? ELO_START, e.after);
       stmts.push(db.prepare(`INSERT INTO ratings (user_id, kind, elo, games, peak, updated_at) VALUES (?, ?, ?, 1, ?, ?)
         ON CONFLICT (user_id, kind) DO UPDATE SET elo = excluded.elo, games = ratings.games + 1, peak = MAX(ratings.peak, excluded.peak), updated_at = excluded.updated_at`).bind(p.uid, rec.kind, e.after, peak, rec.endedAt));
+    }
+  }
+  // game_hands (migration 0036): the per-hand timeline buildRecord folded
+  // from the game history, in the same batch. INSERT OR IGNORE keeps it
+  // idempotent alongside the game-exists early return above. Abandoned
+  // games write none (their stats are empty by design), and neither do
+  // records with no folded history (partial/backfill) or zero hands.
+  if (!abandoned) {
+    for (const t of rec.timeline ?? []) {
+      stmts.push(db.prepare('INSERT OR IGNORE INTO game_hands (game_id, hand_no, side, score_after, books) VALUES (?, ?, ?, ?, ?)')
+        .bind(rec.id, t.hand, t.side, t.scoreAfter, t.books));
     }
   }
   await db.batch(stmts);

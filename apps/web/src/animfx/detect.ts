@@ -642,3 +642,51 @@ export function contractDeadSides(
   }
   return out;
 }
+
+/* ================= BWM Central Phase 3 (2026-11-05) =================
+ * Two additions the Phase 3 audit proved absent. (The phase's other two
+ * asks already existed and are NOT duplicated here: the hand-end SET
+ * stamp is setSides + the layer's setbrick, and the sealed-nil bloom is
+ * sealedNilSeats + the layer's nilseal.) */
+
+/* --------------------------------------------------------------------------
+ * P3-1. CONTRACT SECURED — the first moment a side's made contract is
+ * mathematically certain: books taken ≥ its contract target, read with
+ * the engine's own booksStillNeeded (combined numeric bids of the side's
+ * non-nil seats; nil tricks count only when the rules say so). Non-nil
+ * contracts only — booksStillNeeded returns null for a nil-only side, so
+ * it can never qualify — and NEVER during a no-bidding hand: on a books
+ * hand every bid is 'books', booksStillNeeded answers the host minimum
+ * instead of a contract, and there is no contract to secure. Bidding
+ * must be finished and the hand in play.
+ * ------------------------------------------------------------------------ */
+export function contractSecuredSides(
+  st: Pick<GameState, 'rules' | 'bids' | 'tricksWon' | 'phase'>,
+): number[] {
+  if (st.phase !== 'playing') return [];
+  if (st.bids.some((b) => b === null || b === undefined)) return [];
+  if (st.bids.some((b) => b === 'books')) return []; // a no-bidding hand has no contracts
+  const out: number[] = [];
+  for (let side = 0; side < sideCount(st.rules); side++) {
+    const needed = booksStillNeeded(st.rules, st.bids, st.tricksWon, side);
+    if (needed !== null && needed <= 0) out.push(side);
+  }
+  return out;
+}
+
+/* --------------------------------------------------------------------------
+ * P3-2. NIL IN DANGER — a live nil (nil/blind-nil bid, still clean: the
+ * bidder has taken no trick — nilLiveSeats' own test) with at most
+ * NIL_DANGER_REMAINING tricks still to play, the current trick included
+ * (tricksStillRemaining's own count). Public table information only:
+ * bids, tricks taken, tricks remaining.
+ * ------------------------------------------------------------------------ */
+export const NIL_DANGER_REMAINING = 4;
+
+export function nilDangerSeats(
+  st: Pick<GameState, 'rules' | 'bids' | 'tricksWon' | 'tricks' | 'trickCount' | 'phase'>,
+): number[] {
+  if (st.phase !== 'playing') return [];
+  if (tricksStillRemaining(st) > NIL_DANGER_REMAINING) return [];
+  return nilLiveSeats(st);
+}

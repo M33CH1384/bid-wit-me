@@ -82,6 +82,10 @@ import { TaglineText } from '../tagline';
 import { SOCIAL_PLATFORMS, SocialLinksChips, type SocialLinks } from '../socialLinks';
 import { MODE_NAME, inviteTo } from '../social/Social';
 import { social, useSocial } from '../social/store';
+import { pairPraise, pairStreakText, pairWinPct, type PairRecordLike } from '../social/pairRecord';
+import { personalBestTiles } from '../social/personalBests';
+import { useRankPromotion } from '../social/CelebrationHost';
+import { FavoriteStar } from '../social/FavoriteStar';
 import { ChallengeButton } from '../social/Wager';
 import StoryBadges, { badgeFactsOf } from '../story/StoryBadges';
 import { fetchStoryProgress, type StoryProgress } from '../story/storyApi';
@@ -229,6 +233,17 @@ function LeagueAwards({ userId }: { userId: string }) {
  */
 function CompareBlock({ them, myName }: { them: SocialProfileData; myName: string }) {
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  /* BWM Central: an explicit Compare ask (the profile's "Compare with me"
+   * action, or the postgame Compare next-action via social.openCompare)
+   * opens the block itself and scrolls it into view. */
+  const compareFor = useSocial().compareFor;
+  useEffect(() => {
+    if (!compareFor || compareFor.toLowerCase() !== them.username.toLowerCase()) return;
+    setOpen(true);
+    const t = window.setTimeout(() => wrapRef.current?.scrollIntoView({ block: 'nearest' }), 60);
+    return () => window.clearTimeout(t);
+  }, [compareFor, them.username]);
   const [mine, setMine] = useState<SocialProfileData | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -259,11 +274,11 @@ function CompareBlock({ them, myName }: { them: SocialProfileData; myName: strin
       { label: 'Books / hand', a: ms.booksPerHand, b: ts.booksPerHand, fmt: (n) => n.toFixed(2) },
       { label: 'Nils made', a: nilMade(ms.nil), b: nilMade(ts.nil), fmt: whole },
       { label: 'Wheels', a: ms.wheels, b: ts.wheels, fmt: whole },
-      { label: 'Bostons', a: ms.bjWins, b: ts.bjWins, fmt: whole },
+      { label: 'Big-Joker trick wins', a: ms.bjWins, b: ts.bjWins, fmt: whole },
     );
   }
   return (
-    <div className="cmp-wrap">
+    <div className="cmp-wrap" ref={wrapRef} data-testid="compare-block">
       <button type="button" className="prof-pic-btn" data-testid="compare-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         {open ? 'Hide compare' : 'Compare with you'}
       </button>
@@ -288,6 +303,47 @@ function CompareBlock({ them, myName }: { them: SocialProfileData; myName: strin
             </tbody>
           </table>
         ))}
+    </div>
+  );
+}
+
+/**
+ * BWM Central Phase 2: "You two together" — the caller's pair record
+ * with this player (GET /api/profile/pair/:id, caller-scoped by design).
+ * The record ALWAYS shows; the praise verdict renders only at the
+ * documented minimum sample (pairPraise: >= 10 games AND >= 55% wins),
+ * with the record printed right beside it. The pair endpoint carries no
+ * team names, so names render only when the social payload's per-team
+ * records name this partner — passed in by the caller, never inferred.
+ */
+function PairTogetherBlock({ partnerId, partnerName, teamNames }: { partnerId: string; partnerName: string; teamNames: string[] }) {
+  const [rec, setRec] = useState<PairRecordLike | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/profile/pair/${encodeURIComponent(partnerId)}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('missing'))))
+      .then((j) => { if (alive) setRec(j as PairRecordLike); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [partnerId]);
+  const pct = rec ? pairWinPct(rec) : null;
+  return (
+    <div className="pair-together" data-testid="pair-together">
+      <div className="power-head">
+        <h4>You two together</h4>
+        <FavoriteStar userId={partnerId} name={partnerName} testid={`fav-star-pair-${partnerName}`} />
+      </div>
+      {failed ? <p className="soc-muted">Pair record unavailable.</p>
+        : rec === null ? <p className="soc-muted">Loading…</p>
+        : rec.games === 0 ? <p className="soc-muted">No recorded games together yet.</p>
+        : (
+          <>
+            <p className="pair-rec" data-testid="pair-record">{rec.games} game{rec.games === 1 ? '' : 's'} · <b>{rec.wins}–{rec.losses}</b> · Win {pct === null ? '—' : `${pct}%`} · Current streak {pairStreakText(rec.streak)}</p>
+            {pairPraise(rec) && <p className="pair-praise" data-testid="pair-praise">You two play well together — {rec.wins}–{rec.losses} in {rec.games} games.</p>}
+            {teamNames.length > 0 && <p className="soc-muted">Team names: {teamNames.join(', ')}</p>}
+          </>
+        )}
     </div>
   );
 }
@@ -372,7 +428,7 @@ function SeasonSection({ season, onClaim, claimingIds, justClaimedIds }: {
 const STAT_LABELS: Record<string, string> = {
   games: 'Games', wins: 'Wins', streak: 'Win streak', bestStreak: 'Best streak',
   accuracy: 'Bid accuracy', bags: 'Bags', booksPerHand: 'Books/hand', nil: 'Nil made',
-  shotsGiven: 'Shots given', shotsTaken: 'Shots taken', wheels: 'Wheels', bjWins: 'Blackjack wins',
+  shotsGiven: 'Shots given', shotsTaken: 'Shots taken', wheels: 'Wheels', bjWins: 'Big-Joker trick wins',
   winsVsPlayers: 'Wins vs players', winsVsBots: 'Wins vs bots',
 };
 
@@ -511,13 +567,15 @@ function SocialLinksEditor({ initial, onSaved }: { initial: SocialLinks; onSaved
 
 /* -------------------------------------------------------------- the view */
 
-export function ProfileView({ host, name, id }: {
+export function ProfileView({ host, name, id, noBack }: {
   /** 'page' = the /profile route; 'panel' = the Social panel's profile view */
   host: 'panel' | 'page';
   /** subject username; omit on the page host for your own profile (identity comes from /api/profile/me) */
   name?: string;
   /** social pid or raw account id when the caller knew it (panel rows carry ids) */
   id?: string;
+  /** BWM Central: the My Career destination IS this view — no Back chip */
+  noBack?: boolean;
 }) {
   const s = useSocial();
   const acct = useAccount();
@@ -594,6 +652,11 @@ export function ProfileView({ host, name, id }: {
   const me = selfRoute
     ? cred !== null
     : (!!uid && !!acct.user && acct.user.id === uid) || (!!acct.user?.username && !!subjectName && acct.user.username === subjectName);
+  /* Rank-promotion watch (BWM Central Phase 3, Career side): only the
+   * viewer's OWN level counts — another player's profile never touches
+   * the viewer's high-water mark. Rankings runs the same check; the
+   * shared storage mark + queue dedupe keep it to one celebration. */
+  useRankPromotion(me && cred ? cred.level.level : null);
 
   /* The Rep payload: /me for self (the superset — challenges + unlocks ride
    *  along), the public /:id for everyone else. */
@@ -829,12 +892,12 @@ export function ProfileView({ host, name, id }: {
   }
   if (!selfRoute && p === null) {
     return host === 'panel'
-      ? <div className="soc-profile profile-view" data-testid="profile"><button type="button" className="link" onClick={() => social.showProfile(null)} data-testid="profile-back">← Back</button><p className="soc-empty">Loading…</p></div>
+      ? <div className="soc-profile profile-view" data-testid="profile">{!noBack && <button type="button" className="link" onClick={() => social.showProfile(null)} data-testid="profile-back">← Back</button>}<p className="soc-empty">Loading…</p></div>
       : <div className="profile-page profile-view"><div className="prof-loading">Loading…</div></div>;
   }
   if (!selfRoute && p === 'missing') {
     return host === 'panel'
-      ? <div className="soc-profile profile-view" data-testid="profile"><button type="button" className="link" onClick={() => social.showProfile(null)} data-testid="profile-back">← Back</button><p className="soc-empty">No profile for {name}.</p></div>
+      ? <div className="soc-profile profile-view" data-testid="profile">{!noBack && <button type="button" className="link" onClick={() => social.showProfile(null)} data-testid="profile-back">← Back</button>}<p className="soc-empty">No profile for {name}.</p></div>
       : <div className="profile-page profile-view"><div className="prof-error"><p>No profile for {name}.</p></div></div>;
   }
 
@@ -913,6 +976,10 @@ export function ProfileView({ host, name, id }: {
         )}
         {!me && pid && (
           <div className="soc-prof-acts">
+            {!blocked && acct.user?.username && (
+              <button type="button" className="primary" data-testid="profile-compare"
+                onClick={() => { setTab('stats'); social.requestCompare(displayName); }}>⚔️ Compare with me</button>
+            )}
             {!blocked && <button type="button" onClick={() => { social.openDm(pid); if (host === 'page') social.open(); }}>💬 Chat</button>}
             {!blocked && s.users[pid] && <button type="button" onClick={() => void inviteTo(pid, s.myTable)}>➕ Invite</button>}
             {!blocked && <ChallengeButton name={displayName} blocked={blocked} />}
@@ -1021,6 +1088,10 @@ export function ProfileView({ host, name, id }: {
         {activeTab === 'stats' && (
           <>
             {!me && socialP && acct.user?.username && <CompareBlock them={socialP} myName={acct.user.username} />}
+            {!me && socialP?.id && acct.user?.username && (
+              <PairTogetherBlock partnerId={socialP.id} partnerName={socialP.username}
+                teamNames={(socialP.teams ?? []).filter((t) => t.partner?.name === socialP.username).map((t) => t.name)} />
+            )}
             {cred && (
               <>
                 <p className="rank-explainer" data-testid="rating-explainer">Rating starts at 1,200. Win rated games to raise it, lose and it drops — beating stronger players moves it more.</p>
@@ -1028,6 +1099,22 @@ export function ProfileView({ host, name, id }: {
                   <RankCard title="Partnership" rank={cred.rank.team} />
                   <RankCard title="Cutthroat" rank={cred.rank.cutthroat} />
                 </div>
+                {/* Personal bests (BWM Central Phase 3): tiles ONLY from
+                    fields the payloads already carry (peak rating per
+                    kind with rated games, best streak). "Most books in
+                    a hand" has no field in either payload, so there is
+                    no tile for it — see social/personalBests.ts. */}
+                {(() => {
+                  const tiles = personalBestTiles({ rank: cred.rank, stats: cred.stats });
+                  return tiles.length ? (
+                    <div className="personal-bests" data-testid="personal-bests">
+                      <h4>Personal bests</h4>
+                      <div className="soc-stats">
+                        {tiles.map((t) => <div key={t.label}><b>{t.value}</b><small>{t.label}</small></div>)}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
               </>
             )}
             {socialP && (
@@ -1144,7 +1231,7 @@ export function ProfileView({ host, name, id }: {
   if (host === 'panel') {
     return (
       <div className="soc-profile profile-view" data-testid="profile">
-        <button type="button" className="link" onClick={() => social.showProfile(null)} data-testid="profile-back">← Back</button>
+        {!noBack && <button type="button" className="link" onClick={() => social.showProfile(null)} data-testid="profile-back">← Back</button>}
         {content}
       </div>
     );

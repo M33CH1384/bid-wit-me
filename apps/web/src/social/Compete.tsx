@@ -7,6 +7,8 @@ import { fetchWagerList, type WagerRow } from './wagerApi';
 import { useAccount } from '../account/api';
 import { navigate } from '../online/nav';
 import { social, useSocial } from './store';
+import { duoCardFromRow, type DuoRow } from './duos';
+import { useRankPromotion } from './CelebrationHost';
 
 const get = (u: string) => fetch(u, { credentials: 'same-origin' }).then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error ?? `Error ${r.status}`); return j; });
 const post = (u: string, b: unknown = {}) => fetch(u, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) })
@@ -24,11 +26,13 @@ function when(at: number, now = Date.now()): string {
 
 type Board = 'rating' | 'wins' | 'accuracy' | 'duos' | 'winpct' | 'books' | 'nils' | 'pace';
 type Kind = 'team' | 'cutthroat';
-/** Board scopes. The server serves 'global' and 'local' (IP region); 'friends'
- *  and 'online' are honest client-side views over the global board — filtered
- *  to the viewer's friends (social store) or to players online right now
- *  (presence), renumbered inside the view. The scope label always says which
- *  one you're looking at. */
+/** Board scopes. The server serves 'global', 'local' (IP region), 'regions'
+ *  and — BWM Central Phase 1 — 'friends' for signed-in viewers (its own
+ *  friend id set, rendered as returned). 'online' is an honest client-side
+ *  view over the global board, as is 'friends' for GUESTS (no session for
+ *  the server scope), filtered to the viewer's friends (social store) or
+ *  to players online right now (presence), renumbered inside the view.
+ *  The scope label always says which one you're looking at. */
 type Scope = 'global' | 'friends' | 'online' | 'regions' | 'local';
 /** The auto-rotation cycle (owner, 2026-10-20): Global → Friends → Online
  *  now, plus Regions when the viewer declared one (league P-B). 'local' is
@@ -282,6 +286,46 @@ function FilterSheet({ scope, period, onScope, onPeriod, onClose }: {
   );
 }
 
+/**
+ * Duo standings (BWM Central Phase 3): the existing Best-duos board
+ * (board=duos) rendered as PAIR cards — both names, the pair's own
+ * W–L / win % / games, and a team name only when the payload carries
+ * one (today's doesn't, so none is shown). A duo row has no rating
+ * field and none is derived: a pair is never scored by combining the
+ * two players' individual ratings.
+ */
+export function DuoStandings() {
+  const [rows, setRows] = useState<DuoRow[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    get('/api/social/leaderboard?board=duos&kind=team&scope=global&period=all')
+      .then((j) => { if (live) setRows((j as { rows: DuoRow[] }).rows ?? []); })
+      .catch(() => { if (live) setRows([]); });
+    return () => { live = false; };
+  }, []);
+  return (
+    <section className="duo-standings" data-testid="rankings-duos">
+      <div className="power-head"><h3>🤝 Duos</h3><span className="soc-muted">All-time · pairs by wins together</span></div>
+      {rows === null ? <p className="soc-muted">Loading…</p>
+        : !rows.length ? <p className="soc-muted">No duos on the board yet — pairs appear after 2 recorded games together.</p>
+        : (
+          <ul className="duo-list">
+            {rows.map((r) => {
+              const c = duoCardFromRow(r);
+              return (
+                <li key={r.id} className="duo-card" data-testid={`duo-card-${c.rank}`}>
+                  <span className={`ranks-rk${c.rank <= 3 ? ' top' : ''}`}>{c.rank}</span>
+                  <span className="duo-names"><span className="duo-names-txt">{c.names.join(' + ')}</span>{c.teamName ? <small className="ranks-sub">{c.teamName}</small> : null}</span>
+                  <span className="duo-rec"><b>{c.wins}–{c.losses}</b><small>{c.winPct ?? '—'} · {c.games} games</small></span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+    </section>
+  );
+}
+
 export function Leaderboards() {
   const s = useSocial();
   const acct = useAccount();
@@ -311,9 +355,12 @@ export function Leaderboards() {
     }).catch(() => { if (!stop) setReady(true); });
     return () => { stop = true; };
   }, [acct.ready, signedIn]);
-  // Friends / Online now filter the GLOBAL board client-side; global, local
-  // and regions (league P-B) are server-backed scopes.
-  const fetchScope = scope === 'local' ? 'local' : scope === 'regions' ? 'regions' : 'global';
+  // Server-backed scopes: global, local, regions (league P-B) and — BWM
+  // Central Phase 1 — friends (the server derives the friend id set from
+  // the caller's own friends table; signed-in only, same response shape).
+  // Online now still filters the GLOBAL board client-side; a guest asking
+  // for friends gets the global fetch (the scope needs a session).
+  const fetchScope = scope === 'local' ? 'local' : scope === 'regions' ? 'regions' : scope === 'friends' && signedIn ? 'friends' : 'global';
   useEffect(() => {
     if (!ready) return;
     setRows(null); setNote(null);
@@ -323,12 +370,18 @@ export function Leaderboards() {
   }, [board, kind, fetchScope, period, ready]);
 
   /* The viewer's declared region (one /api/profile/me read on mount): gates
-   * Regions joining the rotation. Unset viewers simply never rotate into it. */
+   * Regions joining the rotation. Unset viewers simply never rotate into it.
+   * The SAME read carries the viewer's level, which feeds the Phase 3
+   * rank-promotion watch (Rankings side; Career runs the same check from
+   * its own cred payload — the storage high-water mark + queue dedupe
+   * keep it to exactly one celebration). */
   const [myRegion, setMyRegion] = useState<string | null>(null);
+  const [myLevel, setMyLevel] = useState<number | null>(null);
+  useRankPromotion(myLevel);
   useEffect(() => {
     if (!acct.user) return;
     let live = true;
-    get('/api/profile/me').then((j) => { noteDailyBonus(j); if (live) setMyRegion(j?.user?.region ?? null); }).catch(() => undefined);
+    get('/api/profile/me').then((j) => { noteDailyBonus(j); if (live) { setMyRegion(j?.user?.region ?? null); setMyLevel(typeof j?.level?.level === 'number' ? j.level.level : null); } }).catch(() => undefined);
     return () => { live = false; };
   }, [acct.user]);
 
@@ -373,15 +426,22 @@ export function Leaderboards() {
   const mode = mine?.[kind];
   const myName = acct.user?.username ?? undefined;
   const youId = s.you?.id;
-  /* The rows on screen: the fetched board, or its Friends / Online-now
-   * filter (ranks renumber inside the filtered view; the summary line names
-   * the scope so the context is never a mystery). */
+  /* The rows on screen: the fetched board as returned (global / local /
+   * regions / server-backed Friends), or its Online-now — or guest
+   * Friends — client filter (ranks renumber inside a client-filtered
+   * view; the summary line names the scope so the context is never a
+   * mystery). */
   const viewRows = useMemo(() => {
     if (!rows) return rows;
+    // Server-backed Friends (signed-in): the board IS the friend board —
+    // render it exactly as returned. Re-filtering it client-side would
+    // drop rows whenever the local friends list lags the server's, and
+    // would renumber ranks the server already assigned.
+    if (fetchScope === 'friends') return rows;
     const friendIds = (s.friends?.friends ?? []).map((f) => f.id);
     const onlineIds = Object.entries(s.users).filter(([, u]) => !u.guest).flatMap(([pid, u]) => [pid, u.id]);
     return viewRowsFor(rows, scope, { friendIds, onlineIds, youId });
-  }, [rows, scope, s.friends, s.users, youId]);
+  }, [rows, scope, fetchScope, s.friends, s.users, youId]);
   const mineIdx = viewRows?.findIndex((r) => isMineRow(r, youId, myName)) ?? -1;
   const onBoard = mineIdx >= 0;
   const ownAcc = board === 'accuracy' && mode && mode.accuracy !== null && mode.bids < accMin && !onBoard ? mode : null;
@@ -446,8 +506,11 @@ export function Leaderboards() {
           </>
         )}
         <p className="soc-note">Ratings and Best duos count signed-in opponents. Wins split into vs players and vs bots. Fastest Climbers counts Rep XP earned in games; its arrow tracks the previous period.</p>
+        <p className="soc-note" data-testid="ranks-explainer">How placement works: rating starts at 1,200. “This week” and “This month” are rolling 7-day and 30-day windows, not calendar periods — season ratings live on player profiles, under Stats. Boards show up to 50 players; tied players are listed in the order the board returns them. Some boards open only after a minimum: Win % at 10 games, Bid accuracy at 20 bids (8 inside a window), Fastest Climbers at 5 games.</p>
+        <DuoStandings />
         <PowerRankings kind={board === 'duos' ? 'team' : kind} onOpen={(name) => social.showProfile(name)} />
         <RecordBook onOpen={(name) => social.showProfile(name)} />
+        <LeagueAwards onOpen={(name) => social.showProfile(name)} />
       </div>
       {offscreen && mineRow && (
         <div className="ranks-pin" data-testid="ranks-pin">
@@ -512,7 +575,7 @@ const FEATURE_MODE: Record<string, string> = { joker: 'Joker', aceDown: 'Ace Dow
  * list); else an honest empty state. Join/Watch ride the same flows as the
  * Open Tables list; the wager card opens the challenge's own detail.
  */
-function FeaturedTable() {
+export function FeaturedTable() {
   const s = useSocial();
   const pick = useMemo(() => pickFeaturedTable(Object.values(s.users), s.tables), [s.users, s.tables]);
   const [wager, setWager] = useState<WagerRow | null>(null);
@@ -619,7 +682,7 @@ interface HonorT { id: string; label: string; userId: string; name: string; valu
 
 /**
  * The Record Book: all-time marks from stored stats (highest peak rating,
- * most wins / Wheels / Bostons, best win % with a games minimum, and the
+ * most wins / Wheels / Big-Joker trick wins, best win % with a games minimum, and the
  * streak records off the stored cred_totals), from /api/social/honors.
  * Records render generically from the payload — a record the server omits
  * (nobody qualifies yet) simply doesn't appear.
@@ -640,6 +703,43 @@ function RecordBook({ onOpen }: { onOpen: (name: string) => void }) {
       <table className="cmp-table">
         <tbody>
           {records.map((r) => (
+            <tr key={r.id}>
+              <th>{r.label}</th>
+              <td><button type="button" className="link" onClick={() => onOpen(r.name)}>{r.name}</button></td>
+              <td>{r.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/* --------------------------------------------------- League Awards (P-F) */
+
+/**
+ * League Awards: the season half of GET /api/social/honors (the same
+ * payload the Record Book reads its `records` from; its `awards` were
+ * previously shown only on the winning player's own profile). Rendered
+ * generically — an award the server omits simply doesn't appear, and the
+ * section renders nothing when nobody has earned one yet.
+ */
+export function LeagueAwards({ onOpen }: { onOpen: (name: string) => void }) {
+  const [awards, setAwards] = useState<HonorT[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    get('/api/social/honors')
+      .then((j) => { if (live) setAwards((j as { awards: HonorT[] }).awards ?? []); })
+      .catch(() => { if (live) setAwards([]); });
+    return () => { live = false; };
+  }, []);
+  if (!awards?.length) return null;
+  return (
+    <section className="record-book" data-testid="league-awards">
+      <div className="power-head"><h3>🏅 League Awards</h3><span className="soc-muted">This season</span></div>
+      <table className="cmp-table">
+        <tbody>
+          {awards.map((r) => (
             <tr key={r.id}>
               <th>{r.label}</th>
               <td><button type="button" className="link" onClick={() => onOpen(r.name)}>{r.name}</button></td>

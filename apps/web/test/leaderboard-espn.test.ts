@@ -189,8 +189,8 @@ describe('scope rotation + Friends / Online-now views (P-A)', () => {
     expect(viewRowsFor(rows, 'global', { friendIds: [], onlineIds: [] })).toBe(rows);
     expect(viewRowsFor(rows, 'local', { friendIds: [], onlineIds: [] })).toBe(rows);
   });
-  it('only the server scopes hit the endpoint — friends/online fetch global', () => {
-    expect(compete).toContain("const fetchScope = scope === 'local' ? 'local' : scope === 'regions' ? 'regions' : 'global';");
+  it('server scopes hit the endpoint — friends is server-backed for signed-in viewers (BWM Central P1); online fetches global', () => {
+    expect(compete).toContain("const fetchScope = scope === 'local' ? 'local' : scope === 'regions' ? 'regions' : scope === 'friends' && signedIn ? 'friends' : 'global';");
     expect(compete).toContain('scope=${fetchScope}');
   });
 });
@@ -332,7 +332,7 @@ describe('the BottomLine renders: bug + lines from the rating board fetch', () =
     expect(css).toContain('.soc-panel:has(> .ranks-ticker.panel) { padding-bottom: 0; }');
     // the mount is the panel's LAST child (after the flex:1 scroll body),
     // so the flex column pins it under all scroll content on every tab
-    const bodyAt = socialSrc.indexOf('<div className="soc-body">');
+    const bodyAt = socialSrc.indexOf('<div className="soc-body"');
     const tickerAt = socialSrc.indexOf('<LeagueTicker variant="panel" />');
     expect(bodyAt).toBeGreaterThan(-1);
     expect(tickerAt).toBeGreaterThan(bodyAt);

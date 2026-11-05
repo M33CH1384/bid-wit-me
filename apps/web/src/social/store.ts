@@ -9,10 +9,16 @@ import { account, loadAccount } from '../account/api';
 import { serverUrl } from '../online/config';
 import { guestSessionId, loadName } from '../online/identity';
 import { keepUsers } from './presence';
+import { destOfTab, tabForDest, CENTRAL_DEST_IDS, type CentralDest } from './central';
+
+export type { CentralDest };
 import { playChatSound } from './chatSounds';
 import { coverThen } from '../spray';
 
-export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'challenges' | 'settings';
+export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'challenges' | 'settings'
+  // BWM Central destinations (Phase 1): headlines/matchups/career are tabs of
+  // their own; 'match' is the broadcast match view opened from the wire.
+  | 'headlines' | 'matchups' | 'career' | 'match';
 export interface ToastAction { label: string; tab: SocialTab; /** friend-request toast: the requester's id, so the popup can Accept/Decline inline */ friendId?: string }
 export interface Toast { id: string; kind: 'info' | 'error' | 'ok'; text: string; at: number; action?: ToastAction }
 export interface Notice { id: string; text: string; code?: string; seat?: number; tid?: string; /** Big Bank: the wager challenge this notice is about */ cid?: string; at: number }
@@ -36,6 +42,18 @@ export interface SocialState {
   toasts: Toast[];
   open: boolean;
   tab: SocialTab;
+  /** BWM Central: the active destination. Tabs that are utilities (chat /
+   *  messages / settings) leave this untouched, so leaving a utility
+   *  returns to the destination you were in. */
+  dest: CentralDest;
+  /** the match open in the broadcast match view (tab 'match') */
+  matchId: string | null;
+  /** where Back from a profile returns to: the tab + body scroll captured
+   *  when the profile opened, so it restores exactly */
+  profileReturn: { tab: SocialTab; scroll: number } | null;
+  /** a profile name whose Compare should open itself (postgame Compare
+   *  action / the profile's "Compare with me" button) */
+  compareFor: string | null;
   dmWith: string | null;
   profile: string | null;
   /** user id for the open profile when the caller knew it (rows carry ids; names alone resolve in the view) */
@@ -94,12 +112,18 @@ export function isMuted(s: SocialState, pid: string): boolean {
  * Session-scoped: a refresh in this tab restores it; a new tab starts clean.
  */
 export const SOCIAL_VIEW_KEY = 'bwm.social.view';
-const SOCIAL_TABS: SocialTab[] = ['players', 'chat', 'messages', 'friends', 'leaders', 'tournaments', 'challenges', 'settings'];
-export interface SocialView { open: boolean; tab: SocialTab; dmWith: string | null; names: Record<string, string> }
-export function serializeSocialView(s: Pick<SocialState, 'open' | 'tab' | 'dmWith' | 'names'>): string {
-  return JSON.stringify({ open: s.open, tab: s.tab, dmWith: s.dmWith, names: s.names });
+const SOCIAL_TABS: SocialTab[] = ['players', 'chat', 'messages', 'friends', 'leaders', 'tournaments', 'challenges', 'settings', 'headlines', 'matchups', 'career', 'match'];
+export interface SocialView {
+  open: boolean; tab: SocialTab; dmWith: string | null; names: Record<string, string>;
+  dest?: CentralDest; matchId?: string | null; profileReturn?: { tab: SocialTab; scroll: number } | null;
 }
-export interface ParsedSocialView { open?: boolean; tab?: SocialTab; dmWith?: string | null; names?: Record<string, string> }
+export function serializeSocialView(s: Pick<SocialState, 'open' | 'tab' | 'dmWith' | 'names' | 'dest' | 'matchId' | 'profileReturn'>): string {
+  return JSON.stringify({ open: s.open, tab: s.tab, dmWith: s.dmWith, names: s.names, dest: s.dest, matchId: s.matchId, profileReturn: s.profileReturn });
+}
+export interface ParsedSocialView {
+  open?: boolean; tab?: SocialTab; dmWith?: string | null; names?: Record<string, string>;
+  dest?: CentralDest; matchId?: string | null; profileReturn?: { tab: SocialTab; scroll: number } | null;
+}
 export function parseSocialView(raw: string | null): ParsedSocialView {
   if (!raw) return {};
   try {
@@ -112,6 +136,15 @@ export function parseSocialView(raw: string | null): ParsedSocialView {
       const names = Object.fromEntries(Object.entries(v.names).filter(([, x]) => typeof x === 'string'));
       if (Object.keys(names).length) out.names = names;
     }
+    // BWM Central fields: validated the same strict way — junk is dropped,
+    // never trusted (a legacy saved view simply has none of them).
+    if (typeof v.dest === 'string' && (CENTRAL_DEST_IDS as string[]).includes(v.dest)) out.dest = v.dest as CentralDest;
+    if (typeof v.matchId === 'string' || v.matchId === null) out.matchId = v.matchId ?? null;
+    const pr = v.profileReturn;
+    if (pr && typeof pr === 'object' && typeof pr.tab === 'string' && (SOCIAL_TABS as string[]).includes(pr.tab)
+      && typeof pr.scroll === 'number' && Number.isFinite(pr.scroll)) {
+      out.profileReturn = { tab: pr.tab as SocialTab, scroll: pr.scroll };
+    } else if (pr === null) out.profileReturn = null;
     return out;
   } catch { return {}; }
 }
@@ -120,16 +153,23 @@ function persistView(): void {
   try { sessionStorage.setItem(SOCIAL_VIEW_KEY, serializeSocialView(state)); } catch { /* private mode */ }
 }
 
+const tab0: SocialTab = view0.tab ?? 'headlines';
 let state: SocialState = {
   status: 'off', you: null, admin: false, users: {}, lastAt: {}, global: [], friends: null, settings: null, unread: {}, dms: {}, names: view0.names ?? {}, invites: [], sent: {}, toasts: [],
-  open: view0.open ?? false, tab: view0.tab ?? 'players', dmWith: view0.dmWith ?? null, profile: null, profileId: null, globalSeen: seen0, mentionSeen: mentionSeen0.id, myTable: null, notices: [], tour: null, wager: null, wagerCreate: null, tables: {}, ended: {},
+  open: view0.open ?? false, tab: tab0, dest: view0.dest ?? destOfTab(tab0) ?? 'headlines',
+  matchId: view0.matchId ?? null, profileReturn: view0.profileReturn ?? null, compareFor: null,
+  dmWith: view0.dmWith ?? null, profile: null, profileId: null, globalSeen: seen0, mentionSeen: mentionSeen0.id, myTable: null, notices: [], tour: null, wager: null, wagerCreate: null, tables: {}, ended: {},
 };
+/** the panel body's last scroll position, kept in memory by the panel and
+ *  captured into profileReturn when a profile opens (Back restores it) */
+let lastScroll = 0;
 const subs = new Set<() => void>();
 function set(p: Partial<SocialState> | ((s: SocialState) => Partial<SocialState>)) {
   const partial = typeof p === 'function' ? p(state) : p;
   state = { ...state, ...partial };
   // Any chat-view change is worth surviving a refresh; everything else is transient data.
-  if ('open' in partial || 'tab' in partial || 'dmWith' in partial || 'names' in partial) persistView();
+  if ('open' in partial || 'tab' in partial || 'dmWith' in partial || 'names' in partial
+    || 'dest' in partial || 'matchId' in partial || 'profileReturn' in partial) persistView();
   subs.forEach((f) => f());
 }
 export function useSocial(): SocialState { return useSyncExternalStore(social.subscribe, social.get, social.get); }
@@ -469,26 +509,50 @@ export const social = {
     else apply();
   },
   showTour(id: string | null) {
-    const apply = () => set({ open: true, tab: 'tournaments', profile: null, profileId: null, tour: id });
+    const apply = () => set({ open: true, tab: 'tournaments', dest: 'matchups', profile: null, profileId: null, tour: id });
     if (state.open) apply();
     else coverThen(apply, 'profile-social');
   },
   /** open the Big Bank tab; with an id, straight to that challenge's detail */
   showChallenge(id: string | null) {
-    const apply = () => set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: id });
+    const apply = () => set({ open: true, tab: 'challenges', dest: 'matchups', profile: null, profileId: null, wager: id });
     if (state.open) apply();
     else coverThen(apply, 'profile-social');
   },
   /** open the Big Bank create flow (optionally with the opponent pre-named from a profile) */
   startChallenge(opponent?: string) {
     social.start();
-    const apply = () => set({ open: true, tab: 'challenges', profile: null, profileId: null, wager: null, wagerCreate: opponent ? { opponent } : {} });
+    const apply = () => set({ open: true, tab: 'challenges', dest: 'matchups', profile: null, profileId: null, wager: null, wagerCreate: opponent ? { opponent } : {} });
+    if (state.open) apply();
+    else coverThen(apply, 'profile-social');
+  },
+  /** BWM Central: go to a destination (the bottom nav / top tabs). */
+  dest(d: CentralDest) {
+    set({ tab: tabForDest(d), dest: d, profile: null, profileId: null, compareFor: null, ...(d !== 'matchups' ? { matchId: null } : {}) });
+  },
+  /** open the broadcast match view for a recorded game (Headlines wire tap) */
+  openMatch(id: string) {
+    const apply = () => set({ open: true, tab: 'match', dest: 'matchups', matchId: id, profile: null, profileId: null });
+    if (state.open) apply();
+    else coverThen(apply, 'profile-social');
+  },
+  /** the panel body reports its scroll so a profile Back can restore it */
+  noteScroll(y: number) { lastScroll = y; },
+  /** ask the open profile (if it's this player's) to open its Compare */
+  requestCompare(name: string) { set({ compareFor: name }); },
+  /** open Central on a player's profile with its Compare open (postgame) */
+  openCompare(name: string, id?: string) {
+    const apply = () => set({ open: true, profile: name, profileId: id ?? null, compareFor: name, profileReturn: { tab: state.tab, scroll: lastScroll } });
     if (state.open) apply();
     else coverThen(apply, 'profile-social');
   },
   clearWagerCreate() { set({ wagerCreate: null }); },
   dismissNotice(id: string) { set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })); },
-  tab(tab: SocialTab) { set({ tab, profile: null, profileId: null, ...(tab === 'tournaments' ? { tour: null } : {}), ...(tab === 'challenges' ? { wager: null } : {}) }); if (tab === 'chat') social.markGlobalSeen(); },
+  tab(tab: SocialTab) {
+    const d = destOfTab(tab);
+    set({ tab, ...(d ? { dest: d } : {}), profile: null, profileId: null, compareFor: null, ...(tab === 'tournaments' ? { tour: null } : {}), ...(tab === 'challenges' ? { wager: null } : {}) });
+    if (tab === 'chat') social.markGlobalSeen();
+  },
   markGlobalSeen() { const last = state.global[state.global.length - 1]?.id ?? state.globalSeen; saveSeen(last); saveMentionSeen(Math.max(state.mentionSeen, last)); set({ globalSeen: last, mentionSeen: Math.max(state.mentionSeen, last) }); },
   openDm(pid: string) {
     set((s) => ({ tab: 'messages', dmWith: pid, profile: null, profileId: null, unread: { ...s.unread, [pid]: 0 } }));
@@ -496,7 +560,13 @@ export const social = {
     send({ t: 'read', with: pid });
   },
   closeDm() { set({ dmWith: null }); },
-  showProfile(name: string | null, id?: string) { set({ profile: name, profileId: name ? id ?? null : null }); },
+  showProfile(name: string | null, id?: string) {
+    // Opening a profile captures where Back returns to (destination tab +
+    // body scroll); closing one leaves profileReturn in place for the
+    // panel's restore effect to consume.
+    if (name) set({ profile: name, profileId: id ?? null, profileReturn: { tab: state.tab, scroll: lastScroll } });
+    else set({ profile: null, profileId: null, compareFor: null });
+  },
   chat(text: string, replyTo?: number) { if (!send({ t: 'chat', text, ...(replyTo ? { replyTo } : {}) })) toast("Not connected: try again in a moment.", 'error'); },
   /** emoji reaction to a global chat line (toggle; the hub broadcasts the new map) */
   react(id: number, emoji: string) { send({ t: 'react', id, emoji }); },

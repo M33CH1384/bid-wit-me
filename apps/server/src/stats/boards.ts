@@ -18,7 +18,7 @@ const VS_BOTS = `EXISTS (SELECT 1 FROM json_each(g.seats) je WHERE json_extract(
 const DAY = 86400_000;
 export const since = (p: Period, now: number) => (p === 'week' ? now - 7 * DAY : p === 'month' ? now - 30 * DAY : 0);
 
-export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team' | 'cutthroat'; period: Period; region: string | null; declaredRegion?: string | null; now: number }): Promise<BoardRow[]> {
+export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team' | 'cutthroat'; period: Period; region: string | null; declaredRegion?: string | null; /** restrict the board to this account id set (BWM Central: friends scope, crew standings); resolved server-side by the caller, never client-supplied */ idSet?: string[]; /** @deprecated Phase 1 name for idSet — kept as an alias so existing callers/tests are untouched */ friendIds?: string[]; now: number }): Promise<BoardRow[]> {
   const from = since(o.period, o.now);
   // local = same coarse region, and never anyone who hid their location
   const loc = o.region ? 'AND x.user_id IN (SELECT user_id FROM social_settings WHERE region = ? AND hide_location = 0)' : '';
@@ -27,14 +27,25 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
   // a pair when either partner declared it
   const decl = o.declaredRegion ? 'AND u.region = ?' : '';
   const declArgs = o.declaredRegion ? [o.declaredRegion] : [];
+  // id set (BWM Central): the caller resolves a membership set SERVER-side
+  // — friends scope (P1: accepted friends + the caller) or a crew's active
+  // members (P3) — and the board never sees client-supplied ids. An empty
+  // set filters to nobody, never to an invalid IN (). Duos keep a pair
+  // when BOTH partners are in the set (the locD precedent for the local
+  // scope). With no set passed, the SQL and binds are exactly as before.
+  const idSet = o.idSet ?? o.friendIds;
+  const frIds = idSet && idSet.length ? idSet : null;
+  const fr = idSet ? (frIds ? `AND x.user_id IN (${frIds.map(() => '?').join(',')})` : 'AND 1 = 0') : '';
+  const frArgs = frIds ?? [];
+  const frD = idSet ? (frIds ? `AND x.user_id IN (${frIds.map(() => '?').join(',')}) AND x.partner_id IN (${frIds.map(() => '?').join(',')})` : 'AND 1 = 0') : '';
   let rows: { id: string; name: string | null; value: number; games: number; extra?: string; trend_cur?: number; trend_prev?: number }[] = [];
   if (o.board === 'rating' && o.period === 'all') {
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name, ROUND(x.elo) AS value, x.games AS games FROM ratings x JOIN users u ON u.id = x.user_id
-      WHERE x.kind = ? AND x.games > 0 ${loc} ${decl} ORDER BY x.elo DESC LIMIT 50`).bind(o.kind, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+      WHERE x.kind = ? AND x.games > 0 ${loc} ${decl} ${fr} ORDER BY x.elo DESC LIMIT 50`).bind(o.kind, ...locArgs, ...declArgs, ...frArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'rating') {
     // a period's rating board = Elo gained in it
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name, ROUND(SUM(x.elo_after - x.elo_before)) AS value, COUNT(*) AS games FROM game_players x JOIN users u ON u.id = x.user_id
-      WHERE x.kind = ? AND x.ended_at >= ? AND x.elo_after IS NOT NULL ${loc} ${decl} GROUP BY x.user_id ORDER BY value DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+      WHERE x.kind = ? AND x.ended_at >= ? AND x.elo_after IS NOT NULL ${loc} ${decl} ${fr} GROUP BY x.user_id ORDER BY value DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs, ...frArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'wins') {
     // vs players: at least one opponent was signed in. vs bots: every opponent was a bot. Guest wins are neither.
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
@@ -42,7 +53,7 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
         SUM(CASE WHEN x.won = 1 AND ${VS_BOTS} THEN 1 ELSE 0 END) AS vs_bots,
         COUNT(*) AS games
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
-      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING value > 0 OR vs_bots > 0 ORDER BY value DESC, vs_bots DESC, games ASC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number] & { vs_bots?: number }>()).results;
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} ${fr} GROUP BY x.user_id HAVING value > 0 OR vs_bots > 0 ORDER BY value DESC, vs_bots DESC, games ASC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs, ...frArgs).all<typeof rows[number] & { vs_bots?: number }>()).results;
   } else if (o.board === 'winpct') {
     // Win % (league data wave): the honors precedent — a rate board only
     // means anything over a real sample, so the same 10-game minimum.
@@ -51,7 +62,7 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
         ROUND(100.0 * SUM(x.won) / COUNT(*)) AS value, COUNT(*) AS games,
         SUM(x.won) || '–' || (COUNT(*) - SUM(x.won)) AS extra
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
-      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING COUNT(*) >= 10 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} ${fr} GROUP BY x.user_id HAVING COUNT(*) >= 10 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs, ...frArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'streak') {
     // Longest win streak (owner, 2026-11-01: highest win streaks on the
     // ticker). The value is the player's LONGEST run of consecutive wins in
@@ -73,7 +84,7 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
           ROW_NUMBER() OVER (PARTITION BY x.user_id, COALESCE(g.family, g.id)
             ORDER BY CASE WHEN COALESCE(g.end_reason, 'finished') = 'abandoned' THEN 1 ELSE 0 END, x.ended_at ASC, g.id ASC) AS pick
         FROM game_players x JOIN games g ON g.id = x.game_id
-        WHERE x.kind = ? AND x.ended_at >= ? ${loc}
+        WHERE x.kind = ? AND x.ended_at >= ? ${loc} ${fr}
       ),
       counted AS (
         SELECT uid, CASE WHEN er = 'abandoned' THEN 0 ELSE won END AS won, ended_at, gid FROM picked
@@ -91,7 +102,7 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
       SELECT b.uid AS id, u.username AS name, b.value AS value, t.games AS games
       FROM best b JOIN totals t ON t.uid = b.uid JOIN users u ON u.id = b.uid
       WHERE b.value >= 3 AND t.games >= 5 ${decl}
-      ORDER BY b.value DESC, t.games DESC, u.username ASC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+      ORDER BY b.value DESC, t.games DESC, u.username ASC LIMIT 50`).bind(o.kind, from, ...locArgs, ...frArgs, ...declArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'books') {
     // Books per hand from the stored per-game books/hands counters. A
     // 5-game minimum keeps one hot night off a rate board.
@@ -99,20 +110,20 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
         ROUND(1.0 * SUM(json_extract(x.stats, '$.books')) / SUM(json_extract(x.stats, '$.hands')), 1) AS value, COUNT(*) AS games,
         SUM(json_extract(x.stats, '$.books')) || ' books · ' || SUM(json_extract(x.stats, '$.hands')) || ' hands' AS extra
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
-      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING COUNT(*) >= 5 AND SUM(json_extract(x.stats, '$.hands')) > 0 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} ${fr} GROUP BY x.user_id HAVING COUNT(*) >= 5 AND SUM(json_extract(x.stats, '$.hands')) > 0 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs, ...frArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'nils') {
     // Nils made (career/period totals from the stored nilMade counter).
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
         SUM(json_extract(x.stats, '$.nilMade')) AS value, COUNT(*) AS games,
         'made ' || SUM(json_extract(x.stats, '$.nilMade')) || ' of ' || SUM(json_extract(x.stats, '$.nilBids')) || ' bid' AS extra
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
-      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING COUNT(*) >= 5 AND SUM(json_extract(x.stats, '$.nilMade')) > 0 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} ${fr} GROUP BY x.user_id HAVING COUNT(*) >= 5 AND SUM(json_extract(x.stats, '$.nilMade')) > 0 ORDER BY value DESC, games DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs, ...frArgs).all<typeof rows[number]>()).results;
   } else if (o.board === 'accuracy') {
     const min = o.period === 'all' ? 20 : 8;
     rows = (await db.prepare(`SELECT x.user_id AS id, u.username AS name,
         ROUND(100.0 * SUM(json_extract(x.stats, '$.made')) / SUM(json_extract(x.stats, '$.bids')), 1) AS value, COUNT(*) AS games, SUM(json_extract(x.stats, '$.bids')) AS extra
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN games g ON g.id = x.game_id
-      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} GROUP BY x.user_id HAVING SUM(json_extract(x.stats, '$.bids')) >= ${min} ORDER BY value DESC, extra DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs).all<typeof rows[number]>()).results
+      WHERE x.kind = ? AND x.ended_at >= ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} ${fr} GROUP BY x.user_id HAVING SUM(json_extract(x.stats, '$.bids')) >= ${min} ORDER BY value DESC, extra DESC LIMIT 50`).bind(o.kind, from, ...locArgs, ...declArgs, ...frArgs).all<typeof rows[number]>()).results
       .map((r) => ({ ...r, extra: `${r.extra} bids` }));
   } else if (o.board === 'pace') {
     // Fastest Climbers (owner, 2026-11-02: "track how fast people rank up
@@ -155,10 +166,10 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
         JOIN users u ON u.id = x.user_id
         JOIN games g ON g.id = x.game_id
         LEFT JOIN cred_playwell pw ON pw.game_id = x.game_id AND pw.user_id = x.user_id
-        WHERE x.kind = ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl}
+        WHERE x.kind = ? AND COALESCE(g.end_reason, 'finished') != 'abandoned' ${loc} ${decl} ${fr}
       ) p
       GROUP BY p.user_id HAVING games >= 5 AND value > 0 ORDER BY value DESC, games DESC LIMIT 50`)
-      .bind(curFrom, curFrom, trendFrom, trendPrevFrom, trendFrom, o.kind, ...locArgs, ...declArgs).all<typeof rows[number]>()).results;
+      .bind(curFrom, curFrom, trendFrom, trendPrevFrom, trendFrom, o.kind, ...locArgs, ...declArgs, ...frArgs).all<typeof rows[number]>()).results;
   } else {
     // best duos: signed-in partners, by wins together (team games only)
     const locD = o.region ? 'AND x.user_id IN (SELECT user_id FROM social_settings WHERE region = ? AND hide_location = 0) AND x.partner_id IN (SELECT user_id FROM social_settings WHERE region = ? AND hide_location = 0)' : '';
@@ -166,9 +177,9 @@ export async function leaderboard(db: D1Database, o: { board: Board; kind: 'team
     rows = (await db.prepare(`SELECT x.user_id || ':' || x.partner_id AS id, u.username || ' + ' || p.username AS name, SUM(x.won) AS value, COUNT(*) AS games,
         ROUND(100.0 * SUM(x.won) / COUNT(*)) || '%' AS extra
       FROM game_players x JOIN users u ON u.id = x.user_id JOIN users p ON p.id = x.partner_id
-      WHERE x.kind = 'team' AND x.partner_id IS NOT NULL AND x.user_id < x.partner_id AND x.ended_at >= ? ${locD} ${declD}
+      WHERE x.kind = 'team' AND x.partner_id IS NOT NULL AND x.user_id < x.partner_id AND x.ended_at >= ? ${locD} ${declD} ${frD}
         AND EXISTS (SELECT 1 FROM games g, json_each(g.seats) je WHERE g.id = x.game_id AND COALESCE(g.end_reason, 'finished') != 'abandoned' AND json_extract(je.value, '$.kind') = 'user' AND json_extract(je.value, '$.side') != x.side)
-      GROUP BY x.user_id, x.partner_id HAVING games >= 2 ORDER BY value DESC, games ASC LIMIT 50`).bind(from, ...locArgs, ...locArgs, ...declArgs, ...declArgs).all<typeof rows[number]>()).results;
+      GROUP BY x.user_id, x.partner_id HAVING games >= 2 ORDER BY value DESC, games ASC LIMIT 50`).bind(from, ...locArgs, ...locArgs, ...declArgs, ...declArgs, ...frArgs, ...frArgs).all<typeof rows[number]>()).results;
   }
   return rows.map((r, i) => {
     const row: BoardRow = { rank: i + 1, id: o.board === 'duos' ? r.id : `u:${r.id}`, name: r.name ?? 'Player', value: Number(r.value) || 0, games: r.games, ...(r.extra ? { extra: String(r.extra) } : {}) };
