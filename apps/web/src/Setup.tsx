@@ -151,8 +151,9 @@ export function SetupCard({ title, children }: { title: string; children: ReactN
 
 /** What the bottom bar commits to, from the same settings the form edits:
  *  "Joker Spades · Harlem · Grandma's Kitchen" (+ "· Play to 500" — the
- *  target is chosen on this step on both paths: vs bots in Bots & score,
- *  online in the create form's Rules card). */
+ *  target is chosen on this step on both paths in the Rules card, the
+ *  score's only home on the setup screens: owner, 2026-11-05 — it used
+ *  to sit vs bots in Bots & score). */
 export function setupBarSummary(s: Settings, withTarget: boolean): string {
   const r = settingsToRules(s);
   const venue = !s.venue || s.venue === 'random' ? 'Random venue' : (VENUE_DEFS[s.venue as keyof typeof VENUE_DEFS]?.name ?? 'Random venue');
@@ -534,10 +535,6 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
                 <span className="ess-label">Bots</span>
                 <Seg label="Bot skill" value={s.botLevel} options={[['mixed', 'Mixed'], ['novice', 'Novice'], ['regular', 'Regular'], ['pro', 'Pro'], ['shark', 'Shark']]} onChange={(v) => set('botLevel', v)} />
               </div>
-              <div className="ess-row">
-                <span className="ess-label">Play to</span>
-                <Seg label="Target score" value={s.targetScore} options={targetScoreOptions(s)} onChange={(v) => set('targetScore', v)} />
-              </div>
             </SetupCard>
             <SetupCard title="Deck & venue">
               {deck}
@@ -548,6 +545,10 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
               <button type="button" className="quiet-row" data-testid="house-rules" onClick={() => requestSettingsSheet()}><span>HOUSE RULES</span><span className="value-chip">Standard</span><i className="corner-tab" aria-hidden /></button>
               {cutRules}
               <RulesStatLine settings={s} />
+              <div className="ess-row">
+                <span className="ess-label">Play to<small>the end score for this table</small></span>
+                <Seg label="Target score" value={s.targetScore} options={targetScoreOptions(s)} onChange={(v) => set('targetScore', v)} />
+              </div>
               {summary}
               {tipsRow}
             </SetupCard>
