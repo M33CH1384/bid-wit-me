@@ -981,10 +981,22 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
   const rowGate = play && rowsPlay;
   // Level-up CARD TAKEOVER (owner, 2026-10-29): when this report grants a
   // new rank card, the card itself takes the screen (see CardTakeover.tsx).
-  // Armed off the ROWS' gate (the XP row runs on that gate too when it is
-  // rendered inline; when the surface lifts it into VictoryXpStrip, the
-  // strip runs its own in-view gate and this arming is unchanged) —
-  // and delayed so it rises as the bar settles into the new level.
+  // Armed off the PRESENTATION gate alone (play), and delayed so it
+  // rises as the level bar settles into the new level. It used to ride
+  // the rows' gate as well (rowGate) — reworked, owner 2026-11-05:
+  // "When I get a new card I don't want to have to scroll down to see
+  // it." On the victory screen the reward rows sit below the fold, so
+  // the rows-gated arming held the takeover until the player scrolled
+  // to the very panel it exists to spare him hunting for; the XP strip
+  // announced NEW CARD! at the top while the card itself never came.
+  // The takeover is an overlay at the document root: presenting it
+  // moves nothing on the page, and dismissal leaves the results
+  // exactly as they were. The ROWS keep their in-view gate untouched
+  // (their animations still wait to be scrolled into view — the
+  // CardUpRow panel stays the in-flow record); only the takeover's
+  // arming is decoupled from it. On the merged surface the XP strip
+  // plays on presentation at the top of the scroll, so count → climb
+  // → card still reads as one sequence inside the delay.
   // Retirement (reworked, owner 2026-11-01): DISMISSAL is the only thing
   // that retires a grant — the dismissed key is written when the player
   // taps the takeover away, never when it shows. A refresh or remount
@@ -995,7 +1007,7 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
   const tKey = cardTakeoverKey(d);
   const [takeover, setTakeover] = useState<{ key: string; leaving: boolean } | null>(null);
   useEffect(() => {
-    if (!rowGate || reduced || !tKey) return;
+    if (!play || reduced || !tKey) return;
     if (takeoverDismissed(tKey)) return;
     // No "armed" latch: the cleanup clears the timer on ANY effect re-run
     // (a remount-in-place, a gate flicker), so a latch would silently eat
@@ -1007,7 +1019,7 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
       setTakeover({ key: tKey, leaving: false });
     }, CARD_TAKEOVER_DELAY_MS);
     return () => window.clearTimeout(t);
-  }, [rowGate, reduced, tKey]);
+  }, [play, reduced, tKey]);
   useEffect(() => {
     if (!takeover?.leaving) return;
     const t = window.setTimeout(() => setTakeover(null), CARD_TAKEOVER_EXIT_MS);
