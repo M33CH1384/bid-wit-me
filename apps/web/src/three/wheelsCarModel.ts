@@ -12,7 +12,7 @@
  * stage share it): clone → longest axis onto WHEELS_CAR_LEN → model yaw
  * → recentered with its floor on y = 0.
  */
-import { Box3, Group, Vector3 } from 'three';
+import { Box3, Group, MeshStandardMaterial, Vector3 } from 'three';
 import { WHEELS_CAR_LEN } from './wheelsCar3d';
 
 export const WHEELS_CAR_URL = '/assets/cars/wheels-roadster.glb';
@@ -23,6 +23,21 @@ export const WHEELS_MODEL_YAW = Math.PI / 2;
  *  0.4616 wide over 0.9997 long) — the wheel points the smoke and arcs
  *  are keyed to. */
 export const WHEELS_CAR_DIMS = { len: WHEELS_CAR_LEN, wid: WHEELS_CAR_LEN * (0.4616 / 0.9997) };
+
+/** Display correction for the TRELLIS material. The GLB's one material
+ *  declares ONLY its baseColorTexture — an appearance bake (paint,
+ *  glass, wheels, light bars all painted in) — so the glTF defaults
+ *  would instantiate it at metallicFactor 1.0 / roughnessFactor 1.0.
+ *  A metal has NO diffuse response: neither render home can light it
+ *  (the results stage has no environment map at all; the table's venue
+ *  light is diffuse-class with at most a dim venue env), so the car
+ *  played as a black silhouette — "looks like a shadow" (owner,
+ *  2026-11-05; rig A/B in _wheels-shadow-work: mean luminance 17.5
+ *  as-shipped vs 64.9 with only this correction, same lights).
+ *  Read the bake as what it is: a dielectric paint surface with a
+ *  clearcoat-style sheen. */
+export const WHEELS_CAR_METALNESS = 0;
+export const WHEELS_CAR_ROUGHNESS = 0.4;
 
 export function normalizeWheelsCar(scene: Group): Group {
   const o = scene.clone(true) as Group;
@@ -37,8 +52,20 @@ export function normalizeWheelsCar(scene: Group): Group {
   const c = box.getCenter(new Vector3());
   o.position.set(-c.x, -box.min.y, -c.z);
   o.traverse((n) => {
-    const mesh = n as { isMesh?: boolean; castShadow?: boolean };
-    if (mesh.isMesh) mesh.castShadow = true;
+    const mesh = n as { isMesh?: boolean; castShadow?: boolean; material?: unknown };
+    if (!mesh.isMesh) return;
+    mesh.castShadow = true;
+    // The material correction above, applied here because this
+    // normalization is the ONE pass both mounts (table rig, results
+    // stage) share. The GLB's materials are shared with the loader
+    // cache across mounts, so the assignment is idempotent.
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      if (m instanceof MeshStandardMaterial) {
+        m.metalness = WHEELS_CAR_METALNESS;
+        m.roughness = WHEELS_CAR_ROUGHNESS;
+      }
+    }
   });
   return o;
 }
