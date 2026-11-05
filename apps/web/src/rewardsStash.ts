@@ -14,8 +14,8 @@ export interface RewardsPayload {
   data: RewardsData;
   /** the finished match was an online table game */
   online: boolean;
-  /** where the recovery surface's Home button lands ('/' normally,
-   *  '/online' after Change mode online) */
+  /** where the recovery surface's Home button lands ('/' today; stashes
+   *  written by older builds could carry '/online') */
   homePath: string;
   /** the finished match was a Story Mode stop game: its stop id. A rematch
    *  returns to THAT stop (story-scoped) — never to a generic autostart game

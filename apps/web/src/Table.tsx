@@ -2566,8 +2566,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // Leaving a finished match from the merged screen: the report has
   // already been presented at the table, so this is just the exit —
   // offline leave() quits the game, online it goes to the main menu
-  // (the old flow's Back to home / Change mode both landed there too,
-  // via the retired /rewards page's Home button).
+  // (where the retired /rewards page's Home button landed too).
   const exitFinished = () => {
     clearTableChatOpen(); // the match is over: the next table must not inherit this chat state
     leave();
@@ -3658,8 +3657,6 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                 <>
                   <button type="button" className="primary big" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>
                   <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => exitFinished()}>Back to home</button>
-                  <div className="exit-divider" aria-hidden="true" />
-                  <button type="button" className="leave-red" onClick={() => exitFinished()}>Change mode</button>
                 </>
               )}
             </div>

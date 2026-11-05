@@ -3052,8 +3052,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    the round CLOSE pill on Settings, Social, Account and the score pad)
    and the DESTRUCTIVE outline (Leave on the hand recap, score pad and the
    leave-confirm step, where it is filled red). Shape: the 10px chevron
-   (top-left + bottom-right cut); icons use an 8px cut. The game-over
-   "Change mode" keeps its old look (game over is out of scope).
+   (top-left + bottom-right cut); icons use an 8px cut.
    =============================================================== */
 :root {
   --btn-cut: 10px;
@@ -4298,17 +4297,16 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
   .modal.gameover .placements li .place, .modal.gameover .placements li b { flex: none; }
   .modal.gameover .go-scroll { grid-column: 2; grid-row: 6; }
   .modal.gameover .confirm-actions { grid-column: 1 / -1; grid-row: 7; flex-direction: row; gap: 8px; }
-  .modal.gameover .confirm-actions .primary.big, .modal.gameover .confirm-actions .ghost-btn, .modal.gameover .confirm-actions .leave-red { flex: 1 1 0; }
+  .modal.gameover .confirm-actions .primary.big, .modal.gameover .confirm-actions .ghost-btn { flex: 1 1 0; }
   /* action-row hardening (offline-scroll fix, 2026-10-28): at the base
      20px the row's labels wrap to two lines and the row measures ~76px,
      which comes straight out of the middle row; at 13px/44px-min the row
      measures 44px and the box-score window keeps ≥ ~135px even in the
      worst case (shot-out banner + series chip + cutthroat standings).
      Measured on the real sheet in gameover-scroll-fit.e2e.ts. */
-  .modal.gameover .confirm-actions .primary.big, .modal.gameover .confirm-actions .ghost-btn, .modal.gameover .confirm-actions .leave-red { font-size: 13px; padding: 9px 8px; min-height: 44px; }
-  .modal.gameover .confirm-actions .ghost-btn, .modal.gameover .confirm-actions .leave-red, .modal.gameover .confirm-actions .quiet-row-btn { white-space: nowrap; }
+  .modal.gameover .confirm-actions .primary.big, .modal.gameover .confirm-actions .ghost-btn { font-size: 13px; padding: 9px 8px; min-height: 44px; }
+  .modal.gameover .confirm-actions .ghost-btn, .modal.gameover .confirm-actions .quiet-row-btn { white-space: nowrap; }
   .modal.gameover .confirm-actions .quiet-row-btn { flex: none; align-self: center; min-height: 40px; }
-  .modal.gameover .confirm-actions .exit-divider { display: none; }
 }
 
 /* ---------- recap header vs the sound dock (owner 2026-10-21: "The chat button is

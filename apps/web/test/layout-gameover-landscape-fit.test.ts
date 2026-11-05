@@ -67,7 +67,10 @@ describe('game-over sheet — landscape tier (max-height: 560px)', () => {
     expect(tier).toContain('.modal.gameover .placements { grid-column: 1; grid-row: 6;');
     expect(tier).toContain('.modal.gameover .go-scroll { grid-column: 2; grid-row: 6; }');
     expect(tier).toContain('.modal.gameover .confirm-actions { grid-column: 1 / -1; grid-row: 7; flex-direction: row;');
-    expect(tier).toContain('.modal.gameover .confirm-actions .exit-divider { display: none; }');
+    // no divider rule in the tier: the modal renders no exit-divider at
+    // all since the Change mode button under it was removed (2026-11-05)
+    expect(tier).not.toContain('.exit-divider');
+    expect(offlineBlock).not.toContain('exit-divider');
   });
 
   // ---- budget model: constants parsed from the shipped rules ----

@@ -11,7 +11,7 @@
  *    single post site in StoryHome keys it by the per-seed gameId.
  *  - A finished story match leaves the game-over modal only through the
  *    host exit (leave → StoryHome outro → map): every story exit routes
- *    there, the generic exits (Back to home / Change mode / the /rewards
+ *    there, the generic exits (Back to home / the /rewards
  *    detour) render only for non-story games, and a story win's primary
  *    action is the onward "To the map" (no rematch of a cleared stop).
  *  - The generic autostart still builds from the saved settings, so
@@ -78,8 +78,11 @@ describe('story game-over modal exits', () => {
 
   it('the win demotes Rematch; the loss keeps it; non-story games keep every stock exit', () => {
     expect(table).toContain('Play again — Rematch');
-    expect(table).toContain("onClick={() => exitFinished()}>Change mode</button>");
+    expect(table).toContain("onClick={() => exitFinished()}>Back to home</button>");
     expect(table).toContain('data-testid="main-menu"');
+    // the Change mode button was removed (owner, 2026-11-05) — it was a
+    // second label on the same exitFinished() as Back to home
+    expect(table).not.toContain('Change mode');
   });
 
   it('StoryHome’s host exits land a finished game on the outro (the way to the map)', () => {

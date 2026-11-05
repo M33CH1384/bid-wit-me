@@ -18,7 +18,7 @@
  *     story outro (reward line, unlock notices, badges, outro scene),
  *     whose CTA ends at the map: the modal's primary action is "To the
  *     map", its ✕ routes the same way, and the generic exits (Play
- *     again — Rematch / Back to home / Change mode) are not rendered for
+ *     again — Rematch / Back to home) are not rendered for
  *     a story win. A story LOSS keeps the stock exits as designed.
  *
  * The other rematch affordances (in-table Play again, outro Retry this

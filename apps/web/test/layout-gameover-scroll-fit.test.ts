@@ -34,7 +34,7 @@ const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
 
 const tierStart = css.indexOf('Game-over sheet in LANDSCAPE');
-const tier = tierStart >= 0 ? css.slice(tierStart, css.indexOf('.exit-divider { display: none; }', tierStart) + 80) : '';
+const tier = tierStart >= 0 ? css.slice(tierStart, css.indexOf('/* ---------- recap header', tierStart)) : '';
 
 /** First capture group of `re` in `hay`, as a float — fails loudly if absent. */
 const num = (hay: string, re: RegExp): number => {
@@ -76,7 +76,8 @@ describe('game-over sheet in LANDSCAPE (the D8-style tier)', () => {
 
   it('the actions are one pinned row across the bottom — no stacked column, no divider', () => {
     expect(tier).toContain('.modal.gameover .confirm-actions { grid-column: 1 / -1; grid-row: 7; flex-direction: row;');
-    expect(tier).toContain('.modal.gameover .confirm-actions .exit-divider { display: none; }');
+    // no divider exists in the modal to hide (Change mode removed 2026-11-05)
+    expect(tier).not.toContain('.exit-divider');
     // the tier shrinks the buttons (base 20px wraps them to a 76px row)
     expect(tier).toContain(' min-height: 44px; }');
     expect(tier).toContain('font-size: 13px; padding: 9px 8px; min-height: 44px;');
