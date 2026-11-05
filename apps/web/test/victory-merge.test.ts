@@ -248,8 +248,9 @@ describe('the takeover on the merged surface', () => {
   it('fires after the rows gate + delay, entrance painted-frame gated', () => {
     mountEl(createElement(VictoryReport, { data: cardUpData(), links: true }));
     openGate();
-    // rows are in view in this layout (zero rects read as in view), so the
-    // takeover arms off the rows gate and fires after its delay
+    // the takeover arms off the presentation gate and fires after its
+    // delay (owner, 2026-11-05: it no longer waits for the rows' in-view
+    // gate — see card-takeover-below-fold.test.ts for the below-fold pins)
     advance(CARD_TAKEOVER_DELAY_MS - 1);
     expect(takeover()).toBeNull();
     advance(1);
