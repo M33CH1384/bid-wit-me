@@ -1,11 +1,13 @@
 /**
  * @vitest-environment happy-dom
  *
- * SETUP REWORK — DECK GALLERY + BROWSER + BOTTOM BAR (owner, 2026-10-23):
- * the create action is anchored in a fixed bottom bar carrying a live
- * summary (mode · deck · venue · target); decks are chosen from a gallery
- * slider whose covers open a full deck browser; the choice is made inside
- * the browser and the slider, browser, and bar summary always agree.
+ * SETUP REWORK — DECK GALLERY + BROWSER + BOTTOM BAR (owner, 2026-10-23;
+ * tap model amended 2026-11-05 — see deck-tap-model.test.ts): the create
+ * action is anchored in a fixed bottom bar carrying a live summary
+ * (mode · deck · venue · target); decks are chosen from a gallery slider —
+ * the first cover tap chooses, a second tap or the cover's eye opens the
+ * full deck browser (choosing is also available inside it) — and the
+ * slider, browser, and bar summary always agree.
  * Locked story decks can be BROWSED (looking is free) but their Use action
  * honors the lock exactly like the old picker did.
  */
@@ -104,9 +106,9 @@ describe('deck gallery slider', () => {
 });
 
 describe('deck browser', () => {
-  it('opens from a cover with the deck explanation and every card browsable', async () => {
+  it('opens from a cover’s eye with the deck explanation and every card browsable', async () => {
     await renderGallery();
-    await click(qs('[data-testid=deck-harlem]'));
+    await click(qs('[data-testid=deck-eye-harlem]'));
     const browser = qs('[data-testid=deck-browser]');
     expect(browser).not.toBeNull();
     expect(browser?.textContent).toContain('Harlem');
@@ -123,7 +125,7 @@ describe('deck browser', () => {
 
   it('Revolutionaries close-up shows the figure fact from the game tribute table', async () => {
     await renderGallery();
-    await click(qs('[data-testid=deck-revolutionaries]'));
+    await click(qs('[data-testid=deck-eye-revolutionaries]'));
     await click(qs('[data-testid=deck-card-KS]'));
     const focus = qs('[data-testid=deck-card-focus]');
     expect(focus?.textContent).toContain('King of Spades');
@@ -155,12 +157,12 @@ describe('deck browser', () => {
 
   it('choosing inside the browser selects the deck and closes back to the slider', async () => {
     await renderGallery();
-    await click(qs('[data-testid=deck-harlem]'));
+    await click(qs('[data-testid=deck-eye-harlem]'));
     await click(qs('[data-testid=deck-use-harlem]'));
     expect(changes).toEqual(['harlem']);
     expect(qs('[data-testid=deck-browser]')).toBeNull();
     expect(qs('[data-testid=deck-harlem]')?.classList.contains('on')).toBe(true);
-    // reopening the now-current deck: Use is replaced by the current-deck state
+    // reopening the now-current deck (a tap on the chosen cover): Use is replaced by the current-deck state
     await click(qs('[data-testid=deck-harlem]'));
     const use = qs<HTMLButtonElement>('[data-testid=deck-use-harlem]');
     expect(use?.disabled).toBe(true);
@@ -186,7 +188,7 @@ describe('deck browser', () => {
     invalidateStoryProgress();
     await renderGallery();
     expect(qs('[data-testid=deck-pjs]')?.classList.contains('locked')).toBe(false);
-    await click(qs('[data-testid=deck-pjs]'));
+    await click(qs('[data-testid=deck-eye-pjs]'));
     const use = qs<HTMLButtonElement>('[data-testid=deck-use-pjs]');
     expect(use?.disabled).toBe(false);
     await click(use);
@@ -222,8 +224,8 @@ describe('bottom-anchored setup bar (vs bots)', () => {
     expect(summary?.textContent).toContain('Joker Spades');
     expect(summary?.textContent).toContain('Classic');
     expect(summary?.textContent).toContain('Play to 500');
-    // choose Harlem from inside its browser — slider + summary agree
-    await click(qs('[data-testid=deck-harlem]'));
+    // choose Harlem from inside its browser (opened by the cover's eye) — slider + summary agree
+    await click(qs('[data-testid=deck-eye-harlem]'));
     await click(qs('[data-testid=deck-use-harlem]'));
     expect(qs('[data-testid=deck-harlem]')?.classList.contains('on')).toBe(true);
     expect(qs('[data-testid=setup-bar-summary]')?.textContent).toContain('Harlem');

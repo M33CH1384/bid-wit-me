@@ -4844,7 +4844,7 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    under the text is the tile's declared bottom padding. The full unlock
    line still lives in the tile's aria-label and in the deck browser. */
 .deck-gallery { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 6px 2px 10px; width: 100%; align-items: flex-start; }
-.dg-cover { flex: 0 0 auto; width: 132px; width: var(--dg-w, 132px); max-width: var(--dg-max, none); scroll-snap-align: center; border: 0; border-radius: 12px; padding: 8px 8px 10px;
+.dg-cover { flex: 0 0 auto; width: 132px; width: var(--dg-w, 132px); max-width: var(--dg-max, none); border: 0; border-radius: 12px; padding: 8px 8px 10px;
   background: rgba(255,255,255,.05); color: var(--ink); display: flex; flex-direction: column; gap: 6px; align-items: stretch;
   text-align: center; position: relative; cursor: pointer; touch-action: manipulation; }
 .dg-cover img { width: 100%; aspect-ratio: 5/7; object-fit: cover; display: block; border-radius: 7px; }
@@ -4871,6 +4871,19 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .setup-preview figcaption b { font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: .03em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dg-inuse { position: absolute; top: 14px; right: 14px; background: var(--gold); color: #1a0f24; font-family: var(--display);
   font-weight: 800; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+/* Deck tap model (owner, 2026-11-05): each cover sits in a .dg-cell — the
+   slider's flex item / snap child — so the cover can stay a plain button
+   while the eye rides as its sibling (a button inside a button is invalid
+   HTML). The eye opens the deck browser without choosing; it is a real
+   44×44 hit target wearing a quiet 30px chip over the cover art's corner,
+   one shared rule for both themes. */
+.dg-cell { position: relative; flex: 0 0 auto; scroll-snap-align: center; display: flex; }
+.dg-eye { position: absolute; top: 2px; left: 2px; z-index: 2; width: 44px; height: 44px; padding: 0; border: 0;
+  background: transparent; display: grid; place-items: center; cursor: pointer; touch-action: manipulation; }
+.dg-eye-chip { width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; font-size: 15px;
+  line-height: 1; background: rgba(12,7,18,.55); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.4); opacity: .78;
+  transition: opacity .15s ease, background-color .15s ease; }
+.dg-eye:hover .dg-eye-chip, .dg-eye:focus-visible .dg-eye-chip { opacity: 1; background: rgba(12,7,18,.85); }
 
 .db-backdrop { z-index: 30; }
 /* D3 (design audit 2026-10-24): this backdrop renders INSIDE .setup-card (and

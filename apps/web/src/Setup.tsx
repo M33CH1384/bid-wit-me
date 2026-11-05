@@ -538,7 +538,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
             </SetupCard>
             <SetupCard title="Deck & venue">
               {deck}
-              <div className="ess-row stack"><span className="ess-label">Pick your deck — tap a deck to browse its cards</span><DeckGallery value={s.deck} onChange={(v) => set('deck', v)} /></div>
+              <div className="ess-row stack"><span className="ess-label">Pick your deck — tap to choose it; tap it again, or tap the eye, to browse its cards</span><DeckGallery value={s.deck} onChange={(v) => set('deck', v)} /></div>
               <VenueSetupRow value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} />
             </SetupCard>
             <SetupCard title="Rules">
@@ -678,7 +678,7 @@ function OnlineStep({ settings, venue, onVenue, deck, deckGallery, barSummary, o
         </SetupCard>
         <SetupCard title="Deck & venue">
           {deck}
-          <div className="ess-row stack"><span className="ess-label">Pick your deck — tap a deck to browse its cards</span>{deckGallery}</div>
+          <div className="ess-row stack"><span className="ess-label">Pick your deck — tap to choose it; tap it again, or tap the eye, to browse its cards</span>{deckGallery}</div>
           <VenueSetupRow value={venue} onChange={onVenue} />
         </SetupCard>
         <SetupCard title="Rules">

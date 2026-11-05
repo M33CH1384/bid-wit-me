@@ -1,16 +1,21 @@
 /**
- * Deck gallery + browser (setup rework, owner 2026-10-23): the deck section
- * is a horizontal snap slider of large deck covers; tapping a cover opens
- * the DECK BROWSER — a full sheet with the deck's explanation, its hero
- * faces, and every card browsable up close. The deck choice itself is made
- * inside the browser ("Use this deck"), so the slider, the browser, and the
- * setup summary can never disagree.
+ * Deck gallery + browser (setup rework, owner 2026-10-23; tap model
+ * amended, owner 2026-11-05: "The card viewer should work on a second tap
+ * or an eye icon. My first tap should just choose the deck"): the deck
+ * section is a horizontal snap slider of large deck covers. The FIRST tap
+ * on an owned cover CHOOSES the deck — the choice lands immediately, so
+ * the slider, the setup summary, and the dealt deck can never disagree.
+ * A tap on the cover already chosen opens the DECK BROWSER — a full
+ * sheet with the deck's explanation, its hero faces, and every card
+ * browsable up close — and every cover carries an eye button that opens
+ * the same browser without touching the choice. Choosing also stays
+ * available inside the browser ("Use this deck").
  *
  * Locks mirror the old picker exactly: story decks stay locked until their
- * stop is cleared (deckUnlocked), a locked deck's BROWSER still opens
- * (looking is free) but its Use action is disabled with the unlock line
- * shown, and a saved deck that is locked for this player falls back to
- * Classic once progress loads.
+ * stop is cleared (deckUnlocked), a locked cover's tap (or eye) still
+ * opens its BROWSER (looking is free) but its Use action is disabled with
+ * the unlock line shown, and a saved deck that is locked for this player
+ * falls back to Classic once progress loads.
  *
  * Card rendering: cards the deck ships art for (courts, jokers, and Pj's
  * Iron's aces) render the REAL shipped face asset at every size — the
@@ -400,21 +405,41 @@ export function DeckGallery({ value, onChange }: { value: string; onChange: (v: 
   const browseDeck = browseId ? deckById(browseId) : undefined;
   return (
     <>
-      <div className="deck-gallery" role="listbox" aria-label="Card deck — tap a deck to browse its cards" ref={listRef}>
+      <div className="deck-gallery" role="listbox" aria-label="Card deck — tap a deck to choose it; tap it again, or tap its eye, to browse its cards" ref={listRef}>
         {DECKS.map((d) => {
           const unlocked = deckUnlocked(d, cleared);
           const line = unlocked ? null : deckUnlockLine(d);
           const lore = deckLore(d.id);
+          const isCurrent = value === d.id;
           return (
-            <button key={d.id} type="button" role="option" aria-selected={value === d.id}
-              className={`dg-cover${value === d.id ? ' on' : ''}${unlocked ? '' : ' locked'}`}
-              aria-label={unlocked ? `${d.name} — browse its cards` : `${d.name} — locked. ${line ?? ''} Browse its cards`}
-              data-testid={`deck-${d.id}`} onClick={() => setBrowseId(d.id)}>
-              <img src={deckThumbUrl(d.id)} alt="" loading="lazy" />
-              <span className="dg-name">{d.name}</span>
-              <span className="dg-tag">{line ? `🔒 ${line}` : lore.tag}</span>
-              {value === d.id && <span className="dg-inuse">Your deck</span>}
-            </button>
+            <span key={d.id} className="dg-cell">
+              <button type="button" role="option" aria-selected={isCurrent}
+                className={`dg-cover${isCurrent ? ' on' : ''}${unlocked ? '' : ' locked'}`}
+                aria-label={!unlocked
+                  ? `${d.name} — locked. ${line ?? ''} Tap to browse its cards`
+                  : isCurrent
+                    ? `${d.name} — your deck. Tap to browse its cards`
+                    : `${d.name} — tap to choose this deck`}
+                data-testid={`deck-${d.id}`}
+                onClick={() => {
+                  // Tap model (owner, 2026-11-05): a locked cover always
+                  // opens its browser — the unlock info lives there. An
+                  // owned cover CHOOSES on the first tap; once it is the
+                  // chosen deck, a tap opens the browser instead.
+                  if (!unlocked || isCurrent) setBrowseId(d.id);
+                  else onChange(d.id);
+                }}>
+                <img src={deckThumbUrl(d.id)} alt="" loading="lazy" />
+                <span className="dg-name">{d.name}</span>
+                <span className="dg-tag">{line ? `🔒 ${line}` : lore.tag}</span>
+                {isCurrent && <span className="dg-inuse">Your deck</span>}
+              </button>
+              <button type="button" className="dg-eye" data-testid={`deck-eye-${d.id}`}
+                aria-label={`Look at the ${d.name} deck`}
+                onClick={() => setBrowseId(d.id)}>
+                <span className="dg-eye-chip" aria-hidden="true">👁</span>
+              </button>
+            </span>
           );
         })}
       </div>
