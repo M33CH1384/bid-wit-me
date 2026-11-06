@@ -21,6 +21,8 @@ import { openPlayerProfile, profileTargetOf } from '../profileTap';
 import { colorFor, useVideo } from './useOnline';
 import type { VideoMesh } from './video';
 import { TURN_TIMERS, TurnTimerSelect, type TimerKey, timerKeyOf } from '../turnTimer';
+import { useAccount } from '../account/api';
+import { fetchMyTeams, rosterBlock, type TeamRoster } from '../social/teamsApi';
 
 function timerKey(room: RoomInfo): TimerKey {
   return timerKeyOf(room.rules.turnTimerSec) ?? 'normal';
@@ -39,6 +41,24 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const vs = useVideo(mesh);
   const isHost = room.hostId === cs.you;
   const n = room.rules.playerCount;
+  /* Team rosters (owner, 2026-11-05): my rosters, for the side-name block —
+   *  naming my side with a full roster's name while my seated partner is a
+   *  signed-in human outside it is refused in plain words (see TeamChip).
+   *  Signed-out / still loading → no block; the server join at record time
+   *  is the backstop, and bot or guest partners can never be blocked. */
+  const acct = useAccount();
+  const myUid = acct.user?.id;
+  const [rosters, setRosters] = useState<TeamRoster[] | null>(null);
+  useEffect(() => {
+    if (!myUid) { setRosters(null); return; }
+    let alive = true;
+    fetchMyTeams()
+      .then((t) => { if (alive) setRosters(t); })
+      .catch(() => { if (alive) setRosters([]); });
+    return () => { alive = false; };
+  }, [myUid]);
+  const sidePartner = cs.seat !== null && n === 4 ? room.seats[cs.seat ^ 2] : undefined;
+  const sidePartnerRef = sidePartner?.kind === 'human' ? { uid: sidePartner.uid, name: sidePartner.name } : null;
   const playing = room.phase === 'playing';
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -96,7 +116,10 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <div className="lobby-teams" data-testid="lobby-teams">
             {[0, 1].map((t) => (
               <TeamChip key={t} t={t} name={room.teamNames?.[t] ?? ''} editable={cs.seat !== null && cs.seat % 2 === t}
-                onSave={(name) => conn.send({ t: 'teamName', name })} />
+                onSave={(name) => conn.send({ t: 'teamName', name })}
+                validate={cs.seat !== null && cs.seat % 2 === t
+                  ? (name) => rosterBlock(rosters?.find((r) => r.name === name), sidePartnerRef)
+                  : undefined} />
             ))}
           </div>
         ) : <p className="hint lobby-teams-note">No teams · every player for themselves</p>;
@@ -374,14 +397,27 @@ function StartBlock({ teams, room, cs, conn, isHost, playing, seatedHumans, n, o
   );
 }
 
-function TeamChip({ t, name, editable, onSave }: { t: number; name: string; editable: boolean; onSave: (n: string) => void }) {
+function TeamChip({ t, name, editable, onSave, validate }: {
+  t: number; name: string; editable: boolean; onSave: (n: string) => void;
+  /** Roster block (owner, 2026-11-05): returns a plain refusal to show
+   *  instead of saving, or null to let the save through. */
+  validate?: (n: string) => string | null;
+}) {
   const [edit, setEdit] = useState(false);
+  const [err, setErr] = useState('');
   const label = name || (t === 0 ? 'Team A' : 'Team B');
   return (
     <span className={`team-pill team-${t === 0 ? 'A' : 'B'} ${edit ? 'editing' : ''}`} data-testid={`team-chip-${t}`}>
       {edit ? (
-        <span onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setEdit(false); }}>
-          <TeamNameField value={name} placeholder="Team name" onSave={(v) => { onSave(v); setEdit(false); }} testId="lobby-team-name" />
+        <span onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) { setEdit(false); setErr(''); } }}>
+          <TeamNameField value={name} placeholder="Team name" onSave={(v) => {
+            const msg = validate?.(v) ?? null;
+            if (msg) { setErr(msg); return; }
+            setErr('');
+            onSave(v);
+            setEdit(false);
+          }} testId="lobby-team-name" />
+          {err && <small className="err" role="alert">{err}</small>}
         </span>
       ) : (
         <>

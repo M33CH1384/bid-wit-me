@@ -5,6 +5,7 @@
 import { type GameState, sideCount, sideOf, tkoOutSides } from '@spades/rules';
 import { processGameCred } from '../cred/hooks';
 import type { CredPushEvent } from '../push/notify';
+import { joinRoster } from './rosters';
 
 export type RatingKind = 'team' | 'cutthroat';
 export const ELO_START = 1200;
@@ -287,6 +288,19 @@ export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean
     }
   }
   await db.batch(stmts);
+  // Team rosters (owner, 2026-11-05): a human partner fielded under a team
+  // name joins the name owner's roster for that name, spot permitting (the
+  // roster is per player — each side member's own list gains their partner).
+  // Best-effort, like the cred pass below: a roster hiccup never costs a
+  // game its record. Bot and guest partners carry no partner id / account,
+  // so they never join and never take a spot.
+  try {
+    for (const p of players) {
+      if (p.teamName && p.partner && p.partner !== p.uid && exist.has(p.partner)) {
+        await joinRoster(db, p.uid, p.teamName, p.partner, rec.endedAt);
+      }
+    }
+  } catch { /* the record above is already safe */ }
   // Street Cred (Phase 3a): best-effort — processGameCred never throws, so recording can't break.
   return processGameCred(db, { ...rec, players }, { rated, endReason: abandoned ? 'abandoned' : 'finished', leaverId: meta.leaverId ?? null, venue: meta.venue ?? null }, elo);
 }

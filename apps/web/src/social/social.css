@@ -228,6 +228,16 @@ html[data-theme="neon"] .soc-wire-byline { color: #5BDFFF; }
 .team-partner-row .link { font: inherit; font-weight: 700; }
 .team-others { margin: 0; }
 .team-detail .team-summary { grid-template-columns: repeat(3, 1fr); }
+/* Team roster (owner, 2026-11-05): the owner's management block inside the
+   team detail — plain rows in the profile's language, no new chrome. */
+.team-roster { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid rgba(var(--gold-rgb),.35); border-radius: 10px; background: rgba(var(--gold-rgb),.06); }
+.team-roster-head { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
+.team-roster-head b { font-family: var(--display); letter-spacing: .02em; }
+.team-roster-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; min-height: 32px; }
+.team-roster-confirm { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.team-roster .danger { border-color: #e5484d; color: #ff8589; }
+.team-roster-note { margin: 0; }
+.team-roster p { margin: 0; }
 .soc-h2h { width: 100%; border-collapse: collapse; font-size: 14px; }
 .soc-h2h td { padding: 4px 2px; border-bottom: 1px solid rgba(255,255,255,.06); }
 .soc-h2h tr:nth-child(even) td { background: rgba(255,255,255,.03); }

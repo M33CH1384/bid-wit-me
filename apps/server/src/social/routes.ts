@@ -6,12 +6,13 @@
  *   GET /api/social/recent            → players you recently played with (signed in)
  *   GET /api/social/match/:id         → one recorded game in full (participant, or a public result)
  *   GET|POST|DELETE /api/social/favorites[/:id] → favorite partners (signed in)
+ *   GET /api/social/teams · GET /api/social/teams/:owner/:name · DELETE /api/social/teams/:owner/:name/members/:id → team rosters (owner-only; 2026-11-05)
  *   POST /api/social/crews · GET /api/social/crews · POST /api/social/crews/:id/{invite,respond,leave} · GET /api/social/crews/:id/leaderboard → crews (signed in; BWM Central P3)
  *   POST /api/social/presence         → report your own friend-activity presence (signed in; body { activity })
  *   GET /api/social/reports           → admin only: latest reports
  * The websocket (/api/social/ws) is routed in index.ts to the Social Durable Object.
  */
-import { isFriendActivity } from '@spades/protocol';
+import { cleanTeamName, isFriendActivity } from '@spades/protocol';
 import { type AuthEnv, currentUser } from '../auth/routes';
 import { regionOf } from '../cred/region';
 import { leaderboard, myStats, personalStats, serverStats, type PersonalStats } from '../stats/boards';
@@ -23,6 +24,7 @@ import { leagueHonors } from '../stats/honors';
 import { usernameKey } from '../auth/username';
 import { TICKET_TTL_MS, signTicket } from './ticket';
 import { SocialStore } from './store';
+import { ejectFromRoster, myRosters, rosterOut } from '../stats/rosters';
 
 export interface SocialEnv extends AuthEnv {
   /** comma-separated usernames (case-insensitive) with chat moderation rights */
@@ -378,6 +380,36 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
     if (!(await db.prepare('SELECT 1 AS ok FROM users WHERE id = ?').bind(target).first())) return json({ error: 'not found' }, 404);
     await db.prepare('INSERT OR IGNORE INTO favorite_partners (user_id, partner_id, created_at) VALUES (?, ?, ?)').bind(me.id, target, now).run();
     return json({ ok: true });
+  }
+  if (a === 'teams' && req.method === 'GET' && !parts[3]) {
+    // Team rosters (owner, 2026-11-05): the caller's own rosters on their
+    // own team list — management data, signed-in only.
+    if (!me) return json({ error: 'Sign in to see your team rosters.' }, 401);
+    return json({ teams: await myRosters(db, me.id, now) });
+  }
+  if (a === 'teams' && parts[3] && parts[4] && req.method === 'GET' && !parts[5]) {
+    // One roster. A roster belongs to its owner alone: anyone else gets a
+    // 403 — what the public profile already shows (who played under a name)
+    // stays public there, but who HOLDS a spot is the owner's business.
+    if (!me) return json({ error: 'Sign in to see a team roster.' }, 401);
+    const ownerId = decodeURIComponent(parts[3]).replace(/^u:/, '').slice(0, 80);
+    if (ownerId !== me.id) return json({ error: 'That roster belongs to its owner.' }, 403);
+    const name = cleanTeamName(decodeURIComponent(parts[4]));
+    if (!name) return json({ error: 'not found' }, 404);
+    return json(await rosterOut(db, me.id, name, now));
+  }
+  if (a === 'teams' && parts[3] && parts[4] && parts[5] === 'members' && parts[6] && req.method === 'DELETE') {
+    // Eject (owner, 2026-11-05): owner-only, enforced here — the roster in
+    // the path is the owner's, never the caller's by assumption. Ejecting
+    // frees the spot at once and touches nothing in the recorded history.
+    if (!me) return json({ error: 'Sign in to manage a team roster.' }, 401);
+    const ownerId = decodeURIComponent(parts[3]).replace(/^u:/, '').slice(0, 80);
+    if (ownerId !== me.id) return json({ error: 'Only the team owner can eject a player.' }, 403);
+    const name = cleanTeamName(decodeURIComponent(parts[4]));
+    if (!name) return json({ error: 'not found' }, 404);
+    const memberId = decodeURIComponent(parts[6]).replace(/^u:/, '').slice(0, 80);
+    if (!(await ejectFromRoster(db, me.id, name, memberId))) return json({ error: 'not on the roster' }, 404);
+    return json(await rosterOut(db, me.id, name, now));
   }
   if (a === 'crews' && !parts[3] && req.method === 'POST') {
     // Create a crew (BWM Central P3): the creator is its owner and first

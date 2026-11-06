@@ -86,6 +86,7 @@ import { pairPraise, pairStreakText, pairWinPct, type PairRecordLike } from '../
 import { personalBestTiles } from '../social/personalBests';
 import { useRankPromotion } from '../social/CelebrationHost';
 import { FavoriteStar } from '../social/FavoriteStar';
+import { ejectTeamMember, fetchMyTeams, type TeamRoster } from '../social/teamsApi';
 import { ChallengeButton } from '../social/Wager';
 import StoryBadges, { badgeFactsOf } from '../story/StoryBadges';
 import { fetchStoryProgress, type StoryProgress } from '../story/storyApi';
@@ -463,7 +464,56 @@ function StatRows({ rows }: { rows: [string, string][] }) {
  *  with no recorded games gets the empty state, and a metric the aggregate
  *  cannot support (no bids, no hands) omits its row instead of showing a
  *  dressed-up zero. */
-function TeamDetail({ team, onPartner }: { team: TeamStatData; onPartner: (name: string, id?: string) => void }) {
+/** The team's roster (owner, 2026-11-05) — rendered only on the owner's own
+ *  profile: you (the owner) plus the human partners holding spots under this
+ *  name. Eject is an inline two-tap (arm, then confirm) and swaps the roster
+ *  in place; the recorded record around it is history and never moves when
+ *  a spot frees. Bot partners hold no spot and never appear here. */
+function TeamRosterBlock({ roster, onEject }: { roster: TeamRoster; onEject: (memberId: string) => Promise<void> }) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const eject = async (memberId: string) => {
+    setBusy(true);
+    setErr('');
+    try { await onEject(memberId); setConfirmId(null); }
+    catch { setErr('That eject didn’t go through — try again.'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="team-roster" data-testid="team-roster">
+      <div className="team-roster-head"><b>Roster</b><span className="soc-muted">you + up to 3 partners</span></div>
+      <div className="team-roster-row"><span>You</span><span className="soc-muted">owner</span></div>
+      {roster.members.map((m) => (
+        <div className="team-roster-row" key={m.id}>
+          <span>{m.name}</span>
+          {confirmId === m.id ? (
+            <span className="team-roster-confirm">
+              <button type="button" className="small danger" data-testid="team-roster-confirm" disabled={busy} onClick={() => void eject(m.id)}>Eject {m.name}</button>
+              <button type="button" className="small" disabled={busy} onClick={() => setConfirmId(null)}>Keep</button>
+            </span>
+          ) : (
+            <button type="button" className="small" data-testid="team-roster-eject" data-member={m.id} onClick={() => { setErr(''); setConfirmId(m.id); }}>Eject</button>
+          )}
+        </div>
+      ))}
+      {roster.members.length === 0 && (
+        <p className="soc-muted">No partners on this roster yet — the first people who play under this name with you take the spots. Bot partners never take one.</p>
+      )}
+      {roster.full && <p className="soc-muted">Roster full — a new partner can’t join this name until someone is ejected.</p>}
+      <p className="soc-muted team-roster-note">The record on this page counts everyone who ever played under the name. Ejecting frees a spot; it never changes the record.</p>
+      {err && <small className="err" role="alert">{err}</small>}
+    </div>
+  );
+}
+
+function TeamDetail({ team, onPartner, roster, onEjectMember }: {
+  team: TeamStatData;
+  onPartner: (name: string, id?: string) => void;
+  /** Self view only: the team's roster (null while it loads). */
+  roster?: TeamRoster | null;
+  onEjectMember?: (memberId: string) => Promise<void>;
+}) {
   const partner = team.partner;
   const rows: [string, string][] = [
     ['Win streak', `${team.streak} (best ${team.bestStreak})`],
@@ -491,6 +541,7 @@ function TeamDetail({ team, onPartner }: { team: TeamStatData; onPartner: (name:
       {team.others.length > 0 && (
         <p className="soc-muted team-others">Also teamed with {team.others.map((o) => `${o.name} (${o.games} game${o.games === 1 ? '' : 's'})`).join(', ')}</p>
       )}
+      {roster && onEjectMember && <TeamRosterBlock roster={roster} onEject={onEjectMember} />}
       {team.games === 0 ? (
         <p className="soc-muted" data-testid="team-empty">No recorded games under this name yet. Games this team plays while signed in will build its record here.</p>
       ) : (
@@ -652,6 +703,25 @@ export function ProfileView({ host, name, id, noBack }: {
   const me = selfRoute
     ? cred !== null
     : (!!uid && !!acct.user && acct.user.id === uid) || (!!acct.user?.username && !!subjectName && acct.user.username === subjectName);
+  /* Team rosters (owner, 2026-11-05): my own rosters, fetched only when this
+   *  profile is mine — another player's profile never asks for them (the
+   *  server would 403 anyway). Eject swaps the returned roster in place,
+   *  like a claim: no reload, no scroll jump. */
+  const myId = acct.user?.id;
+  const [rosters, setRosters] = useState<TeamRoster[] | null>(null);
+  useEffect(() => {
+    if (!me || !myId) { setRosters(null); return; }
+    let alive = true;
+    fetchMyTeams()
+      .then((t) => { if (alive) setRosters(t); })
+      .catch(() => { if (alive) setRosters([]); });
+    return () => { alive = false; };
+  }, [me, myId]);
+  const ejectMember = async (teamName: string, memberId: string) => {
+    if (!myId) return;
+    const updated = await ejectTeamMember(myId, teamName, memberId);
+    setRosters((rs) => (rs ?? []).map((r) => (r.name === teamName ? updated : r)));
+  };
   /* Rank-promotion watch (BWM Central Phase 3, Career side): only the
    * viewer's OWN level counts — another player's profile never touches
    * the viewer's high-water mark. Rankings runs the same check; the
@@ -1171,7 +1241,9 @@ export function ProfileView({ host, name, id, noBack }: {
                         onClick={() => setOpenTeam(openTeam === t.name ? null : t.name)}>{t.name}</button>
                     )) : <span className="soc-muted">None yet</span>}</div>
                     {openTeam && socialP.teams.find((t) => t.name === openTeam) && (
-                      <TeamDetail team={socialP.teams.find((t) => t.name === openTeam)!} onPartner={openProfile} />
+                      <TeamDetail team={socialP.teams.find((t) => t.name === openTeam)!} onPartner={openProfile}
+                        roster={me ? (rosters?.find((r) => r.name === openTeam) ?? null) : undefined}
+                        onEjectMember={me && openTeam ? (memberId) => ejectMember(openTeam, memberId) : undefined} />
                     )}
                   </>
                 ) : (
