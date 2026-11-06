@@ -74,12 +74,39 @@ export function stashRewards(p: RewardsPayload): void {
   try { sessionStorage.setItem(KEY, JSON.stringify(p)); } catch { /* private mode: the in-table screen still shows the report */ }
 }
 
+/**
+ * The render-critical shape of a stashed RewardsData (crash hardening,
+ * 2026-11-06). The stash's whole job is surviving reloads — including
+ * reloads across a deploy, when the stash was written by an OLDER
+ * build. GameOverRewards' render reads `.length`/`.map` on these
+ * arrays unconditionally, so a truthy-but-partial data from an older
+ * shape threw during render at boot — and because the stash persisted,
+ * it threw on EVERY boot until storage was cleared: a white-screen
+ * loop on the very surface meant to recover victories. Only the
+ * throw-class fields are validated; scalar skew degrades, it cannot
+ * crash the render.
+ */
+function isRewardsData(d: unknown): boolean {
+  if (!d || typeof d !== 'object') return false;
+  const r = d as Record<string, unknown>;
+  if (!Array.isArray(r.achievements) || !Array.isArray(r.challenges)) return false;
+  const pg = r.postgame as Record<string, unknown> | null | undefined;
+  if (pg != null && (!Array.isArray(pg.sides) || !Array.isArray(pg.moments))) return false;
+  const pw = r.playWell as Record<string, unknown> | null | undefined;
+  if (pw != null && !Array.isArray(pw.lines)) return false;
+  return true;
+}
+
 export function loadRewards(): RewardsPayload | null {
   try {
     const raw = sessionStorage.getItem(KEY);
     if (!raw) return null;
     const p = JSON.parse(raw) as RewardsPayload;
-    return p && p.data ? p : null;
+    if (p && isRewardsData(p.data)) return p;
+    // A stash that fails validation can never become presentable:
+    // clear it, so it cannot fail the same way on the next boot.
+    clearRewards();
+    return null;
   } catch { return null; }
 }
 

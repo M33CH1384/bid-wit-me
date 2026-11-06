@@ -62,6 +62,19 @@ export interface LiveHighlight {
   id: string; at: number; type: string; name: string; text: string; code: string; hand: number | null;
 }
 
+
+/** Payload-shape guards (crash hardening, 2026-11-06): a 200 response
+ *  with a wrong-typed collection used to be stored verbatim and throw
+ *  inside buildTickerLines during render — outside every boundary, so
+ *  one skewed payload white-screened the app from the menu, no tap
+ *  required. Wrong-shaped payloads are now dropped at the door and the
+ *  ticker keeps its last good lines (its established failure mode). */
+function arrOrNull<T>(v: unknown): T[] | null { return Array.isArray(v) ? (v as T[]) : null; }
+function saneResults(v: unknown): RecentResult[] | null {
+  if (!Array.isArray(v)) return null;
+  return (v as RecentResult[]).filter((r) => !!r && Array.isArray(r.sides) && r.sides.every((s) => !!s && Array.isArray(s.names)));
+}
+
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 const RESULT_MODE: Record<string, string> = { joker: 'Joker', aceDown: 'Ace Down', cutthroat: 'Cutthroat', cutthroat4: 'Cutthroat' };
 
@@ -202,25 +215,25 @@ export function LeagueTicker({ variant, onHasLines }: { variant: 'bar' | 'panel'
     const load = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
       get(`/api/social/leaderboard?board=rating&kind=${kind}&scope=global&period=all`)
-        .then((j) => { if (!stop) setTop((j.rows ?? []) as TickerTopRow[]); })
+        .then((j) => { const rows = arrOrNull<TickerTopRow>(j.rows); if (!stop && rows) setTop(rows); })
         .catch(() => { /* ticker is garnish — a failed poll just keeps the last lines */ });
       get(`/api/social/leaderboard?board=streak&kind=${kind}&scope=global&period=all`)
-        .then((j) => { if (!stop) setStreakTop((j.rows ?? []) as TickerTopRow[]); })
+        .then((j) => { const rows = arrOrNull<TickerTopRow>(j.rows); if (!stop && rows) setStreakTop(rows); })
         .catch(() => { /* same */ });
       get(`/api/social/leaderboard?board=winpct&kind=${kind}&scope=global&period=all`)
-        .then((j) => { if (!stop) setWinPctTop((j.rows ?? []) as TickerTopRow[]); })
+        .then((j) => { const rows = arrOrNull<TickerTopRow>(j.rows); if (!stop && rows) setWinPctTop(rows); })
         .catch(() => { /* same */ });
       get(`/api/social/leaderboard?board=tkos&kind=${kind}&scope=global&period=all`)
-        .then((j) => { if (!stop) setTkoTop((j.rows ?? []) as TickerTopRow[]); })
+        .then((j) => { const rows = arrOrNull<TickerTopRow>(j.rows); if (!stop && rows) setTkoTop(rows); })
         .catch(() => { /* same */ });
       get(`/api/social/power?kind=${kind}`)
-        .then((j) => { if (!stop) setPowerTop(((j.rows ?? []) as { name: string; power: number }[]).map((r) => ({ name: r.name, power: r.power }))); })
+        .then((j) => { const rows = arrOrNull<{ name: string; power: number }>(j.rows); if (!stop && rows) setPowerTop(rows.map((r) => ({ name: r.name, power: r.power }))); })
         .catch(() => { /* same */ });
       get('/api/social/results?limit=10')
-        .then((j) => { if (!stop) setResults((j.results ?? []) as RecentResult[]); })
+        .then((j) => { const rows = saneResults(j.results); if (!stop && rows) setResults(rows); })
         .catch(() => { /* same */ });
       get('/api/social/highlights')
-        .then((j) => { if (!stop) setHighlights((j.highlights ?? []) as LiveHighlight[]); })
+        .then((j) => { const rows = arrOrNull<LiveHighlight>(j.highlights); if (!stop && rows) setHighlights(rows); })
         .catch(() => { /* same — the endpoint lands with the highlights feed */ });
       skipSelfRead().then((guest) => (guest ? Promise.reject(new Error('guest')) : get('/api/social/me/stats')))
         .then((j) => {

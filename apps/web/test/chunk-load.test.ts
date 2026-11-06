@@ -126,11 +126,15 @@ describe('chunk load after a deploy', () => {
   });
 
   it('sends the nuke and tornado imports through that retry', () => {
+    // Superseded in part (crash hardening, 2026-11-06): these effect
+    // imports now also pass `{ optional: … }` (see the optional describe
+    // below). The guarded-retry requirement this test was written for
+    // (2026-10-22) is unchanged; the pinned strings name the new shape.
     const scene = readFileSync(new URL('../src/three/Scene.tsx', import.meta.url), 'utf8');
     const warm = readFileSync(new URL('../src/effects/warm.ts', import.meta.url), 'utf8');
-    expect(scene).toContain("importChunk(() => import('./Nuke3D'))");
-    expect(scene).toContain("importChunk(() => import('./Tornado3D'))");
-    expect(warm).toContain("importChunk(() => import('../three/Tornado3D'))");
+    expect(scene).toContain("importChunk(() => import('./Nuke3D'), { optional:");
+    expect(scene).toContain("importChunk(() => import('./Tornado3D'), { optional:");
+    expect(warm).toContain("importChunk(() => import('../three/Tornado3D'), { optional:");
     expect(scene).not.toMatch(/void import\('\.\/(?:Nuke3D|Tornado3D)'\)/);
   });
 
@@ -145,9 +149,13 @@ describe('chunk load after a deploy', () => {
     const cloth = readFileSync(new URL('../src/SheetCloth.tsx', import.meta.url), 'utf8');
     expect(preload).toContain("importChunk(() => import('./Scene'))");
     expect(preload).not.toContain("scene ??= import('./Scene')");
-    expect(warm).toContain("importChunk(() => import('../sheetClothSim'))");
+    // The sheet sim's sites now pass `{ optional: … }` (crash hardening,
+    // 2026-11-06) — the importChunk routing pinned here is unchanged.
+    // preload's Scene line deliberately keeps NO optional flag: the
+    // table chunk is navigation and keeps the essential heal.
+    expect(warm).toContain("importChunk(() => import('../sheetClothSim'), { optional:");
     expect(warm).not.toMatch(/await import\('\.\.\/sheetClothSim'\)/);
-    expect(cloth).toContain("importChunk(() => import('./sheetClothSim'))");
+    expect(cloth).toContain("importChunk(() => import('./sheetClothSim'), { optional:");
     expect(cloth).not.toMatch(/void import\('\.\/sheetClothSim'\)/);
   });
 
@@ -196,5 +204,81 @@ describe('chunk load after a deploy', () => {
       });
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('optional chunk loads (crash hardening, 2026-11-06)', () => {
+  // An OPTIONAL load is an effect, not navigation: if its chunk is gone
+  // after a deploy, the effect is skipped and the game continues. The
+  // pre-hardening loader reloaded the whole document for these too —
+  // a stale Nuke3D chunk could bounce a player out of a live match.
+  it('an optional failure retries, then rejects — and never reloads', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const storage = memory();
+    const load = async () => { throw fail(NUKE); };
+    const importUrl = vi.fn(async () => { throw fail(NUKE); });
+    const reload = vi.fn();
+    await expect(importChunk(load, { importUrl, reload, storage, buildId: 'build-a', optional: 'nuke3d' })).rejects.toThrow(/Nuke3D-OLD/);
+    expect(importUrl).toHaveBeenCalledTimes(2); // cache-bust retries still happen
+    expect(reload).not.toHaveBeenCalled();
+    expect(storage.getItem(CHUNK_RELOAD_KEY)).toBeNull(); // the heal budget is untouched
+    warn.mockRestore();
+  });
+
+  it('an optional failure does not spend the build heal: a later essential failure still reloads once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const storage = memory();
+    const load = async () => { throw fail(NUKE); };
+    const importUrl = vi.fn(async () => { throw fail(NUKE); });
+    const reload = vi.fn();
+    await expect(importChunk(load, { importUrl, reload, storage, buildId: 'build-a', optional: 'nuke3d' })).rejects.toThrow(/Nuke3D-OLD/);
+    expect(reload).not.toHaveBeenCalled();
+    await expect(importChunk(load, { importUrl, reload, storage, buildId: 'build-a' })).rejects.toThrow(/Nuke3D-OLD/);
+    expect(reload).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it('an optional load that succeeds on a cache-bust retry resolves the module', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const storage = memory();
+    const mod = { ok: true };
+    const load = async () => { throw fail(TORNADO); };
+    const importUrl = vi.fn(async () => mod);
+    const reload = vi.fn();
+    await expect(importChunk(load, { importUrl, reload, storage, optional: 'tornado3d' })).resolves.toBe(mod);
+    expect(reload).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('a non-chunk error in an optional load rejects without reloading', async () => {
+    const storage = memory();
+    const load = async () => { throw new Error('shader compile failed'); };
+    const reload = vi.fn();
+    await expect(importChunk(load, { reload, storage, optional: 'sheet' })).rejects.toThrow(/shader compile failed/);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('effect-class call sites load as optional; navigation keeps the essential heal', () => {
+    // Supersession note (2026-11-06): the 2026-10-22 pins below demanded
+    // the bare `importChunk(() => import(...))` shape at these sites.
+    // The guarded retry is unchanged; the call now also declares itself
+    // optional, which is the part that keeps a dead effect chunk from
+    // reloading a live match. preload's Scene chunk is NOT here: the
+    // table itself is navigation, and its heal stays essential.
+    const scene = readFileSync(new URL('../src/three/Scene.tsx', import.meta.url), 'utf8');
+    const warm = readFileSync(new URL('../src/effects/warm.ts', import.meta.url), 'utf8');
+    const cloth = readFileSync(new URL('../src/SheetCloth.tsx', import.meta.url), 'utf8');
+    const wheels = readFileSync(new URL('../src/WheelsResults.tsx', import.meta.url), 'utf8');
+    const host = readFileSync(new URL('../src/photoreal/host.ts', import.meta.url), 'utf8');
+    expect(scene).toContain("importChunk(() => import('./Nuke3D'), { optional:");
+    expect(scene).toContain("importChunk(() => import('./Tornado3D'), { optional:");
+    expect(scene).toContain("importChunk(() => import('./WheelsCar3D'), { optional:");
+    expect(scene).toContain("importChunk(() => import('../photoreal/host'), { optional:");
+    expect(warm).toContain("importChunk(() => import('../sheetClothSim'), { optional:");
+    expect(warm).toContain("importChunk(() => import('../three/Tornado3D'), { optional:");
+    expect(warm).toContain("importChunk(() => import('../three/Nuke3D'), { optional:");
+    expect(cloth).toContain("importChunk(() => import('./sheetClothSim'), { optional:");
+    expect(wheels).toContain("importChunk(() => import('./three/WheelsStage3D'), { optional:");
+    expect(host).toContain("{ optional:");
   });
 });

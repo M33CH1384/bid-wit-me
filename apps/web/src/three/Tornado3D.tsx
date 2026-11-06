@@ -328,14 +328,27 @@ function shellLevels(p: TornadoParams, u: number): { dark: number; flash: number
 
 /** Kept alive so the linked program stays in the table renderer's cache after the warm pass. */
 const warmed: ReturnType<typeof tornadoParts>[] = [];
+/**
+ * The renderer the retained rigs were warmed for (crash hardening,
+ * 2026-11-06). Retention is per-renderer: a warm for a different
+ * renderer (a new table, whose context starts empty) drops the old
+ * sets instead of growing every retention array by another full set
+ * per renderer, forever.
+ */
+let warmedFor: WebGLRenderer | null = null;
 
 /**
  * Link the funnel shaders on the table's renderer, into a 4×4 target the player never sees.
  * The real Tornado3D draw later hits that cached program instead of compiling mid-spin.
  */
 export async function warmTornado(gl: WebGLRenderer, camera: Camera, quality: 'high' | 'low'): Promise<void> {
+  const fresh = warmedFor !== gl;
+  if (fresh) {
+    warmed.length = 0; warmedSlippers.length = 0; warmedCows.length = 0;
+    warmedSensors.length = 0; warmedShells.length = 0;
+  }
   const parts = tornadoParts(quality === 'high');
-  warmed.push(parts);
+  if (fresh) warmed.push(parts);
   const group = new Group();
   for (const [geo, material] of [[parts.dust, parts.dustMat], [parts.debris, parts.debrisMat]] as const) {
     const points = new Points(geo, material);
@@ -346,24 +359,24 @@ export async function warmTornado(gl: WebGLRenderer, camera: Camera, quality: 'h
   const warmSlip = buildSlipper();
   warmSlip.group.visible = true;
   warmSlip.body.opacity = 1;
-  warmedSlippers.push(warmSlip);
+  if (fresh) warmedSlippers.push(warmSlip);
   group.add(warmSlip.group);
   // …and the cow's and a sensor's standard-material programs
   const warmCow = buildCow();
   warmCow.group.visible = true;
   for (const m of warmCow.mats) m.opacity = 1;
-  warmedCows.push(warmCow);
+  if (fresh) warmedCows.push(warmCow);
   group.add(warmCow.group);
   const warmSensor = buildSensor(0);
   warmSensor.group.visible = true;
   warmSensor.mat.opacity = 1;
   if (warmSensor.led) warmSensor.led.opacity = 1;
-  warmedSensors.push(warmSensor);
+  if (fresh) warmedSensors.push(warmSensor);
   group.add(warmSensor.group);
   // …and the ladder's ring / room shells link here too
   const warmShells = buildShells();
   for (const m of [warmShells.ring, warmShells.dark, warmShells.flash]) { m.visible = true; m.material.opacity = 0.5; group.add(m); }
-  warmedShells.push(warmShells);
+  if (fresh) warmedShells.push(warmShells);
   const target = new WebGLRenderTarget(4, 4);
   const prev = gl.getRenderTarget();
   try {
@@ -375,6 +388,7 @@ export async function warmTornado(gl: WebGLRenderer, camera: Camera, quality: 'h
     gl.setRenderTarget(prev);
     target.dispose();
   }
+  if (fresh) warmedFor = gl;
 }
 
 export function Tornado3D({ quality }: { quality: 'high' | 'low' }) {
