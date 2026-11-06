@@ -2,7 +2,7 @@ import { minimumChip } from './polishText';
 import { DECK_IDS } from './decks';
 import { isValidSetAnimSetting } from './setAnims';
 import { type VenueChoice, isVenueChoice } from '@spades/protocol';
-import { CLASSIC_JOKER, cardLabel, hostMinimum, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
+import { CLASSIC_JOKER, cardLabel, firstHandMinOf, hostMinimum, type Mode, type RulesOverrides, type TableRules, makeRules } from '@spades/rules';
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
 import { trumpLadderText } from './trumpLadder';
 import { DEFAULT_VIEW_ADJUST, normalizeViewAdjust, type ViewAdjust } from './viewAdjust';
@@ -150,6 +150,60 @@ export function settingsToRules(s: Settings): TableRules {
   } catch {
     return makeRules(mode, { ...o, firstLead: 'leftOfDealer' });
   }
+}
+
+/**
+ * Finding E (responsive audit 2026-11-05): which house rules differ from
+ * the current mode's defaults — the truth behind the setup "HOUSE RULES"
+ * chip (empty = Standard, non-empty = Custom). Pure derivation from the
+ * one Settings state, so the Settings sheet, in-form edits and the
+ * loadSettings restore path all stay in sync with no stored flag.
+ *
+ * The comparison runs on EFFECTIVE rules: both sides go through
+ * settingsToRules itself (the baseline is the mode's own preset built
+ * the same way, keeping the mode + cutthroat deck choice, which are not
+ * house rules), so the helper can never drift from the engine, and
+ * facets that are inert in context mask themselves — cutthroat's forced
+ * Nil/Blind Nil/firstHandMin, deuceOfSpadesHigh outside the classic
+ * joker order, the 2♣ lead where 2♣ is removed. The remaining explicit
+ * masks follow the sheet's own presentation: the bag penalty only
+ * exists while Bags are on (scoring forces bagsAdded to 0 when off, so
+ * no penalty can accrue), and the blind-nil exchange / failed-nil
+ * tricks facets only exist while their parent Nil route is open.
+ * Facet wording mirrors the MoreOptions row labels; order is sheet order.
+ */
+export function houseRulesDiff(s: Settings): string[] {
+  const a = settingsToRules(s);
+  const b = settingsToRules({ ...DEFAULT_SETTINGS, mode: s.mode, cutthroatDeck: s.cutthroatDeck });
+  const diff: string[] = [];
+  const sameCards = (x: readonly string[], y: readonly string[]) => x.length === y.length && x.every((c, i) => c === y[i]);
+  if (a.targetScore !== b.targetScore) diff.push(`Play to ${a.targetScore}`);
+  if ((a.firstHandBidsItself !== false) !== (b.firstHandBidsItself !== false)) diff.push(`First hand bids itself ${a.firstHandBidsItself !== false ? 'on' : 'off'}`);
+  if ((a.shotOut !== false) !== (b.shotOut !== false)) diff.push(`Shot = out ${a.shotOut !== false ? 'on' : 'off'}`);
+  if (a.partnerships) {
+    const min = firstHandMinOf(a);
+    if (min !== firstHandMinOf(b)) diff.push(`Minimum books/bid ${min === null ? 'off' : min}`);
+  }
+  if (a.losingFloor !== b.losingFloor) diff.push(`Losing floor ${a.losingFloor === null ? 'off' : 'on'}`);
+  // Joker trump order is a deck-level facet: it can only differ where a
+  // joker deck is in play (the effective trump/removed sets say so).
+  if (!sameCards(a.trumpOrderTop, b.trumpOrderTop) || !sameCards(a.removedCards, b.removedCards)) diff.push('Joker trump order classic');
+  if (s.jokerOrder === 'classic' && a.deuceOfSpadesHigh !== b.deuceOfSpadesHigh) diff.push('2♠ under jokers');
+  if (a.spadesMustBeBroken !== b.spadesMustBeBroken) diff.push(`Spades must be broken ${a.spadesMustBeBroken ? 'on' : 'off'}`);
+  if (a.firstLead !== b.firstLead) diff.push('2♣ leads first trick');
+  if (a.minTeamBid !== b.minTeamBid) diff.push(a.partnerships ? `Minimum team bid ${a.minTeamBid}` : `Minimum books/bid ${a.minTeamBid}`);
+  if (a.partnerships) {
+    if (a.nil.allowed !== b.nil.allowed) diff.push(`Nil ${a.nil.allowed ? 'on' : 'off'}`);
+    if (a.blindNil.allowed !== b.blindNil.allowed || a.blindNil.onlyWhenBehindBy !== b.blindNil.onlyWhenBehindBy) {
+      diff.push(a.blindNil.allowed ? (a.blindNil.onlyWhenBehindBy === null ? 'Blind Nil always' : 'Blind Nil behind 100+') : 'Blind Nil off');
+    }
+    if (a.blindNil.allowed && a.blindNil.exchangeCards !== b.blindNil.exchangeCards) diff.push('Blind Nil exchange');
+    if ((a.nil.allowed || a.blindNil.allowed) && a.nilTricksCountForPartner !== b.nilTricksCountForPartner) diff.push('Failed-nil tricks help partner');
+  }
+  if ((a.bagsOn !== false) !== (b.bagsOn !== false)) diff.push(`Bags ${a.bagsOn !== false ? 'on' : 'off'}`);
+  else if (a.bagsOn !== false && (a.bagsPerPenalty !== b.bagsPerPenalty || a.bagPenalty !== b.bagPenalty)) diff.push(`Bags ${a.bagsPerPenalty}/${a.bagPenalty}`);
+  if (a.tenForTwoHundred !== b.tenForTwoHundred) diff.push(`10 for 200 ${a.tenForTwoHundred ? 'on' : 'off'}`);
+  return diff;
 }
 
 const KEY = 'spades.settings.v2';

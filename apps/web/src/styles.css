@@ -392,8 +392,8 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .bid-panel { width: min(520px, 100%); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center; }
 .bid-panel p { margin: 0; color: var(--muted); }
 .bid-panel .bid-block { margin: 0; max-width: 100%; font-size: 13px; line-height: 1.35; color: var(--gold-hi); text-wrap: wrap; }
-.bid-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; width: 100%; }
-.bid-grid button { padding: 9px 0; font-size: 20px; }
+.bid-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; }
+.bid-grid button { padding: 9px 0; font-size: 20px; min-height: 44px; }
 .bid-grid .nil { grid-column: span 2; background: linear-gradient(180deg, var(--purple-hot), rgb(var(--purple-deep-rgb))); box-shadow: 0 0 12px rgba(var(--purple-rgb),.6); }
 .bid-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
@@ -616,8 +616,16 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .wizard.step-home .wiz-dots { visibility: hidden; }
 /* One-line wizard header (S2, HANDOFF global rule 2): in landscape and on wide
    screens the step's crumb + title ride inline in the 56px bar row; the step
-   number and progress dots hide. Phone portrait keeps the stacked header. */
-@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 1000px) {
+   number and progress dots hide. Phone portrait keeps the stacked header.
+   CANONICAL GATE G (W3 Finding F, responsive audit 2026-11-05): the expanded
+   landscape layout is "(max-height: 540px) OR (min-width: 900px)" — the tall
+   leg dropped from 1000px to the 900px tier the PR-E rail already trusts,
+   closing the 541+ tall / 900–999 wide dead zone (e.g. 960x600). Every G
+   site (this header, decision cards, score pad, settings rail, and the
+   min-height:541px tall-leg companions: wiz-bar, home, door-card cap,
+   setup grid, preview grid) carries the identical query; the constants
+   are pinned by apps/web/test/layout-gate-consolidation.test.ts. */
+@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 900px) {
   .wizard:not(.step-home) .wiz-dots, .wizard .wiz-stepno { display: none; }
   .wizard .wiz-head { position: absolute; left: 50%; transform: translateX(-50%); height: 46px; max-width: calc(100vw - 400px); display: flex; align-items: baseline; justify-content: center; gap: 10px; white-space: nowrap; z-index: 3; pointer-events: none; }
   .wizard .wiz-head .wiz-crumb { margin: 0; font-size: 12px; flex: 0 0 auto; align-self: center; }
@@ -627,7 +635,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 @media (orientation: landscape) and (max-height: 540px) and (max-width: 700px) {
   .wizard .wiz-head .wiz-crumb { display: none; }
 }
-@media (orientation: landscape) and (min-height: 541px) and (min-width: 1000px) {
+@media (orientation: landscape) and (min-height: 541px) and (min-width: 900px) {
   .wizard:not(.step-home) .wiz-bar { min-height: 56px; align-self: stretch; }
   .wizard .wiz-head { top: calc(env(safe-area-inset-top) + 10px); }
   .wizard.step-table:not(.step-home) .wiz-step { padding-top: 6px; padding-bottom: 8px; }
@@ -674,12 +682,12 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .wiz-actions { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 440px; margin: 0 auto; animation: fade-up .7s ease .65s both; }
 /* S2 desktop / iPad-landscape home (boards/HANDOFF.md "Home (desktop and --land-tab)";
-   wizard-home.png, after/home-desk.html). --land-tab = landscape, ≥541px tall, ≥1000px
+   wizard-home.png, after/home-desk.html). --land-tab = landscape, ≥541px tall, ≥900px
    wide. Two columns 1.1fr | 1fr, vertically centred, padding 0 120px 80px: the logo
    (min(560px,100%)) + tagline on the left, the actions (max 460px) on the right. PLAY is
    the gold Primary at 72px (system chevron, gradient, ink). Phones (portrait and short
    landscape) are untouched. The Story tile is left as-is (waits for the Story/badges PR). */
-@media (orientation: landscape) and (min-height: 541px) and (min-width: 1000px) {
+@media (orientation: landscape) and (min-height: 541px) and (min-width: 900px) {
   .wizard.step-home .wiz-step { max-width: none; padding: 0; justify-content: center; }
   .wiz-home { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); grid-template-rows: none; align-items: center; gap: 60px; padding: 0 120px 80px; }
   .wiz-home .splash, .wiz-home .wiz-actions { grid-row: auto; }
@@ -734,7 +742,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    tiles (1fr 1fr; a 3rd option would make 3 columns) that fill the height — title 34px
    + sub on top, the emblem as a chip bottom-left and a gold → bottom-right. Portrait
    keeps the stacked 440px column. */
-@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 1000px) {
+@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 900px) {
   .wiz-step:has(> .decision-cards) { max-width: none; padding: 4px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); }
   .wiz-step > .decision-cards { flex: 1; min-height: 0; max-width: none; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 14px; }
   .wiz-step > .decision-cards > .decision-card { position: relative; min-height: 0; flex-direction: column; align-items: stretch; justify-content: space-between; padding: 18px 20px; }
@@ -746,7 +754,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .wiz-step > .decision-cards > .decision-card:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: -2px; }
 }
 /* iPad/desktop cap (S2): height-filling door cards ran ~650px tall with empty middles */
-@media (orientation: landscape) and (min-height: 541px) and (min-width: 1000px) {
+@media (orientation: landscape) and (min-height: 541px) and (min-width: 900px) {
   .wiz-step > .decision-cards { flex: 0 1 auto; height: 340px; max-height: 340px; }
 }
 .quiet-row { position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; border:0; padding:14px 16px; min-height:52px;
@@ -1671,8 +1679,10 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .bid-coach-float .bid-coach { display: flex; flex-direction: column; min-height: 0; }
 .bid-coach-float .bc-body { min-height: 0; overflow-y: auto; }
 .me.over-chat { z-index: 12; }
-/* 13 bids + Nil in two rows (8 across) instead of three */
-.table-screen:not(.short) .bid-panel.with-coach .bid-grid { grid-template-columns: repeat(8, 1fr); }
+/* W1 (responsive audit 2026-11-05): the with-coach grid uses the same 5
+   columns as the no-coach grid — the old 8-across switch rendered ~32px
+   buttons at 390px. 13 bids + Nil (span 2) now flow 5 / 5 / 3+Nil. */
+.table-screen:not(.short) .bid-panel.with-coach .bid-grid { grid-template-columns: repeat(5, 1fr); }
 /* little room (short desktop windows, phones): smaller buttons, tighter gaps, no "YOUR BID" line when the coach is open */
 .me > .bid-panel.tight { gap: 5px; padding-top: 6px; padding-bottom: 8px; }
 .me > .bid-panel.tight .bid-grid button { padding: 5px 0; font-size: 17px; }
@@ -2847,12 +2857,35 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .menu-scrim { position: fixed; inset: 0; z-index: 60; }
 /* WebKit hit-tests a backdrop-filter layer as the element under it, so a tap on Leave landed on the scrim and only closed the menu. The fill is already opaque. */
 .game-menu.glass { -webkit-backdrop-filter: none; backdrop-filter: none; }
-.game-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 61; display: flex; flex-direction: column; min-width: 240px; padding: 6px; border-radius: 12px; background: rgba(20,11,34,.97); box-shadow: 0 14px 34px rgba(0,0,0,.6), inset 0 0 0 1px rgba(var(--edge-rgb),.4); }
+.game-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 61; display: flex; flex-direction: column; gap: 2px; min-width: 240px; max-height: calc(100dvh - 72px); overflow-y: auto; padding: 6px; border-radius: 12px; background: rgba(20,11,34,.97); box-shadow: 0 14px 34px rgba(0,0,0,.6), inset 0 0 0 1px rgba(var(--edge-rgb),.4); }
 /* Seat open is position:fixed at z-index 60. The menu's z-index only counts inside the scorebug, so lift that layer while the menu is open. */
 .table-screen:has(.game-menu) > .scorebug { z-index: 80; }
-.game-menu > button { text-align: left; background: none; border: 0; color: var(--ink); padding: 11px 12px; font-size: 14px; font-weight: 600; border-radius: 8px; }
-.game-menu > button:hover, .game-menu > button.on { background: rgba(var(--edge-rgb),.18); }
-.game-menu > button.danger { color: #ff9db0; }
+/* Finding G grouping (responsive audit 2026-11-05, W4): the flat list
+   becomes a hierarchy — Help + Score pad prominent on a tinted ground,
+   DISPLAY and VOICES under small headings, the voice controls as
+   compact one-line chips (icon + ellipsized name + state; the heading
+   carries the "voices" wording and each chip's aria-label keeps the
+   full "{name} voice: on|muted"), Social full-width, and Leave
+   separated by a divider with the danger ring in BOTH orientations
+   (portrait used to get colour alone). Every row floors at 44px, and
+   the portrait panel gains the max-height + internal scroll the
+   landscape tier already had — it was the sweep's only unbounded
+   overlay. Presentation only: same labels, testids, handlers. */
+.game-menu .menu-act { display: flex; align-items: center; gap: 8px; text-align: left; background: none; border: 0; color: var(--ink); padding: 11px 12px; min-height: 44px; box-sizing: border-box; font-size: 14px; font-weight: 600; border-radius: 8px; }
+.game-menu .menu-act:hover, .game-menu .menu-act.on { background: rgba(var(--edge-rgb),.18); }
+.game-menu .menu-primary { display: flex; flex-direction: column; gap: 2px; }
+.game-menu .menu-primary .menu-act { background: rgba(var(--edge-rgb),.12); font-weight: 700; }
+.game-menu .menu-primary .menu-act:hover, .game-menu .menu-primary .menu-act.on { background: rgba(var(--edge-rgb),.22); }
+.game-menu .menu-group { display: flex; flex-direction: column; }
+.game-menu .menu-group-head { padding: 8px 12px 2px; font-family: var(--display); font-size: 10.5px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.game-menu .menu-group-items { display: flex; flex-direction: column; gap: 2px; }
+.game-menu .voice-chip { min-width: 0; }
+.voice-chip-icon { flex: none; }
+.voice-chip-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-chip-state { flex: none; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.game-menu > button.danger { display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; background: none; border: 0; color: #ff4d6d; padding: 11px 12px; font-size: 14px; font-weight: 700; border-radius: 8px; text-align: center; box-shadow: inset 0 0 0 1.5px #ff4d6d; }
+.game-menu > button.danger:hover { background: rgba(255,77,109,.12); }
+.menu-divider { flex: none; height: 1px; margin: 6px 4px 4px; background: rgba(255,255,255,.14); }
 .menu-social { padding: 4px 6px; }
 .menu-social .social-btn { width: 100%; justify-content: flex-start; }
 .scorebug .help-btn, .scorebug .bug-btn.q { display: none; }
@@ -2986,7 +3019,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    Footer: ONE Primary ("Back to table", or "Continue" from the recap). */
 .pad-hands { display: contents; }
 .score-pad.v2 > .pad-primary { margin-top: 4px; }
-@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 1000px) {
+@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 900px) {
   /* landscape: grid 1fr | 1.5fr — left the two stacked team cards (name, bags/sets, big 44px total
      on the right), right the by-hand table (its own scroller) + House rules; footer right-aligned. */
   .modal.score-pad.v2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); grid-template-rows: minmax(0, 1fr) auto auto; gap: 8px 10px; max-height: calc(100dvh - 20px); padding: 12px 14px; }
@@ -5055,6 +5088,13 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    and a folded group leaves the tab order via visibility. Reduced motion
    (the OS setting the app already honors) makes the fold instant. */
 .set-group-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
+/* Keyboard focus on the accordion toggle reads like the sheet's other
+   focus states (sheet-close, rail tabs): gold outline, offset so it
+   clears the group card's own rim (responsive audit C, 2026-11-05).
+   The sheet element itself takes programmatic focus on open (dialog
+   lifecycle) — that landing is not a visible focus stop. */
+.set-group-toggle:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+[data-testid="more-options"].sheet:focus { outline: none; }
 .set-chev { flex: none; color: var(--gold); font-size: 12px; line-height: 1; transform: rotate(-90deg); transition: transform .25s ease; }
 .set-chev.open { transform: rotate(0deg); }
 .set-group-body { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows .28s ease, visibility 0s linear .28s; }
@@ -5062,12 +5102,12 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .set-group-inner { overflow: hidden; min-height: 0; }
 /* S2 settings tab rail (boards/HANDOFF.md "Settings sheet"; boards/settings.png,
    after/settings-l.html). Portrait: the rail is hidden and the accordion is unchanged.
-   Landscape (phone ≤540px tall, or ≥1000px wide): the sheet is a 170px | 1fr grid —
+   Landscape (phone ≤540px tall, or ≥900px wide): the sheet is a 170px | 1fr grid —
    left, the section tabs as 40px chips (gold when active); right, ONLY the active
    group, unfolded, its toggle rows in a 1fr 1fr grid (label + 11.5px hint + 44×26
    toggle); multi-value rows (segs, selects, sound fields) span both columns. */
 .set-rail { display: none; }
-@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 1000px) {
+@media (orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 900px) {
   [data-testid="more-options"].sheet { width: calc(100% - 20px); max-width: none; display: grid; grid-template-columns: 170px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 8px 14px; }
   [data-testid="more-options"] > .sheet-head { grid-column: 1 / -1; }
   [data-testid="more-options"] > .sheet-body { grid-column: 2; grid-row: 2; padding-top: 0; }
@@ -5192,7 +5232,7 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    3-column grid as --land-phone (#258): Team + Bots & score | Deck & venue |
    commit bar (static, docked at the top of the last column) + Rules.
    Portrait tablets and phones never match this query. */
-@media (orientation: landscape) and (min-height: 541px) and (min-width: 1000px) {
+@media (orientation: landscape) and (min-height: 541px) and (min-width: 900px) {
   .wizard.step-table .wiz-step { max-width: min(1100px, 96vw); padding: 64px max(20px, env(safe-area-inset-right)) 20px max(20px, env(safe-area-inset-left)); }
   .wizard.step-table:has(.setup-bar) .wiz-step { margin-bottom: 0; }
   .wizard.step-table .ess.ess-barred { display: grid; grid-template-columns: 1.1fr 1fr 1fr; align-items: start; gap: 16px; padding-bottom: 0; width: 100%; }
@@ -5211,7 +5251,7 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    venue spanning both with large thumbs (max-height 330px); right the live venue/deck preview
    (flex:1) with the summary + House rules + Primary docked under it). Bots step only (it is the
    one that renders .setup-preview); the online create step keeps the #261 layout. */
-@media (orientation: landscape) and (min-height: 541px) and (min-width: 1000px) {
+@media (orientation: landscape) and (min-height: 541px) and (min-width: 900px) {
   .wizard.step-table .ess.ess-barred:has(> .setup-preview) { grid-template-columns: minmax(0, .625fr) minmax(0, .625fr) minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; align-items: stretch; gap: 16px; }
   .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Your team"] { grid-column: 1; grid-row: 1; }
   .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Bots & score"] { grid-column: 2; grid-row: 1; }
@@ -5255,6 +5295,26 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .setup-card .setup-preview .sp-table { width: min(80%, 250px); }
 }
 
+/* W3 Finding H (responsive audit 2026-11-05): portrait tablets (768x1024,
+   820x1180) never matched the land-tab block, so the bots setup showed no
+   venue preview at all. CSS-only: the SAME .setup-preview element becomes
+   a compact horizontal strip on the portrait-tablet tier (portrait,
+   min-width:700px — a content tier, no device names; aligned with Finding
+   F's consolidation on existing tiers rather than a new device list).
+   Height is capped at 168px so the strip only adds its own height to the
+   scroll; the fixed commit bar and the 138px end reserve are untouched,
+   so DEAL ME IN stays reachable exactly as before. Phone portrait
+   (<700px) keeps display:none — the venue backdrop still never downloads
+   there. Bots flow only: the online create form hosts its preview inside
+   its Deck & venue card under the card-scoped rules above (master
+   cd5cab7f, which closed gap G5), never under this block. */
+@media (orientation: portrait) and (min-width: 700px) {
+  .wizard.step-table .ess-barred > .setup-preview { display: flex; flex-direction: row; height: 168px; }
+  .wizard.step-table .setup-preview .sp-stage { flex: 1 1 auto; min-width: 0; padding: 10px; }
+  .wizard.step-table .setup-preview .sp-table { width: 200px; }
+  .wizard.step-table .setup-preview figcaption { flex: 0 0 168px; justify-content: center; }
+}
+
 /* S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Table menu"): on a
    short landscape phone the ☰ table menu was one ~44px-per-row column taller
    than the 393px stage, so 🚪 Leave table (the destructive action, always
@@ -5263,10 +5323,18 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    at the bottom, so the whole menu, Leave included, is on screen. Portrait
    and tablets keep the single column (the query never matches). */
 @media (orientation: landscape) and (max-height: 540px) {
-  .game-menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(40px, auto); gap: 4px; width: min(640px, 75vw); max-height: calc(100dvh - 72px); overflow-y: auto; }
-  .game-menu > button { padding: 8px 10px; font-size: 13.5px; line-height: 1.2; }
-  .game-menu > .menu-social, .game-menu > button.danger { grid-column: 1 / -1; }
-  .game-menu > button.danger { text-align: center; box-shadow: inset 0 0 0 1.5px #ff4d6d; color: #ff4d6d; }
+  /* Finding G: the grid now lays out BY GROUP, not by raw DOM order —
+     the prominent pair shares a 2-column row, each group's items share
+     a 3-column row (the three voice chips exactly fill theirs, so the
+     old dead cell is gone), Social / divider / Leave span the panel.
+     The old sub-44 landscape row floor is retired: .menu-act's 44px
+     min-height (base rules) floors every row here too. */
+  .game-menu { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; width: min(640px, 75vw); max-height: calc(100dvh - 72px); overflow-y: auto; }
+  .game-menu .menu-act { padding: 8px 10px; font-size: 13.5px; line-height: 1.2; }
+  .game-menu .menu-primary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .game-menu .menu-group-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .game-menu .menu-group-head { padding: 6px 2px 0; }
+  .game-menu > .menu-social, .game-menu > .menu-divider, .game-menu > button.danger { grid-column: 1 / -1; }
 }
 
 /* S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Chat open"): on a
@@ -5278,11 +5346,21 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    placement. The same overlap reproduced in portrait (393x852: the rail
    covered Send there too), so the offset applies in every orientation;
    only the 330px/42vw width is landscape-only. */
+/* W1 (responsive audit 2026-11-05, Finding B): the offset above stranded
+   the panel off the left edge below ~368px portrait — it moved `right`
+   to 68px+inset in every orientation but left the portrait width at
+   min(300px, 82vw), a formula written when `right` was 8px. The offset
+   now lives ONCE in --chat-right on .table-screen, and the width in the
+   very same rule derives from it (panel + offset + an 8px left margin
+   exactly fills the viewport), so the pair can never drift apart again.
+   At >=376px (zero insets) the 300px cap takes over and behaviour is
+   byte-identical to before; .recap-chat keeps its own sheet placement. */
+.table-screen { --chat-right: calc(var(--rail-w, 60px) + 8px + env(safe-area-inset-right)); }
 .table-screen .chat:not(.recap-chat),
-.table-screen.short .chat:not(.recap-chat) { right: calc(var(--rail-w, 60px) + 8px + env(safe-area-inset-right)); }
+.table-screen.short .chat:not(.recap-chat) { right: var(--chat-right); width: min(300px, calc(100dvw - var(--chat-right) - 8px - env(safe-area-inset-left))); }
 @media (orientation: landscape) and (max-height: 540px) {
   .table-screen .chat:not(.recap-chat),
-  .table-screen.short .chat:not(.recap-chat) { width: min(330px, 42vw); }
+  .table-screen.short .chat:not(.recap-chat) { width: min(330px, 42vw, calc(100dvw - var(--chat-right) - 8px - env(safe-area-inset-left))); }
 }
 
 /* S1 hand recap, 3 columns (design audit 2026-10-25, HANDOFF.md "Hand
@@ -5448,3 +5526,66 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .rw-turning { font-weight: 700; color: var(--ink); }
 .rw-timeline { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12.5px; color: var(--ink-dim); }
 .rw-timeline-row { white-space: nowrap; }
+/* ---------- W1 bid hit-area repair (responsive audit 2026-11-05, Finding A) ----------
+   The bid buttons carried the shared slant clip-path (styles.css button
+   rule), which clips HIT area with paint — on a ~32px button the 8px
+   corner triangles were a quarter of its width, exactly where a thumb
+   aiming at a neighbour lands. Same repair as 84ab0298 for menu/speaker:
+   the PAINT (fill, inset ring, slant clip) moves onto a
+   pointer-events:none ::before at the exact button geometry, and the
+   element itself becomes a transparent, UN-clipped hit box. No layout
+   moves: the grid tracks, gaps and panel are untouched by this block. */
+.bid-grid button {
+  position: relative; isolation: isolate;
+  background: transparent; box-shadow: none; clip-path: none;
+}
+.bid-grid button::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; inset: 0;
+  background: rgba(var(--purple-rgb), 0.16); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.bid-grid button:hover::before { background: rgba(var(--purple-rgb), 0.35); }
+.bid-grid button.nil { background: transparent; box-shadow: none; }
+.bid-grid button.nil::before {
+  background: linear-gradient(180deg, var(--purple-hot), rgb(var(--purple-deep-rgb)));
+  box-shadow: 0 0 12px rgba(var(--purple-rgb),.6);
+}
+/* select-then-confirm (gated, see bidConfirmGate.ts): the chosen bid
+   reads in the gold primary language with a hard ring on the hit box */
+.bid-grid button.selected { color: #1d1204; box-shadow: inset 0 0 0 2px var(--gold-hi); }
+.bid-grid button.selected::before {
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold-deep));
+  box-shadow: 0 0 18px rgba(var(--gold-rgb),.35);
+}
+/* the Blind Nil panel's bid-row buttons share the same clipped rule */
+.bid-panel .bid-row button {
+  position: relative; isolation: isolate;
+  background: transparent; box-shadow: none; clip-path: none;
+}
+.bid-panel .bid-row button::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; inset: 0;
+  background: rgba(var(--purple-rgb), 0.16); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.45);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.bid-panel .bid-row button.primary::before {
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold-deep));
+  box-shadow: 0 0 18px rgba(var(--gold-rgb),.35);
+}
+.bid-panel .bid-row button.danger::before { background: linear-gradient(180deg, #ff6b88, #c2183c); }
+/* the gated confirm control: a full-width >=44px gold commit button */
+.bid-confirm-row { width: 100%; display: flex; }
+.bid-panel .bid-confirm {
+  position: relative; isolation: isolate; flex: 1; min-height: 44px;
+  background: transparent; box-shadow: none; clip-path: none; color: #1d1204;
+}
+.bid-panel .bid-confirm::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none; inset: 0;
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold-deep));
+  box-shadow: 0 0 18px rgba(var(--gold-rgb),.35);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.bid-panel .bid-confirm:disabled { opacity: .45; }
+/* short landscape keeps its compact one-row strip: the 44px portrait
+   floor does not apply there (the panel budget cannot hold it — the
+   landscape-fit pins read this rule's padding/font, kept identical) */
+.table-screen.short .bid-grid button { padding: 3px 0; font-size: 15px; min-height: 0; }

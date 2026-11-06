@@ -1,4 +1,4 @@
-import { type ReactNode, type Ref, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref, useEffect, useRef, useState } from 'react';
 import { useEscapeClose } from './useEscapeClose';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
@@ -7,7 +7,7 @@ import { SetAnimRow } from './SetAnimPicker';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
 import { type Settings, settingsToRules, targetScoreOptions } from './settings';
-import { type SectionOpenMap, type SettingsSectionId, loadSectionOpen, saveSectionOpen } from './settingsSections';
+import { SETTINGS_SECTION_ORDER, type SectionOpenMap, type SettingsSectionId, loadSectionOpen, saveSectionOpen } from './settingsSections';
 import { TRUMP_SEP, trumpLadder, trumpLadderText } from './trumpLadder';
 import { type TipsPref, saveTips } from './tips';
 import { VENUE_DEFS, type VenueChoice } from './venues';
@@ -40,15 +40,59 @@ export function Seg<T extends string | number>({ value, options, onChange, label
   );
 }
 
+/** The landscape rail layout's media query — MUST match the .set-rail /
+ *  .rail-active block in styles.css exactly. It is the one signal the JS
+ *  side reads to know which presentation is on screen, so every ARIA
+ *  state below is derived from the SAME presentation the player sees
+ *  (responsive audit 2026-11-05, Finding C: landscape CSS force-showed
+ *  the rail-selected section while aria-hidden still followed the
+ *  portrait accordion map — visible sections were hidden from AT and
+ *  focusable inside an aria-hidden subtree). */
+export const SETTINGS_RAIL_QUERY = '(orientation: landscape) and (max-height: 540px), (orientation: landscape) and (min-width: 1000px)';
+
+function useRailLayout(): boolean {
+  const read = () => {
+    try {
+      return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia(SETTINGS_RAIL_QUERY).matches
+        : false;
+    } catch { return false; }
+  };
+  const [rail, setRail] = useState<boolean>(read);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia(SETTINGS_RAIL_QUERY);
+    const onChange = () => setRail(mq.matches);
+    onChange();
+    if (typeof mq.addEventListener === 'function') mq.addEventListener('change', onChange);
+    return () => { if (typeof mq.removeEventListener === 'function') mq.removeEventListener('change', onChange); };
+  }, []);
+  return rail;
+}
+
 /** One collapsible group card in the Settings sheet (owner, 2026-10-23):
  *  the header is a toggle (chevron affordance, aria-expanded); the body
  *  stays MOUNTED and folds on the .set-group-body height track, so folding
- *  never unmounts a control or loses its state — presentation only. */
-export function SectionGroup({ label, open, onToggle, groupRef, testId, children, railActive }: {
+ *  never unmounts a control or loses its state — presentation only.
+ *
+ *  `open` is the EFFECTIVE-open value for the layout on screen (the
+ *  caller derives it from the one activeSection + the stored map, see
+ *  MoreOptions): it drives the fold class, aria-expanded, aria-hidden
+ *  AND inert from a single value, so a body that is rendered visible is
+ *  always the body that is exposed and focusable, and a hidden body is
+ *  unfocusable in both orientations. In rail layout the body is also
+ *  the rail tab's tabpanel (id + role + aria-labelledby complete the
+ *  tab pattern); in portrait it carries no panel role — the accordion
+ *  header above it is its semantics there. */
+export function SectionGroup({ label, open, onToggle, groupRef, testId, children, railActive, sectionId, railLayout }: {
   label: string; open: boolean; onToggle: () => void;
   groupRef?: Ref<HTMLElement>; testId?: string; children: ReactNode;
   /** S2 landscape tab rail: this group is the rail's selected tab (CSS shows only it, unfolded). */
   railActive?: boolean;
+  /** Stable section id: wires the rail tab (aria-controls) to this body (tabpanel). */
+  sectionId?: SettingsSectionId;
+  /** True when the landscape rail layout is the presentation on screen. */
+  railLayout?: boolean;
 }) {
   return (
     <section className={`set-group${railActive ? ' rail-active' : ''}`} aria-label={label} ref={groupRef} data-testid={testId}>
@@ -58,7 +102,14 @@ export function SectionGroup({ label, open, onToggle, groupRef, testId, children
           <span className={`set-chev ${open ? 'open' : ''}`} aria-hidden>▾</span>
         </button>
       </h3>
-      <div className={`set-group-body ${open ? 'open' : ''}`} aria-hidden={!open}>
+      <div
+        className={`set-group-body ${open ? 'open' : ''}`}
+        id={sectionId ? `settings-panel-${sectionId}` : undefined}
+        role={railLayout && sectionId ? 'tabpanel' : undefined}
+        aria-labelledby={railLayout && sectionId ? `settings-tab-${sectionId}` : undefined}
+        aria-hidden={!open}
+        inert={!open}
+      >
         <div className="set-group-inner">{children}</div>
       </div>
     </section>
@@ -93,29 +144,86 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
 }) {
   const [credits, setCredits] = useState(false);
   const [feedback, setFeedback] = useState(false);
-  // Section arrangement: the player's stored map (persisted per device),
-  // plus a per-open forced section from a targeted entry (speaker → sound).
+  // Section arrangement: the player's stored map (persisted per device).
   const [openMap, setOpenMap] = useState<SectionOpenMap>(() => loadSectionOpen());
-  const [forced, setForced] = useState<SettingsSectionId | null>(() => (initialSection === 'sound' ? 'sound' : null));
+  // ONE session active section (responsive audit 2026-11-05, Findings C+D).
+  // Before this, the sheet kept three unsynchronised stores — the persisted
+  // accordion map, a session landscape tab, and the speaker's forced
+  // section — and rotation silently changed which one the layout read, so
+  // the visible section changed under the player. Now:
+  //   activeSection — where the player IS this open. Initialised from a
+  //     targeted entry (the speaker's sound landing, whose "forced open,
+  //     never stored" semantics it generalises), else the first stored-open
+  //     section, else null (nothing session-presented). Set by rail clicks,
+  //     by accordion opens, and by the speaker landing — and by NOTHING
+  //     else. It is never persisted: bwm.settingsSections.v1 keeps its
+  //     exact shape and is written only by explicit accordion toggles.
+  //   presentedOpen(id) — portrait presentation: the stored arrangement,
+  //     plus the active section presented open (the old `forced` read,
+  //     generalised from 'sound'-only to whichever section is active).
+  //   effectiveOpen(id) — the single value SectionGroup consumes: in rail
+  //     layout it is "is the selected tab"; in portrait, presentedOpen.
+  const [activeSection, setActiveSection] = useState<SettingsSectionId | null>(() => (
+    initialSection === 'sound' ? 'sound' : (SETTINGS_SECTION_ORDER.find((id) => openMap[id]) ?? null)
+  ));
   useEffect(() => {
-    if (initialSection === 'sound') setForced('sound');
+    if (initialSection === 'sound') setActiveSection('sound');
   }, [initialSection, anchorSeq]);
-  const isOpen = (id: SettingsSectionId) => forced === id || openMap[id];
+  const railLayout = useRailLayout();
+  /** The tab the rail shows: the active section, or House (the rail's
+   *  long-standing default landing) when nothing is session-active. */
+  const railSelected: SettingsSectionId = activeSection ?? 'house';
+  const presentedOpen = (id: SettingsSectionId) => activeSection === id || openMap[id];
+  const effectiveOpen = (id: SettingsSectionId) => (railLayout ? railSelected === id : presentedOpen(id));
   const toggleSection = (id: SettingsSectionId) => {
-    const next: SectionOpenMap = { ...openMap, [id]: !isOpen(id) };
+    const wasOpen = presentedOpen(id);
+    const next: SectionOpenMap = { ...openMap, [id]: !wasOpen };
     setOpenMap(next);
     saveSectionOpen(next);
-    if (forced === id) setForced(null);
+    if (!wasOpen) setActiveSection(id);
+    else if (activeSection === id) {
+      // Takeover semantics (the old forced-toggle rule, generalised):
+      // deliberately folding the active section persists the fold and
+      // hands active to the next stored-open section, if any.
+      setActiveSection(SETTINGS_SECTION_ORDER.find((x) => next[x]) ?? null);
+    }
   };
-  // S2 landscape tab rail (HANDOFF "Settings sheet"): one section at a time on the right.
-  // Presentation only — portrait keeps the accordion, and every group stays mounted.
-  const [tab, setTab] = useState<SettingsSectionId>(() => (initialSection === 'sound' ? 'sound' : 'house'));
-  useEffect(() => { if (initialSection === 'sound') setTab('sound'); }, [initialSection, anchorSeq]);
+  /** Rail navigation: moves the active section ONLY — never the stored map. */
+  const selectSection = (id: SettingsSectionId) => setActiveSection(id);
+  /** Complete tab pattern: arrows cycle, Home/End jump; selection follows focus. */
+  const onRailKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => {
+    const len = RAIL_TABS.length;
+    const cur = Math.max(0, RAIL_TABS.findIndex(([id]) => id === railSelected));
+    let next: number | null = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (cur + 1) % len;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (cur - 1 + len) % len;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = len - 1;
+    if (next === null) return;
+    e.preventDefault();
+    const id = RAIL_TABS[next]![0];
+    setActiveSection(id);
+    e.currentTarget.querySelector<HTMLElement>(`[data-testid="settings-tab-${id}"]`)?.focus();
+  };
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => onChange({ ...s, [k]: v });
   const rules = settingsToRules(s);
   const isJokerDeck = rules.deck === 'joker54';
   const esc = useEscapeClose(onClose);
   const soundGroupRef = useRef<HTMLElement>(null);
+  // Dialog focus lifecycle (Finding C): the sheet is modal (aria-modal
+  // below), so on open focus moves INTO it, and on close it returns to
+  // the control that opened it (the gear / the speaker), captured here
+  // before the move. No other sheet in the app traps focus, so this
+  // follows the house pattern — initial focus + restoration only; a
+  // focus trap is a flagged follow-up, not invented here.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const invoker = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement
+      : null;
+    sheetRef.current?.focus({ preventScroll: true });
+    return () => { if (invoker && invoker.isConnected) invoker.focus({ preventScroll: true }); };
+  }, []);
   // The Music switch must never sit clipped at the sheet body's bottom fold.
   // Owner report (2026-10-31): "Music settings button doesn't work when I'm in
   // landscape." The landing below pins the group's top to the scrollport's top;
@@ -146,22 +254,22 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
   }, [initialSection, anchorSeq]);
   // The same fold clip waits on the gear path: open Settings, tap the
   // Sound & music rail tab in landscape — same reveal.
-  useEffect(() => { if (tab === 'sound') revealMusicSwitch(); }, [tab]);
+  useEffect(() => { if (activeSection === 'sound') revealMusicSwitch(); }, [activeSection]);
   return (
     <>
     <div className="modal-backdrop sheet-backdrop" ref={esc} onClick={onClose}>
-      <div className="sheet glass slant" role="dialog" aria-label="Settings" onClick={(e) => e.stopPropagation()} data-testid="more-options">
+      <div className="sheet glass slant" role="dialog" aria-modal="true" aria-label="Settings" ref={sheetRef} tabIndex={-1} onClick={(e) => e.stopPropagation()} data-testid="more-options">
         <header className="sheet-head">
           <span className="panel-title">SETTINGS</span>
           <button type="button" className="sheet-close" aria-label="Close" onClick={onClose}>✕</button>
         </header>
-        <nav className="set-rail" role="tablist" aria-label="Settings sections" data-testid="settings-rail">
+        <nav className="set-rail" role="tablist" aria-label="Settings sections" data-testid="settings-rail" onKeyDown={onRailKeyDown}>
           {RAIL_TABS.map(([id, label]) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} data-testid={`settings-tab-${id}`} onClick={() => setTab(id)}>{label}</button>
+            <button key={id} type="button" role="tab" id={`settings-tab-${id}`} aria-controls={`settings-panel-${id}`} aria-selected={railSelected === id} tabIndex={railSelected === id ? 0 : -1} className={railSelected === id ? 'on' : ''} data-testid={`settings-tab-${id}`} onClick={() => selectSection(id)}>{label}</button>
           ))}
         </nav>
         <div className="scroll sheet-body">
-          <SectionGroup railActive={tab === 'house'} label="House rules" open={isOpen('house')} onToggle={() => toggleSection('house')}>
+          <SectionGroup railActive={railSelected === 'house'} sectionId="house" railLayout={railLayout} label="House rules" open={effectiveOpen('house')} onToggle={() => toggleSection('house')}>
               <Row label="Target score" hint={`First to ${rules.targetScore} takes the game`}>
                 <Seg label="Target score" value={s.targetScore} options={targetScoreOptions(s)} onChange={(v) => set('targetScore', v)} />
               </Row>
@@ -233,7 +341,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
               </Row>}
               <Row label="10 for 200"><Toggle value={s.tenForTwoHundred} onChange={(v) => set('tenForTwoHundred', v)} /></Row>
           </SectionGroup>
-          <SectionGroup railActive={tab === 'play'} label="Play" open={isOpen('play')} onToggle={() => toggleSection('play')}>
+          <SectionGroup railActive={railSelected === 'play'} sectionId="play" railLayout={railLayout} label="Play" open={effectiveOpen('play')} onToggle={() => toggleSection('play')}>
           <Row label="Tips while you play" hint="Coach marks + bid coach, until you turn them off">
             <Toggle label="Tips" value={tips.on} onChange={(on) => { const t = { on, asked: true }; saveTips(t); onTips(t); }} />
           </Row>
@@ -249,13 +357,13 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
             <Seg label="Trash talk intensity" value={s.talkIntensity ?? 'cookout'} options={[['family', 'Family'], ['cookout', 'Cookout'], ['nomercy', 'No Mercy']]} onChange={(v) => set('talkIntensity', v)} />
           </Row>
           </SectionGroup>
-          <SectionGroup railActive={tab === 'sound'} label="Sound & music" open={isOpen('sound')} onToggle={() => toggleSection('sound')} groupRef={soundGroupRef} testId="settings-sound-group">
+          <SectionGroup railActive={railSelected === 'sound'} sectionId="sound" railLayout={railLayout} label="Sound & music" open={effectiveOpen('sound')} onToggle={() => toggleSection('sound')} groupRef={soundGroupRef} testId="settings-sound-group">
           <SoundQuickActions />
           <SoundFields />
           <ChatSoundsRow />
           <BotTrashTalkRow />
           </SectionGroup>
-          <SectionGroup railActive={tab === 'look'} label="Look & effects" open={isOpen('look')} onToggle={() => toggleSection('look')}>
+          <SectionGroup railActive={railSelected === 'look'} sectionId="look" railLayout={railLayout} label="Look & effects" open={effectiveOpen('look')} onToggle={() => toggleSection('look')}>
           <Row label="Appearance" hint="Neon Royale is the midnight-navy theme">
             <ThemeToggle />
           </Row>
@@ -272,7 +380,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <NukeIntensityRow />
           <SetAnimRow value={s.setAnim ?? 'auto'} onChange={(v) => set('setAnim', v)} />
           </SectionGroup>
-          <SectionGroup railActive={tab === 'beta'} label="Beta feedback & support" open={isOpen('beta')} onToggle={() => toggleSection('beta')}>
+          <SectionGroup railActive={railSelected === 'beta'} sectionId="beta" railLayout={railLayout} label="Beta feedback & support" open={effectiveOpen('beta')} onToggle={() => toggleSection('beta')}>
           <AboutRow onFeedback={() => setFeedback(true)} />
           <button type="button" className="link sheet-h gold-tab-row" onClick={() => setCredits(true)}>Credits &amp; licenses</button>
           </SectionGroup>

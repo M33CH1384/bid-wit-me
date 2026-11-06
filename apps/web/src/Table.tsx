@@ -116,6 +116,7 @@ import { clearStoryGame, saveStoryGame } from './story/storySave';
 import { beatStartOffsets, scheduleStoryBeats, REPLY_TAIL_RIDE_MS } from './story/beatPacing';
 
 import { useViewport } from './viewport';
+import { bidNeedsConfirmForViewport, gateForRenderedWidth } from './bidConfirmGate';
 import { tapPlaySlamIntensity } from './slam';
 import { effectiveView, handStarted, initialHandView, userToggledView, type HandViewState } from './handView';
 import { Coach, LedSuitChip } from './Coach';
@@ -1095,6 +1096,14 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const pos = useMemo(() => positions(n), [n]);
   const [selected, setSelected] = useState<Card | null>(null);
   const playArmed = useRef(false);
+  // W1 select-then-confirm (PROVISIONAL, pending owner review — the single
+  // gate lives in bidConfirmGate.ts; remove it and this state to revert):
+  // only where the rendered bid buttons would be <44px wide does a tap
+  // select instead of bidding. `bidConfirmGate` starts from that geometry
+  // formula and is refined by a rendered measurement of the first grid
+  // button while the panel is up (see the layout effect below).
+  const [pendingBid, setPendingBid] = useState<number | 'nil' | null>(null);
+  const [bidConfirmGate, setBidConfirmGate] = useState<boolean>(() => bidNeedsConfirmForViewport(window.innerWidth, window.innerHeight));
   const [exchangePick, setExchangePick] = useState<Card[]>([]);
   const [showPad, setShowPad] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1874,6 +1883,33 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // bid coach: inside the bid panel while tips are on (open the first couple of times), or on request ("?")
   const bidTurn = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !!view.hand;
   const coachBid = bidTurn && (coachOn || help);
+  // W1 gate: a pending selection never survives its bidding turn — it
+  // clears when the turn, hand or phase moves on, so a stale selection
+  // can never be confirmed into a later bid.
+  useEffect(() => { setPendingBid(null); }, [st.handNo, st.turn, st.phase, bidTurn]);
+  // W1 gate: refine the formula gate off the RENDERED first grid button
+  // while the panel is up (catches safe-area insets and the chat-open
+  // panel narrowing the formula cannot see). Runs on every render like
+  // the scene publish; the set is a no-op when the value is unchanged.
+  // gateForRenderedWidth abstains (null) on a non-positive rect — no
+  // layout yet means the formula's verdict stands (audit gap G3).
+  useLayoutEffect(() => {
+    if (!bidTurn || vp.short) { if (vp.short && bidConfirmGate) setBidConfirmGate(false); return; }
+    const btn = document.querySelector<HTMLElement>('.bid-grid button');
+    if (!btn) return;
+    const gated = gateForRenderedWidth(btn.getBoundingClientRect().width);
+    if (gated !== null && gated !== bidConfirmGate) setBidConfirmGate(gated);
+  });
+  const onBidTap = (b: number | 'nil') => {
+    if (bidConfirmGate) { setPendingBid(b); return; }
+    apply({ type: 'bid', seat: HUMAN, bid: b });
+  };
+  const confirmPendingBid = () => {
+    if (pendingBid === null) return;
+    const b = pendingBid;
+    setPendingBid(null);
+    apply({ type: 'bid', seat: HUMAN, bid: b });
+  };
   const raisedMin = view.bidOptions ? minBidNote(view.bidOptions, r, partnerSeat >= 0 ? st.bids[partnerSeat] ?? null : null) : null;
   // Bot partner communication (offline only; online views hide other hands, so no estimate is
   // computed there — an online bot who already bid shows that real bid in the same BIDS row, and
@@ -3374,13 +3410,31 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
             <>
               <div className="menu-scrim" onPointerDown={(e) => runLeaveMenu(e, 'scrim')} onPointerUp={(e) => runLeaveMenu(e, 'scrim')} onClick={(e) => runLeaveMenu(e, 'scrim')} />
               <div className="game-menu glass" role="menu" data-testid="game-menu" ref={escMenu}>
-                <button type="button" role="menuitem" className={help ? 'on' : ''} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
-                <button type="button" role="menuitem" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
-                <button type="button" role="menuitem" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
-                <button type="button" role="menuitem" data-testid="view-toggle" onClick={toggleView}>{effView === 'sitting' ? '🪑' : '🧍'} View: {effView === 'sitting' ? 'Sitting' : 'Standing'}</button>
-                <button type="button" role="menuitem" data-testid="turnup-toggle" aria-pressed={turnUp} onClick={toggleTurnUp}>🔥 Turn up: {turnUp ? 'On — Standing slams' : 'Off — gentle plays'}</button>
-                {[1, 2, 3].map((seat) => seat < names.length ? <button key={seat} type="button" role="menuitem" data-testid={`voice-mute-${seat}`} aria-pressed={sound.voiceMuted(names[seat]!)} onClick={() => { sound.setVoiceMuted(names[seat]!, !sound.voiceMuted(names[seat]!)); setMuteTick((t) => t + 1); }}>{sound.voiceMuted(names[seat]!) ? '🔇' : '🔊'} {names[seat]} voice: {sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}</button> : null)}
+                {/* Finding G grouping (presentation only — every label,
+                    testid and handler is the flat menu's own): the two
+                    mid-hand reaches first and prominent, then DISPLAY,
+                    then VOICES as compact per-player chips under one
+                    heading, Social full-width, Leave separated last. */}
+                <div className="menu-primary">
+                  <button type="button" role="menuitem" className={`menu-act${help ? ' on' : ''}`} data-testid="help" aria-pressed={help} onClick={() => { setHelp(!help); setMenuOpen(false); }}>❓ Help: tips &amp; book counting</button>
+                  <button type="button" role="menuitem" className="menu-act" data-testid="scorepad-button" onClick={() => { setShowPad(true); setMenuOpen(false); }}>📋 Score pad &amp; house rules</button>
+                </div>
+                <div className="menu-group" role="group" aria-label="Display">
+                  <div className="menu-group-head" aria-hidden="true">Display</div>
+                  <div className="menu-group-items">
+                    <button type="button" role="menuitem" className="menu-act" onClick={() => onQuality(settings.quality === 'high' ? 'low' : 'high')}>🎨 Graphics: {settings.quality === 'high' ? 'High' : 'Low'}</button>
+                    <button type="button" role="menuitem" className="menu-act" data-testid="view-toggle" onClick={toggleView}>{effView === 'sitting' ? '🪑' : '🧍'} View: {effView === 'sitting' ? 'Sitting' : 'Standing'}</button>
+                    <button type="button" role="menuitem" className="menu-act" data-testid="turnup-toggle" aria-pressed={turnUp} onClick={toggleTurnUp}>🔥 Turn up: {turnUp ? 'On — Standing slams' : 'Off — gentle plays'}</button>
+                  </div>
+                </div>
+                <div className="menu-group menu-voices" role="group" aria-label="Player voices">
+                  <div className="menu-group-head" aria-hidden="true">Voices</div>
+                  <div className="menu-group-items">
+                    {[1, 2, 3].map((seat) => seat < names.length ? <button key={seat} type="button" role="menuitem" className="menu-act voice-chip" data-testid={`voice-mute-${seat}`} aria-pressed={sound.voiceMuted(names[seat]!)} aria-label={`${names[seat]} voice: ${sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}`} title={names[seat]} onClick={() => { sound.setVoiceMuted(names[seat]!, !sound.voiceMuted(names[seat]!)); setMuteTick((t) => t + 1); }}><span className="voice-chip-icon" aria-hidden="true">{sound.voiceMuted(names[seat]!) ? '🔇' : '🔊'}</span><span className="voice-chip-name">{names[seat]}</span><span className="voice-chip-state">{sound.voiceMuted(names[seat]!) ? 'muted' : 'on'}</span></button> : null)}
+                  </div>
+                </div>
                 <div className="menu-social"><SocialButton className="compact" /></div>
+                <div className="menu-divider" aria-hidden="true" />
                 <button type="button" role="menuitem" className="danger" data-testid="menu-leave" onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); runLeaveMenu(e, 'leave'); }} onPointerUp={(e) => runLeaveMenu(e, 'leave')} onClick={(e) => runLeaveMenu(e, 'leave')}>🚪 Leave table</button>
               </div>
             </>
@@ -3534,10 +3588,17 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
               )}
               <div className="bid-grid">
                 {bidChoices(view.bidOptions.min, view.bidOptions.max).map((b) => (
-                  <button type="button" key={b} onClick={() => apply({ type: 'bid', seat: HUMAN, bid: b })}>{b}</button>
+                  <button type="button" key={b} data-testid={`bid-${b}`} className={bidConfirmGate && pendingBid === b ? 'selected' : undefined} aria-pressed={bidConfirmGate ? pendingBid === b : undefined} onClick={() => onBidTap(b)}>{b}</button>
                 ))}
-                {view.bidOptions.nil && <button type="button" className="nil" onClick={() => apply({ type: 'bid', seat: HUMAN, bid: 'nil' })}>NIL</button>}
+                {view.bidOptions.nil && <button type="button" data-testid="bid-nil" className={`nil${bidConfirmGate && pendingBid === 'nil' ? ' selected' : ''}`} aria-pressed={bidConfirmGate ? pendingBid === 'nil' : undefined} onClick={() => onBidTap('nil')}>NIL</button>}
               </div>
+              {bidConfirmGate && (
+                <div className="bid-confirm-row">
+                  <button type="button" className="bid-confirm" data-testid="bid-confirm" disabled={pendingBid === null} onClick={confirmPendingBid}>
+                    {pendingBid === null ? 'Tap a bid' : pendingBid === 'nil' ? 'Confirm NIL bid' : `Confirm bid ${pendingBid}`}
+                  </button>
+                </div>
+              )}
               {canMisdeal && (
                 <button type="button" className="misdeal-btn misdeal-in-panel" data-testid="misdeal" onClick={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }}>Call misdeal — no spades</button>
               )}

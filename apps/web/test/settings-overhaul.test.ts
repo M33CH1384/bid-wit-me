@@ -164,10 +164,20 @@ describe('settings follow-ups CSS (owner, 2026-10-20)', () => {
   const tail = css.slice(css.indexOf('Settings follow-ups'));
 
   it('Neon volume sliders take the violet family — no electric-blue track in the sheets', () => {
-    const webkit = tail.slice(tail.indexOf('html[data-theme="neon"] .sheet .vol-slider::-webkit-slider-runnable-track'));
+    // Scope: the two slider-track rule BODIES. (2026-11-05 responsive audit:
+    // this assertion previously sliced to end-of-file, which silently assumed
+    // no later rule in the sheet uses --purple-hot; the bid panel's NIL paint
+    // has used --purple-hot since before the audit and its de-clipped
+    // ::before copy now sits after these rules. The invariant is unchanged —
+    // the Neon sheet slider tracks themselves must stay in the violet family.)
+    const ruleBody = (from: string) => { const s = tail.indexOf(from); return tail.slice(s, tail.indexOf('}', s) + 1); };
+    const webkit = ruleBody('html[data-theme="neon"] .sheet .vol-slider::-webkit-slider-runnable-track');
+    const moz = ruleBody('html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress');
     expect(webkit).toContain('var(--purple)');
     expect(webkit).not.toContain('#269cff');
     expect(webkit).not.toContain('--purple-hot'); // --purple-hot IS #269cff under Neon: the clash
+    expect(moz).toContain('var(--purple)');
+    expect(moz).not.toContain('--purple-hot');
     expect(tail).toContain('html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress');
     // the retired sound popover's copies of these rules are gone with it
     expect(tail).not.toContain('.sound-pop');
