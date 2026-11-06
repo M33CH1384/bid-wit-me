@@ -239,6 +239,15 @@ export interface OnlineBinding {
   /** Table Talk (between hands): countdown, who's ready, and the enlarged video / avatar tile per local seat */
   /** tips on → ask the server for longer turn timers for this player */
   setLearning?: (on: boolean) => void;
+  /** Toss-the-hand poll (online): the room's open poll in LOCAL seats, the hand
+   *  a poll already died on, and the two sends. Absent offline (Table runs the
+   *  single-human confirm locally) and where the room refuses polls. */
+  toss?: {
+    poll: { callerName: string; voters: number[]; yes: number[]; no: number[]; expiresAt: number; mine: boolean; myVote: boolean | null } | null;
+    deadHand?: number;
+    call: () => void;
+    vote: (yes: boolean) => void;
+  };
   talk?: { secs: number | null; ready: { mine: boolean; count: number; of: number }; tile: (seat: number) => ReactNode };
   /** per local side: custom team name (null = partner names) */
   teamNames?: (string | null)[];
@@ -804,6 +813,77 @@ function MisdealButton({ onCall }: { onCall: () => void }) {
 }
 
 /**
+ * 'Toss the hand?' — shown only while the engine proves a set is locked
+ * (view.toss). Offline the tap opens the confirm sheet (the human's vote is
+ * the only one; the bots consent). Online the tap calls the room poll.
+ */
+function TossButton({ onCall }: { onCall: () => void }) {
+  return (
+    <div className="toss-wrap">
+      <button type="button" className="toss-btn" data-testid="toss-call" onClick={onCall}>Toss the hand? 🗑</button>
+    </div>
+  );
+}
+
+/**
+ * The toss poll sheet: the flat outcome, in the open — each side's score if
+ * the cards go in now — and the vote. One surface for both modes:
+ * offline it IS the poll (the human decides; "Keep playing" is their No and
+ * kills the poll for the hand; closing casts nothing), online it carries
+ * the room poll (vote / waiting / watching). If the poll runs out, the
+ * hand plays on.
+ */
+function TossSheet({ sub, lines, mode, expiresAt, onYes, onNo, onClose }: {
+  sub: string;
+  lines: { label: string; points: number; set: boolean }[];
+  mode: 'decide' | 'vote' | 'waiting' | 'watch';
+  expiresAt?: number;
+  onYes?: () => void;
+  onNo?: () => void;
+  onClose?: () => void;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (expiresAt === undefined) return;
+    const iv = window.setInterval(() => setTick((t) => t + 1), 500);
+    return () => window.clearInterval(iv);
+  }, [expiresAt]);
+  const secsLeft = expiresAt !== undefined ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)) : null;
+  return (
+    <div className="toss-overlay" data-testid="toss-sheet" role="dialog" aria-label="Toss the hand?">
+      <div className="toss-sheet glass">
+        {onClose && <button type="button" className="toss-x" aria-label="Close" onClick={onClose}>×</button>}
+        <div className="toss-head">Toss the hand?</div>
+        <div className="toss-sub">{sub}</div>
+        <div className="toss-lines">
+          {lines.map((l) => (
+            <div key={l.label} className={`toss-line${l.set ? ' set' : ''}`}>
+              <span className="toss-line-name">{l.label}{l.set && <em className="toss-set-tag">SET</em>}</span>
+              <b className="toss-line-pts">{l.points > 0 ? `+${l.points}` : l.points < 0 ? `−${-l.points}` : '0'}</b>
+            </div>
+          ))}
+        </div>
+        {mode === 'decide' && (
+          <div className="toss-actions">
+            <button type="button" className="toss-yes" data-testid="toss-yes" onClick={onYes}>Toss the cards</button>
+            <button type="button" className="toss-no" data-testid="toss-no" onClick={onNo}>Keep playing</button>
+          </div>
+        )}
+        {mode === 'vote' && (
+          <div className="toss-actions">
+            <button type="button" className="toss-yes" data-testid="toss-yes" onClick={onYes}>Yes — toss it</button>
+            <button type="button" className="toss-no" data-testid="toss-no" onClick={onNo}>No — play on</button>
+          </div>
+        )}
+        {mode === 'waiting' && <div className="toss-wait" data-testid="toss-waiting">Your vote is in — waiting on the rest of the table…</div>}
+        {mode === 'watch' && <div className="toss-wait">The table is voting…</div>}
+        {secsLeft !== null && <div className="toss-clock">Poll closes in {Math.floor(secsLeft / 60)}:{String(secsLeft % 60).padStart(2, '0')} — if it runs out, the hand plays on</div>}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The announcement: a misdeal is CALLED, out loud — who called it and why (no spades), and who
  * the deal passes to — with the caller's whole hand face up as the whole table's proof. It rides
  * the gather beat while every hand slides across to the incoming dealer's deck spot; the shuffle
@@ -975,6 +1055,11 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   useEffect(() => { const el = screenRef.current; return el ? guardTouches(el) : undefined; }, []);
   const learning = tips.on && !tipsSkipped;
   const [tipOpen, setTipOpen] = useState(false);
+  // Toss-the-hand poll, offline: the confirm sheet is open (bots hold while it
+  // is — the sheet rides the same `hold` the learning tips use), and the hand
+  // a "Keep playing" already killed the poll for.
+  const [tossSheet, setTossSheet] = useState(false);
+  const [tossDeadLocal, setTossDeadLocal] = useState<number | null>(null);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
   const n0 = (resume?.state.rules ?? initialRules).playerCount;
   // Rematch seat carry (owner, 2026-11-04): an explicit hand-in (the recovery
@@ -1002,7 +1087,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const [sceneFirstFrame, setSceneFirstFrame] = useState(false);
   const [gateMountedAt] = useState(() => Date.now());
   const onSceneFirstFrame = useCallback(() => setSceneFirstFrame(true), []);
-  const { st, view, pause, error, apply, introHand, dealing, dealSettled, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, learning && tipOpen, startDealer, partnerHint, localReport, dealReady, sceneDealt, !!story);
+  const { st, view, pause, error, apply, introHand, dealing, dealSettled, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, (learning && tipOpen) || tossSheet, startDealer, partnerHint, localReport, dealReady, sceneDealt, !!story);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
@@ -1656,6 +1741,15 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // a stalled scene no longer strands the call, and no timer can show it over a
   // partially-dealt hand. A landed call runs the redeal sequence below.
   const canMisdeal = !spectating && dealSettled && st.phase === 'bidding' && !!view.canMisdeal && misdealDealGate(st, view);
+  // Toss-the-hand poll (owner, 2026-11-05): the engine's view carries the
+  // locked set (view.toss); the call is live only while no live Nil blocks
+  // it, no poll is already open or dead for this hand, and never in story
+  // mode (excluded by the owner — online story rooms refuse server-side too).
+  const tossPoll = online?.toss?.poll ?? null;
+  const canToss = !spectating && !story && !dealing && st.phase === 'playing' && !!view.toss && !view.tossBlockedByNil
+    && (online ? (!!online.toss && !tossPoll && online.toss.deadHand !== st.handNo) : tossDeadLocal !== st.handNo && !tossSheet);
+  const tossBlockedNote = !spectating && !story && st.phase === 'playing' && !!view.toss && view.tossBlockedByNil;
+  const tossSideName = (side: number): string => (online ? online.sideLabel(side) : sideName(r, side, names));
   // When the human's bid panel is up, the misdeal call lives INSIDE that panel (impossible to miss);
   // the floating button only covers the window while other seats are still bidding.
   const bidPanelShowing = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !autoReveal;
@@ -3487,6 +3581,40 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
       {canMisdeal && !bidPanelShowing && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
+      {canToss && <TossButton onCall={() => { setSelected(null); if (online) online.toss!.call(); else setTossSheet(true); }} />}
+      {tossBlockedNote && (
+        <div className="toss-wrap"><span className="toss-note" data-testid="toss-blocked">Nil still live — this hand plays out</span></div>
+      )}
+      {view.toss && (() => {
+        const lines = [0, 1].map((side) => ({ label: tossSideName(side), points: view.toss!.points[side] ?? 0, set: view.toss!.setSides.includes(side) }));
+        const bothSet = view.toss.setSides.length > 1;
+        const setNames = view.toss.setSides.map((s) => tossSideName(s)).join(' and ');
+        if (!online && tossSheet && st.phase === 'playing') {
+          return (
+            <TossSheet
+              mode="decide"
+              sub={bothSet ? 'Neither side can reach its bid — both score as set. Score the hand flat on the bids and deal the next one?' : `${setNames} can't reach their bid — they're set. Score the hand flat on the bids and deal the next one?`}
+              lines={lines}
+              onYes={() => { setTossSheet(false); setSelected(null); apply({ type: 'toss', seat: HUMAN }); }}
+              onNo={() => { setTossSheet(false); setTossDeadLocal(st.handNo); }}
+              onClose={() => setTossSheet(false)}
+            />
+          );
+        }
+        if (online && tossPoll) {
+          return (
+            <TossSheet
+              mode={tossPoll.mine ? (tossPoll.myVote === null ? 'vote' : 'waiting') : 'watch'}
+              sub={bothSet ? `${tossPoll.callerName} calls a toss — neither side can reach its bid; both score as set.` : `${tossPoll.callerName} calls a toss — ${setNames} can't reach their bid. Score the hand flat on the bids?`}
+              lines={lines}
+              expiresAt={tossPoll.expiresAt}
+              onYes={() => online.toss?.vote(true)}
+              onNo={() => online.toss?.vote(false)}
+            />
+          );
+        }
+        return null;
+      })()}
       {revealHold && (
         <MisdealReveal
           title={revealHold.title}

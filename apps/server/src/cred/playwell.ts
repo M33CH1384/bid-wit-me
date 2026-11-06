@@ -19,6 +19,15 @@
  *   Set Them     +4 XP each time the player's side set the opponents —
  *                the challenge system's shots_given count — max +12 XP
  *                per game from this feat.
+ *   Forced the Toss  +25 XP each time the player's side forced a tossed
+ *                hand (the toss-the-hand poll: the opponents' set was
+ *                mathematically locked and the table voted to toss).
+ *                OWNER EXEMPTION (2026-11-05, flagged for his veto): this
+ *                line sits OUTSIDE the 40 XP/game cap below — it cannot
+ *                be farmed (it needs a locked set AND the opponents'
+ *                unanimous consent to end the hand). It still settles at
+ *                the half rate in bot/unrated games and still counts
+ *                against the 200/day ledger like every other line.
  *   Comeback     won after trailing by 100+ at the end of any hand (the
  *                stats.maxDeficit derivation): +10 XP.
  *   Domination   won by 150+: +8 XP.
@@ -55,6 +64,10 @@ export const TABLE_RUN_COINS = 15;
 export const NIL_XP = 6;
 export const BLIND_NIL_XP = 12;
 export const SET_THEM_XP = 4;
+/** Forced the Toss, per tossed hand forced (paid to each player on the forcing side). */
+export const FORCED_TOSS_XP = 25;
+/** The cap-exempt line's id (see settlePlayWell). */
+export const FORCED_TOSS_LINE_ID = 'forced-toss';
 export const COMEBACK_XP = 10;
 export const COMEBACK_MIN_DEFICIT = 100;
 export const DOMINATION_XP = 8;
@@ -93,6 +106,8 @@ export function playWellLines(stats: PlayerGameStats, o: { won: boolean; finalMa
   if (blind > 0) lines.push({ id: 'blind-nil', label: plural(blind, 'Made a blind nil', 'Made blind nils ×{n}'), xp: BLIND_NIL_XP * blind, coins: 0 });
   const shots = stats.shotsGiven ?? 0;
   if (shots > 0) lines.push({ id: 'set-them', label: plural(shots, 'Set the opponents', 'Set the opponents ×{n}'), xp: Math.min(SET_THEM_XP * shots, PLAY_WELL_SET_THEM_CAP_XP), coins: 0 });
+  const tosses = stats.tossesForced ?? 0;
+  if (tosses > 0) lines.push({ id: FORCED_TOSS_LINE_ID, label: plural(tosses, 'Forced the Toss', 'Forced the Toss ×{n}'), xp: FORCED_TOSS_XP * tosses, coins: 0 });
   if (o.won && (stats.maxDeficit ?? 0) >= COMEBACK_MIN_DEFICIT) lines.push({ id: 'comeback', label: 'Comeback win', xp: COMEBACK_XP, coins: 0 });
   if (o.won && o.finalMargin >= DOMINATION_MIN_MARGIN) lines.push({ id: 'domination', label: `Domination — won by ${o.finalMargin}`, xp: DOMINATION_XP, coins: 0 });
   return lines;
@@ -101,21 +116,37 @@ export function playWellLines(stats: PlayerGameStats, o: { won: boolean; finalMa
 /**
  * Settle full-rate lines into what is actually paid: the half rate for
  * bot/unrated games applies per line, floored the way base rounds
- * (25 → 12), coins included; then one XP budget — the smaller of the
- * per-game cap and the day's remaining allowance — trims lines in
- * display order. Coins are never trimmed by the XP caps. A line whose
- * XP trims to zero survives only if it still carries coins.
+ * (25 → 12), coins included; then the XP budgets trim lines in display
+ * order. Coins are never trimmed by the XP caps. A line whose XP trims
+ * to zero survives only if it still carries coins.
+ *
+ * Two budgets, one walk: the family's lines trim against the smaller of
+ * the per-game cap and the day's remaining allowance, exactly as they
+ * always have. The Forced-the-Toss line (owner exemption, see the file
+ * header) does NOT consume the per-game cap — it trims only against
+ * what is left of the day's allowance after the lines ahead of it have
+ * settled, and every line's paid XP (the toss line's included) counts
+ * against that daily allowance, so the cred_playwell row stays the one
+ * ledger the 200/day cap reads.
  */
 export function settlePlayWell(lines: PlayWellLine[], o: { half: boolean; dailyAllowance: number }): { lines: PlayWellLine[]; xp: number; coins: number } {
   let budget = Math.max(0, Math.min(PLAY_WELL_GAME_CAP_XP, o.dailyAllowance));
+  let dailyLeft = Math.max(0, o.dailyAllowance);
   const out: PlayWellLine[] = [];
   let xp = 0;
   let coins = 0;
   for (const l of lines) {
     let lx = o.half ? Math.floor(l.xp / 2) : l.xp;
     const lc = o.half ? Math.floor(l.coins / 2) : l.coins;
-    if (lx > budget) lx = budget;
-    budget -= lx;
+    if (l.id === FORCED_TOSS_LINE_ID) {
+      if (lx > dailyLeft) lx = dailyLeft;
+      dailyLeft -= lx;
+    } else {
+      if (lx > budget) lx = budget;
+      if (lx > dailyLeft) lx = dailyLeft;
+      budget -= lx;
+      dailyLeft -= lx;
+    }
     if (lx <= 0 && lc <= 0) continue;
     out.push({ id: l.id, label: l.label, xp: lx, coins: lc });
     xp += lx;

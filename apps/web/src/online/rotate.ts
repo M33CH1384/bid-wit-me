@@ -44,7 +44,9 @@ function rotSide(s: SideHandResult, rot: Rotation): SideHandResult {
 }
 
 function rotRecord(h: HandRecord, rot: Rotation): HandRecord {
-  return { ...h, dealer: rot.L(h.dealer), bids: permute(h.bids, rot), tricksWon: permute(h.tricksWon, rot), sides: permute(h.sides.map((s) => rotSide(s, rot)), rot, true) };
+  return { ...h, dealer: rot.L(h.dealer), bids: permute(h.bids, rot), tricksWon: permute(h.tricksWon, rot), sides: permute(h.sides.map((s) => rotSide(s, rot)), rot, true),
+    // a tossed hand's set sides are side indices: they rotate with the sides or the recap blames the wrong team
+    ...(h.tossed ? { tossed: { setSides: h.tossed.setSides.map((s) => rot.Ls(s)) } } : {}) };
 }
 
 function rotResult(r: GameResult | null, rot: Rotation): GameResult | null {
@@ -108,6 +110,8 @@ export function rotateView(v: PlayerView): { st: GameState; view: PlayerView; ro
     // A called misdeal's thrown hand is face up for the whole table: the cards ride as-is (public),
     // only the caller's seat moves into the local frame.
     ...(v.misdealReveal ? { misdealReveal: { seat: rot.L(v.misdealReveal.seat), cards: v.misdealReveal.cards } } : {}),
+    // The toss offer is public table state; its sides rotate into the local frame like the scores do.
+    toss: v.toss ? { setSides: v.toss.setSides.map((s) => rot.Ls(s)), points: permute(v.toss.points, rot, true) } : null,
   };
   return { st, view, rot };
 }

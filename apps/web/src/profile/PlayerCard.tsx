@@ -167,6 +167,7 @@ export interface PlayerCardData {
      *  stats. Optional only so a stale cached payload degrades to no row
      *  instead of breaking the card */
     tkos?: { dealt: number; suffered: number };
+    tosses?: { forced: number; conceded: number };
   };
   vsViewer?: { games: number; wins: number; losses: number };
 }
@@ -500,6 +501,12 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
                         <tr className="tkorow" data-testid="pcard-row-tko">
                           <th scope="row">1st Round TKOs</th>
                           <td colSpan={4}>{s.tkos.dealt}</td>
+                        </tr>
+                      )}
+                      {s.tosses && (
+                        <tr className="tossrow" data-testid="pcard-row-toss">
+                          <th scope="row">Tosses forced</th>
+                          <td colSpan={4}>{s.tosses.forced}{s.tosses.conceded ? ` · ${s.tosses.conceded} conceded` : ''}</td>
                         </tr>
                       )}
                     </tbody>

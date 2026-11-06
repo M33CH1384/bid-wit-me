@@ -160,6 +160,67 @@ export function scoreHand(
   return out;
 }
 
+/**
+ * Scores a TOSSED hand (the toss-the-hand poll, owner 2026-11-05): the hand
+ * ended early by unanimous vote because a side's set was mathematically
+ * locked, and it scores FLAT on the two contracts — the set side loses
+ * exactly its bid × 10, the winning side gains exactly its bid × 10.
+ * Tricks already played produce no books and no bags on top: `tricks` /
+ * `contractTricks` report the played counts honestly, `bagsAdded` is 0 and
+ * the running bag totals pass through untouched (no penalty can trigger).
+ * Nils are the one exception to flatness: a nil in a tossed hand is always
+ * DECIDED (the toss cannot resolve while a nil is live and bustable — see
+ * `tossStatus` in game.ts), and it scores by the engine's normal nil
+ * accounting from the tricks actually taken: made iff the bidder took none.
+ * `contractMade` names the toss outcome: false for every side in
+ * `setSides`, true for a side with a contract that was conceded the hand —
+ * so `isShot` and the set counts derived from the record treat a tossed
+ * hand exactly as what it is: a set for the losing side.
+ * `tenForTwoHundred` does NOT apply: the ruling is exactly bid × 10.
+ */
+export function scoreTossedHand(
+  r: TableRules,
+  bids: readonly Bid[],
+  tricksWon: readonly number[],
+  scores: readonly number[],
+  bags: readonly number[],
+  setSides: readonly number[],
+): SideHandResult[] {
+  const out: SideHandResult[] = [];
+  for (let side = 0; side < sideCount(r); side++) {
+    const seats = sideSeats(side, r);
+    let contract = 0, contractTricks = 0, nilTricks = 0, tricks = 0, nilPoints = 0;
+    const nils: NilResult[] = [];
+    for (const s of seats) {
+      const b = bids[s]!;
+      const t = tricksWon[s]!;
+      tricks += t;
+      if (isNilBid(b)) {
+        const value = b === 'nil' ? nilRulesOf(r).value : blindNilRulesOf(r).value;
+        const made = t === 0;
+        const points = made ? value : -value;
+        nils.push({ seat: s, kind: b, tricks: t, made, points });
+        nilPoints += points;
+        nilTricks += t;
+      } else if (typeof b === 'number') {
+        contract += b;
+        contractTricks += t;
+      }
+    }
+    if (r.nilTricksCountForPartner) contractTricks += nilTricks;
+    const set = setSides.includes(side);
+    const contractMade: boolean | null = contract > 0 ? !set : null;
+    const contractPoints = contract > 0 ? (set ? -10 : 10) * contract : 0;
+    const points = contractPoints + nilPoints;
+    out.push({
+      side, seats, contract, contractTricks, tricks, contractMade, contractPoints, nils,
+      bagsAdded: 0, bagPenaltyCount: 0, bagPenaltyPoints: 0, bookPoints: 0, points,
+      totalScore: scores[side]! + points, totalBags: bags[side]!,
+    });
+  }
+  return out;
+}
+
 export interface GameResult {
   /**
    * How the game ended. shotOut: a side was shot on hand 1, two hands in a row, or while on a

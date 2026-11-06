@@ -8,7 +8,7 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, botPaceDelayMs, canRunIt, isJoker, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, secureSeed, lastCardDropOpen, viewFor, withCompleteNil,
+  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, botPaceDelayMs, canRunIt, isJoker, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, secureSeed, lastCardDropOpen, tossStatus, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
@@ -130,6 +130,24 @@ export interface RoomData {
   outSeats?: { playerId: string; seat: number }[];
   /** open vote-kicks: target player id → voter ids */
   votes?: Record<string, string[]>;
+  /**
+   * The open toss-the-hand poll (regular partnership tables only): the
+   * electorate snapshot (seat → playerId for every human seat when the
+   * poll opened — bots consent by construction and never appear), the
+   * votes cast (the caller's Yes is recorded at open), and its lifetime.
+   * While a poll is open the table is frozen (see drive()): no bot moves,
+   * no auto-plays, and the turn clock is preserved, never consumed.
+   */
+  tossPoll?: {
+    handNo: number;
+    callerSeat: number;
+    voters: Record<number, string>;
+    votes: Record<number, boolean>;
+    openedAt: number;
+    expiresAt: number;
+  } | null;
+  /** the hand number whose toss poll died (a No, or expiry): no re-call that hand */
+  tossDeadHand?: number;
   gamesPlayed: number;
   /** Release 9: per-seat counters for the current game (think times, Big Joker wins) */
   live?: LiveStats;
@@ -338,6 +356,13 @@ export const PRE_DEAL_MS = 14_000;
  * did not resolve it. The server then plays a legal bid or card itself.
  */
 export const BOT_WATCHDOG_MS = 5_000;
+/**
+ * How long a toss-the-hand poll stays open (the poll's own clock — the
+ * game's turn timers are untouched by it). Expiry kills the poll for the
+ * hand: a voter who never answers cannot hold the table hostage, and
+ * their silence cannot be farmed either — the hand simply plays on.
+ */
+export const TOSS_POLL_MS = 30_000;
 
 /** What the host environment (Durable Object or test harness) provides. */
 export interface RoomIO {
@@ -1387,6 +1412,14 @@ export class Room {
         else this.storyConcede(me.name);
         break;
       }
+      case 'tossCall': {
+        this.tossCall(me);
+        break;
+      }
+      case 'tossVote': {
+        this.tossVote(me, pid, msg.yes);
+        break;
+      }
       case 'leave': {
         this.leave(pid);
         this.conns.set(connId, null);
@@ -1434,6 +1467,11 @@ export class Room {
     try {
       if (d.phase !== 'playing' || !d.game) throw new RoomError('WRONG_PHASE', 'No game in progress');
       if (me.seat === null) throw new RoomError('NOT_SEATED', 'You are not seated');
+      // A toss poll freezes the table: no card or bid may land while the
+      // table is voting on the position (the vote would be about a
+      // position that no longer exists, and the poll must not eat the
+      // current player's clock — drive() holds every timer meanwhile).
+      if (d.tossPoll) throw new RoomError('POLL_OPEN', 'A toss poll is open — vote first');
       const a = msg.action;
       const action: Action = a.type === 'reveal' ? { type: 'reveal', seat: me.seat }
         : a.type === 'bid' ? { type: 'bid', seat: me.seat, bid: a.bid }
@@ -1708,6 +1746,8 @@ export class Room {
     d.outPlayers = [];
     d.outSeats = [];
     d.votes = {};
+    d.tossPoll = null;
+    d.tossDeadHand = undefined;
     for (const m of Object.values(d.members)) m.timeouts = 0;
     this.system(`Game ${d.gamesPlayed} started`);
   }
@@ -1752,6 +1792,121 @@ export class Room {
   /** The hand log as plain JSON for GET /api/tables/<code>/handlog (testing). */
   handLogJson(): GameHandLog | null {
     return this.data.handLog ?? null;
+  }
+
+  /* ------------------------------------------------------ toss the hand */
+
+  /**
+   * Open a toss poll (the caller's Yes is implicit). Regular partnership
+   * tables only — never story (a story match is the pair's own road),
+   * never tournament / Big Bank (stakes tables play their hands out), and
+   * only while the engine says the position can be tossed: a set is
+   * locked and no live Nil is still in doubt. The electorate is the human
+   * seats at open; bots consent by construction.
+   */
+  private tossCall(me: Member): void {
+    const d = this.data;
+    if (d.story) throw new RoomError('LOCKED', 'No toss polls at a story table');
+    if (d.tournament) throw new RoomError('LOCKED', 'No toss polls at tournament tables');
+    if (d.challenge) throw new RoomError('LOCKED', 'No toss polls at Big Bank tables');
+    if (d.phase !== 'playing' || !d.game || d.game.phase !== 'playing') throw new RoomError('WRONG_PHASE', 'No hand in play');
+    if (me.seat === null) throw new RoomError('NOT_SEATED', 'Only players at the table can call a toss');
+    if (d.tossPoll) throw new RoomError('POLL_OPEN', 'A toss poll is already open');
+    if (d.tossDeadHand === d.game.handNo) throw new RoomError('POLL_DEAD', 'The table already voted this hand down — it plays out');
+    const t = tossStatus(d.game);
+    if (!t || !t.available) throw new RoomError('CANNOT_TOSS', 'A toss needs a set that is mathematically locked, with no live Nil in doubt');
+    const now = this.io.now();
+    const voters: Record<number, string> = {};
+    d.seats.slice(0, d.game.rules.playerCount).forEach((s, seat) => { if (s.kind === 'human') voters[seat] = s.playerId; });
+    d.tossPoll = {
+      handNo: d.game.handNo, callerSeat: me.seat, voters,
+      votes: { [me.seat]: true }, openedAt: now, expiresAt: now + TOSS_POLL_MS,
+    };
+    const setNames = t.setSides.map((side) => [side, side + 2].map((s) => this.seatName(s as Seat)).join(' & ')).join(' and ');
+    this.system(`${me.name} calls a toss: ${setNames} can't get there — toss the hand? (scores flat on the bids)`);
+    this.checkTossPoll();
+  }
+
+  /** Cast a vote in the open toss poll. Votes are final once cast. */
+  private tossVote(me: Member, pid: string, yes: boolean): void {
+    const d = this.data;
+    const poll = d.tossPoll;
+    if (!poll) throw new RoomError('NO_POLL', 'No toss poll is open');
+    const seat = me.seat;
+    // the voter must be the very member the poll opened with: a seat that
+    // changed hands mid-poll is covered by its bot (bots consent) instead
+    if (seat === null || poll.voters[seat] !== pid) throw new RoomError('NOT_SEATED', 'Only players at the table can vote');
+    if (poll.votes[seat] !== undefined) return; // already cast — final
+    poll.votes[seat] = yes;
+    if (!yes) {
+      d.tossDeadHand = poll.handNo;
+      this.system(`${me.name} votes no — the hand plays on`);
+      this.closeTossPoll(true);
+      return;
+    }
+    this.checkTossPoll();
+  }
+
+  /**
+   * Resolve the poll if every elector is accounted for: a Yes on record,
+   * or a seat that has changed hands since the poll opened (a bot covers
+   * it now, and bots consent). On unanimity the engine's toss action is
+   * applied through the normal path — hand log, highlights and talk all
+   * ride along, and the hand ends on the flat score.
+   */
+  private checkTossPoll(): void {
+    const d = this.data;
+    const poll = d.tossPoll;
+    if (!poll || !d.game) return;
+    for (const [seatKey, pid] of Object.entries(poll.voters)) {
+      const seat = Number(seatKey);
+      if (poll.votes[seat] === true) continue;
+      const slot = d.seats[seat];
+      if (slot && slot.kind === 'human' && slot.playerId === pid) return; // still waiting on this player
+    }
+    const callerSeat = poll.callerSeat as Seat;
+    d.tossPoll = null;
+    try {
+      this.apply({ type: 'toss', seat: callerSeat });
+      const rec = d.game.history[d.game.history.length - 1];
+      if (rec?.tossed) {
+        const line = rec.sides.map((s) => `${s.seats.map((x) => this.seatName(x)).join(' & ')} ${s.points >= 0 ? '+' : ''}${s.points}`).join(' · ');
+        this.system(`Cards tossed — hand ${rec.handNo} scores flat: ${line}`);
+      }
+    } catch (e) {
+      console.error('toss resolve failed', e);
+      d.tossDeadHand = poll.handNo;
+    }
+  }
+
+  /** The poll's clock ran out: the hand plays on, and the poll is dead for this hand. */
+  private expireTossPoll(): void {
+    const d = this.data;
+    if (!d.tossPoll) return;
+    d.tossDeadHand = d.tossPoll.handNo;
+    this.system('The toss poll expired — the hand plays on');
+    this.closeTossPoll(true);
+  }
+
+  /**
+   * Close the open poll. When the hand plays on (`shiftClock`), the turn
+   * clock is made whole: `turnStartedAt` moves forward by the poll's
+   * whole life, so the player on the clock keeps exactly the time they
+   * had when the poll opened — a poll never eats anyone's 30 seconds.
+   * Bot pacing re-derives from the shifted start on the next drive pass.
+   */
+  private closeTossPoll(shiftClock: boolean): void {
+    const d = this.data;
+    const poll = d.tossPoll;
+    if (!poll) return;
+    if (shiftClock && d.game && d.game.handNo === poll.handNo && d.turnStartedAt != null) {
+      d.turnStartedAt += this.io.now() - poll.openedAt;
+      d.deadline = null;
+      d.botDueAt = null;
+      d.dropSeat = null;
+      d.dropDueAt = null;
+    }
+    d.tossPoll = null;
   }
 
   private apply(action: Action): void {
@@ -2622,6 +2777,23 @@ export class Room {
         const pt = pendingTurn(g);
         if (pt && (pt.kind === 'bid' || pt.kind === 'play')) this.io.turnBegan?.(pt.seat, pt.kind);
       } else if (d.turnSeq === undefined) d.turnSeq = d.seq ?? 0;
+      // Toss-the-hand poll: while a poll is open the table is frozen — no
+      // bot moves, no Run it! claims, no auto-plays, and the turn clock
+      // does not run (closeTossPoll shifts turnStartedAt by the poll's
+      // whole life, so the player on the clock keeps exactly the time
+      // they had). The poll's own expiry is the only clock running; it
+      // wakes the room even with nobody connected, so a silent voter
+      // cannot hold the table.
+      if (d.tossPoll) {
+        const poll = d.tossPoll;
+        if (g.phase !== 'playing' || g.handNo !== poll.handNo) { d.tossPoll = null; changed = true; }
+        else if (now >= poll.expiresAt) { this.expireTossPoll(); changed = true; continue; }
+        else {
+          if (d.deadline !== null) { d.deadline = null; changed = true; }
+          this.io.setAlarm(poll.expiresAt);
+          return changed;
+        }
+      }
       // Release 10: a bot claims 'Run it!' as soon as it's guaranteed from its own cards, even off-turn.
       // canRunIt is proved at most once per seat per state (and never for a spectator), so this loop stays cheap.
       if (g.phase === 'playing') {
@@ -2903,6 +3075,7 @@ export class Room {
     d.runPlayback = undefined;
     d.ready = [];
     d.deadline = null;
+    d.tossPoll = null; // a poll never survives its hand (resolution closes it; this is the belt to that brace)
   }
 
   /** Bot logic plays for `seat` (a bot, or a human who ran out of time). */
@@ -2962,7 +3135,10 @@ export class Room {
       ...(d.story ? { story: { track: d.story.track, stopId: d.story.stopId, phase: d.story.phase, gameId: d.story.outroGameId ?? this.familyId(), hostUid: d.story.pairUids[0], partnerUid: d.story.pairUids[1], ready: [...d.story.ready], ...(d.story.concededBy ? { concededBy: d.story.concededBy } : {}), ...(d.story.finale ? { finale: { short: d.story.finale.short, choices: Object.entries(d.story.finale.choices).map(([uid, choice]) => ({ uid, choice })), ...(d.story.finale.outcome ? { outcome: d.story.finale.outcome } : {}), ...(d.story.finale.gameId ? { gameId: d.story.finale.gameId } : {}) } } : {}) } } : {}),
       private: !!d.private, replaceBots: this.replaceBotsOn(), takeable: this.takeable(),
       spectators: d.phase === 'lobby' ? [] : Object.entries(d.members).filter(([id, m]) => m.seat === null && this.isConnected(id)).map(([playerId, m]) => ({ playerId, name: m.name })),
-      ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}), ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
+      ...(d.votes && Object.keys(d.votes).length ? { votes: Object.entries(d.votes).map(([target, by]) => ({ target, by: [...by], need: this.votesNeeded(target) })) } : {}),
+      ...(d.tossPoll ? { tossPoll: { handNo: d.tossPoll.handNo, caller: d.tossPoll.callerSeat, voters: Object.keys(d.tossPoll.voters).map(Number), yes: Object.entries(d.tossPoll.votes).filter(([, v]) => v).map(([s]) => Number(s)), no: Object.entries(d.tossPoll.votes).filter(([, v]) => !v).map(([s]) => Number(s)), expiresAt: d.tossPoll.expiresAt } } : {}),
+      ...(d.tossDeadHand !== undefined ? { tossDeadHand: d.tossDeadHand } : {}),
+      ...(d.music && d.music.mode !== 'off' ? { music: d.music } : {}),
     };
   }
 

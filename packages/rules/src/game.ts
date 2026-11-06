@@ -4,7 +4,7 @@ import { evaluateRunIt } from './runIt';
 import { createRng, shuffle } from './rng';
 import {
   type Bid, type GameResult, type SideHandResult,
-  checkGameEnd, isBooksHand, isNilBid, isShot, partnerOf, scoreHand, shotCounts, shotOutResult, shotOutSides, sideCount, sideOf, thirdSetResult,
+  booksStillNeeded, checkGameEnd, isBooksHand, isNilBid, isShot, partnerOf, scoreHand, scoreTossedHand, shotCounts, shotOutResult, shotOutSides, sideCount, sideOf, thirdSetResult, tricksStillRemaining,
 } from './scoring';
 
 export type Seat = number;
@@ -37,6 +37,18 @@ export interface HandRecord {
    * unrecoverable. Absent on records written before this field existed.
    */
   bestRuns?: number[];
+  /**
+   * This hand ended by the toss-the-hand poll (owner, 2026-11-05): the hand
+   * was cut short by unanimous vote once a side's set was mathematically
+   * locked, and scored flat on the contracts (see scoreTossedHand).
+   * `setSides` names the side(s) whose set was locked — both when both
+   * sides were short. The record's trick counts are the tricks actually
+   * played; the unfinished trick was never a book for anyone. Stats derive
+   * Tosses Forced / Conceded from this stamp, so it exists only on hands
+   * tossed after the stamp shipped — no backfill. Absent on played-out
+   * hands and on records written before this field existed.
+   */
+  tossed?: { setSides: number[] };
 }
 
 export interface GameState {
@@ -98,12 +110,19 @@ export type Action =
   | { type: 'runIt'; seat: Seat }
   /** 'Call misdeal': `seat` throws a spade-less hand face up and the same hand is reshuffled and redealt (see canMisdeal) */
   | { type: 'misdeal'; seat: Seat }
+  /**
+   * 'Toss the hand': applied by the DRIVER (offline host / online room) once the table's poll
+   * resolves unanimous — the votes live outside the engine, exactly as a Run it! claim's proof
+   * does; the engine validates the position (`tossStatus().available`) and ends the hand on the
+   * flat contract score. `seat` is the player who called the poll.
+   */
+  | { type: 'toss'; seat: Seat }
   | { type: 'nextHand' };
 
 export type RuleErrorCode =
   | 'WRONG_PHASE' | 'NOT_YOUR_TURN' | 'BAD_SEAT' | 'BAD_BID' | 'BID_TOO_LOW' | 'NIL_NOT_ALLOWED'
   | 'BLIND_NIL_NOT_ALLOWED' | 'CARD_NOT_IN_HAND' | 'MUST_FOLLOW_SUIT' | 'SPADES_NOT_BROKEN'
-  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'ALREADY_PLAYED' | 'CANNOT_RUN_IT' | 'NO_MISDEAL' | 'ELIMINATED' | 'BAD_RULES';
+  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'ALREADY_PLAYED' | 'CANNOT_RUN_IT' | 'NO_MISDEAL' | 'CANNOT_TOSS' | 'ELIMINATED' | 'BAD_RULES';
 
 export class RuleError extends Error {
   constructor(public readonly code: RuleErrorCode, message: string) {
@@ -523,6 +542,186 @@ function playOutRun(st: GameState, seat: Seat): GameState {
   return { ...s, runItClaims: [...(s.runItClaims ?? []), seat], tricks: s.tricks.map((t, i) => (i < fromTricks ? t : { ...t, plays: t.plays.map((p, k) => (i === fromTricks && k < onTable ? p : { ...p, run: true as const })) })) };
 }
 
+/* ------------------------------------------------------- Toss the hand */
+
+/**
+ * Node budget for the nil proof below. Proving a nil UNBUSTABLE is an
+ * exhaustive search; the budget bounds the worst case, and running out of
+ * budget resolves CONSERVATIVELY — the nil is treated as bustable and the
+ * hand plays on (the owner's standard: declare unbustable only when truly
+ * provable). Realistic proofs are late-hand positions where the bidder's
+ * cards are dominated, and those collapse under the memo quickly.
+ */
+const NIL_PROOF_BUDGET = 8_000;
+const NIL_BUDGET_BLOWN = Symbol('nil-budget');
+
+/**
+ * Proof results by position, shared across states: a game revisits the
+ * same remaining-cards position through many states (every view asks),
+ * and the answer depends only on the position — hands, the trick on the
+ * table, the turn, spades broken, and whether the hand's first trick is
+ * still to come (the 2♣ lead rule). Bounded FIFO so a long session's
+ * cache cannot grow without limit.
+ */
+const nilProofCache = new Map<string, boolean>();
+function nilProofMemo(key: string, value?: boolean): boolean | undefined {
+  if (value === undefined) return nilProofCache.get(key);
+  if (nilProofCache.size >= 4096) nilProofCache.delete(nilProofCache.keys().next().value!);
+  nilProofCache.set(key, value);
+  return value;
+}
+
+/**
+ * True when the nil bidder at `seat` cannot win ANY remaining trick under
+ * ANY legal line of play — every seat's cards conspiring, the bidder's own
+ * future choices included (all hands are engine-known here; this is a
+ * proof about the position, not about anyone's view). Exact existential
+ * search in the shape of the Run it! solver, over a lean play stepper
+ * (hands / trick / turn only — no full state copies). The stepper plays
+ * in turn order and omits the last-card free drop: a drop changes only
+ * WHEN a one-card seat's forced card lands, never what it plays, the led
+ * suit, or a trick's winner, so the set of reachable trick outcomes is
+ * identical with or without it — the proof stays exact. A bidder who
+ * already took a book is busted, not unbustable — callers treat that case
+ * separately; this answers only about tricks still to come. A simple
+ * card-domination certificate would be UNSOUND here: opponents may duck
+ * under the bidder, a follower's covering cards can be sloughed away on
+ * other suits, any trump in the bidder's hand finds a busting line, and a
+ * bidder who must lead a boss card busts the moment it lands. The search
+ * exists because those lines are exactly the ones that LOOK safe.
+ */
+export function nilUnbustable(st: GameState, seat: Seat): boolean {
+  if (st.phase !== 'playing' || !isNilBid(st.bids[seat])) return false;
+  const r = st.rules;
+  const n = r.playerCount;
+  interface Pos { hands: Card[][]; plays: Play[]; leader: Seat; turn: Seat; broken: boolean; firstTrick: boolean }
+  const keyOf = (p: Pos) => seat + '|' + p.hands.map((h) => [...h].sort().join('.')).join('|') + '/' + p.plays.map((x) => `${x.seat}${x.card}`).join(',') + (p.broken ? '!' : '') + p.turn + (p.firstTrick ? 'F' : '');
+  const start: Pos = {
+    hands: st.hands.map((h) => [...h]),
+    plays: [...st.trick.plays],
+    leader: st.trick.leader,
+    turn: st.turn ?? st.trick.leader,
+    broken: st.spadesBroken,
+    firstTrick: st.tricks.length === 0,
+  };
+  const cached = nilProofMemo(keyOf(start) + '|' + st.bids[seat]);
+  if (cached !== undefined) return cached;
+  let budget = NIL_PROOF_BUDGET;
+  const memo = new Set<string>();
+  /** true when some legal line from `p` lets `seat` take a trick */
+  const bustable = (p: Pos): boolean => {
+    if (p.plays.length === 0 && p.hands.every((h) => h.length === 0)) return false;
+    const k = keyOf(p);
+    if (memo.has(k)) return false;
+    if (--budget < 0) throw NIL_BUDGET_BLOWN;
+    const who = p.turn;
+    const anchored = anchoredOf(p);
+    const legal = legalPlaysFor(r, p.hands[who]!, anchored, p.broken, p.firstTrick && p.plays.length === 0 && r.firstLead === 'twoOfClubs');
+    // The bidder's strongest card first — the fastest bust, when one exists.
+    const ordered = who === seat ? [...legal].sort((a, b) => cardPower(b, r) - cardPower(a, r)) : legal;
+    for (const c of ordered) {
+      const hands = p.hands.map((h) => [...h]);
+      hands[who] = hands[who]!.filter((x) => x !== c);
+      const plays: Play[] = [...p.plays, { seat: who, card: c }];
+      const broken = p.broken || isTrump(c, r);
+      if (plays.length < n) {
+        // next seat that has not thrown into this trick yet (a last-card
+        // drop may already sit in `plays` ahead of the turn pointer)
+        const thrown = new Set(plays.map((x) => x.seat));
+        let next = (who + 1) % n;
+        while (thrown.has(next)) next = (next + 1) % n;
+        if (bustable({ hands, plays, leader: p.leader, turn: next, broken, firstTrick: p.firstTrick })) return true;
+      } else {
+        const winner = trickWinner(leaderFirst(plays, p.leader, n), r);
+        if (winner === seat) return true;
+        if (bustable({ hands, plays: [], leader: winner, turn: winner, broken, firstTrick: false })) return true;
+      }
+    }
+    memo.add(k);
+    return false;
+  };
+  /** The current trick as legality sees it: the leader's card first (a last-card drop may precede it). */
+  const anchoredOf = (p: Pos): Play[] => {
+    const li = p.plays.findIndex((x) => x.seat === p.leader);
+    if (li <= 0) return li === 0 ? p.plays : [];
+    return [p.plays[li]!, ...p.plays.filter((_, i) => i !== li)];
+  };
+  /** A completed trick in leader-first order (the rotation from the leader through every seat). */
+  const leaderFirst = (plays: Play[], leader: Seat, count: number): Play[] => {
+    const bySeat = new Map(plays.map((x) => [x.seat, x] as const));
+    const out: Play[] = [];
+    for (let s = leader, i = 0; i < count; s = (s + 1) % count, i++) {
+      const x = bySeat.get(s);
+      if (x) out.push(x);
+    }
+    return out.length === plays.length ? out : [...plays];
+  };
+  try {
+    const answer = !bustable(start);
+    nilProofMemo(keyOf(start) + '|' + st.bids[seat], answer);
+    return answer;
+  } catch {
+    return false; // budget exhausted or stepper fault: NOT provable — the hand plays on
+  }
+}
+
+/** The toss poll's standing, derived from the position alone. */
+export interface TossStatus {
+  /** Sides whose set is mathematically locked right now (both when both are short). */
+  setSides: number[];
+  /** A nil is still live AND still bustable: the hand must play out (owner, 2026-11-05). */
+  blockedByNil: boolean;
+  /** Flat points each side scores if the hand is tossed now (index = side). Exact whenever `available`. */
+  points: number[];
+  /** The poll may be called / resolved right now. */
+  available: boolean;
+}
+
+const tossStatusCache = new WeakMap<GameState, TossStatus | null>();
+
+/**
+ * May this hand be tossed? (The toss-the-hand poll, owner 2026-11-05.)
+ * Partnership trick play only — never cutthroat, never a books hand (a
+ * books hand has no contracts to score flat; the ruling is bid-based).
+ * A side's set is LOCKED when the books it still needs exceed the tricks
+ * remaining (`booksStillNeeded` > `tricksStillRemaining` — the trick in
+ * progress still counts as remaining). Even with a set locked, a hand
+ * carrying a live nil plays out unless that nil is DECIDED — already
+ * busted by played tricks, or provably unbustable (`nilUnbustable`).
+ * Returns null outside partnership trick play; otherwise the standing,
+ * cached per state (states are immutable, so identity is exact — seat
+ * views ask for this on every render).
+ */
+export function tossStatus(st: GameState): TossStatus | null {
+  const hit = tossStatusCache.get(st);
+  if (hit !== undefined) return hit;
+  const out = computeTossStatus(st);
+  tossStatusCache.set(st, out);
+  return out;
+}
+
+function computeTossStatus(st: GameState): TossStatus | null {
+  const r = st.rules;
+  if (!r.partnerships || st.phase !== 'playing') return null;
+  const bids = st.bids as Bid[];
+  const none: TossStatus = { setSides: [], blockedByNil: false, points: [], available: false };
+  if (bids.length !== r.playerCount || bids.some((b) => b === null || b === undefined)) return none;
+  if (isBooksHand(bids)) return none;
+  const remaining = tricksStillRemaining(st);
+  const setSides: number[] = [];
+  for (let side = 0; side < sideCount(r); side++) {
+    const needed = booksStillNeeded(r, bids, st.tricksWon, side);
+    if (needed !== null && needed > remaining) setSides.push(side);
+  }
+  if (!setSides.length) return none;
+  let blockedByNil = false;
+  for (let seat = 0; seat < r.playerCount; seat++) {
+    if (isNilBid(bids[seat]) && (st.tricksWon[seat] ?? 0) === 0 && !nilUnbustable(st, seat)) { blockedByNil = true; break; }
+  }
+  const points = scoreTossedHand(r, bids, st.tricksWon, st.scores, st.bags, setSides).map((s) => s.points);
+  return { setSides, blockedByNil, points, available: !blockedByNil };
+}
+
 /**
  * One card in a resolved 'Run it!' recap.
  * `played` marks a card that was already face up on the table when the claim was made
@@ -882,6 +1081,14 @@ export function applyAction(st: GameState, action: Action): GameState {
       if (st.phase !== 'playing') throw new RuleError('WRONG_PHASE', 'Not in trick play');
       return playOutRun(st, seat);
     }
+    case 'toss': {
+      // The poll itself (call, votes, unanimity) is the driver's business;
+      // the engine validates the POSITION — a locked set and no live nil in
+      // doubt — and ends the hand on the flat contract score.
+      const t = tossStatus(st);
+      if (!t || !t.available) throw new RuleError('CANNOT_TOSS', 'A hand can be tossed only when a set is locked and no live Nil is still in doubt');
+      return finishTossedHand(st, t.setSides);
+    }
     case 'play': {
       if (st.phase !== 'playing') throw new RuleError('WRONG_PHASE', 'Not in trick play');
       // One card per seat per trick. A retry of the card already down is a no-op so a duplicate
@@ -944,17 +1151,73 @@ export function applyAction(st: GameState, action: Action): GameState {
   }
 }
 
+/**
+ * Ends a TOSSED hand: the same record-building and the same partnership
+ * ending classification as a played-out hand — only the scoring differs
+ * (flat on the contracts, `scoreTossedHand`) plus the `tossed` stamp.
+ * The unfinished trick on the table is discarded: it was never won, so it
+ * is no one's book, and the record's counts stay the played counts.
+ */
+function finishTossedHand(st: GameState, setSides: number[]): GameState {
+  const bids = st.bids as Bid[];
+  const r = st.rules;
+  const sides = scoreTossedHand(r, bids, st.tricksWon, st.scores, st.bags, setSides);
+  const { record, scores, bags } = scoredRecord(st, sides);
+  record.tossed = { setSides: [...setSides] };
+  return finishPartnershipHand(st, sides, scores, bags, record);
+}
+
 function finishHand(st: GameState): GameState {
   const bids = st.bids as Bid[];
   const r = st.rules;
   const sides = scoreHand(r, bids, st.tricksWon, st.scores, st.bags);
+  const { record, scores, bags } = scoredRecord(st, sides);
+  if (!r.partnerships) return finishCutthroat(st, sides, scores, bags, record);
+  return finishPartnershipHand(st, sides, scores, bags, record);
+}
+
+/**
+ * The partnership ending classification, shared by played-out and tossed
+ * hands so a game that ends on a toss is named by the same machinery:
+ * third set first, then Shot = out, then target/floor on the final scores.
+ */
+function finishPartnershipHand(st: GameState, sides: SideHandResult[], scores: number[], bags: number[], record: HandRecord): GameState {
+  const r = st.rules;
+  const prev = st.history[st.history.length - 1];
+  const prevShot = sides.map((_, i) => !!prev?.sides[i]?.shot);
+  // Third set ends it (game-wide, always on): checked before Shot = out and the score endings so
+  // the ending is named for the set even when this hand also crosses the target — the winner is
+  // the same either way. The count derives from the hand records via shotCounts, so a resumed
+  // game (offline or story save — both serialize the history) keeps its count exactly, and an
+  // older save's records carry the same bids/sides the count is derived from.
+  // Sticky second notice (owner, 2026-10-28): a side already shot twice before this hand is on
+  // notice for good — a shot now puts it out even after a made hand in between. The same
+  // history-derived count carries it, so save/resume restores the stickiness exactly.
+  const countsBefore = shotCounts(r, st.history);
+  const result = thirdSetResult(scores, shotCounts(r, [...st.history, record]), countsBefore)
+    ?? shotOutResult(scores, shotOutSides(r, st.handNo, sides.map((s) => !!s.shot), prevShot, countsBefore.map((c) => c >= 2)))
+    ?? checkGameEnd(r, scores);
+  return {
+    ...st, scores, bags, history: [...st.history, record], result, turn: null,
+    phase: result ? 'gameOver' : 'handOver',
+  };
+}
+
+/**
+ * Builds a scored hand's record from its side results: the Shot = out
+ * stamps on the sides, the record itself, and the nuke / best-run stamps
+ * read from the hand's tricks while they are still here. Shared by the
+ * played-out path (`finishHand`) and the toss path, so both records are
+ * built by exactly one hand.
+ */
+function scoredRecord(st: GameState, sides: SideHandResult[]): { record: HandRecord; scores: number[]; bags: number[] } {
+  const bids = st.bids as Bid[];
+  const r = st.rules;
   const scores = sides.map((s) => s.totalScore);
   const bags = sides.map((s) => s.totalBags);
   // Shot = out: mark who was shot this hand; out on hand 1, or twice in a row
   const shot = sides.map((s) => isShot(r, bids, s));
   if (shotOutOn(r)) sides.forEach((s, i) => { s.shot = shot[i]; });
-  const prev = st.history[st.history.length - 1];
-  const prevShot = sides.map((_, i) => !!prev?.sides[i]?.shot);
   const record: HandRecord = { handNo: st.handNo, dealer: st.dealer, bids: [...bids], tricksWon: [...st.tricksWon], sides };
   // Stamp the nuke while the hand's tricks are still here — the record
   // itself keeps only counts, so without this the moment is unrecoverable
@@ -983,23 +1246,7 @@ function finishHand(st: GameState): GameState {
     }
     record.bestRuns = best;
   }
-  if (!r.partnerships) return finishCutthroat(st, sides, scores, bags, record);
-  // Third set ends it (game-wide, always on): checked before Shot = out and the score endings so
-  // the ending is named for the set even when this hand also crosses the target — the winner is
-  // the same either way. The count derives from the hand records via shotCounts, so a resumed
-  // game (offline or story save — both serialize the history) keeps its count exactly, and an
-  // older save's records carry the same bids/sides the count is derived from.
-  // Sticky second notice (owner, 2026-10-28): a side already shot twice before this hand is on
-  // notice for good — a shot now puts it out even after a made hand in between. The same
-  // history-derived count carries it, so save/resume restores the stickiness exactly.
-  const countsBefore = shotCounts(r, st.history);
-  const result = thirdSetResult(scores, shotCounts(r, [...st.history, record]), countsBefore)
-    ?? shotOutResult(scores, shotOutSides(r, st.handNo, shot, prevShot, countsBefore.map((c) => c >= 2)))
-    ?? checkGameEnd(r, scores);
-  return {
-    ...st, scores, bags, history: [...st.history, record], result, turn: null,
-    phase: result ? 'gameOver' : 'handOver',
-  };
+  return { record, scores, bags };
 }
 
 /** A cutthroat bid failed: short of the minimum on the books hand, a missed number, or a busted Nil. */
@@ -1139,6 +1386,16 @@ export interface PlayerView {
   canRunIt?: boolean;
   /** This seat may call a misdeal right now: spade-less hand, seen, and they have not bid yet. */
   canMisdeal?: boolean;
+  /**
+   * A set is mathematically locked at this table (public: bids and books are face up):
+   * the locked side(s) and the flat points each side would score if the hand were
+   * tossed now. Present even while a live Nil blocks the call (see tossBlockedByNil —
+   * the points then preview the standing Nil as made). Null when no set is locked
+   * and outside partnership trick play.
+   */
+  toss: { setSides: number[]; points: number[] } | null;
+  /** A set IS locked but a live, still-bustable Nil holds the hand open — the Nil plays out. */
+  tossBlockedByNil: boolean;
   /** ☢ Both Jokers are in the trick on the table (any trick) but it isn't done: the nuke is armed — the client glows the trick "ready to blow" until the last card lands and it detonates. */
   nukeArmed?: boolean;
   /**
@@ -1157,6 +1414,7 @@ export interface PlayerView {
 function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
   const hidden = spectate || (st.phase === 'bidding' && !st.revealed[seat]);
   const runHands = runClearedHands(st);
+  const toss = tossStatus(st);
   return {
     seat, rules: withCompleteNil(rulesForLive(st)), phase: st.phase, handNo: st.handNo, dealer: st.dealer, turn: st.turn,
     hand: hidden ? null : [...st.hands[seat]!],
@@ -1170,6 +1428,13 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
     // Spectators never learn whether a seat can run it, and we don't search to find out.
     canRunIt: spectate ? false : canRunIt(st, seat),
     canMisdeal: spectate ? false : canMisdeal(st, seat),
+    // The toss standing is public table information (locked sets and flat
+    // outcomes derive from face-up bids and books): spectators see it too.
+    // The offer rides whenever a set is locked — including while a live
+    // Nil blocks the call, so the table can show WHY (tossBlockedByNil);
+    // the call itself stays gated on tossStatus().available everywhere.
+    toss: toss && toss.setSides.length ? { setSides: [...toss.setSides], points: [...toss.points] } : null,
+    tossBlockedByNil: !!toss && toss.blockedByNil && toss.setSides.length > 0,
     // Public (the Jokers are face up): spectators glow too.
     nukeArmed: nukeArmed(st),
     // The thrown hand is public by design: every seat (spectators included) gets the same face-up cards.

@@ -180,6 +180,13 @@ export type ClientMsg =
   /** Story co-op: concede the match for the pair (story rooms only; partnership = shared fate).
    *  The room ends the game as a pair loss and witnesses it like any story result. */
   | { t: 'concede' }
+  /** Toss-the-hand poll (regular partnership tables): call a poll on the locked
+   *  set. The caller's Yes is implicit; every human at the table votes, bots
+   *  consent, one No kills the poll for the hand. The room owns the poll —
+   *  while it is open the table (and the turn clock) is frozen. */
+  | { t: 'tossCall' }
+  /** Vote in the open toss poll. Votes are final once cast. */
+  | { t: 'tossVote'; yes: boolean }
   /** Story co-op: arm this player's ready flag for the room's current story phase
    *  (lobby sit-down / tape / scene / outro). Both pair members ready = the phase advances.
    *  `stopId` (host, lobby phase; either player, outro phase) asks to run a different stop next —
@@ -272,6 +279,15 @@ export interface RoomInfo {
   series?: Series | null;
   /** open vote-kicks: target player, who voted, votes needed */
   votes?: { target: string; by: string[]; need: number }[];
+  /** The open toss-the-hand poll (regular partnership tables), in REAL seats:
+   *  who called it, the human seats that form the electorate, the votes cast
+   *  so far, and when it expires. Absent when no poll is open. While a poll
+   *  is open the room freezes the table — `deadline` reads null and the turn
+   *  clock is preserved, never consumed. */
+  tossPoll?: { handNo: number; caller: number; voters: number[]; yes: number[]; no: number[]; expiresAt: number };
+  /** The hand number whose toss poll died (a No vote, or expiry): the poll
+   *  cannot be re-called that hand. Absent when this hand's poll is live. */
+  tossDeadHand?: number;
   /** Release 9b: this table plays a tournament match */
   tournament?: { id: string; name?: string; match: string; autostartAt: number | null; reserved: (string | null)[] };
   /** Big Bank wager table: the challenge this room plays (sent by the room; absent elsewhere). */
@@ -411,8 +427,10 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: 'hello', name: m.name, token: isStr(m.token, 100) ? m.token : undefined, v: isInt(m.v) ? m.v : undefined, ...(isStr(m.gid, 64) ? { gid: m.gid } : {}), ...(isStr(m.ticket, 400) ? { ticket: m.ticket } : {}), ...(m.watch === true ? { watch: true } : {}) };
     case 'sit': case 'addBot': case 'removeBot': case 'kick':
       return isInt(m.seat) && m.seat >= 0 && m.seat < 4 ? { t: m.t, seat: m.seat } : null;
-    case 'stand': case 'start': case 'next': case 'rematch': case 'leave': case 'concede':
+    case 'stand': case 'start': case 'next': case 'rematch': case 'leave': case 'concede': case 'tossCall':
       return { t: m.t };
+    case 'tossVote':
+      return typeof m.yes === 'boolean' ? { t: 'tossVote', yes: m.yes } : null;
     case 'storyReady':
       return { t: 'storyReady', ...(isStr(m.stopId, 40) ? { stopId: m.stopId } : {}) };
     case 'storyFinale':

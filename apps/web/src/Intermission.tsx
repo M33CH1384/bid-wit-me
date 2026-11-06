@@ -49,7 +49,7 @@ export function endingBeatMs(thirdSet: boolean): number {
  * then Score pad and Continue. Chat, the avatar strip, the shuffle animation, and the team-name editor
  * are not part of this screen. Chat opens from the corner button.
  */
-export interface Callout { kind: 'shot' | 'gotShot' | 'streak' | 'nil' | 'bust' | 'boston' | 'wheels' | 'nuke'; text: string; side?: number; level?: number; /** shot pop-up: big headline + detail line */ title?: string; sub?: string }
+export interface Callout { kind: 'shot' | 'gotShot' | 'streak' | 'nil' | 'bust' | 'boston' | 'wheels' | 'nuke' | 'tossed'; text: string; side?: number; level?: number; /** shot pop-up: big headline + detail line */ title?: string; sub?: string }
 
 /** What to shout about for the latest scored hand (also drives the fx pop-ups). */
 export function calloutsFor(st: GameState, mySide: number, names: string[]): Callout[] {
@@ -76,8 +76,16 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
   // the stamped nuke, a Boston (every book), and Wheels made (the same
   // wheelsMade that drives the celebration fx — no second definition).
   if (rec.nuke) out.push({ kind: 'nuke', side: sideOf(rec.nuke.seat, r), text: `☢ ${names[rec.nuke.seat]} blew the nuke` });
-  for (const side of bostonSides(rec)) out.push({ kind: 'boston', side, text: `Boston — ${sideName(r, side, names)} took every book` });
-  for (const wm of wheelsMade(r, rec)) out.push({ kind: 'wheels', side: wm.side, text: `Wheels — ${sideName(r, wm.side, names)} bid ${wm.bid} and took ${wm.books}` });
+  // A tossed hand ended early by unanimous vote: say so FIRST, and never let
+  // the played-out feats speak for it — no Boston (books were never played)
+  // and no Wheels line over a hand the table threw in.
+  if (rec.tossed) {
+    const setNames = rec.tossed.setSides.map((s) => sideName(r, s, names)).join(' and ');
+    out.unshift({ kind: 'tossed', text: rec.tossed.setSides.length > 1 ? 'Cards tossed — both sides scored as set on the bids' : `Cards tossed — ${setNames} couldn't get there; hand scored on the bids` });
+  } else {
+    for (const side of bostonSides(rec)) out.push({ kind: 'boston', side, text: `Boston — ${sideName(r, side, names)} took every book` });
+    for (const wm of wheelsMade(r, rec)) out.push({ kind: 'wheels', side: wm.side, text: `Wheels — ${sideName(r, wm.side, names)} bid ${wm.bid} and took ${wm.books}` });
+  }
   const w = handWinner(rec.sides.map((s) => s.points));
   if (w !== null) {
     const n = streakOf(st.history, w);

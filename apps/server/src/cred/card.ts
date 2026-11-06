@@ -246,6 +246,11 @@ export interface PlayerCardData {
      *  recorded before the counter shipped count 0 — the ending fact was
      *  never stored for them) */
     tkos: { dealt: number; suffered: number };
+    /** Tosses Forced / Conceded (owner, 2026-11-05): career counts across
+     *  both modes, from the same personalStats sums (stats/record.ts owns
+     *  the per-game counters; hands recorded before the toss stamp shipped
+     *  carry no toss fact and count 0 — the stat starts at ship) */
+    tosses: { forced: number; conceded: number };
   };
   /** head-to-head vs the viewer, FROM THE VIEWER'S perspective
    *  ({games, wins: viewer's wins, losses: viewer's losses}); present only
@@ -355,6 +360,7 @@ export async function cardFor(
       team, cutthroat,
       quits,
       tkos: { dealt: combined.tkoDealt, suffered: combined.tkoSuffered },
+      tosses: { forced: combined.tossesForced, conceded: combined.tossesConceded },
     },
   };
 

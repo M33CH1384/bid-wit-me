@@ -137,6 +137,8 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
       case 'exchange': return conn.act({ type: 'exchange', cards: a.cards }, seq);
       case 'runIt': return conn.act({ type: 'runIt' }, seq);
       case 'misdeal': return conn.act({ type: 'misdeal' }, seq);
+      // a toss never rides the act channel: the room poll (tossCall/tossVote) carries it — see OnlineBinding.toss
+      case 'toss': return false;
       case 'nextHand': conn.send({ t: 'next' }); return true;
     }
   }, [conn, seq]);

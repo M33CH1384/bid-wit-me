@@ -228,7 +228,7 @@ export interface PersonalStats {
   /** every deal this player was in, including ones that were abandoned */
   started: number;
   wins: number; streak: number; bestStreak: number;
-  accuracy: number | null; bags: number; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; tkoDealt: number; tkoSuffered: number; wheels: number; bjWins: number;
+  accuracy: number | null; bags: number; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; tkoDealt: number; tkoSuffered: number; tossesForced: number; tossesConceded: number; wheels: number; bjWins: number;
   bidSec: number | null; playSec: number | null;
   bids: number;
   /** wins (and games) split by who the opponents were; a win against only guests is in neither */
@@ -241,7 +241,7 @@ export async function personalStats(db: D1Database, uid: string, kind?: 'team' |
     FROM game_players gp JOIN games g ON g.id = gp.game_id
     WHERE gp.user_id = ? ${kind ? 'AND gp.kind = ?' : ''} ORDER BY gp.ended_at ASC, g.id ASC`)
     .bind(...(kind ? [uid, kind] : [uid])).all<{ won: number; stats: string; side: number; seats: string; ended_at: number; end_reason: string; leaver_id: string | null; rated: number; family: string }>()).results;
-  const s = { games: 0, started: 0, wins: 0, streak: 0, bestStreak: 0, bids: 0, made: 0, books: 0, hands: 0, bags: 0, nilBids: 0, nilMade: 0, shotsGiven: 0, shotsTaken: 0, tkoDealt: 0, tkoSuffered: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0, winsVsPlayers: 0, winsVsBots: 0, gamesVsPlayers: 0, gamesVsBots: 0 };
+  const s = { games: 0, started: 0, wins: 0, streak: 0, bestStreak: 0, bids: 0, made: 0, books: 0, hands: 0, bags: 0, nilBids: 0, nilMade: 0, shotsGiven: 0, shotsTaken: 0, tkoDealt: 0, tkoSuffered: 0, tossesForced: 0, tossesConceded: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0, winsVsPlayers: 0, winsVsBots: 0, gamesVsPlayers: 0, gamesVsBots: 0 };
   const order: string[] = [];
   const groups = new Map<string, typeof rows>();
   for (const r of rows) {
@@ -281,7 +281,7 @@ export async function personalStats(db: D1Database, uid: string, kind?: 'team' |
       if (bucket === 'players') s.winsVsPlayers++;
       else if (bucket === 'bots') s.winsVsBots++;
     } else run = 0;
-    for (const k of ['bids', 'made', 'books', 'hands', 'bags', 'nilBids', 'nilMade', 'shotsGiven', 'shotsTaken', 'tkoDealt', 'tkoSuffered', 'wheels', 'bjWins', 'bidMs', 'bidN', 'playMs', 'playN'] as const) s[k] += Number(st[k]) || 0;
+    for (const k of ['bids', 'made', 'books', 'hands', 'bags', 'nilBids', 'nilMade', 'shotsGiven', 'shotsTaken', 'tkoDealt', 'tkoSuffered', 'tossesForced', 'tossesConceded', 'wheels', 'bjWins', 'bidMs', 'bidN', 'playMs', 'playN'] as const) s[k] += Number(st[k]) || 0;
   }
   s.streak = run;
   return {
@@ -289,7 +289,7 @@ export async function personalStats(db: D1Database, uid: string, kind?: 'team' |
     accuracy: s.bids ? Math.round((1000 * s.made) / s.bids) / 10 : null,
     bags: s.bags,
     booksPerHand: s.hands ? Math.round((100 * s.books) / s.hands) / 100 : null,
-    nil: `${s.nilMade}/${s.nilBids}`, shotsGiven: s.shotsGiven, shotsTaken: s.shotsTaken, tkoDealt: s.tkoDealt, tkoSuffered: s.tkoSuffered, wheels: s.wheels, bjWins: s.bjWins,
+    nil: `${s.nilMade}/${s.nilBids}`, shotsGiven: s.shotsGiven, shotsTaken: s.shotsTaken, tkoDealt: s.tkoDealt, tkoSuffered: s.tkoSuffered, tossesForced: s.tossesForced, tossesConceded: s.tossesConceded, wheels: s.wheels, bjWins: s.bjWins,
     bidSec: s.bidN ? Math.round(s.bidMs / s.bidN / 100) / 10 : null, playSec: s.playN ? Math.round(s.playMs / s.playN / 100) / 10 : null,
     bids: s.bids, winsVsPlayers: s.winsVsPlayers, winsVsBots: s.winsVsBots, gamesVsPlayers: s.gamesVsPlayers, gamesVsBots: s.gamesVsBots,
   };

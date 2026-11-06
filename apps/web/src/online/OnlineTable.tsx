@@ -180,6 +180,22 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
     const seats = Array.from({ length: rot.n }, (_, i) => i).filter((i) => sideOf(i, r) === side);
     return seats.map((i) => names[i]!.toUpperCase()).join(' + ');
   };
+  // Toss-the-hand poll: the room's poll in LOCAL seats for Table's sheet
+  // (the game view itself is already rotated; the poll rides RoomInfo raw).
+  const tossBinding = (room.tossPoll || room.tossDeadHand !== undefined) ? {
+    poll: room.tossPoll ? {
+      callerName: names[rot.L(room.tossPoll.caller)] ?? 'A player',
+      voters: room.tossPoll.voters.map((s) => rot.L(s)),
+      yes: room.tossPoll.yes.map((s) => rot.L(s)),
+      no: room.tossPoll.no.map((s) => rot.L(s)),
+      expiresAt: room.tossPoll.expiresAt,
+      mine: cs.seat !== null && room.tossPoll.voters.includes(cs.seat),
+      myVote: cs.seat === null ? null : room.tossPoll.yes.includes(cs.seat) ? true : room.tossPoll.no.includes(cs.seat) ? false : null,
+    } : null,
+    deadHand: room.tossDeadHand,
+    call: () => conn.send({ t: 'tossCall' }),
+    vote: (yes: boolean) => conn.send({ t: 'tossVote', yes }),
+  } : undefined;
   // server sides → local sides (local seat 0 is me)
   const teamNames = r.partnerships ? [0, 1].map((L) => room.teamNames?.[sideOf(rot.R(L), r)] ?? null) : undefined;
   const localSeats = Array.from({ length: rot.n }, (_, i) => i);
@@ -207,7 +223,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
         onViewAdjust={(viewAdjust) => { const s = { ...settings, viewAdjust }; setSettings(s); saveSettings({ ...loadSettings(), viewAdjust }); }}
         onTurnUp={(turnUp) => { const s = { ...settings, turnUp }; setSettings(s); saveSettings({ ...loadSettings(), turnUp }); }}
         online={{
-          source, names, seatExtra, seatVideos, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity,
+          source, names, seatExtra, seatVideos, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity, toss: tossBinding,
           // Streaming surfaces reshape the chat binding: the broadcast frame has
           // no chat surface at all; the watch view reads chat but never posts
           // (its one affordance sends the viewer to the play door). The server

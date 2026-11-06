@@ -1900,6 +1900,37 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .misdeal-foot { margin-top: 10px; font-size: 13.5px; font-weight: 700; color: rgba(255,255,255,.92); text-shadow: 0 1px 6px rgba(0,0,0,.7); }
 .misdeal-dismiss { margin-top: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.6); }
 @media (prefers-reduced-motion: reduce) { .misdeal-btn, .misdeal-card, .misdeal-reveal { animation: none; } }
+/* Toss-the-hand poll (owner, 2026-11-05): the call pill sits where the misdeal
+   call sits (the two never show at once — misdeal is a bidding-phase offer,
+   the toss a trick-play one), in the game's blue/violet rather than amber so
+   the two calls can never be confused. Like the misdeal call it paints at
+   full strength from its first frame: availability is honest by presence. */
+.toss-wrap { position: fixed; left: 50%; bottom: calc(26vh + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 12; }
+.toss-btn { font-family: var(--display); font-weight: 900; font-style: italic; font-size: 19px; letter-spacing: .04em; text-transform: uppercase; color: #fff; padding: 9px 20px 10px; border-radius: 999px; border: 2px solid rgba(255,255,255,.85); cursor: pointer;
+  background: linear-gradient(180deg, #7a5cff, #4338ca); box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(99,102,241,.55); }
+.toss-btn:hover { filter: brightness(1.1); }
+.toss-btn:active { transform: scale(.97); }
+.toss-note { font-family: var(--display); font-weight: 800; letter-spacing: .05em; font-size: 13.5px; text-transform: uppercase; color: #e6e2ff; background: rgba(38,30,80,.82); border: 1px solid rgba(255,255,255,.35); padding: 6px 14px; border-radius: 999px; white-space: nowrap; }
+.toss-overlay { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 14px; background: rgba(5,2,10,.45); }
+.toss-sheet { position: relative; width: min(94vw, 430px); max-height: calc(100dvh - 28px); overflow-y: auto; padding: 18px 20px 15px; text-align: center; border-radius: 18px; }
+.toss-x { position: absolute; top: 6px; right: 10px; background: none; border: none; color: rgba(255,255,255,.75); font-size: 24px; line-height: 1; cursor: pointer; padding: 4px 6px; }
+.toss-head { font-family: var(--display); font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: .05em; font-size: clamp(22px, 5vw, 30px); color: #c9c2ff; text-shadow: 0 2px 10px rgba(0,0,0,.6); }
+.toss-sub { margin: 4px 0 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.7); line-height: 1.4; }
+.toss-lines { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.toss-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.08); }
+.toss-line-name { font-weight: 800; letter-spacing: .02em; color: #fff; text-align: left; }
+.toss-set-tag { font-style: normal; font-family: var(--display); font-size: 11px; font-weight: 900; letter-spacing: .08em; color: #ffb3c1; background: rgba(255,77,109,.3); border-radius: 5px; padding: 2px 6px; margin-left: 8px; vertical-align: 2px; }
+.toss-line-pts { font-family: var(--display); font-size: 20px; font-weight: 900; color: #fff; }
+.toss-line.set .toss-line-pts { color: #ffb3c1; }
+.toss-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.toss-yes { font-family: var(--display); font-weight: 900; font-style: italic; font-size: 17px; letter-spacing: .03em; text-transform: uppercase; color: #fff; padding: 10px 22px; border-radius: 999px; border: 2px solid rgba(255,255,255,.85); cursor: pointer;
+  background: linear-gradient(180deg, #7a5cff, #4338ca); box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 16px rgba(99,102,241,.5); }
+.toss-yes:hover { filter: brightness(1.1); }
+.toss-no { font-family: var(--display); font-weight: 800; font-size: 16px; letter-spacing: .03em; color: #fff; padding: 10px 20px; border-radius: 999px; border: 1px solid rgba(255,255,255,.5); cursor: pointer; background: rgba(255,255,255,.1); }
+.toss-no:hover { background: rgba(255,255,255,.18); }
+.toss-wait { font-weight: 700; color: rgba(255,255,255,.92); padding: 4px 0 2px; }
+.toss-clock { margin-top: 10px; font-size: 12.5px; font-weight: 700; color: rgba(255,255,255,.65); }
+@media (prefers-reduced-motion: reduce) { .toss-btn, .toss-yes { animation: none; } }
 @keyframes runit-glow { 50% { box-shadow: 0 0 28px rgba(179,107,255,1), 0 0 64px rgba(71,209,255,.7), inset 0 1px 0 rgba(255,255,255,.5); } }
 @keyframes runit-attn { 0%, 100% { transform: scale(1); box-shadow: 0 0 18px rgba(179,107,255,.85), 0 0 0 0 rgba(255,255,255,.7); } 50% { transform: scale(1.09); box-shadow: 0 0 34px rgba(179,107,255,1), 0 0 0 14px rgba(255,255,255,0); } }
 .run-it-tip { position: relative; max-width: min(320px, 86vw); padding: 10px 12px; font-size: 14px; line-height: 1.35; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; border: 1px solid rgba(var(--gold-rgb),.7); box-shadow: 0 0 0 9999px rgba(5,2,10,.45), 0 0 24px rgba(var(--gold-rgb),.4); }
@@ -4197,6 +4228,7 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .score-pad .hands-strip { padding: 2px 2px 0; }
 .tt-callout.boston { background: linear-gradient(90deg, #c9962a, #f5c542); color: #241a00; }
 .tt-callout.wheels { background: rgba(128, 84, 255, .35); color: #d9ccff; }
+.tt-callout.tossed { background: linear-gradient(90deg, #4338ca, #7a5cff); color: #fff; }
 .tt-callout.nuke { background: rgba(255, 90, 40, .3); color: #ffc4a3; }
 .rchip.boston { background: rgba(var(--gold-rgb),.25); color: var(--gold-hi); }
 .rchip.wheels { background: rgba(128, 84, 255, .3); color: #d9ccff; }
