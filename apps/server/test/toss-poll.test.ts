@@ -138,9 +138,12 @@ describe('the toss poll (online room)', () => {
     expect(g.tricks).toHaveLength(11);
     env.send('b', { t: 'act', action: { type: 'play', card: 'AH' }, seq: env.room.data.seq ?? 0 });
     expect(env.errors('b').map((e) => e.code)).toContain('POLL_OPEN');
-    // the No releases the table: the bot plays within moments
+    // the No releases the table: drive time to the bot's OWN scheduled play
+    // (its pace beat — plus the +900 ms talk beat on the runs where the bot's
+    // live-random persona roll speaks a pre-play line first). No fixed window
+    // covers both worlds; the state does. Frozen meant NO play while open.
     env.send('b', { t: 'tossVote', yes: false });
-    env.advance(500);
+    env.advance(env.room.data.botDueAt! - env.t);
     const live = env.room.data.game!;
     expect(live.trick.plays.length + live.tricks.length).toBeGreaterThan(11);
   });
@@ -148,7 +151,7 @@ describe('the toss poll (online room)', () => {
   it("the poll never eats the current player's clock: closing makes the turn whole", () => {
     const env = started();
     rig(env, { ...LOCKED, turn: 1 }); // b (human) is on the clock
-    env.send('a', { t: 'chat', text: 'settle' }); // any message runs a drive pass: the turn settles
+    env.room.tick(); // a timer pass runs drive: the rigged turn settles (a chat send cannot settle it — handle() returns before after() for chat)
     const d = env.room.data;
     const startedAt = d.turnStartedAt!;
     expect(startedAt).not.toBeNull();
@@ -168,7 +171,7 @@ describe('the toss poll (online room)', () => {
   it('expiry kills the poll for the hand and the hand plays on', () => {
     const env = started();
     rig(env, { ...LOCKED, turn: 1 });
-    env.send('a', { t: 'chat', text: 'settle' });
+    env.room.tick(); // settle the rigged turn (chat never drives)
     env.send('a', { t: 'tossCall' });
     expect(env.room.data.tossPoll).not.toBeNull();
     env.advance(TOSS_POLL_MS + 1);
