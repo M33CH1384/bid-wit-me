@@ -204,15 +204,15 @@ describe('unified Rep block: the XP bar rides in the header on every surface', (
   });
 });
 
-describe('one line: the action row never wraps (Demetrius 2026-10-20)', () => {
-  it('the row is a nowrap flex line — no wrap rule left on it', () => {
-    expect(css).toContain('.soc-prof-acts { display: flex; flex-wrap: nowrap; gap: 5px; align-items: center; }');
-    expect(css).not.toContain('.soc-prof-acts { display: flex; flex-wrap: wrap;');
+describe('comfort rows: the action row wraps in groups, labels never shrink (Demetrius 2026-11-05)', () => {
+  it('the row is a wrapping flex line — his 2026-10-20 one-line rule was superseded by the "very uncomfy" verdict', () => {
+    expect(css).toContain('.soc-prof-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }');
+    expect(css).not.toContain('.soc-prof-acts { display: flex; flex-wrap: nowrap;');
   });
-  it('chips carry compact header-scoped sizing and labels that cannot wrap — they shrink to fit', () => {
-    expect(css).toContain('.soc-prof-acts button, .soc-prof-acts .soc-friend-tag { white-space: nowrap; min-width: 0; }');
-    expect(css).toContain('.soc-prof-head .soc-prof-acts button { padding: 6px 7px; font-size: 12px; min-height: 40px;');
-    expect(css).toContain('.soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 7px; font-size: 12px; min-height: 40px; }');
+  it('chips carry the app-standard header sizing and labels that cannot wrap or shrink', () => {
+    expect(css).toContain('.soc-prof-acts button, .soc-prof-acts .soc-friend-tag { white-space: nowrap; }');
+    expect(css).toContain('.soc-prof-head .soc-prof-acts button { padding: 6px 10px; font-size: 13px; min-height: 44px;');
+    expect(css).toContain('.soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 10px; font-size: 13px; min-height: 44px; }');
   });
   it('both surfaces render the single row these rules apply to', () => {
     const profile = view.slice(view.indexOf('export function ProfileView('));

@@ -17,6 +17,22 @@
  * state (Accept request + Decline) — takes the modal's 3-column grid,
  * scoped by :has() on the Accept button; every other state keeps the
  * one line pinned above.
+ *
+ * Comfort redesign (owner verdict 2026-11-05, "These buttons look very
+ * uncomfy"): the D6 label table priced a five-action state with the
+ * MODAL's Message label and never counted Compare or the 6–8-item
+ * states, so the panel/page one line clipped every label in the states
+ * that actually render (Chromium-measured on the real cascade: the
+ * 7-item friends state needs ~456px against 366px of panel content at
+ * 390px wide). His 2026-11-05 verdict supersedes the 2026-10-20
+ * one-line call for this row: panel/page now wrap in groups at the
+ * app-standard chip, and the remainder-(b) :has() grid is retired (the
+ * wrap covers that state too, so its describe is replaced, not dropped
+ * — the guarantee it pinned, no clipped labels in the request state,
+ * is subsumed by the stronger every-state guarantee below). The D6
+ * MODAL grid stands untouched. The panel/page pins below are the
+ * redesign's: wrap on, shrink gone, comfort floors, the grouping
+ * rules, and the arithmetic that makes clipping impossible.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -61,10 +77,10 @@ describe('D6 modal host: 3+3 grid, no clipped labels at any size', () => {
   const sidePad = num(btn, /padding: \d+px (\d+)px/, 'modal button side padding');
   const font = num(btn, /font-size: (\d+)px/, 'modal button font');
 
-  it('the modal row is a 3-column auto grid (the panel/page hosts keep the base nowrap line)', () => {
+  it('the modal row is a 3-column auto grid (the base row it overrides is the wrapping flex line)', () => {
     expect(grid).toContain('display: grid');
     expect(grid).toContain('grid-template-columns: repeat(3, auto)');
-    expect(social).toContain('.soc-prof-acts { display: flex; flex-wrap: nowrap; gap: 5px; align-items: center; }');
+    expect(social).toContain('.soc-prof-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }');
   });
 
   it('one line is arithmetically impossible in the modal — the departure is forced, not chosen', () => {
@@ -91,88 +107,76 @@ describe('D6 modal host: 3+3 grid, no clipped labels at any size', () => {
   });
 });
 
-describe('D6 panel + page hosts: ONE line, tightened until the locked worst case fits', () => {
-  const rule = block(social, '.soc-panel .soc-prof-head .soc-prof-acts button, .profile-page .soc-prof-head .soc-prof-acts button {');
+describe('Comfort redesign (2026-11-05): panel + page rows wrap in groups at the standard chip', () => {
+  /* Chromium-measured NATURAL button widths on the shipped font stack
+   * at the comfort chip (13px, 6px 10px padding, borders included),
+   * 2026-11-05, each rounded up. Full widths — no chrome math. */
+  const LABELS3 = { compare: 176, chat: 70, invite: 77, challengeOpen: 103, challengeLocked: 137, friendsTag: 84, add: 106, requested: 88, accept: 139, decline: 68, block: 55, report: 64, unblock: 72 };
+  const headBtn = block(social, '.soc-prof-head .soc-prof-acts button {');
+  const headTag = block(social, '.soc-prof-head .soc-prof-acts .soc-friend-tag {');
   const rowRule = block(social, '.soc-panel .soc-prof-head .soc-prof-acts, .profile-page .soc-prof-head .soc-prof-acts {');
   const gap = num(rowRule, /gap: (\d+)px/, 'row gap');
-  const sidePad = num(rule, /padding: \d+px (\d+)px/, 'side padding');
-  const font = num(rule, /font-size: ([\d.]+)px/, 'font');
 
-  it('the worst case (Message + locked Challenge + Add friend + Block + Report) fits 351px panel and 343px page content', () => {
-    const set = [LABELS.message, LABELS.challenge, LABELS.add, LABELS.block, LABELS.report];
-    const total = set.reduce((a, t) => a + textOf(t) * (font / 12) + (2 * sidePad + 2), 0) + (set.length - 1) * gap;
-    expect(total).toBeCloseTo(333.8, 0);
-    expect(total).toBeLessThanOrEqual(panelContent(375)); // 351
-    expect(total).toBeLessThanOrEqual(pageContent(375)); // 343
-    expect(panelContent(375)).toBe(351);
+  it('the base row wraps and nothing on it can shrink below its label', () => {
+    expect(social).toContain('.soc-prof-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }');
+    const chips = block(social, '.soc-prof-acts button, .soc-prof-acts .soc-friend-tag {');
+    expect(chips).toContain('white-space: nowrap');
+    expect(chips).not.toContain('min-width: 0'); // the D6 shrink trick is gone
+    // the retired panel/page shrink rules are gone with it: the host
+    // button rule no longer sets a shrunken font or padding at all
+    const hostBtn = block(social, '.soc-panel .soc-prof-head .soc-prof-acts button, .profile-page .soc-prof-head .soc-prof-acts button {');
+    expect(hostBtn).not.toContain('font-size');
+    expect(hostBtn).not.toContain('padding');
+    expect(social).not.toContain('soc-prof-acts:has(');
   });
 
-  it('buttons stay 44px tall on the one line', () => {
-    expect(num(rule, /min-height: (\d+)px/, 'min-height')).toBe(44);
+  it('header chips are back at the app-standard size: 13px, 10px sides, 44px tall', () => {
+    expect(num(headBtn, /font-size: (\d+)px/, 'font')).toBe(13);
+    expect(num(headBtn, /padding: \d+px (\d+)px/, 'side padding')).toBe(10);
+    expect(num(headBtn, /min-height: (\d+)px/, 'min-height')).toBe(44);
+    expect(num(headTag, /font-size: (\d+)px/, 'tag font')).toBe(13);
+    expect(num(headTag, /min-height: (\d+)px/, 'tag min-height')).toBe(44);
+    expect(minH(social, '.soc-panel .soc-prof-head .soc-prof-acts button, .profile-page .soc-prof-head .soc-prof-acts button {')).toBe(44);
+    expect(minH(social, '.soc-panel .soc-prof-head .soc-prof-acts .soc-friend-tag, .profile-page .soc-prof-head .soc-prof-acts .soc-friend-tag {')).toBe(44);
+    expect(gap).toBe(6);
   });
-});
 
-describe('Remainder (b): the panel/page friend-request state takes the modal grid', () => {
-  /* Audit-basis label totals as upper bounds: for labels the audit
-   * measured, max(audit §3e, a 2026-10-25 Chromium re-measure on the
-   * shipped font stack); Accept/Decline exist only in this state and
-   * come from that re-measure alone (rounded up). Same basis as LABELS:
-   * 12px totals incl. the old 16px chrome. */
-  const LABELS2 = { message: 71, invite: 66, challenge: 122, challengeOpen: 91, accept: 124, decline: 58, block: 47, report: 55 };
-  const gridSel = '.soc-panel .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]), .profile-page .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]) {';
-  const grid = block(social, gridSel);
-  const gridGap = num(grid, /gap: (\d+)px/, 'grid gap');
-  const btn = block(social, '.soc-panel .soc-prof-head .soc-prof-acts button, .profile-page .soc-prof-head .soc-prof-acts button {');
-  const sidePad = num(btn, /padding: \d+px (\d+)px/, 'side padding');
-  const font = num(btn, /font-size: ([\d.]+)px/, 'font');
-  const rowGap = num(block(social, '.soc-panel .soc-prof-head .soc-prof-acts, .profile-page .soc-prof-head .soc-prof-acts {'), /gap: (\d+)px/, 'row gap');
-  const w = (total: number) => textOf(total) * (font / 12) + (2 * sidePad + 2);
-  const gridTotal = (order: number[]) => {
-    const cols = [0, 1, 2].map((c) => Math.max(...order.filter((_, i) => i % 3 === c).map(w)));
-    return cols.reduce((a, b) => a + b, 0) + 2 * gridGap;
-  };
-  const oneLine = (order: number[]) => order.reduce((a, t) => a + w(t), 0) + (order.length - 1) * rowGap;
-  const IN6 = [LABELS2.message, LABELS2.challenge, LABELS2.accept, LABELS2.decline, LABELS2.block, LABELS2.report];
-  const IN7 = [LABELS2.message, LABELS2.invite, LABELS2.challenge, LABELS2.accept, LABELS2.decline, LABELS2.block, LABELS2.report];
-
-  it('the grid is scoped to the Accept state, in the panel and page hosts only', () => {
-    expect(grid).toContain('display: grid');
-    expect(grid).toContain('grid-template-columns: repeat(3, auto)');
-    expect(grid).toContain('justify-content: space-between');
-    // the anchor the :has() hangs on is rendered by ProfileView itself
+  it('the grouping is pinned: Compare owns line one, moderation never grows or shrinks', () => {
+    expect(social).toContain('.soc-panel .soc-prof-head .soc-prof-acts > *, .profile-page .soc-prof-head .soc-prof-acts > * { flex: 1 1 auto; }');
+    expect(social).toContain('.soc-panel .soc-prof-head .soc-prof-acts > [data-testid="profile-compare"], .profile-page .soc-prof-head .soc-prof-acts > [data-testid="profile-compare"] { flex-basis: 100%; }');
+    expect(social).toContain('.soc-panel .soc-prof-head .soc-prof-acts > [data-testid="profile-block"], .profile-page .soc-prof-head .soc-prof-acts > [data-testid="profile-block"], .soc-panel .soc-prof-head .soc-prof-acts > :last-child, .profile-page .soc-prof-head .soc-prof-acts > :last-child { flex: 0 0 auto; }');
+    // the anchors the grouping hangs on are rendered by ProfileView itself
     const view = readFileSync(new URL('../src/profile/ProfileView.tsx', import.meta.url), 'utf8');
-    expect(view).toContain('data-testid="profile-accept"');
-    expect(view).toContain('data-testid="profile-decline"');
-    // the base one-line rule still ships for every other state
-    expect(social).toContain('.soc-prof-acts { display: flex; flex-wrap: nowrap; gap: 5px; align-items: center; }');
+    expect(view).toContain('data-testid="profile-compare"');
+    expect(view).toContain('data-testid="profile-block"');
   });
 
-  it('one line is arithmetically impossible for this state — the departure is forced, not chosen', () => {
-    expect(oneLine(IN6)).toBeCloseTo(428.1, 0);
-    expect(oneLine(IN7)).toBeCloseTo(487.0, 0);
-    for (const vw of [375, 390, 430]) {
-      expect(oneLine(IN6), `vw ${vw}`).toBeGreaterThan(panelContent(vw));
-      expect(oneLine(IN7), `vw ${vw}`).toBeGreaterThan(pageContent(vw));
+  it('one line is arithmetically impossible for the states that actually render — the wrap is forced', () => {
+    const L = LABELS3;
+    const friends7 = L.compare + L.chat + L.invite + L.challengeOpen + L.friendsTag + L.block + L.report + 6 * gap;
+    expect(friends7).toBe(665);
+    const incoming8 = L.compare + L.chat + L.invite + L.challengeOpen + L.accept + L.decline + L.block + L.report + 7 * gap;
+    expect(incoming8).toBe(794);
+    for (const vw of [360, 390]) {
+      expect(friends7, `vw ${vw}`).toBeGreaterThan(panelContent(vw));
+      expect(friends7, `vw ${vw}`).toBeGreaterThan(pageContent(vw));
+      expect(incoming8, `vw ${vw}`).toBeGreaterThan(panelContent(vw));
     }
   });
 
-  it('the grid closes the state at 351px panel and 343px page content, with slack', () => {
-    expect(gridTotal(IN6)).toBeCloseTo(293.8, 0);
-    expect(gridTotal(IN7)).toBeCloseTo(289.0, 0);
-    for (const vw of [375, 390, 430]) {
-      expect(gridTotal(IN6), `vw ${vw}`).toBeLessThanOrEqual(pageContent(vw));
-      expect(gridTotal(IN7), `vw ${vw}`).toBeLessThanOrEqual(pageContent(vw));
-    }
-    // the unlocked Challenge label is narrower — the grid only gains room
-    const in7open = [LABELS2.message, LABELS2.invite, LABELS2.challengeOpen, LABELS2.accept, LABELS2.decline, LABELS2.block, LABELS2.report];
-    expect(gridTotal(in7open)).toBeLessThanOrEqual(pageContent(375));
-  });
-
-  it('rows stay on the 44px floor: 6 buttons = 2 rows (94px), 7 = 3 rows (144px)', () => {
-    const mh = num(btn, /min-height: (\d+)px/, 'min-height');
-    expect(mh).toBe(44);
-    expect(Math.ceil(IN6.length / 3) * mh + (Math.ceil(IN6.length / 3) - 1) * gridGap).toBe(94);
-    expect(Math.ceil(IN7.length / 3) * mh + (Math.ceil(IN7.length / 3) - 1) * gridGap).toBe(144);
+  it('the wrap guarantee closes every state: no single label can overflow the tightest line', () => {
+    // flex-wrap breaks lines on natural widths and no surviving rule
+    // shrinks an item, so a label could only clip if ONE button alone
+    // were wider than the tightest content box (page @360 = 328px).
+    const L = LABELS3;
+    expect(Math.max(...Object.values(L))).toBe(L.compare);
+    expect(L.compare).toBeLessThanOrEqual(pageContent(360));
+    // the groups that share a line in the measured layout fit their box:
+    // the social line (screenshot state) and the request line, panel @390.
+    expect(L.chat + L.invite + L.challengeOpen + L.friendsTag + 3 * gap).toBeLessThanOrEqual(panelContent(390));
+    expect(L.accept + L.decline + L.block + L.report + 3 * gap).toBeLessThanOrEqual(panelContent(390));
+    // moderation on its own is two small ghosts anywhere
+    expect(L.block + L.report + gap).toBeLessThanOrEqual(pageContent(360));
   });
 });
 

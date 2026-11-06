@@ -206,15 +206,15 @@ html[data-theme="neon"] .soc-wire-byline { color: #5BDFFF; }
 .soc-stats b { font-family: var(--display); font-size: 22px; }
 .soc-stats small { font-size: 11px; color: var(--muted); }
 .soc-vs { margin: 0; font-size: 14px; }
-.soc-prof-acts { display: flex; flex-wrap: nowrap; gap: 5px; align-items: center; }
+.soc-prof-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 /* ONE line at phone width (Demetrius 2026-10-20): the row never wraps — the
    chips shrink to fit instead of Report dropping to a second row. The compact
    sizing is scoped to the profile header so the shared .soc-prof-acts button
    base rule and the .soc-friend-tag base keep their values; Accept + Decline
    simply take their places in the same single line when a request is incoming. */
-.soc-prof-acts button, .soc-prof-acts .soc-friend-tag { white-space: nowrap; min-width: 0; }
-.soc-prof-head .soc-prof-acts button { padding: 6px 7px; font-size: 12px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
-.soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 7px; font-size: 12px; min-height: 40px; }
+.soc-prof-acts button, .soc-prof-acts .soc-friend-tag { white-space: nowrap; }
+.soc-prof-head .soc-prof-acts button { padding: 6px 10px; font-size: 13px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 10px; font-size: 13px; min-height: 44px; }
 .soc-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .soc-badge-chip { font-size: 13px; padding: 4px 9px; border-radius: 999px; background: rgba(var(--gold-rgb),.12); border: 1px solid rgba(var(--gold-rgb),.35); }
 /* Tappable team names (owner, 2026-11-04): the chip is a real button; the
@@ -984,29 +984,41 @@ html[data-theme="neon"] .featured { border-color: rgba(128, 84, 255, .45); }
      294px × 11.5/12 = 281.8 + 5 × (3+3+2) chrome = 40 + 4 × 3px gaps =
      333.8px ≤ 343px (page) and ≤ 351px (panel). No truncation, no wrap.
    Both themes: these are geometry-only rules with no theme variant, so
-   Neon keeps its color/glass-only difference. */
+   Neon keeps its color/glass-only difference.
+   SUPERSEDED 2026-11-05 for the base row and the PANEL/PAGE hosts: the
+   owner's "very uncomfy" verdict on the live 7-item state retired the
+   one-line rule and the compact header chips — see the COMFORT REDESIGN
+   block below the modal rules. The label table above priced a 5-item
+   state without Compare and never covered the friends/stranger/incoming
+   states that actually render. The MODAL grid from this audit stands. */
 .profile-modal-card .soc-prof-acts { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 6px; }
 .profile-modal-card .soc-prof-head .soc-prof-acts button { min-height: 44px; padding: 6px 4px; font-size: 12px; }
 .profile-modal-card .soc-prof-head .soc-prof-acts .soc-friend-tag { min-height: 44px; padding: 6px 4px; font-size: 12px; justify-content: center; }
-.soc-panel .soc-prof-head .soc-prof-acts, .profile-page .soc-prof-head .soc-prof-acts { gap: 3px; }
-.soc-panel .soc-prof-head .soc-prof-acts button, .profile-page .soc-prof-head .soc-prof-acts button { padding: 6px 3px; font-size: 11.5px; min-height: 44px; }
-.soc-panel .soc-prof-head .soc-prof-acts .soc-friend-tag, .profile-page .soc-prof-head .soc-prof-acts .soc-friend-tag { padding: 6px 3px; font-size: 11.5px; min-height: 44px; }
-/* Design audit remainder (b) — owner call 2026-10-25 ("Apply the grid
-   fix"): every panel/page state above closes on ONE line except the
-   friend-request state, which swaps Add friend for Accept request +
-   Decline and cannot. From the audit-basis label upper bounds (text =
-   total − 16px chrome; LABELS2 in layout-profile-fit.test.ts) the one
-   line needs 428px (6 buttons) / 487px (7, with Invite) against 351px
-   of panel content, so the flex chips shrink and the labels clip —
-   Chromium-measured pre-fix at 375px: all seven labels clipped, the
-   widest button compressed 32px. That ONE state takes the modal's
-   3-column auto grid (columns size to their widest label): column
-   maxima recompute to 294px (6 buttons) / 289px (7) including the
-   2×6px gaps — ≤ 343px page and ≤ 351px panel — at two rows of 44px
-   (94px) for six buttons, three (144px) for seven. Scoped with :has()
-   on the Accept button's testid so no other state changes geometry;
-   the modal host already grids every state and is untouched. */
-.soc-panel .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]), .profile-page .soc-prof-head .soc-prof-acts:has(> [data-testid="profile-accept"]) { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 6px; }
+/* COMFORT REDESIGN (owner verdict 2026-11-05, "These buttons look very
+   uncomfy", superseding his 2026-10-20 "fit it all on one line" call for
+   this row and retiring the 2026-10-25 remainder-(b) :has() grid, which
+   only ever rescued the friend-request state): the D6 one-line sizing
+   priced the panel/page line against the MODAL's label set (Message +
+   four) and never counted Compare (~108px, the widest label in the
+   family) or the 6–8-item states. Measured on the real cascade, the
+   7-item friends state needs ~456px against 366px of panel content at
+   390px wide, so every label spilled out of its button ("FriendsBlock",
+   "COMPARE WITH M…"). The row now uses the app's standard chip (13px,
+   6px 10px padding, 44px floor — the .soc-pl-acts language it was
+   shrunk below) and wraps in groups instead of shrinking: Compare, the
+   one gold primary, takes its own full-width line; the social actions
+   (Chat / Invite / Challenge / friend-state) share the next line and
+   grow evenly, wrapping whole when a line cannot hold them; Block and
+   Report stay content-sized ghosts on the last line — present and
+   tappable, but quiet. No button can ever be narrower than its label:
+   the min-width: 0 shrink is gone and labels stay nowrap. The modal
+   host keeps its D6 grid above, untouched. */
+.soc-panel .soc-prof-head .soc-prof-acts, .profile-page .soc-prof-head .soc-prof-acts { gap: 6px; }
+.soc-panel .soc-prof-head .soc-prof-acts button, .profile-page .soc-prof-head .soc-prof-acts button { min-height: 44px; }
+.soc-panel .soc-prof-head .soc-prof-acts .soc-friend-tag, .profile-page .soc-prof-head .soc-prof-acts .soc-friend-tag { min-height: 44px; }
+.soc-panel .soc-prof-head .soc-prof-acts > *, .profile-page .soc-prof-head .soc-prof-acts > * { flex: 1 1 auto; }
+.soc-panel .soc-prof-head .soc-prof-acts > [data-testid="profile-compare"], .profile-page .soc-prof-head .soc-prof-acts > [data-testid="profile-compare"] { flex-basis: 100%; }
+.soc-panel .soc-prof-head .soc-prof-acts > [data-testid="profile-block"], .profile-page .soc-prof-head .soc-prof-acts > [data-testid="profile-block"], .soc-panel .soc-prof-head .soc-prof-acts > :last-child, .profile-page .soc-prof-head .soc-prof-acts > :last-child { flex: 0 0 auto; }
 
 /* ---------- BWM Central (Phase 1): five-destination hub ----------
    The destination nav reuses the .soc-tabs chrome (glide included);
