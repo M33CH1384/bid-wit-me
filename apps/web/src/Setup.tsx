@@ -22,7 +22,7 @@ import { AccountEntry } from './account/AccountUI';
 import { useAccount } from './account/api';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
-import { OFFLINE_PAIR_KEY, TeamNameField, pairTeamNames, useTeamNameFor } from './TeamName';
+import { OFFLINE_PAIR_KEY, PreviousTeamChips, TeamNameField, TeamNameInput, pairTeamNames, savePendingTeamName, useTeamNameFor } from './TeamName';
 import { STORY_OWNER_ONLY, fetchStoryAccess, storyLockedFor } from './story/storyApi';
 import FireCanvas from './fire/FireCanvas';
 import EmblemSmoke from './neon/EmblemSmoke';
@@ -527,6 +527,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
                 <div className="ess-row stack">
                   <span className="ess-label">Team name<small>for you + your bot partner — saved for this pairing</small></span>
                   <TeamNameField value={offlineTeamName} placeholder="You & your partner" onSave={(v) => pairTeamNames.set(OFFLINE_PAIR_KEY, v)} testId="setup-team-name" />
+                  <PreviousTeamChips current={offlineTeamName} onPick={(v) => pairTeamNames.set(OFFLINE_PAIR_KEY, v)} testId="setup-team-prev" />
                 </div>
               </SetupCard>
             )}
@@ -637,6 +638,15 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [music, setMusic] = useState<PendingMusic | null>(null);
+  /* Create-a-table (owner, 2026-11-05): the form's first question at a team
+   * table is the TEAM name — typed new, or one tap on a previous team. It
+   * rides the pending handoff into the room (savePendingTeamName) and the
+   * lobby names the creator's side with it, through the TeamChip's own
+   * message + roster validation. Nothing is blocked here: no partner is
+   * seated yet. Cutthroat has no team names — no row, no pending. */
+  const [teamName, setTeamName] = useState('');
+  const partnerships = settingsToRules(settings).partnerships;
+  const acct = useAccount();
   const nameOk = name.trim().length > 0;
   const create = async () => {
     if (!nameOk) { setErr('Enter your name first'); return; }
@@ -646,6 +656,7 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
       const c = await createTable(serverUrl());
       savePendingVenue(c, venue);
       savePendingMusic(c, music?.mode === 'link' ? { ...music, url: music.url.trim() } : music);
+      if (partnerships) savePendingTeamName(c, teamName);
       saveName(name.trim());
       sessionStorage.setItem(`bwm.created.${c}`, '1');
       navigate(`/t/${c}`);
@@ -664,9 +675,9 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
       navigate(`/t/${c}`);
     } catch { setErr("Can't reach the game server."); } finally { setBusy(false); }
   };
-  const nameRow = (
+  const nameRow = (sub?: string) => (
     <label className="ess-row">
-      <span className="ess-label">Your name</span>
+      <span className="ess-label">Your name{sub && <small>{sub}</small>}</span>
       <input className="name-input" value={name} maxLength={20} autoComplete="nickname" placeholder="e.g. Meech" onChange={(e) => setName(e.target.value)} aria-label="Your name" />
     </label>
   );
@@ -674,7 +685,18 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
     return (
       <div className="ess ess-barred" key="create">
         <SetupCard title="Table">
-          {nameRow}
+          {partnerships && (
+            <div className="ess-row stack">
+              <span className="ess-label">Team name<small>your side plays under it — you can change it in the lobby</small></span>
+              <TeamNameInput value={teamName} placeholder="e.g. Homies" onChange={setTeamName} testId="create-team-name" />
+              <PreviousTeamChips current={teamName} onPick={setTeamName} testId="create-team-prev" />
+            </div>
+          )}
+          {/* Your name is the seat display name (the hello name) — a guest's
+              only name, and for a signed-in player an override of the account
+              name it was seeded from. It stays, demoted under the team name
+              and honestly labelled (owner, 2026-11-05). */}
+          {nameRow(acct.user ? 'shown at the table — your account name, unless you change it here' : 'shown at the table')}
         </SetupCard>
         <SetupCard title="Deck & venue">
           {deck}
@@ -709,7 +731,7 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
     <div className="ess" key="lobby">
       <section className="setup-card" aria-label="You">
         <h3 className="setup-card-h">You</h3>
-        {nameRow}
+        {nameRow()}
       </section>
       <section className="setup-card" aria-label="Join with a code">
         <h3 className="setup-card-h">Join with a code</h3>

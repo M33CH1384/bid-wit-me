@@ -1,6 +1,6 @@
 import { SocialButton } from '../social/Social';
 import { VENUE_DEFS, VENUE_LIST, type VenueChoice, type VenueId, venueLabel } from '../venues';
-import { TeamNameField } from '../TeamName';
+import { TeamNameField, takePendingTeamName } from '../TeamName';
 import type { NukeIntensity } from '@spades/protocol';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -59,6 +59,29 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   }, [myUid]);
   const sidePartner = cs.seat !== null && n === 4 ? room.seats[cs.seat ^ 2] : undefined;
   const sidePartnerRef = sidePartner?.kind === 'human' ? { uid: sidePartner.uid, name: sidePartner.name } : null;
+  /* Create-a-table team name (owner, 2026-11-05): a name picked on the
+   * create form rides in as a pending (takePendingTeamName). Once I am
+   * seated at a partnership table whose side is still unnamed, apply it
+   * through the TeamChip's own send — after the chip's own rosterBlock
+   * validation, so the full-roster refusal fires here exactly as it does
+   * on a chip save (refusal shows as a note by the chips; nothing sends).
+   * One shot per room visit; a side that already has a name is never
+   * stomped. Story rooms refuse team names — never applied there. */
+  const pendingTeamRef = useRef<string | null>(null);
+  const [pendingTeamNote, setPendingTeamNote] = useState('');
+  useEffect(() => {
+    if (!room.rules.partnerships || room.story || cs.seat === null) return;
+    if (pendingTeamRef.current === null) pendingTeamRef.current = takePendingTeamName(room.code);
+    const pending = pendingTeamRef.current;
+    if (!pending) return;
+    const side = cs.seat % 2;
+    if (room.teamNames?.[side]) { pendingTeamRef.current = ''; return; }
+    if (myUid && rosters === null) return; // wait for my rosters: the full-roster check must be real
+    const msg = rosterBlock(rosters?.find((x) => x.name === pending), sidePartnerRef);
+    pendingTeamRef.current = '';
+    if (msg) { setPendingTeamNote(msg); return; }
+    conn.send({ t: 'teamName', name: pending });
+  }, [room.rules.partnerships, room.story, room.code, room.teamNames, cs.seat, myUid, rosters, sidePartnerRef, conn]);
   const playing = room.phase === 'playing';
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -114,6 +137,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
   const unread = Math.max(0, cs.chat.filter((l) => !l.system).length - cs.chat.slice(0, seen).filter((l) => !l.system).length);
   const teams = r.partnerships ? (
           <div className="lobby-teams" data-testid="lobby-teams">
+            {pendingTeamNote && <p className="err" role="alert">{pendingTeamNote}</p>}
             {[0, 1].map((t) => (
               <TeamChip key={t} t={t} name={room.teamNames?.[t] ?? ''} editable={cs.seat !== null && cs.seat % 2 === t}
                 onSave={(name) => conn.send({ t: 'teamName', name })}

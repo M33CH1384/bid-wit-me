@@ -2,6 +2,7 @@
  *  name it migrates from, and the name editors used at setup and online. */
 import { type FormEvent, useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { TEAM_NAME_MAX, cleanTeamName } from '@spades/protocol';
+import { fetchMyTeams } from './social/teamsApi';
 
 const KEY = 'bwm.teamName';
 const subs = new Set<() => void>();
@@ -101,6 +102,77 @@ export function TeamNameInput({ value, placeholder, onChange, label = 'Team name
         onBlur={() => { if (value.trim() && cleanTeamName(value) === null) setErr("That name isn't allowed"); }} />
       {err && <small className="err" role="alert">{err}</small>}
     </span>
+  );
+}
+
+/* --------------------------------------- create-a-table pending handoff */
+
+/**
+ * The team name chosen on the create-a-table form (owner, 2026-11-05)
+ * rides into the room exactly like the pending venue/music: sessionStorage
+ * keyed by table code, saved by the create form, taken ONCE by the lobby,
+ * which applies it through the TeamChip's own {t:'teamName'} send (with
+ * the chip's roster validation). An empty or uncleanable name saves
+ * nothing — the lobby chip stays the way in.
+ */
+export function savePendingTeamName(code: string, name: string): void {
+  const v = cleanTeamName(name);
+  if (!v) return;
+  try { sessionStorage.setItem(`bwm.pendingTeam.${code}`, v); } catch { /* ignore */ }
+}
+
+export function takePendingTeamName(code: string): string {
+  try {
+    const k = `bwm.pendingTeam.${code}`;
+    const v = sessionStorage.getItem(k) ?? '';
+    if (v) sessionStorage.removeItem(k);
+    return v;
+  } catch { return ''; }
+}
+
+/* ------------------------------------------------- previous-team picker */
+
+/**
+ * "Your teams" — one-tap previous team names (owner, 2026-11-05). The
+ * honest sources, merged: a signed-in player's RECORDED team names from
+ * the roster endpoint (GET /api/social/teams — the same list My Career
+ * manages; bot-table names included, since team_name is recorded on bot
+ * games too), plus the names saved on THIS device (the per-pairing map +
+ * the retired global name) — the only list that exists when signed out.
+ * The current value is never offered back. Renders nothing when there is
+ * nothing real to offer.
+ */
+export function PreviousTeamChips({ current, onPick, testId }: {
+  current: string; onPick: (name: string) => void; testId: string;
+}) {
+  const [recorded, setRecorded] = useState<string[]>([]);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    fetchMyTeams()
+      .then((ts) => { if (alive) setRecorded(ts.map((t) => t.name)); })
+      .catch(() => { /* signed out / offline: the device names still apply */ });
+    const offPair = pairTeamNames.subscribe(() => setTick((t) => t + 1));
+    const offLegacy = myTeamName.subscribe(() => setTick((t) => t + 1));
+    return () => { alive = false; offPair(); offLegacy(); };
+  }, []);
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const raw of [...recorded, ...Object.values(pairTeamNames.all()), myTeamName.get()]) {
+    const v = raw.trim();
+    if (!v || v === current.trim() || seen.has(v)) continue;
+    seen.add(v);
+    names.push(v);
+    if (names.length >= 8) break;
+  }
+  if (!names.length) return null;
+  return (
+    <div className="prev-teams" data-testid={testId}>
+      <span className="prev-teams-label">Your teams</span>
+      {names.map((n) => (
+        <button key={n} type="button" className="prev-team-chip" data-testid={`${testId}-chip`} onClick={() => onPick(n)}>{n}</button>
+      ))}
+    </div>
   );
 }
 

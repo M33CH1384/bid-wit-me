@@ -1814,6 +1814,14 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .team-name-edit input { flex: 1; min-width: 0; background: rgba(255,255,255,.07); border: 1px solid rgba(var(--edge-rgb),.35); border-radius: 6px; color: var(--ink); padding: 7px 9px; font: inherit; font-size: 16px; }
 .team-name-edit input::placeholder { color: var(--muted); opacity: .8; }
 .team-name-edit button { border: 1px solid rgba(var(--edge-rgb),.45); background: rgba(var(--purple-rgb),.25); color: var(--ink); border-radius: 6px; padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
+/* Previous-team picker (owner, 2026-11-05): one-tap chips of the player's
+   own earlier team names under a team-name field. One neutral rule — the
+   vars carry both themes. Chips are full 44px tap targets. */
+.prev-teams { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.prev-teams-label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.prev-team-chip { border: 1px solid rgba(var(--edge-rgb),.45); background: rgba(var(--purple-rgb),.18); color: var(--ink); border-radius: 999px; padding: 8px 14px; min-height: 44px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.prev-team-chip:is(:hover, :focus-visible) { filter: brightness(1.12); }
+.prev-team-chip:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 .team-name-edit button:hover { background: rgba(var(--purple-rgb),.45); }
 .lobby-team-name, .tt-team-edit { display: grid; gap: 3px; margin: 6px 0; }
 .lobby-team-name small, .tt-team-edit small { font-size: 10px; letter-spacing: .12em; opacity: .75; }
