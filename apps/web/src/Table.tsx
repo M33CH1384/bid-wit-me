@@ -79,6 +79,7 @@ import {
   stampSeatSpeaker, stampStir, type CrowdCue,
 } from './three/crowdCue';
 import { clientSeesNuke } from './three/blastSweep';
+import { photorealFor, warmPhotoreal } from './photoreal/host';
 import { loadScene } from './three/preload';
 import { TableLoading, type LoadingSeat } from './TableLoading';
 import { VersusIntro, markVersusShown, versusDismissReady, versusEligible, type VersusMember, type VersusModel } from './VersusIntro';
@@ -2427,23 +2428,42 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const nukeAtMount = useRef(nukeKey); // a resumed save already showing a nuked trick doesn't re-fire
   const [nukeDueKey, setNukeDueKey] = useState<string | null>(null); // the watchdog timer has elapsed for this key
   const [nukeShownKey, setNukeShownKey] = useState<string | null>(null); // Scene certified this key's trick is on display, all cards down
+  const [nukeLateKey, setNukeLateKey] = useState<string | null>(null); // certification fallback elapsed (starved frame clock)
   const onNukePresented = useCallback((key: string) => setNukeShownKey(key), []);
+  // Nuked-trick freeze fix (2026-11-05): warm the photoreal modules BEFORE their
+  // moment. On the iOS path the blast is the 2D nuke module and the Big Joker's
+  // crack cue is the 2D quake module; neither was covered by the load-time warm
+  // pass (3D only), so both cold-imported at showtime. The nuke warms when the
+  // trick ARMS in state (both jokers down — at least one bot pace before the
+  // trick completes); the quake warms at hand start in joker modes.
+  const trickArmed = isNukeTrick(st.trick.plays);
+  useEffect(() => { if (trickArmed && photorealFor({ kind: 'nuke' }) === 'nuke') warmPhotoreal('nuke'); }, [trickArmed]);
+  useEffect(() => { if (r.deck === 'joker54' && photorealFor({ kind: 'jokerBig' }) === 'quake') warmPhotoreal('quake'); }, [st.handNo]); // eslint-disable-line react-hooks/exhaustive-deps
   const nukeFiredFor = useRef<string | null>(null);
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;
     const release = fx.hold(1300, 'nukeWatch'); // the hand end waits for the blast (the blast holds itself once it fires)
     const t = window.setTimeout(() => { setNukeDueKey(nukeKey); release(); }, 1100);
-    return () => { clearTimeout(t); release(); };
+    // Certification fallback (2026-11-05 freeze fix): certification rides the
+    // Scene's frame clock, so a starved canvas (context loss, LPM-era frame
+    // stalls) could hold the blast hostage past the whole allowance — or drop
+    // it silently when the next trick cleared the key. If the trick still
+    // hasn't certified 3 s after completion, fire on the schedule alone: far
+    // beyond any healthy flight + rest (~1 s), well inside the 5.15 s nuked
+    // hold, and unreachable on a table whose frames are flowing.
+    const tLate = window.setTimeout(() => { setNukeLateKey(nukeKey); }, 3000);
+    return () => { clearTimeout(t); clearTimeout(tLate); release(); };
   }, [nukeKey]);
   useEffect(() => {
     if (!nukeKey || nukeDueKey !== nukeKey || nukeFiredFor.current === nukeKey) return;
     // a 3D blast binds to the display certification; the off path (banner + boom, no 3D run)
-    // and warp captures keep the plain schedule, exactly as before
+    // and warp captures keep the plain schedule, exactly as before. The late key
+    // is the bounded fallback above: certification OR the fallback, never neither.
     const gated = fx.nukeMode !== 'off' && fx.warp === null;
-    if (gated && nukeShownKey !== nukeKey) return;
+    if (gated && nukeShownKey !== nukeKey && nukeLateKey !== nukeKey) return;
     nukeFiredFor.current = nukeKey;
     fireCue('nuke');
-  }, [nukeKey, nukeDueKey, nukeShownKey]);
+  }, [nukeKey, nukeDueKey, nukeShownKey, nukeLateKey]);
   const winBuzzed = useRef(false);
   useEffect(() => { if (st.phase !== 'gameOver') winBuzzed.current = false; }, [st.phase]);
   // Game-over celebration dismiss (owner rule: transient reveals clear

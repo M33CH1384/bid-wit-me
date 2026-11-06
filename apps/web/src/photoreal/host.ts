@@ -114,6 +114,21 @@ export function overlayPlacement(name: PhotorealName, W: number, H: number, L: L
 let seed = 1;
 const running = new Map<PhotorealName, () => void>();
 
+const warmed = new Set<PhotorealName>();
+/**
+ * Start loading an overlay module BEFORE its moment (nuked-trick freeze fix,
+ * 2026-11-05): the load-time warm pass covers the 3D blast, but on the iOS
+ * path the blast IS this 2D module, and it used to cold-import at detonation
+ * — inside the beat it was supposed to be filling. The browser's module map
+ * makes the play-time import near-free once the module has loaded; this just
+ * moves WHEN it loads. Fire-and-forget, once per name.
+ */
+export function warmPhotoreal(name: PhotorealName): void {
+  if (warmed.has(name)) return;
+  warmed.add(name);
+  void LOAD[name]().then(() => {}, () => { warmed.delete(name); });
+}
+
 export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { at?: number; mega?: boolean; full?: boolean } = {}): void {
   void LOAD[name]().then((mod) => {
     running.get(name)?.();
