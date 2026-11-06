@@ -3,14 +3,17 @@ import { deckBackUrl, deckName, deckThumbUrl } from './decks';
 import { VENUE_DEFS, type VenueChoice } from './venues';
 
 /**
- * S2 live venue/deck preview for the bots setup (boards/HANDOFF.md, Bots setup
- * --land-tab: "a live venue/deck preview … Replace the current empty green
- * rectangle"). A light, flat stand-in for the table — the venue's own
- * backdrop (the existing /assets/venues/<id>/bg.jpg) behind a CSS felt in the
- * venue's felt/rail colours, with the chosen deck's K♠ face and back on it.
+ * S2 live venue/deck preview (boards/HANDOFF.md, Bots setup --land-tab:
+ * "a live venue/deck preview … Replace the current empty green rectangle").
+ * A light, flat stand-in for the table — the venue's own backdrop (the
+ * existing /assets/venues/<id>/bg.jpg) behind a CSS felt in the venue's
+ * felt/rail colours, with the chosen deck's K♠ face and back on it.
  * No three.js and no new art: it reads VENUE_DEFS + the deck URL helpers only.
- * Hidden (display:none, so the backdrop never downloads) everywhere except the
- * tablet/desktop landscape layout; it updates live as the deck/venue change.
+ * Two hosts, one component: the bots setup (direct child of .ess-barred —
+ * hidden, display:none so the backdrop never downloads, except in the
+ * tablet/desktop landscape layout) and the online create form (inside its
+ * Deck & venue card, where card-scoped CSS in styles.css turns it on).
+ * It updates live as the deck/venue change on either host.
  */
 export function SetupPreview({ deck, venue }: { deck: string; venue: VenueChoice }) {
   const v = venue === 'random' ? null : VENUE_DEFS[venue];

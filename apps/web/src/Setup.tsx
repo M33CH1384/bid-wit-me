@@ -556,7 +556,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
             <SetupBar summary={setupBarSummary(s, true)}><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></SetupBar>
           </div>
         ) : (
-          <OnlineStep settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckGallery={<DeckGallery value={s.deck} onChange={(v) => set('deck', v)} />} barSummary={setupBarSummary(s, true)} onHouseRules={() => requestSettingsSheet()} onTargetScore={(v) => set('targetScore', v)} summary={summary} tipsRow={tipsRow} view={view} onOpenCreate={() => go('table', 'online', kind, 'create')} />
+          <OnlineStep settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckId={s.deck} deckGallery={<DeckGallery value={s.deck} onChange={(v) => set('deck', v)} />} barSummary={setupBarSummary(s, true)} onHouseRules={() => requestSettingsSheet()} onTargetScore={(v) => set('targetScore', v)} summary={summary} tipsRow={tipsRow} view={view} onOpenCreate={() => go('table', 'online', kind, 'create')} />
         )}
       </>
     );
@@ -628,8 +628,8 @@ export function RulesStatLine({ settings }: { settings: Settings }) {
  * wizard's Back returns here), regrouped ESPN-style into cards. Name and music
  * state live here so moving between the two screens keeps what you typed.
  */
-function OnlineStep({ settings, venue, onVenue, deck, deckGallery, barSummary, onHouseRules, onTargetScore, summary, tipsRow, view, onOpenCreate }: {
-  settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckGallery: ReactNode;
+function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSummary, onHouseRules, onTargetScore, summary, tipsRow, view, onOpenCreate }: {
+  settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckId: string; deckGallery: ReactNode;
   barSummary: string; onHouseRules: () => void; onTargetScore: (v: Settings['targetScore']) => void; summary: ReactNode; tipsRow: ReactNode; view: TableView; onOpenCreate: () => void;
 }) {
   const [name, setName] = useState(loadName);
@@ -680,6 +680,12 @@ function OnlineStep({ settings, venue, onVenue, deck, deckGallery, barSummary, o
           {deck}
           <div className="ess-row stack"><span className="ess-label">Pick your deck — tap to choose it; tap it again, or tap the eye, to browse its cards</span>{deckGallery}</div>
           <VenueSetupRow value={venue} onChange={onVenue} />
+          {/* The same live preview the bots setup shows (owner 2026-11-05,
+              audit G5): one SetupPreview, two hosts — here it rides inside
+              the card, driven by this form's own venue/deck picks. Locked
+              venues stay unpickable in VenueSelect, so they can never be
+              the previewed selection here either. */}
+          <SetupPreview deck={deckId} venue={venue} />
         </SetupCard>
         <SetupCard title="Rules">
           <RulesStatLine settings={settings} />

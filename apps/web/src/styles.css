@@ -5169,6 +5169,36 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .ess-barred:has(> .setup-preview) .setup-preview .sp-table { width: min(80%, 360px); }
 }
 
+/* Venue preview in ONLINE create (owner 2026-11-05, responsive audit
+   Finding H / gap G5): OnlineStep renders the SAME .setup-preview element
+   inside its Deck & venue card — one component, two hosts. The card scope
+   is what turns it on here: the bots preview is a direct child of
+   .ess-barred, so these rules can never reach it, and the land-tab
+   :has(> .setup-preview) grid above can never claim the online form.
+   Column form at a capped height — the fixed .setup-bar keeps CREATE
+   TABLE in the first viewport on phones; on portrait tablets it turns
+   into the horizontal strip, mirroring the bots portrait-tablet idiom. */
+.wizard.step-table .setup-card .setup-preview { display: flex; height: 190px; }
+.wizard.step-table .setup-card .setup-preview .sp-stage { padding: 10px; }
+/* felt width is capped per tier so the 16/10 ellipse (width / 1.6 tall)
+   always fits the stage left by the caption — never clipped, never
+   spilling over the caption */
+.wizard.step-table .setup-card .setup-preview .sp-table { width: min(76%, 172px); }
+@media (orientation: portrait) and (min-width: 700px) {
+  .wizard.step-table .setup-card .setup-preview { flex-direction: row; height: 168px; }
+  .wizard.step-table .setup-card .setup-preview .sp-stage { flex: 1 1 auto; min-width: 0; }
+  .wizard.step-table .setup-card .setup-preview .sp-table { width: 200px; }
+  .wizard.step-table .setup-card .setup-preview figcaption { flex: 0 0 168px; justify-content: center; }
+}
+@media (orientation: landscape) and (max-height: 540px) {
+  .wizard.step-table .setup-card .setup-preview { height: 176px; }
+  .wizard.step-table .setup-card .setup-preview .sp-table { width: min(72%, 150px); }
+}
+@media (orientation: landscape) and (min-height: 541px) and (min-width: 1000px) {
+  .wizard.step-table .setup-card .setup-preview { height: 240px; }
+  .wizard.step-table .setup-card .setup-preview .sp-table { width: min(80%, 250px); }
+}
+
 /* S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Table menu"): on a
    short landscape phone the ☰ table menu was one ~44px-per-row column taller
    than the 393px stage, so 🚪 Leave table (the destructive action, always
