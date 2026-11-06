@@ -120,13 +120,19 @@ describe('my stats', () => {
     const body = await res.json() as Awaited<ReturnType<typeof myStats>>;
     expect(body.cutthroat).toMatchObject({
       games: 1, wins: 1, winsVsPlayers: 0, winsVsBots: 1, gamesVsBots: 1, winPctBots: 100, winPctPlayers: null,
-      accuracy: 66.7, bags: 5, booksPerHand: 3, nil: '1/2', shotsGiven: 2, shotsTaken: 1, bjWins: 3, bids: 6,
+      accuracy: 66.7, bags: 5, booksPerHand: 3, nil: '1/2', shotsGiven: 2, shotsTaken: 1, bids: 6,
       elo: null, unrated: UNRATED_NOTE,
     });
     expect(body.team).toMatchObject({
       games: 2, wins: 1, winsVsPlayers: 1, winsVsBots: 0, gamesVsPlayers: 2, winPctPlayers: 50,
-      accuracy: 50, bags: 3, booksPerHand: 2, nil: '1/1', shotsTaken: 1, bjWins: 1, bids: 8, elo: 1190, unrated: null,
+      accuracy: 50, bags: 3, booksPerHand: 2, nil: '1/1', shotsTaken: 1, bids: 8, elo: 1190, unrated: null,
     });
+    // Owner ruling 2026-11-06: Big-Joker trick wins is not a stat (the card
+    // wins its trick by construction — the count measures the deal, not the
+    // player). The stored stats JSON seeded above still carries bjWins, as
+    // real history does; the payload must not surface it at all.
+    expect(body.cutthroat).not.toHaveProperty('bjWins');
+    expect(body.team).not.toHaveProperty('bjWins');
     const anon = await handleSocialHttp(new Request(url), { DB: db, PUBLIC_ORIGIN: ORIGIN }, url, ['api', 'social', 'me', 'stats'], NOW);
     expect(anon.status).toBe(401);
   });

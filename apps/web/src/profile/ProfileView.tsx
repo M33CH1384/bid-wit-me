@@ -171,7 +171,7 @@ interface SocialProfileData {
   teams?: TeamStatData[];
   ratings: { team?: number; cutthroat?: number }; totals: { games: number; wins: number };
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[]; vsYou?: { games: number; wins: number; losses: number }; champion: number;
-  stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; tkoDealt: number; tkoSuffered: number; tossesForced: number; tossesConceded: number; wheels: number; bjWins: number; bidSec: number | null; playSec: number | null };
+  stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; tkoDealt: number; tkoSuffered: number; tossesForced: number; tossesConceded: number; wheels: number; bidSec: number | null; playSec: number | null };
   awards?: { label: string; ref: string; at: number }[];
 }
 
@@ -275,7 +275,6 @@ function CompareBlock({ them, myName }: { them: SocialProfileData; myName: strin
       { label: 'Books / hand', a: ms.booksPerHand, b: ts.booksPerHand, fmt: (n) => n.toFixed(2) },
       { label: 'Nils made', a: nilMade(ms.nil), b: nilMade(ts.nil), fmt: whole },
       { label: 'Wheels', a: ms.wheels, b: ts.wheels, fmt: whole },
-      { label: 'Big-Joker trick wins', a: ms.bjWins, b: ts.bjWins, fmt: whole },
     );
   }
   return (
@@ -429,7 +428,7 @@ function SeasonSection({ season, onClaim, claimingIds, justClaimedIds }: {
 const STAT_LABELS: Record<string, string> = {
   games: 'Games', wins: 'Wins', streak: 'Win streak', bestStreak: 'Best streak',
   accuracy: 'Bid accuracy', bags: 'Bags', booksPerHand: 'Books/hand', nil: 'Nil made',
-  shotsGiven: 'Shots given', shotsTaken: 'Shots taken', tkoDealt: '1st Round TKOs', tkoSuffered: 'TKOs taken', tossesForced: 'Tosses forced', tossesConceded: 'Tosses conceded', wheels: 'Wheels', bjWins: 'Big-Joker trick wins',
+  shotsGiven: 'Shots given', shotsTaken: 'Shots taken', tkoDealt: '1st Round TKOs', tkoSuffered: 'TKOs taken', tossesForced: 'Tosses forced', tossesConceded: 'Tosses conceded', wheels: 'Wheels',
   winsVsPlayers: 'Wins vs players', winsVsBots: 'Wins vs bots',
 };
 
@@ -1224,7 +1223,6 @@ export function ProfileView({ host, name, id, noBack }: {
                     ['Tosses forced', String(socialP.stats.tossesForced ?? 0)],
                     ['Tosses conceded', String(socialP.stats.tossesConceded ?? 0)],
                     ['Wheels', String(socialP.stats.wheels)],
-                    ['Big Joker wins', String(socialP.stats.bjWins)],
                     ['Avg bid', `${socialP.stats.bidSec ?? '—'}s`],
                     ['Avg play', `${socialP.stats.playSec ?? '—'}s`],
                   ]} />

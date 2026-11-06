@@ -48,6 +48,9 @@ describe('tape + compare placement', () => {
     expect(pv).toContain('{!me && socialP && acct.user?.username && <CompareBlock');
     expect(pv).toContain("'Partnership rating'");
     expect(pv).toContain("'Books / hand'");
-    expect(pv).toContain("'Big-Joker trick wins'");
+    // Owner ruling 2026-11-06: no 'Big-Joker trick wins' compare row — the
+    // Big Joker wins its trick by construction, so the count measures the
+    // deal, not the player, and is not a stat.
+    expect(pv).not.toContain("'Big-Joker trick wins'");
   });
 });

@@ -1926,7 +1926,6 @@ export class Room {
     if (d.story) this.storyGuideMoments(evs);
     d.lastActive = this.io.now();
     const fresh = d.game.handNo === before.handNo ? d.game.tricks.slice(before.tricks.length) : [];
-    if (d.live) for (const t of fresh) if (t.winner !== null && t.plays.some((p) => p.seat === t.winner && p.card === 'BJ')) d.live.bj[t.winner] = (d.live.bj[t.winner] ?? 0) + 1;
     if (action.type === 'runIt') {
       const books = fresh.length;
       const playout = runPlayout(before, d.game, action.seat);

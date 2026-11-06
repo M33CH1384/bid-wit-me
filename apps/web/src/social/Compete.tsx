@@ -45,7 +45,7 @@ interface ModeStats {
   winsVsPlayers: number; winsVsBots: number; gamesVsPlayers: number; gamesVsBots: number;
   winPctPlayers: number | null; winPctBots: number | null;
   accuracy: number | null; bags: number; booksPerHand: number | null; nil: string;
-  shotsGiven: number; shotsTaken: number; bjWins: number; bids: number;
+  shotsGiven: number; shotsTaken: number; bids: number;
   elo: number | null; unrated: string | null;
 }
 interface MyStats { team: ModeStats; cutthroat: ModeStats }
@@ -245,7 +245,6 @@ function StatsSheet({ mine, kind, onClose }: { mine: MyStats; kind: Kind; onClos
           <div><b>{num(primary.booksPerHand)}</b><small>books / hand</small></div>
           <div><b>{primary.nil}</b><small>nils</small></div>
           <div><b>{primary.shotsGiven}/{primary.shotsTaken}</b><small>shots</small></div>
-          <div><b>{primary.bjWins}</b><small>Big Joker wins</small></div>
         </div>
         <div className="ranks-split" data-testid="your-stats-other">
           {side('team', '2v2')}
@@ -683,7 +682,7 @@ interface HonorT { id: string; label: string; userId: string; name: string; valu
 
 /**
  * The Record Book: all-time marks from stored stats (highest peak rating,
- * most wins / Wheels / Big-Joker trick wins, best win % with a games minimum, and the
+ * most wins / Wheels, best win % with a games minimum, and the
  * streak records off the stored cred_totals), from /api/social/honors.
  * Records render generically from the payload — a record the server omits
  * (nobody qualifies yet) simply doesn't appear.

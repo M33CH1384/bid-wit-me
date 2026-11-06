@@ -228,15 +228,24 @@ describe('Central wiring (source)', () => {
     const centralTsx = read('../src/social/Central.tsx');
     expect(centralTsx).toContain('Math.abs(turning.swing.delta)');
   });
-  it('honesty: the bjWins counter is never labelled Bostons (or Blackjack) — it counts Big-Joker trick wins', () => {
-    // Server lane fixed the same mislabel in honors ("Most Bostons" summed
-    // bjWins). The client Compare row and Stats grid label the SAME
-    // counter; both must name what the number measures. No real Bostons
-    // (took-every-book) stat exists in this payload — do not invent one.
+  it('honesty: Big-Joker trick wins is not a stat (owner 2026-11-06) — no client surface presents the bjWins counter', () => {
+    // SUPERSEDES the BWM Central P1 mislabel pin that lived here (the
+    // counter had to be labelled 'Big-Joker trick wins', never 'Bostons').
+    // The owner then ruled the count itself out: the Big Joker wins its
+    // trick by construction, so the number measures the deal, not the
+    // player. The Compare row, the Stats grid label, the profile-modal
+    // "Online record" row and the Rankings Your-stats tile are all gone;
+    // a legacy payload still carrying bjWins renders nothing for it. The
+    // old Boston mislabel stays dead too.
     const pv = read('../src/profile/ProfileView.tsx');
-    expect(pv).toContain("{ label: 'Big-Joker trick wins', a: ms.bjWins, b: ts.bjWins, fmt: whole }");
-    expect(pv).toContain("bjWins: 'Big-Joker trick wins'");
+    expect(pv).not.toContain('Big-Joker trick wins');
+    expect(pv).not.toContain("['Big Joker wins',");
+    expect(pv).not.toContain('ms.bjWins');
     expect(pv).not.toContain("'Bostons'");
     expect(pv).not.toContain("'Blackjack wins'");
+    const compete = read('../src/social/Compete.tsx');
+    expect(compete).not.toContain('bjWins');
+    expect(compete).not.toContain('Big Joker wins');
+    expect(compete).not.toContain('Big-Joker trick wins');
   });
 });

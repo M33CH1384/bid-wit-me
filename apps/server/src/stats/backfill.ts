@@ -95,7 +95,7 @@ export async function backfillHomiesWin(db: D1Database): Promise<BackfillResult>
   const stats = {
     won: true, hands: 0, bids: 0, bidSum: 0, made: 0, set: hit.sets, bags: 0,
     nilBids: hit.nilBids, nilMade: hit.nilMade, books: 0,
-    shotsTaken: hit.sets, shotsGiven: hit.oppSets, wheels: hit.wheels, bjWins: 0,
+    shotsTaken: hit.sets, shotsGiven: hit.oppSets, wheels: hit.wheels,
     bidMs: 0, bidN: 0, playMs: 0, playN: 0,
   };
   await db.batch([

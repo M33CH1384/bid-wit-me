@@ -239,20 +239,28 @@ describe('favorites endpoints', () => {
   });
 });
 
-/* ---------------------------------------------------------- honors label */
+/* ------------------------------------------- honors: no Big-Joker stat */
 
-describe('honors Big-Joker mislabel fix', () => {
-  it("the records summing bjWins are labelled Big-Joker trick wins; ids stable; no 'Boston' label remains", async () => {
+/* SUPERSEDED (owner ruling, 2026-11-06): this block originally pinned the
+ * BWM Central P1 mislabel fix — the record summing bjWins was relabelled
+ * from "Most Bostons" to "Most Big-Joker trick wins". The owner then ruled
+ * Big-Joker trick wins is not a stat at all: the card wins its trick by
+ * construction, so the count measures the deal, not the player. The record
+ * is GONE (season award + all-time). The pins below keep it gone — even
+ * when stored history still carries bjWins in stats JSON (seeded below,
+ * exactly as history holds it) — and keep the old Boston mislabel dead. */
+describe('honors: Big-Joker trick wins is not a stat (owner 2026-11-06)', () => {
+  it('no award or record is keyed to bjWins, even when stored stats carry it', async () => {
     await db.prepare(`INSERT INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated)
       VALUES ('hb1', 'R', 'joker', 'team', ?, 2, '[]', '[]', '[]', '[]', 1)`).bind(NOW - 1000).run();
     await db.prepare(`INSERT INTO game_players (game_id, user_id, kind, seat, side, won, partner_id, ended_at, stats, elo_before, elo_after)
       VALUES ('hb1', 'a', 'team', 0, 0, 1, NULL, ?, '{"bjWins": 7, "wheels": 0}', NULL, NULL)`).bind(NOW - 1000).run();
     const { awards, records } = await leagueHonors(db, NOW);
-    const seasonRec = awards.find((h) => h.id === 'most-bostons');
-    expect(seasonRec).toMatchObject({ userId: 'a', label: 'Most Big-Joker trick wins this season', value: '7 Big-Joker trick wins' });
-    const allTime = records.find((h) => h.id === 'most-bostons-ever');
-    expect(allTime).toMatchObject({ userId: 'a', label: 'Most Big-Joker trick wins all-time', value: '7 Big-Joker trick wins' });
+    expect(awards.find((h) => h.id === 'most-bostons')).toBeUndefined();
+    expect(records.find((h) => h.id === 'most-bostons-ever')).toBeUndefined();
     for (const h of [...awards, ...records]) {
+      expect(h.label).not.toMatch(/big-joker trick wins/i);
+      expect(h.value).not.toMatch(/big-joker trick wins/i);
       expect(h.label).not.toMatch(/boston/i);
       expect(h.value).not.toMatch(/boston/i);
     }

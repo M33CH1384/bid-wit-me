@@ -14,8 +14,8 @@ export const ELO_BOT = 1200;
 export interface SeatRef { name: string; side: number; kind: 'user' | 'guest' | 'bot'; uid?: string }
 
 /** live per-seat counters the room keeps during a game */
-export interface LiveStats { bidMs: number[]; bidN: number[]; playMs: number[]; playN: number[]; bj: number[] }
-export const newLiveStats = (n: number): LiveStats => ({ bidMs: Array(n).fill(0), bidN: Array(n).fill(0), playMs: Array(n).fill(0), playN: Array(n).fill(0), bj: Array(n).fill(0) });
+export interface LiveStats { bidMs: number[]; bidN: number[]; playMs: number[]; playN: number[] }
+export const newLiveStats = (n: number): LiveStats => ({ bidMs: Array(n).fill(0), bidN: Array(n).fill(0), playMs: Array(n).fill(0), playN: Array(n).fill(0) });
 
 export interface PlayerGameStats {
   won: boolean;
@@ -60,8 +60,6 @@ export interface PlayerGameStats {
    *  the stamp existed carry no tossed hands — the stat starts at ship. */
   tossesForced: number; tossesConceded: number;
   wheels: number;
-  /** tricks won with the Big Joker */
-  bjWins: number;
   bidMs: number; bidN: number; playMs: number; playN: number;
 }
 
@@ -105,7 +103,7 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
     const ref = o.seats[seat];
     if (!ref || ref.kind !== 'user' || !ref.uid) continue;
     const side = sideOf(seat, r);
-    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0, books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0, shotsTaken: 0, shotsGiven: 0, tkoDealt: tkoOuts.filter((o2) => o2 !== side).length, tkoSuffered: tkoOuts.includes(side) ? 1 : 0, tossesForced: 0, tossesConceded: 0, wheels: 0, bjWins: o.live?.bj[seat] ?? 0, bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
+    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0, books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0, shotsTaken: 0, shotsGiven: 0, tkoDealt: tkoOuts.filter((o2) => o2 !== side).length, tkoSuffered: tkoOuts.includes(side) ? 1 : 0, tossesForced: 0, tossesConceded: 0, wheels: 0, bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
     for (const h of g.history) {
       const b = h.bids[seat];
       const tw = h.tricksWon[seat] ?? 0;
@@ -224,7 +222,7 @@ export interface SaveMeta {
 const emptyStats = (hands: number): PlayerGameStats => ({
   won: false, hands, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0,
   books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0,
-  shotsTaken: 0, shotsGiven: 0, tkoDealt: 0, tkoSuffered: 0, tossesForced: 0, tossesConceded: 0, wheels: 0, bjWins: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0,
+  shotsTaken: 0, shotsGiven: 0, tkoDealt: 0, tkoSuffered: 0, tossesForced: 0, tossesConceded: 0, wheels: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0,
 });
 
 /** An in-progress game that will not be finished by these seats. Nobody won. Stats stay empty so accuracy is untouched. */
