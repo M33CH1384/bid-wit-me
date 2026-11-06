@@ -188,8 +188,7 @@ async function feedbackRoute(req: Request, env: Env, parts: string[], url: URL, 
   return new Response('not found', { status: 404 });
 }
 
-export default {
-  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function routeRequest(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // rides the deploy: one attempt per isolate, retried until the offline-games columns exist
     if (env.DB) ctx.waitUntil(backfillHomiesOnce(env.DB));
     const url = new URL(req.url);
@@ -346,6 +345,23 @@ export default {
       }
     }
     return json({ error: 'not found' }, { status: 404 }, origin);
+}
+
+export default {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    try {
+      return await routeRequest(req, env, ctx);
+    } catch (e) {
+      // Incident diagnostic (2026-11-06 sign-in outage): an unhandled throw used
+      // to escape as Cloudflare's opaque error 1101 with the real error visible
+      // nowhere. Catch at the entry, log it, and carry the error text in the
+      // 500 body so a broken route can be diagnosed from the outside.
+      const err = e instanceof Error ? e : new Error(String(e));
+      const cause = (err as { cause?: unknown }).cause;
+      const detail = `${err.name}: ${err.message}${cause ? ` | cause: ${cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)}` : ''}`.slice(0, 400);
+      console.error(JSON.stringify({ src: 'bwm.api', event: 'unhandled', detail }));
+      return json({ error: 'internal', detail }, { status: 500 }, allowedOrigin(req, env));
+    }
   },
 
   /** Cron (see [triggers] in wrangler.toml): daily-bonus + season-ending pushes,
