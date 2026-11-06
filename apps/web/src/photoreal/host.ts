@@ -24,6 +24,8 @@ import { sound } from '../audio';
 import { currentNukeDevice, isIosWebKit } from '../three/nukeVisual';
 import { importChunk } from '../chunkLoad';
 import { loadSettings } from '../settings';
+import { reportCrash } from '../telemetry';
+import { createFxRunner, prepareFxInstance, type FxRunner, type FxRunnerDeps, type PreparedFx } from './runner';
 import type { PhotorealFxInstance, PhotorealFxOpts } from './modules/modules';
 
 export type PhotorealName = 'lightning' | 'meteor' | 'quake' | 'goldrain' | 'nuke';
@@ -112,7 +114,131 @@ export function overlayPlacement(name: PhotorealName, W: number, H: number, L: L
 }
 
 let seed = 1;
-const running = new Map<PhotorealName, () => void>();
+/**
+ * Every photoreal module load goes through the OPTIONAL chunk path
+ * (crash hardening, 2026-11-06): these modules are pure decoration —
+ * a stale one after a deploy is skipped (the callers' rejection
+ * handlers already treat a failed load as "the effect doesn't play"),
+ * never a reason to reload a live match. The raw LOAD table stays the
+ * single source of the import specifiers.
+ */
+function loadModule(name: PhotorealName): Promise<Mod> {
+  return importChunk(() => LOAD[name](), { optional: `photoreal-${name}` }) as Promise<Mod>;
+}
+
+/**
+ * Lifecycle + preparation state (crash hardening, 2026-11-06). Each
+ * effect name owns one FxRunner (photoreal/runner.ts), which contains
+ * every load/construction/render failure and guarantees cleanup. The
+ * `running` map of bare stop functions this replaces had three holes:
+ * a createFx throw escaped the load callback (orphan canvas, unhandled
+ * rejection), a render throw killed the frame chain silently (stuck
+ * overlay, stale running flag), and a load resolving after the screen
+ * unmounted started an effect on a dead screen.
+ *
+ * PREPARATION: modules build their procedural sprites synchronously in
+ * createFx — for the nuke that is 43 canvases and tens of ms of pixel
+ * work at the exact moment the effect should already be on screen.
+ * warmPhotoreal/startPhotoreal now also PRE-BUILD one instance per
+ * effect on an idle slot (its seed is simply the next one from the
+ * host counter, so per-play variety is unchanged), and playPhotoreal
+ * adopts it synchronously when the placement signature matches. A
+ * signature miss or an absent prep falls back to constructing at play
+ * time, exactly as before. goldrain is excluded: it builds no sprites
+ * (its construction is a few ms of grain fill), so there is nothing
+ * worth pre-building.
+ */
+let hostEpoch = 0;
+let lastMount: HTMLElement | null = null;
+const runners = new Map<PhotorealName, FxRunner>();
+const preps = new Map<PhotorealName, { sig: string; fx: PreparedFx }>();
+const prepPending = new Set<PhotorealName>();
+const PREPPABLE: readonly PhotorealName[] = ['nuke', 'quake', 'meteor', 'lightning'];
+
+function setProbe(name: PhotorealName, on: boolean): void {
+  const w = window as unknown as { __bwmPhotoreal?: Record<string, unknown> };
+  (w.__bwmPhotoreal ??= {})[name] = on;
+}
+
+function depsFor(name: PhotorealName): FxRunnerDeps {
+  return {
+    load: () => loadModule(name),
+    createCanvas: () => document.createElement('canvas'),
+    raf: (fn) => requestAnimationFrame(fn),
+    cancelRaf: (id) => cancelAnimationFrame(id),
+    setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+    clearTimeout: (id) => window.clearTimeout(id),
+    addSkipListener: (fn) => window.addEventListener('pointerdown', fn, { once: true }),
+    removeSkipListener: (fn) => window.removeEventListener('pointerdown', fn),
+    report: (stage, err) => reportCrash('error', err, { effect: `photoreal-${name}`, stage }),
+    epoch: () => hostEpoch,
+    advance: advancePresentedClock,
+  };
+}
+
+function runnerFor(name: PhotorealName): FxRunner {
+  let r = runners.get(name);
+  if (!r) { r = createFxRunner(depsFor(name)); runners.set(name, r); }
+  return r;
+}
+
+interface FxPlacement {
+  W: number; H: number; pr: number; low: boolean;
+  gx: number; gy: number; drawRx: number; drawRy: number; scale: number;
+  sig: string;
+}
+
+function placementFor(name: PhotorealName, mount: HTMLElement): FxPlacement | null {
+  const box = mount.getBoundingClientRect();
+  const W = box.width, H = box.height;
+  if (W < 32 || H < 32) return null;
+  const ios = isIosWebKit(currentNukeDevice());
+  const low = ios || loadSettings().quality === 'low';
+  const pr = Math.min(window.devicePixelRatio || 1, 2) * (ios ? IPHONE_RENDER_SCALE : 1);
+  const p = overlayPlacement(name, W, H, layout());
+  const sig = [name, low ? 'l' : 'f', Math.round(W * pr), Math.round(H * pr), p.gx.toFixed(1), p.gy.toFixed(1), p.drawRx.toFixed(1), p.drawRy.toFixed(1), p.scale].join('|');
+  return { W, H, pr, low, gx: p.gx, gy: p.gy, drawRx: p.drawRx, drawRy: p.drawRy, scale: p.scale, sig };
+}
+
+function stylePhotorealCanvas(name: PhotorealName, pl: FxPlacement, c: HTMLCanvasElement): void {
+  c.className = `photoreal-fx photoreal-${name}`;
+  c.dataset.testid = `photoreal-${name}`;
+  c.width = Math.round(pl.W * pl.pr); c.height = Math.round(pl.H * pl.pr);
+  Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: `${pl.W}px`, height: `${pl.H}px`, pointerEvents: 'none', zIndex: '4', ...(pl.scale !== 1 ? { transformOrigin: `${pl.gx}px ${pl.gy}px`, transform: `scale(${pl.scale})` } : {}) });
+}
+
+function createOpts(pl: FxPlacement): PhotorealFxOpts {
+  return { seed: seed++, lowPower: pl.low, x: pl.gx * pl.pr, y: pl.gy * pl.pr, tableRx: pl.drawRx * pl.pr, tableRy: pl.drawRy * pl.pr };
+}
+
+function takePrep(name: PhotorealName, sig: string): PreparedFx | null {
+  const p = preps.get(name);
+  if (!p) return null;
+  preps.delete(name);
+  return p.sig === sig ? p.fx : null; // stale placement: drop it, construct fresh
+}
+
+/** Build the next instance of an effect ahead of its moment, on an idle slot. */
+function schedulePrep(name: PhotorealName): void {
+  if (!PREPPABLE.includes(name)) return;
+  if (preps.has(name) || prepPending.has(name)) return;
+  const mount = lastMount;
+  if (!mount || !mount.isConnected) return;
+  const pl = placementFor(name, mount);
+  if (!pl) return;
+  prepPending.add(name);
+  const epochAt = hostEpoch;
+  const build = () => {
+    void prepareFxInstance(depsFor(name), (c) => stylePhotorealCanvas(name, pl, c), createOpts(pl)).then((fx) => {
+      prepPending.delete(name);
+      if (!fx) return;
+      if (hostEpoch !== epochAt || lastMount !== mount) return; // the screen moved on: drop it
+      preps.set(name, { sig: pl.sig, fx });
+    });
+  };
+  const ric = (window as unknown as { requestIdleCallback?: (fn: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+  if (ric) ric(build, { timeout: 1500 }); else window.setTimeout(build, 60);
+}
 
 const warmed = new Set<PhotorealName>();
 /**
@@ -126,46 +252,35 @@ const warmed = new Set<PhotorealName>();
 export function warmPhotoreal(name: PhotorealName): void {
   if (warmed.has(name)) return;
   warmed.add(name);
-  void LOAD[name]().then(() => {}, () => { warmed.delete(name); });
+  // Once the module is in, also pre-build its instance off-beat (see
+  // schedulePrep) so the construction cost lands here, not at play time.
+  void loadModule(name).then(() => { schedulePrep(name); }, () => { warmed.delete(name); });
 }
 
 export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { at?: number; mega?: boolean; full?: boolean } = {}): void {
-  void LOAD[name]().then((mod) => {
-    running.get(name)?.();
-    const box = mount.getBoundingClientRect();
-    const W = box.width, H = box.height;
-    if (W < 32 || H < 32) return;
-    const ios = isIosWebKit(currentNukeDevice());
-    const low = ios || loadSettings().quality === 'low';
-    const pr = Math.min(window.devicePixelRatio || 1, 2) * (ios ? IPHONE_RENDER_SCALE : 1);
-    const p = overlayPlacement(name, W, H, layout());
-    const c = document.createElement('canvas');
-    c.className = `photoreal-fx photoreal-${name}`;
-    c.dataset.testid = `photoreal-${name}`;
-    c.width = Math.round(W * pr); c.height = Math.round(H * pr);
-    Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: `${W}px`, height: `${H}px`, pointerEvents: 'none', zIndex: '4', ...(p.scale !== 1 ? { transformOrigin: `${p.gx}px ${p.gy}px`, transform: `scale(${p.scale})` } : {}) });
-    mount.appendChild(c);
-    const inst = mod.createFx(c, { seed: seed++, lowPower: low, x: p.gx * pr, y: p.gy * pr, tableRx: p.drawRx * pr, tableRy: p.drawRy * pr });
-    let raf = 0, T = 0, last: number | null = null, flashed = false, cracked = false, first = true, done = false;
-    const stop = () => {
-      if (done) return; done = true; cancelAnimationFrame(raf); c.remove(); running.delete(name);
-      if (name === 'nuke') { fx.blast = null; fx.nukeT = null; }
-      (window as unknown as { __bwmPhotoreal?: Record<string, unknown> }).__bwmPhotoreal![name] = false;
-    };
-    running.set(name, stop);
-    (window as unknown as { __bwmPhotoreal?: Record<string, unknown> }).__bwmPhotoreal ??= {};
-    (window as unknown as { __bwmPhotoreal: Record<string, unknown> }).__bwmPhotoreal[name] = true;
-    const frame = (now: number) => {
-      // presented-time clock (a stalled frame stretches the show instead of skipping it), or a pinned capture time
-      if (opts.at !== undefined) T = opts.at; else { const a = advancePresentedClock(T, last, now); T = a.t; last = a.last; }
-      inst.render(Math.min(T, inst.duration - 1e-3));
+  lastMount = mount;
+  const pl = placementFor(name, mount);
+  if (!pl) return;
+  const runner = runnerFor(name);
+  const prep = takePrep(name, pl.sig);
+  let flashed = false, cracked = false, first = true;
+  const live = opts.at === undefined;
+  runner.play({
+    mount,
+    opts: createOpts(pl),
+    prepared: prep,
+    styleCanvas: (c) => stylePhotorealCanvas(name, pl, c),
+    pinnedAt: opts.at,
+    skipDelayMs: live && name === 'nuke' ? 400 : undefined,
+    onBegin: () => setProbe(name, true),
+    onFrame: (T) => {
       if (name === 'nuke') {
         if (first) { first = false; if (opts.at === undefined) fx.heroPresented(); }
         fx.nukeT = T;
         if (!flashed && T >= NUKE_FLASH_T) {
           flashed = true;
           fx.blast = { start: performance.now(), hand: !!opts.full, ...(opts.mega ? { mega: true as const } : {}) };
-          if (opts.full && opts.at === undefined) void importChunk(() => import('../three/Nuke3D')).then((m) => m.blowHud(), () => {});
+          if (opts.full && opts.at === undefined) void importChunk(() => import('../three/Nuke3D'), { optional: 'nuke3d' }).then((m) => m.blowHud(), () => {});
         }
       }
       // the quake's cracks fracture audibly as they open (QUAKE_CRACK_T);
@@ -177,21 +292,21 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
         cracked = true;
         try { sound.play('glassCrack', { gain: 1.1 }); } catch { /* audio never blocks the picture */ }
       }
-      if (opts.at !== undefined) return; // a pinned capture frame stays up until the next call
-      if (T >= inst.duration) { stop(); return; }
-      raf = requestAnimationFrame(frame);
-    };
-    raf = requestAnimationFrame(frame);
-    if (opts.at === undefined) {
-      // tap anywhere skips the nuke, like Nuke3D
-      if (name === 'nuke') window.setTimeout(() => window.addEventListener('pointerdown', stop, { once: true }), 400);
-      window.setTimeout(stop, inst.duration * 1000 + 6000); // backstop
-    }
-  }, () => { /* module failed to load: the existing effect already played */ });
+    },
+    onStop: () => {
+      if (name === 'nuke') { fx.blast = null; fx.nukeT = null; }
+      setProbe(name, false);
+      schedulePrep(name); // build the next activation's instance off-beat
+    },
+  });
 }
 
 /** Start listening for effect events; returns the unsubscribe (also stops anything running). */
 export function startPhotoreal(mount: HTMLElement): () => void {
+  lastMount = mount;
+  // The table is up: pre-build the sprite-heavy instances on idle slots
+  // so their construction never lands inside a live beat.
+  for (const n of PREPPABLE) schedulePrep(n);
   const off = fx.on((e) => {
     if (fx.reduced) return; // Reduce effects: the existing calm versions only
     const name = photorealFor(e);
@@ -201,5 +316,15 @@ export function startPhotoreal(mount: HTMLElement): () => void {
   });
   // capture / QA hook: draw one effect pinned at time t (no sound, no game state)
   (window as unknown as { __bwmPhotorealPreview?: unknown }).__bwmPhotorealPreview = (name: PhotorealName, t: number) => playPhotoreal(mount, name, { at: t });
-  return () => { off(); running.forEach((s) => s()); };
+  return () => {
+    off();
+    // Invalidate everything in flight BEFORE stopping the runners (their
+    // onStop prep scheduling must see the mount already gone), then run
+    // every cleanup: frames, timers, skip listeners, overlays, probes.
+    hostEpoch++;
+    lastMount = null;
+    runners.forEach((r) => r.stop());
+    runners.clear();
+    preps.clear();
+  };
 }

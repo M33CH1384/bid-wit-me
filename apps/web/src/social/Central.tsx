@@ -39,6 +39,14 @@ const get = (u: string) => fetch(u, { credentials: 'same-origin' }).then(async (
   return j;
 });
 
+
+/** Payload-shape guard (crash hardening, 2026-11-06): the fetch layer
+ *  casts 200 responses unchecked, so a present-but-wrong-typed
+ *  collection flowed into the headline/rivalry engines and threw
+ *  during render. A non-array where an array belongs is treated as
+ *  absent — the same degradation a missing field already got. */
+function arr<T>(v: unknown): T[] { return Array.isArray(v) ? (v as T[]) : []; }
+
 const timeLabel = (at: number) => new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const MODE_LABEL: Record<string, string> = { joker: 'Joker', aceDown: 'Ace Down', cutthroat: 'Cutthroat', cutthroat4: 'Cutthroat' };
 
@@ -89,15 +97,15 @@ export function Headlines({ signedIn }: { signedIn: boolean }) {
   const [seen] = useState<string[]>(() => {
     try { return parseSeenIds(localStorage.getItem(HEADLINE_SEEN_KEY)); } catch { return []; }
   });
-  const results = resultsQ.data?.results ?? [];
+  const results = arr<RecentResult>(resultsQ.data?.results);
   const cards = useMemo(() => buildHeadlines({
     myName: signedIn ? myName : null,
     myUid: signedIn ? myUid : null,
     results,
     me: (meQ.data as unknown as MeProfileLike | null) ?? null,
-    h2h: myProfileQ.data?.h2h ?? [],
-    powerRows: powerQ.data?.rows ?? [],
-    highlights: highlightsQ.data?.highlights ?? [],
+    h2h: arr<H2hRow>(myProfileQ.data?.h2h),
+    powerRows: arr<PowerRowLike>(powerQ.data?.rows),
+    highlights: arr<LiveHighlight>(highlightsQ.data?.highlights),
     wagers,
     invites: s.invites,
     sentInvites: Object.values(s.sent),
@@ -222,7 +230,7 @@ function Rivalries({ signedIn }: { signedIn: boolean }) {
   const profileQ = useFetch<{ h2h?: H2hRow[] }>(signedIn && myName ? `/api/social/profile/${encodeURIComponent(myName)}` : null);
   const resultsQ = useFetch<{ results: RecentResult[] }>('/api/social/results?limit=25');
   const cards = useMemo(
-    () => buildRivalries(profileQ.data?.h2h ?? [], resultsQ.data?.results ?? [], myName),
+    () => buildRivalries(arr<H2hRow>(profileQ.data?.h2h), arr<RecentResult>(resultsQ.data?.results), myName),
     [profileQ.data, resultsQ.data, myName],
   );
   /* ALL SQUARE (BWM Central Phase 3): a tied rivalry's marker animates
@@ -349,7 +357,7 @@ export function MatchupsHome({ signedIn }: { signedIn: boolean }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const friends = s.friends?.friends ?? [];
-  const recent = recentQ.data?.players ?? [];
+  const recent = arr<RecentPlayer>(recentQ.data?.players);
   const search = async (e: FormEvent) => {
     e.preventDefault();
     const name = q.trim();
@@ -429,6 +437,16 @@ export function MatchView({ id }: { id: string }) {
     );
   }
   const { game, players, timeline } = q.data;
+  if (!game || game.final == null || !Array.isArray(game.winners) || !Array.isArray(players) || !Array.isArray(timeline)) {
+    // A 200 with the wrong shape is as unavailable as a failed fetch
+    // (crash hardening): show the same state instead of throwing here.
+    return (
+      <div className="match-view" data-testid="match-view">
+        <button type="button" className="link" onClick={() => social.dest('matchups')}>← Matchups</button>
+        <p className="soc-empty">{"This match isn't available — it may have been played before match records existed, or the record couldn't be loaded."}</p>
+      </div>
+    );
+  }
   const finals = finalScores(game.final);
   const points = matchTimelinePoints(timeline);
   const turning = matchTurning(timeline);

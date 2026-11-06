@@ -98,7 +98,7 @@ export function WagerChallenges({ signedIn }: { signedIn: boolean }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [creating, setCreating] = useState(false);
   const load = useCallback(() => {
-    fetchWagerList().then((j) => { setRows(j.challenges); setEnabled(j.enabled ?? true); }).catch(() => setRows([]));
+    fetchWagerList().then((j) => { setRows(Array.isArray(j.challenges) ? j.challenges : []); setEnabled(j.enabled ?? true); }).catch(() => setRows([]));
   }, []);
   useEffect(() => { load(); const t = window.setInterval(load, 20_000); return () => window.clearInterval(t); }, [load]);
   // wager notices arrive live over the hub (invite, check-in open, outcome): refetch on them

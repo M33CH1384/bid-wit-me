@@ -12,7 +12,7 @@ export function SheetCloth({ wait }: { wait: boolean }) {
     // Through importChunk like every other app chunk: a plain import on a
     // deploy-stranded client names a deleted chunk and the cloth silently
     // never mounts (chunkLoad.ts has the whole story).
-    void importChunk(() => import('./sheetClothSim')).then((m) => {
+    void importChunk(() => import('./sheetClothSim'), { optional: 'sheet-cloth' }).then((m) => {
       if (dead || !host.current) return;
       stop = m.mountSheet(host.current, wait);
     }, () => {});

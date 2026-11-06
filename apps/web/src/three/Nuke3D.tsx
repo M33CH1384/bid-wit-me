@@ -466,6 +466,15 @@ function buildNukeParts(detail: number, mega: boolean, octaves: 0 | 1) {
 /** Kept alive so the blast's programs stay in the table renderer's cache after the warm pass. */
 const warmedNuke: ReturnType<typeof buildNukeParts>[] = [];
 let warmedComposer: PostEffectComposer | null = null;
+/**
+ * The renderer the retained sets above were warmed for (crash
+ * hardening, 2026-11-06). Retention is per-renderer: when a different
+ * renderer is warmed (a new table after leaving, whose context starts
+ * empty), the old sets are dropped — that context is gone, so keeping
+ * them pins dead weight and, worse, the composer's once-only guard
+ * would skip warming the post chain on the new renderer entirely.
+ */
+let warmedFor: WebGLRenderer | null = null;
 
 /**
  * Link the blast's shaders on the table's renderer at load, into a 4×4 target the
@@ -480,8 +489,10 @@ let warmedComposer: PostEffectComposer | null = null;
  */
 export async function warmNuke(gl: WebGLRenderer, camera: Camera, quality: 'high' | 'low'): Promise<void> {
   const profile = nukeProfile(quality, currentNukeDevice());
+  const fresh = warmedFor !== gl;
+  if (fresh) { warmedNuke.length = 0; warmedComposer = null; }
   const parts = buildNukeParts(profile.detail, false, profile.octaves);
-  warmedNuke.push(parts);
+  if (fresh) warmedNuke.push(parts);
   const scene = new Scene();
   const add = (geo: BufferGeometry, mat: Material) => { const m = new Mesh(geo, mat); scene.add(m); };
   add(parts.sphere, parts.fire[0]!);
@@ -526,6 +537,7 @@ export async function warmNuke(gl: WebGLRenderer, camera: Camera, quality: 'high
       warmedComposer = composer;
     } catch { /* post warm is best-effort */ }
   }
+  if (fresh) warmedFor = gl;
 }
 
 function NukeRun({ start, full, mega, len, detail, post, octaves, screen, onBail, onFirstFrame }: { start: number; full: boolean; mega: boolean; len: number; detail: number; post: boolean; octaves: 0 | 1; screen: boolean; onBail: () => void; onFirstFrame: () => void }) {

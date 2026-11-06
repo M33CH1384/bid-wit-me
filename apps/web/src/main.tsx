@@ -4,6 +4,7 @@ import App from './App';
 import { isOnlinePath, isWatchPath, watchRoute } from './online/nav';
 import { importChunk } from './chunkLoad';
 import { installCrashTelemetry, noteCrumb, reportCrash } from './telemetry';
+import { LayerGuard } from './LayerGuard';
 import { SoundDock } from './SoundControls';
 import { SocialRoot } from './social/Social';
 import DailyBonusReceipt from './DailyBonusReceipt';
@@ -48,6 +49,17 @@ function RewardsRetired() {
   return <RouteLoading />;
 }
 
+/** The shared "screen didn't load" card: route failures and the app-level guard land here. */
+function ScreenLoadFailure() {
+  return (
+    <div className="setup online-entry" data-testid="route-failed">
+      <h2>That screen didn&apos;t load</h2>
+      <p className="muted">The game may have just updated. Reload to get the latest version and pick up where you left off.</p>
+      <button type="button" className="btn primary" onClick={() => location.reload()}>Reload</button>
+    </div>
+  );
+}
+
 /** Last line of defence for a failed route chunk: a visible way back, never a blank page. */
 class RouteGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
@@ -61,14 +73,39 @@ class RouteGuard extends Component<{ children: ReactNode }, { failed: boolean }>
   }
   override render() {
     if (!this.state.failed) return this.props.children;
-    return (
-      <div className="setup online-entry" data-testid="route-failed">
-        <h2>That screen didn&apos;t load</h2>
-        <p className="muted">The game may have just updated. Reload to get the latest version and pick up where you left off.</p>
-        <button type="button" className="btn primary" onClick={() => location.reload()}>Reload</button>
-      </div>
-    );
+    return <ScreenLoadFailure />;
   }
+}
+
+/**
+ * App-level guard (crash hardening, 2026-11-06): until now the routed
+ * tree was the only guarded part of the app — the dozen global layers
+ * below Root's route (Social, the ticker, the transition layers…) sat
+ * outside any boundary, so a render throw in one unmounted the ENTIRE
+ * root: white screen, live game gone. Each layer now carries its own
+ * LayerGuard (a failure stays inside its layer), and this final guard
+ * keeps even a failure in Root's own frame on the reload card instead
+ * of a blank page.
+ */
+function AppGuard({ children }: { children: ReactNode }) {
+  return <LayerGuard name="app" fallback={<ScreenLoadFailure />}>{children}</LayerGuard>;
+}
+
+/** Social's contained fallback: the game underneath is untouched; the
+ *  player can retry the panel or dismiss the card and keep playing. */
+function SocialFallback({ retry }: { retry: () => void }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div data-testid="social-failed" style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 60, maxWidth: 320, background: 'var(--panel, #1c1c22)', border: '1px solid var(--line, #444)', borderRadius: 12, padding: 14 }}>
+      <h3 style={{ margin: '0 0 6px' }}>Social hit a snag</h3>
+      <p className="muted" style={{ margin: '0 0 10px' }}>The game underneath is fine. Try again, or close this and keep playing.</p>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" className="btn primary" onClick={retry}>Try again</button>
+        <button type="button" className="btn" onClick={() => setDismissed(true)}>Close</button>
+      </div>
+    </div>
+  );
 }
 
 function RouteLoading() {
@@ -157,47 +194,47 @@ function Root() {
           : isWatchPath(path) ? <Suspense fallback={<RouteLoading />}><WatchApp path={path} /></Suspense>
           : isOnlinePath(path) ? <Suspense fallback={<RouteLoading />}><OnlineApp path={path} /></Suspense> : <App key={path} />}
       </RouteGuard>
-      <InkLayer />
-      <ReactiveGlow />
+      <LayerGuard name="ink"><InkLayer /></LayerGuard>
+      <LayerGuard name="glow"><ReactiveGlow /></LayerGuard>
       {/* The floating speaker parks on a designed slot (home top bar, table scorebug).
           The full-screen /profile route has no slot, so the dock fell
           back to its fixed corner position and sat ON the page header (it covered the
           profile's season label — owner, 2026-10-20): no floating dock on that route. */}
-      {path !== '/profile' && !isWatchPath(path) && <SoundDock />}
+      {path !== '/profile' && !isWatchPath(path) && <LayerGuard name="sound-dock"><SoundDock /></LayerGuard>}
       {/* Watch surfaces carry no app chrome of their own: the in-app watch view
           is a viewing surface, and the broadcast frame must show nothing but
           the table, the bug and its own in-frame ticker (an OBS source loads
           it with no session at all — no social panel, no bonus receipt, and
           no second ticker from the root). */}
-      {!isWatchPath(path) && <SocialRoot />}
+      {!isWatchPath(path) && <LayerGuard name="social" fallback={(retry) => <SocialFallback retry={retry} />}><SocialRoot /></LayerGuard>}
       {/* Daily-bonus receipt (2026-10-23): the one-time "+N coins — you now
           have M" card raised when the day's grant lands (see dailyBonus.ts). */}
-      {!isWatchPath(path) && <DailyBonusReceipt />}
+      {!isWatchPath(path) && <LayerGuard name="bonus-receipt"><DailyBonusReceipt /></LayerGuard>}
       {/* Victory reload-recovery (2026-11-01): presents ONLY when the
           finished-match stash still owes the player something across a
           reload — an undismissed level-up card takeover, or a held guest
           claim on an unsigned breakdown. Renders nothing otherwise; it is
           not a destination and no flow routes to it. */}
-      {!isWatchPath(path) && <Suspense fallback={null}><VictoryRecovery /></Suspense>}
+      {!isWatchPath(path) && <LayerGuard name="victory-recovery"><Suspense fallback={null}><VictoryRecovery /></Suspense></LayerGuard>}
       {/* The BottomLine, app-wide (league data wave 6a): a fixed bottom bar
           on the main surfaces with its height reserved via bwm-ticker-on.
           It hides itself at a live table, while the Social panel is
           open (the panel carries its own in-flow instance), and on
           /story (story surfaces never carry broadcast chrome). */}
-      {!isWatchPath(path) && <LeagueTickerRoot />}
+      {!isWatchPath(path) && <LayerGuard name="ticker"><LeagueTickerRoot /></LayerGuard>}
       {/* Spray-paint screen transitions: renders only during a spray. */}
-      <SprayLayer />
+      <LayerGuard name="spray"><SprayLayer /></LayerGuard>
       {/* The Card Fan: renders only during a profile/social move. */}
-      <FanLayer />
+      <LayerGuard name="fan"><FanLayer /></LayerGuard>
       {/* The Deal + the Book Sweep: render only on table entry/exit. */}
-      <TableTransitionLayer />
+      <LayerGuard name="table-transition"><TableTransitionLayer /></LayerGuard>
       {/* The Doorway: renders only on story entries. */}
-      <DoorwayLayer />
-      <IdleGuard />
+      <LayerGuard name="doorway"><DoorwayLayer /></LayerGuard>
+      <LayerGuard name="idle-guard"><IdleGuard /></LayerGuard>
       {/* Entry prompt (sign in / guest) + first-sign-in preferences offer.
           Online paths skip the remount: a live room owns its own state and
           its settings refresh on the next navigation instead. */}
-      <EntryFlow onPrefsDone={() => { if (!isOnlinePath(location.pathname)) setSettingsEpoch((e) => e + 1); }} />
+      <LayerGuard name="entry-flow"><EntryFlow onPrefsDone={() => { if (!isOnlinePath(location.pathname)) setSettingsEpoch((e) => e + 1); }} /></LayerGuard>
     </>
   );
 }
@@ -214,7 +251,9 @@ if (new URLSearchParams(location.search).get('preview') === 'turn-ring') {
 } else {
   createRoot(rootEl).render(
     <StrictMode>
-      <Root />
+      <AppGuard>
+        <Root />
+      </AppGuard>
     </StrictMode>,
   );
 }

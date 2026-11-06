@@ -365,7 +365,7 @@ export function Leaderboards() {
     if (!ready) return;
     setRows(null); setNote(null);
     get(`/api/social/leaderboard?board=${board}&kind=${board === 'duos' ? 'team' : kind}&scope=${fetchScope}&period=${period}`)
-      .then((j) => { setRows(j.rows); setNote(j.note ?? ((fetchScope === 'local' || fetchScope === 'regions') && j.region ? `Region: ${j.region}` : null)); })
+      .then((j) => { setRows(Array.isArray(j.rows) ? j.rows : []); setNote(j.note ?? ((fetchScope === 'local' || fetchScope === 'regions') && j.region ? `Region: ${j.region}` : null)); })
       .catch((e) => { setRows([]); setNote(String(e.message)); });
   }, [board, kind, fetchScope, period, ready]);
 
@@ -644,7 +644,7 @@ function PowerRankings({ kind, onOpen }: { kind: Kind; onOpen: (name: string) =>
   useEffect(() => {
     let live = true;
     get(`/api/social/power?kind=${kind}`)
-      .then((j) => { if (live) setData(j as { week: string; hasPrev: boolean; rows: PowerRowT[] }); })
+      .then((j) => { if (live) setData(j && Array.isArray(j.rows) ? (j as { week: string; hasPrev: boolean; rows: PowerRowT[] }) : null); })
       .catch(() => { if (live) setData(null); });
     return () => { live = false; };
   }, [kind]);
@@ -764,7 +764,7 @@ export function Tournaments({ signedIn }: { signedIn: boolean }) {
   const [list, setList] = useState<'upcoming' | 'live' | 'finished'>('upcoming');
   const [rows, setRows] = useState<TRow[] | null>(null);
   const [creating, setCreating] = useState(false);
-  const load = useCallback(() => { setRows(null); get(`/api/tournaments?status=${list}`).then((j) => setRows(j.tournaments)).catch(() => setRows([])); }, [list]);
+  const load = useCallback(() => { setRows(null); get(`/api/tournaments?status=${list}`).then((j) => setRows(Array.isArray(j.tournaments) ? j.tournaments : [])).catch(() => setRows([])); }, [list]);
   useEffect(load, [load]);
   if (s.tour) return <TournamentDetail id={s.tour} signedIn={signedIn} />;
   if (creating) return <CreateTournament onDone={(id) => { setCreating(false); if (id) social.showTour(id); else load(); }} />;
