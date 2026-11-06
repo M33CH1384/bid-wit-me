@@ -98,13 +98,16 @@ const FIGURE_SCALE = 1.33;
 /** Head-clearance floor (metres) the placement keeps between the
  *  head's bounding sphere and the held fan's volume, in the open and
  *  full-rest fan poses (see the placement settle). Covers the frame
- *  loop's breath/sway amplitude with room to spare. */
-const HEAD_CLEAR_MIN = 0.025;
+ *  loop's breath/sway amplitude with room to spare. Round 4
+ *  (2026-11-05): 0.025 → 0.05, in step with PersonaFigures — the fan
+ *  went back up to a held anchor and the gate buys real daylight
+ *  between the chin and the fan's top edge. */
+const HEAD_CLEAR_MIN = 0.05;
 /** Chin-point clearance floor (metres) in the placement gate
  *  (round 2): the chin — below the Head bone, toward the table —
  *  is where the fan met the face on screen; the sphere alone
- *  passed it. */
-const CHIN_CLEAR_MIN = 0.015;
+ *  passed it. Round 4: 0.015 → 0.04, in step with HEAD_CLEAR_MIN. */
+const CHIN_CLEAR_MIN = 0.04;
 /** The production Porch room's folding-chair seat top: PorchDeckRoom
  *  builds `ySeat = FLOOR_Y + 0.49` (its seat box top). The sandbox's
  *  −0.447 was its own studio chair and does NOT apply here. */
@@ -517,6 +520,11 @@ interface PreparedFigure {
   root: Object3D;
   bones: Record<string, Object3D | undefined>;
   base: Record<string, Quaternion>;
+  /** Pristine bind quaternions, never written after prepare — the
+   *  placement solve restores the spine from here before leaning so
+   *  an effect re-run reproduces the first run's pose instead of
+   *  stacking the lean (see PersonaFigures' identical contract). */
+  bind: Record<string, Quaternion>;
   fingers: { Left: FingerJoint[]; Right: FingerJoint[] };
   /** Each hand's anatomical frame (knuckle axis / palm facing /
    *  finger direction, from knuckleBasis) expressed in the hand
@@ -688,8 +696,10 @@ function prepareFigure(scene: Object3D, reg: FigureRegister, maxAniso = 1): Prep
   const midLen = { Left: midLenOf('L'), Right: midLenOf('R') };
   curlF.Left = Math.min(1.6, Math.max(1, 1 + (midLen.Left - 0.11) * 8.5));
   curlF.Right = Math.min(1.6, Math.max(1, 1 + (midLen.Right - 0.11) * 8.5));
+  const bind: Record<string, Quaternion> = {};
+  for (const n of BONE_NAMES) if (base[n]) bind[n] = base[n]!.clone();
   return {
-    root, bones, base, fingers, handFrames, curlF, midLen,
+    root, bones, base, bind, fingers, handFrames, curlF, midLen,
     ankleFlat: (bindPos.LeftFoot!.y - bindBox.min.y) * s,
     thigh: segLen('LeftUpLeg', 'LeftLeg') * s,
     shin: segLen('LeftLeg', 'LeftFoot') * s,
@@ -973,6 +983,14 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
        table, the lean is flipped and re-applied. */
     const faceW = seatDir(seatPos, n).negate();
     const leanAxis = new Vector3(0, 1, 0).cross(faceW).normalize();
+    /* Idempotency (2026-11-05): restore the spine chain from the
+       pristine bind snapshot before leaning — lean() rotates from
+       the current quaternion, so a re-run would stack it. */
+    for (const nm of ['Spine', 'Spine1', 'Spine2']) {
+      const b = bones[nm];
+      if (b && prep.bind[nm]) b.quaternion.copy(prep.bind[nm]);
+    }
+    root.updateMatrixWorld(true);
     const headBefore = jp('Head').clone();
     const lean = (nm: string, a: number) => {
       const b = bones[nm]; if (!b) return;
@@ -997,8 +1015,11 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
     root.updateMatrixWorld(true);
     const invQ = new Quaternion().setFromEuler(new Euler(0, -spot.ry, 0));
     const toLocal = (w: Vector3) => w.sub(new Vector3(spot.x, 0, spot.z)).applyQuaternion(invQ);
-    const ulL = toLocal(jp('LeftUpLeg'));
-    const ulR = toLocal(jp('RightUpLeg'));
+    /* Idempotency (2026-11-05): measure the hip joints' offset FROM
+       the root (invariant under root.position) — measuring the raw
+       world pose made a re-run zero root.y and drift z. */
+    const ulL = toLocal(jp('LeftUpLeg')).sub(root.position);
+    const ulR = toLocal(jp('RightUpLeg')).sub(root.position);
     root.position.set(-(ulL.x + ulR.x) / 2, (seatTop + HIP_OFF) - ulL.y, HIP_BACK - (ulL.z + ulR.z) / 2);
     root.updateMatrixWorld(true);
     /* Reach settle (REACH_SCOOT / REACH_LEAN above): measure each
@@ -1007,8 +1028,11 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
        the gap — scoot first, then extra lean — until both grips are
        inside the arms' reach or the caps run out. Runs BEFORE the
        leg solve so the feet plant for the final seat position. */
-    if (count > 0) {
-      const fanX0 = opponentFan(seatPos, n, (count - 1) / 2, count, 0, 0);
+    /* Gate + settle against the full 13-card fan even when this
+       mount lands before the deal (count 0) — see PersonaFigures. */
+    const effCount = count > 0 ? count : 13;
+    {
+      const fanX0 = opponentFan(seatPos, n, (effCount - 1) / 2, effCount, 0, 0);
       const fanC0 = new Vector3(...fanX0.p);
       const fanQ0 = new Quaternion(...fanX0.q);
       const gripOf = (side: 'Left' | 'Right') => fanGripPoint(fanC0, fanQ0, side, gripBackFor(prep, side));
@@ -1037,12 +1061,12 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
         const chin = hp.clone().add(new Vector3(0, -0.105, 0)).addScaledVector(faceW, 0.055);
         let worst = Infinity;
         for (const pose of [0, 1] as const) {
-          const fx = opponentFan(seatPos, n, (count - 1) / 2, count, pose, pose);
+          const fx = opponentFan(seatPos, n, (effCount - 1) / 2, effCount, pose, pose);
           const fc = new Vector3(...fx.p);
           const fq = new Quaternion(...fx.q);
           const distTo = (p: Vector3) => {
             const local = p.clone().sub(fc).applyQuaternion(fq.clone().invert());
-            const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * pose) + 0.125;
+            const halfW = ((effCount - 1) / 2) * 0.038 * (1 - 0.45 * pose) + 0.125;
             const ox = Math.abs(local.x) - halfW;
             const oy = Math.abs(local.y) - 0.175;
             const oz = Math.abs(local.z) - 0.012;
@@ -1055,7 +1079,7 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
       };
       const leanSign = leanFlipped ? 1 : -1;
       let trimmed = 0;
-      while (headClearNow() < HEAD_CLEAR_MIN && trimmed < 0.3) {
+      while (headClearNow() < HEAD_CLEAR_MIN && trimmed < 0.45) {
         lean('Spine', leanSign * 0.012); lean('Spine1', leanSign * 0.0105); lean('Spine2', leanSign * 0.0075);
         trimmed += 0.03;
         root.updateMatrixWorld(true);

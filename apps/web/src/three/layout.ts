@@ -101,9 +101,30 @@ export const FAN_REST_TIGHTEN = 0.36;
  *  when the holder peers over it. The rest drop eased 0.11 → 0.09
  *  with it so the lowered fan's bottom edge keeps its clearance
  *  over the rail. */
-export const OPP_FAN_BASE_Y = 0.162;
-export const OPP_FAN_REST_DROP = 0.09;
-export const OPP_FAN_REST_OUT = 0.15;
+/* Round 4 (owner 2026-11-05): the lowering rounds overshot — "the
+ * opponents cards sit on the table instead of 'behind' it as if a
+ * player were holding them", and the partner's fan vanished behind
+ * her torso. At BASE_Y 0.162 the open fan's bottom edge grazed the
+ * felt (+0.013) and the rested fan's bottom edge sat BELOW the felt
+ * plane (−0.077) with its grip line under the table (−0.17 at rest):
+ * beyond honest arm reach from a seated figure, so the placement
+ * reach settle dragged figures forward into the hunch the owner
+ * photographed. Face clearance was never the fan's job — the figure
+ * solve's head/chin gate (world + screen) owns it, and it now runs
+ * against the full 13-card fan even when placement mounts before the
+ * deal. The fan goes back UP and OUT to a held anchor: BASE_Y
+ * 0.162 → 0.26 (open bottom edge +0.109 over the felt, grip line
+ * above it), REST_DROP 0.09 → 0.07 (rested bottom edge +0.039 — a
+ * lowered fan still clears the felt), BASE_OUT 0.02 → 0.10 with
+ * REST_OUT 0.15 → 0.08 (the rested fan keeps ~its Round-3 spot, the
+ * open fan's body now sits past the felt's far edge line toward the
+ * holder), BASE_OUT_SIDE 0.12 → 0.16. The flight-corner law that
+ * floored BASE_Y only binds downward — raising grows the slam
+ * corner's clearance from ~0.0026 to ~0.10. Anchors pinned by
+ * test/fan-held-anchor.test.ts. */
+export const OPP_FAN_BASE_Y = 0.26;
+export const OPP_FAN_REST_DROP = 0.07;
+export const OPP_FAN_REST_OUT = 0.08;
 export const OPP_FAN_REST_TIGHTEN = 0.45;
 /** Round 3 (owner 2026-11-01, Mac screenshot: the partner's face
  *  covered by her fan at the north seat): BASE_Y 0.165 -> 0.162 and
@@ -127,8 +148,8 @@ export const OPP_FAN_REST_TIGHTEN = 0.45;
  *  base can fall 0.003 and no further — at 0.162 that corner clears
  *  by ~0.0026 and the centre-card flight corner by ~0.012; the rest
  *  of the sightline gain comes from FIGURE_SCALE (1.33). */
-export const OPP_FAN_BASE_OUT = 0.02;
-export const OPP_FAN_BASE_OUT_SIDE = 0.12;
+export const OPP_FAN_BASE_OUT = 0.10;
+export const OPP_FAN_BASE_OUT_SIDE = 0.16;
 export const OPP_FAN_REST_OUT_SIDE = 0.05;
 
 const clampRest = (rest: number | undefined): number => (Number.isFinite(rest) && rest! > 0 ? Math.min(1, rest!) : 0);

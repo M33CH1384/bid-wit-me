@@ -95,13 +95,18 @@ const FIGURE_SCALE = 1.33;
 /** Head-clearance floor (metres) the placement keeps between the
  *  head's bounding sphere and the held fan's volume, in the open and
  *  full-rest fan poses (see the placement settle). Covers the frame
- *  loop's breath/sway amplitude with room to spare. */
-const HEAD_CLEAR_MIN = 0.025;
+ *  loop's breath/sway amplitude with room to spare. Round 4
+ *  (2026-11-05): 0.025 → 0.05 — the fan went back up to a held anchor
+ *  (layout.ts round 4), and at the tightest seat (shortest persona,
+ *  kit-venue partner chair) the old floor left the chin ON the fan's
+ *  top edge in screen space (placedClear 0.030, chin margin 0 px);
+ *  the gate now buys real daylight instead of grazing. */
+const HEAD_CLEAR_MIN = 0.05;
 /** Chin-point clearance floor (metres) in the placement gate
  *  (round 2): the chin — below the Head bone, toward the table —
  *  is where the fan met the face on screen; the sphere alone
- *  passed it. */
-const CHIN_CLEAR_MIN = 0.015;
+ *  passed it. Round 4: 0.015 → 0.04, in step with HEAD_CLEAR_MIN. */
+const CHIN_CLEAR_MIN = 0.04;
 const HIP_OFF = 0.05;      // hip-joint centre above the seat surface
 const HIP_BACK = -0.16;    // hip-joint offset from chair centre, away from the table (seat frame). Round 2: -0.02 -> -0.12 — figures sit deeper in their chairs, heads off the held fan's plane (the partner-seat face/fan failure was depth as much as height); the reach settle re-spends scoot only where grips actually demand it, so the depth persists where it is needed. Round 3: -0.12 -> -0.16, the same depth lever one notch further for the north-seat sightline.
 const ANKLE_FWD = 0.38;    // ankle target forward of the hip joint (seat frame)
@@ -637,6 +642,14 @@ interface PreparedFigure {
   root: Object3D;
   bones: Record<string, Object3D | undefined>;
   base: Record<string, Quaternion>;
+  /** Pristine bind quaternions, never written after prepare. The
+   *  placement effect's lean is ADDITIVE from the current pose, so a
+   *  re-run (StrictMode replay, boundary remount, any future effect
+   *  replay) would stack the lean a second time — the 2026-11-05
+   *  hunch. Placement restores the spine from `bind` before leaning,
+   *  making the solve idempotent; `base` remains the placed result
+   *  the frame loop animates from. */
+  bind: Record<string, Quaternion>;
   fingers: { Left: FingerJoint[]; Right: FingerJoint[] };
   /** Each hand's anatomical frame (knuckle axis / palm facing /
    *  finger direction, from knuckleBasis) expressed in the hand
@@ -808,8 +821,10 @@ function prepareFigure(scene: Object3D, reg: FigureRegister, maxAniso = 1): Prep
   const midLen = { Left: midLenOf('L'), Right: midLenOf('R') };
   curlF.Left = Math.min(1.6, Math.max(1, 1 + (midLen.Left - 0.11) * 8.5));
   curlF.Right = Math.min(1.6, Math.max(1, 1 + (midLen.Right - 0.11) * 8.5));
+  const bind: Record<string, Quaternion> = {};
+  for (const n of BONE_NAMES) if (base[n]) bind[n] = base[n]!.clone();
   return {
-    root, bones, base, fingers, handFrames, curlF, midLen,
+    root, bones, base, bind, fingers, handFrames, curlF, midLen,
     ankleFlat: (bindPos.LeftFoot!.y - bindBox.min.y) * s,
     thigh: segLen('LeftUpLeg', 'LeftLeg') * s,
     shin: segLen('LeftLeg', 'LeftFoot') * s,
@@ -1095,6 +1110,16 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
     const spot = spots[SPOT_INDEX[seatPos]]!;
     const faceW = seatDir(seatPos, n).negate();
     const leanAxis = new Vector3(0, 1, 0).cross(faceW).normalize();
+    /* Idempotency (2026-11-05): lean() below rotates bones from their
+       CURRENT quaternion, so an effect re-run would stack the register
+       lean a second time. Restore the spine chain from the pristine
+       bind snapshot first — a re-run then reproduces the first run's
+       pose exactly instead of compounding it. */
+    for (const nm of ['Spine', 'Spine1', 'Spine2']) {
+      const b = bones[nm];
+      if (b && prep.bind[nm]) b.quaternion.copy(prep.bind[nm]);
+    }
+    root.updateMatrixWorld(true);
     const headBefore = jp('Head').clone();
     const lean = (nm: string, a: number) => {
       const b = bones[nm]; if (!b) return;
@@ -1119,8 +1144,15 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
     root.updateMatrixWorld(true);
     const invQ = new Quaternion().setFromEuler(new Euler(0, -spot.ry, 0));
     const toLocal = (w: Vector3) => w.sub(new Vector3(spot.x, 0, spot.z)).applyQuaternion(invQ);
-    const ulL = toLocal(jp('LeftUpLeg'));
-    const ulR = toLocal(jp('RightUpLeg'));
+    /* Idempotency (2026-11-05): jp() reads the CURRENT world pose —
+       on an effect re-run the root already carries a previous run's
+       offset, and measuring against it zeroed root.y (the pelvis
+       ended at bind height, ~0.42 over the seat) and drifted z. The
+       joints' offset FROM the root is invariant under root.position,
+       so measure that and solve for the root offset that lands the
+       pelvis on the seat, whatever state the root starts in. */
+    const ulL = toLocal(jp('LeftUpLeg')).sub(root.position);
+    const ulR = toLocal(jp('RightUpLeg')).sub(root.position);
     root.position.set(-(ulL.x + ulR.x) / 2, (seatTop + HIP_OFF) - ulL.y, HIP_BACK - (ulL.z + ulR.z) / 2);
     root.updateMatrixWorld(true);
     /* Reach settle (REACH_SCOOT / REACH_LEAN above): measure each
@@ -1129,8 +1161,15 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
        the gap — scoot first, then extra lean — until both grips are
        inside the arms' reach or the caps run out. Runs BEFORE the
        leg solve so the feet plant for the final seat position. */
-    if (count > 0) {
-      const fanX0 = opponentFan(seatPos, n, (count - 1) / 2, count, 0, 0);
+    /* The gate + settle run against the seat's fan even when this
+       mount lands before the deal (count 0): the fan that appears is
+       a full 13, and a pose solved only when cards were already in
+       hand left pre-deal mounts ungated and unsettled for the whole
+       game (2026-11-05). effCount is the fan the solve answers for;
+       the recorded gateCount keeps the real count for diagnosis. */
+    const effCount = count > 0 ? count : 13;
+    {
+      const fanX0 = opponentFan(seatPos, n, (effCount - 1) / 2, effCount, 0, 0);
       const fanC0 = new Vector3(...fanX0.p);
       const fanQ0 = new Quaternion(...fanX0.q);
       const gripOf = (side: 'Left' | 'Right') => fanGripPoint(fanC0, fanQ0, side, gripBackFor(prep, side));
@@ -1159,12 +1198,12 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
         const chin = hp.clone().add(new Vector3(0, -0.105, 0)).addScaledVector(faceW, 0.055);
         let worst = Infinity;
         for (const pose of [0, 1] as const) {
-          const fx = opponentFan(seatPos, n, (count - 1) / 2, count, pose, pose);
+          const fx = opponentFan(seatPos, n, (effCount - 1) / 2, effCount, pose, pose);
           const fc = new Vector3(...fx.p);
           const fq = new Quaternion(...fx.q);
           const distTo = (p: Vector3) => {
             const local = p.clone().sub(fc).applyQuaternion(fq.clone().invert());
-            const halfW = ((count - 1) / 2) * 0.038 * (1 - 0.45 * pose) + 0.125;
+            const halfW = ((effCount - 1) / 2) * 0.038 * (1 - 0.45 * pose) + 0.125;
             const ox = Math.abs(local.x) - halfW;
             const oy = Math.abs(local.y) - 0.175;
             const oz = Math.abs(local.z) - 0.012;
@@ -1177,7 +1216,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       };
       const leanSign = leanFlipped ? 1 : -1;
       let trimmed = 0;
-      while (headClearNow() < HEAD_CLEAR_MIN && trimmed < 0.3) {
+      while (headClearNow() < HEAD_CLEAR_MIN && trimmed < 0.45) {
         lean('Spine', leanSign * 0.012); lean('Spine1', leanSign * 0.0105); lean('Spine2', leanSign * 0.0075);
         trimmed += 0.03;
         root.updateMatrixWorld(true);
