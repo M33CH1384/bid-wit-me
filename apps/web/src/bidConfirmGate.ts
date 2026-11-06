@@ -39,3 +39,21 @@ export function bidNeedsConfirmForViewport(viewportWidth: number, viewportHeight
   if (isShortLandscape(viewportWidth, viewportHeight)) return false;
   return bidButtonWidthForViewport(viewportWidth, safeLeft, safeRight) < 44;
 }
+
+/**
+ * The rendered refinement (Table.tsx's layout effect): while the bid
+ * panel is up, the first grid button's rendered width may overrule the
+ * formula — it sees safe-area insets and panel narrowing the formula
+ * cannot. Returns the gate verdict for a real measurement, or null to
+ * abstain. A NON-POSITIVE width is not a measurement: the button has not
+ * been laid out yet, or the environment has no layout at all (the DOM
+ * test harness, where every rect reads 0). Abstaining there keeps the
+ * formula's verdict; reading 0 as "narrower than 44px" would engage the
+ * gate on its own and turn a bid tap into a mere selection (audit gap
+ * G3 — the misdeal-button-visible regression on the audit base; the
+ * owner's 2026-11-05 acceptance sent the fix to this pass).
+ */
+export function gateForRenderedWidth(renderedWidth: number): boolean | null {
+  if (!(renderedWidth > 0)) return null;
+  return renderedWidth < 44;
+}

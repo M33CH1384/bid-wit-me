@@ -20,7 +20,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { bidButtonWidthForViewport, bidNeedsConfirmForViewport } from '../src/bidConfirmGate';
+import { bidButtonWidthForViewport, bidNeedsConfirmForViewport, gateForRenderedWidth } from '../src/bidConfirmGate';
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
@@ -134,6 +134,21 @@ describe('A: select-then-confirm gate geometry (bidConfirmGate.ts)', () => {
   it('gate is OFF in short landscape (panel there stays one-tap)', () => {
     expect(bidNeedsConfirmForViewport(667, 375)).toBe(false);
     expect(bidNeedsConfirmForViewport(844, 390)).toBe(false);
+  });
+  it('rendered refinement: a non-positive width is no measurement and never engages the gate (G3)', () => {
+    // In a zero-layout environment (the DOM test harness) every
+    // getBoundingClientRect() reads 0. A 0 is the ABSENCE of a measurement,
+    // not a measurement of a narrow button: the refinement must abstain
+    // (null = keep the formula's verdict) instead of reading 0 < 44 as
+    // "gated" — the misdeal-button-visible regression on the audit base.
+    expect(gateForRenderedWidth(0)).toBeNull();
+    expect(gateForRenderedWidth(-1)).toBeNull();
+    expect(gateForRenderedWidth(Number.NaN)).toBeNull();
+    expect(gateForRenderedWidth(40.4)).toBe(true);
+    expect(gateForRenderedWidth(43.9)).toBe(true);
+    expect(gateForRenderedWidth(44)).toBe(false);
+    expect(gateForRenderedWidth(54.4)).toBe(false);
+    expect(table).toContain('gateForRenderedWidth');
   });
   it('Table.tsx wires the gate: selection state, confirm control, reset, aria-pressed', () => {
     expect(table).toContain('pendingBid');

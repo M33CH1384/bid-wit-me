@@ -116,7 +116,7 @@ import { clearStoryGame, saveStoryGame } from './story/storySave';
 import { beatStartOffsets, scheduleStoryBeats, REPLY_TAIL_RIDE_MS } from './story/beatPacing';
 
 import { useViewport } from './viewport';
-import { bidNeedsConfirmForViewport } from './bidConfirmGate';
+import { bidNeedsConfirmForViewport, gateForRenderedWidth } from './bidConfirmGate';
 import { tapPlaySlamIntensity } from './slam';
 import { effectiveView, handStarted, initialHandView, userToggledView, type HandViewState } from './handView';
 import { Coach, LedSuitChip } from './Coach';
@@ -1891,12 +1891,14 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // while the panel is up (catches safe-area insets and the chat-open
   // panel narrowing the formula cannot see). Runs on every render like
   // the scene publish; the set is a no-op when the value is unchanged.
+  // gateForRenderedWidth abstains (null) on a non-positive rect — no
+  // layout yet means the formula's verdict stands (audit gap G3).
   useLayoutEffect(() => {
     if (!bidTurn || vp.short) { if (vp.short && bidConfirmGate) setBidConfirmGate(false); return; }
     const btn = document.querySelector<HTMLElement>('.bid-grid button');
     if (!btn) return;
-    const gated = btn.getBoundingClientRect().width < 44;
-    if (gated !== bidConfirmGate) setBidConfirmGate(gated);
+    const gated = gateForRenderedWidth(btn.getBoundingClientRect().width);
+    if (gated !== null && gated !== bidConfirmGate) setBidConfirmGate(gated);
   });
   const onBidTap = (b: number | 'nil') => {
     if (bidConfirmGate) { setPendingBid(b); return; }
