@@ -118,6 +118,25 @@ export function wheelsTenth(rules: { partnerships: boolean }, before: readonly n
   if (rules.partnerships) return [];
   return after.flatMap((n, s) => (n >= WHEELS_AT && (before[s] ?? 0) < WHEELS_AT ? [s] : []));
 }
+/**
+ * Wheels EARNED (the confetti beat, owner 2026-11-05): a declaring side's
+ * books reaching its contract on this transition. Partnership: a side from
+ * wheelsFor whose combined books cross up to its combined bid. Cutthroat: a
+ * player whose own bid is 10+ and whose own books cross up to that bid. The
+ * threshold is the contract, not a flat 10 — a side that bid 12 and took 10
+ * got set, and a set never celebrates (wheelsMade's rule). Books-bid-
+ * themselves hands declare nothing, so they earn nothing here.
+ */
+export function wheelsEarned(rules: { partnerships: boolean; playerCount: number }, bids: readonly (number | string | null)[], before: readonly number[], after: readonly number[]): ({ side: number } | { seat: number })[] {
+  if (rules.partnerships) {
+    const sideBooks = (t: readonly number[], s: number) => (t[s] ?? 0) + (t[s + 2] ?? 0);
+    return wheelsFor(rules, bids).flatMap((w) => (sideBooks(before, w.side) < w.total && sideBooks(after, w.side) >= w.total ? [{ side: w.side }] : []));
+  }
+  return after.flatMap((n, s) => {
+    const b = bids[s];
+    return typeof b === 'number' && b >= WHEELS_AT && (before[s] ?? 0) < b && n >= b ? [{ seat: s }] : [];
+  });
+}
 
 /** A Wheels feat the RESULTS page replays: earned in the game's final
  *  hand, keyed the same way the live emit sites key it (`<handNo>:<kind>:

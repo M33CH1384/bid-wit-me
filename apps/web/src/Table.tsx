@@ -57,7 +57,7 @@ import { Intermission, calloutsFor } from './Intermission';
 import { BoxScore } from './BoxScore';
 import Hype from './Hype';
 import AnimFxLayer from './animfx/AnimFxLayer';
-import { landCueFor, resultsWheelsFeats, wheelsFor, wheelsMade, wheelsTenth, wheelsTenthBooks } from './landCue';
+import { landCueFor, resultsWheelsFeats, wheelsEarned, wheelsFor, wheelsMade, wheelsTenth, wheelsTenthBooks } from './landCue';
 import { WheelsResultsShow } from './WheelsResults';
 import { classifyDeuceFx, deuceLandCue } from './deuceFx';
 import Feedback from './Feedback';
@@ -499,6 +499,19 @@ function useChat(st: GameState, names: string[], initial: ChatMsg[] | undefined,
       window.setTimeout(() => {
         if (wheelsGate.phaseRef.current === 'gameOver') wheelsGate.stash(key, text);
         else { wheelsGate.shownLive.add(key); fx.emit('wheelsCar', { text }); }
+      }, 900 + runWait);
+    }
+    // the confetti falls on the EARN, not the call (owner, 2026-11-05): the
+    // gold rain that used to ride the bid declaration now falls when a
+    // declaring side's books actually reach its contract — once per hand,
+    // on the same beat as the car's 10th-book blocks above. The declaration
+    // keeps its pop / sound / shake; a side that gets set never sees rain.
+    // Same game-over gate as the car: never fire into the results-covered
+    // table — the results surface replays the feat with the car show.
+    if (st.handNo === p.handNo && wheelsEarned(r, st.bids, p.tricksWon, st.tricksWon).length) {
+      window.setTimeout(() => {
+        if (wheelsGate.phaseRef.current === 'gameOver') return;
+        fx.emit('wheelsRain', { silent: true });
       }, 900 + runWait);
     }
     // ☢ a nuke arming (second Joker down, trick still open — any trick) is announced once, on the way in

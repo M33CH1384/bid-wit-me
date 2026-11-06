@@ -88,7 +88,7 @@ const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
   jokerBig: 1100, jokerLittle: 500, nuke: 3700, mega: 4400, wheelsCar: 3000,
 };
 
-export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'overcut' | 'hustled' | 'ranIt';
+export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'wheelsRain' | 'overcut' | 'hustled' | 'ranIt';
 export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
 
 const KEY = 'bwm.fx';

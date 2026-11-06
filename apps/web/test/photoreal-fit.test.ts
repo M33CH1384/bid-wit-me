@@ -7,7 +7,11 @@ describe('photoreal overlays: trigger map + table fit', () => {
     expect(photorealFor({ kind: 'overcut', level: 3 })).toBe('lightning');
     expect(photorealFor({ kind: 'overcut', level: 2 })).toBeNull();
     expect(photorealFor({ kind: 'shot' })).toBe('meteor');
-    expect(photorealFor({ kind: 'wheels' })).toBe('goldrain');
+    // the gold confetti left the bid call (owner, 2026-11-05): 'wheels' is
+    // the declaration beat (pop / sound / shake only, no overlay); the rain
+    // rides the earn beat, 'wheelsRain', when the books reach the contract.
+    expect(photorealFor({ kind: 'wheels' })).toBeNull();
+    expect(photorealFor({ kind: 'wheelsRain' })).toBe('goldrain');
     expect(photorealFor({ kind: 'ranIt' })).toBeNull(); // the tornado stays as is
     expect(photorealFor({ kind: 'streak' })).toBeNull();
   });

@@ -144,3 +144,38 @@ describe('over-cut callouts', () => {
     expect(landCueFor(st, 'QS' as never)).toMatch(/^play,overcut3\|/);
   });
 });
+
+import { wheelsEarned } from '../src/landCue';
+describe('wheels earned (the confetti beat: books reach the contract)', () => {
+  const team = { partnerships: true, playerCount: 4 };
+  it('partnership: the declaring side earns it when its books reach the bid', () => {
+    const bids = [6, 2, 4, 3]; // side 0 bid 10, side 1 bid 5
+    expect(wheelsEarned(team, bids, [5, 2, 4, 1], [5, 2, 5, 1])).toEqual([{ side: 0 }]); // 9 -> 10
+    expect(wheelsEarned(team, bids, [5, 2, 5, 1], [6, 2, 5, 1])).toEqual([]); // already there: never twice
+    expect(wheelsEarned(team, bids, [4, 2, 4, 1], [5, 2, 4, 1])).toEqual([]); // 8 -> 9: not yet
+  });
+  it('partnership: taking 10 books on a lesser bid earns nothing (behaviour unchanged)', () => {
+    const bids = [4, 2, 3, 3]; // side 0 bid 7, side 1 bid 5
+    expect(wheelsEarned(team, bids, [5, 2, 4, 1], [5, 2, 5, 1])).toEqual([]);
+  });
+  it('partnership: a bid past 10 earns it at the contract book, not the 10th (a set never celebrates)', () => {
+    const bids = [6, 2, 6, 3]; // side 0 bid 12
+    expect(wheelsEarned(team, bids, [5, 2, 4, 1], [5, 2, 5, 1])).toEqual([]); // 10 books: still short of the 12 bid
+    expect(wheelsEarned(team, bids, [6, 2, 5, 1], [6, 2, 6, 1])).toEqual([{ side: 0 }]); // 11 -> 12
+  });
+  it('partnership: a nil partner’s bid still makes the side’s 10', () => {
+    const bids = [6, 5, 'nil', 5]; // side 1 = 5 + 5 = 10 (the wheelsFor case above)
+    expect(wheelsEarned(team, bids, [0, 5, 0, 4], [0, 5, 0, 5])).toEqual([{ side: 1 }]);
+  });
+  it('never on a books-bid-themselves hand (no declaration was ever made)', () => {
+    const books = ['books', 'books', 'books', 'books'];
+    expect(wheelsEarned(team, books, [5, 1, 4, 0], [6, 1, 4, 0])).toEqual([]);
+  });
+  it('cutthroat: the bidder’s own books reaching their own 10+ bid', () => {
+    const cut = { partnerships: false, playerCount: 3 };
+    expect(wheelsEarned(cut, [10, 3, 4], [9, 1, 0], [10, 1, 0])).toEqual([{ seat: 0 }]);
+    expect(wheelsEarned(cut, [9, 3, 4], [9, 1, 0], [10, 1, 0])).toEqual([]); // bid 9: a 10th book is overtricks, not the feat
+    expect(wheelsEarned(cut, [10, 3, 4], [10, 1, 0], [11, 1, 0])).toEqual([]); // already there
+    expect(wheelsEarned(cut, ['nil', 3, 4], [9, 1, 0], [10, 1, 0])).toEqual([]); // a nil declares no wheels
+  });
+});

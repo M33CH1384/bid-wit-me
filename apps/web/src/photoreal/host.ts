@@ -64,7 +64,7 @@ export function photorealFor(e: Pick<FxEvent, 'kind' | 'level'>): PhotorealName 
     case 'jokerBig': return 'quake'; // Big Joker landing rumble
     case 'overcut': return (e.level ?? 2) >= 3 ? 'lightning' : null; // the big over-cut (overcut3)
     case 'shot': return 'meteor'; // SHOT!
-    case 'wheels': return 'goldrain'; // Wheels (10 books)
+    case 'wheelsRain': return 'goldrain'; // Wheels EARNED: the declaring side's books reached the contract (the rain left the bid call — owner, 2026-11-05)
     case 'nuke': case 'mega': return nuke2D() && fx.nukeMode !== 'off' ? 'nuke' : null;
     default: return null;
   }
