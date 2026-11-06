@@ -2,7 +2,7 @@
  * Release 9 social UI: the Social button (with unread badge), the Social panel (players online, global chat, DMs,
  * friends, profiles, settings), invite toasts and notices. Mounted once at the root so invites reach you anywhere.
  */
-import { Fragment, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { type DmLine, type InviteMsg, type OpenTable, type PresenceEntry, type PresenceStatus, REACT_PALETTE_EXTRA, SOCIAL_LIMITS, statusLabel } from '@spades/protocol';
 import { storyStopById } from '@spades/bots';
 import { useAccount } from '../account/api';
@@ -22,6 +22,8 @@ import { CelebrationHost } from './CelebrationHost';
 import { Crews } from './Crews';
 import { FavoriteStar } from './FavoriteStar';
 import { CENTRAL_DESTS, destOfTab, hubNavMode } from './central';
+import { getTransitionSnapshot, subscribeTransitions } from '../transitions';
+import { fanEpisodeActive, panelBodyHeld } from './entryPeak';
 import { LeagueTicker } from './LeagueTicker';
 import { WagerChallenges } from './Wager';
 import { UnlockPopups } from './UnlockPopups';
@@ -238,6 +240,17 @@ function SocialPanel() {
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   });
+  /* crash-social3 — the entry peak (entryPeak.ts): while a Card Fan
+   * episode runs, the panel's body is held and its backdrop filters
+   * stand down, so the panel's first paint never coincides with the
+   * fan's. The latch keeps an arrived body mounted for the panel's
+   * whole life. With no episode (instant cut, boot restore) nothing
+   * is held and the panel renders exactly as before. */
+  const snap = useSyncExternalStore(subscribeTransitions, getTransitionSnapshot, getTransitionSnapshot);
+  const episodeActive = fanEpisodeActive(snap);
+  const [bodyLatched, setBodyLatched] = useState(false);
+  useEffect(() => { if (!episodeActive) setBodyLatched(true); }, [episodeActive]);
+  const bodyHeld = panelBodyHeld(episodeActive, bodyLatched);
   const [gear, setGear] = useState(false);
   const [drag, setDrag] = useState(0);
   const start = useRef<number | null>(null);
@@ -250,7 +263,7 @@ function SocialPanel() {
     onPointerCancel: () => { start.current = null; setDrag(0); },
   };
   return (
-    <div className="modal-backdrop soc-backdrop" onClick={() => social.close()} data-testid="social-backdrop">
+    <div className={`modal-backdrop soc-backdrop${episodeActive ? ' soc-episode' : ''}`} onClick={() => social.close()} data-testid="social-backdrop">
       <aside className="soc-panel" role="dialog" aria-label="Social" data-testid="social-panel" onClick={(e) => e.stopPropagation()}
         style={drag ? { transform: `translateY(${drag}px)`, transition: 'none' } : undefined}>
         <div className="soc-grab" {...grab}><span className="soc-handle" aria-hidden /></div>
@@ -298,7 +311,7 @@ function SocialPanel() {
           </div>
         )}
         <div className="soc-body" ref={bodyRef} onScroll={(e) => social.noteScroll(e.currentTarget.scrollTop)}>
-          {s.profile ? <ProfileView host="panel" name={s.profile} id={s.profileId ?? undefined} /> :
+          {!bodyHeld && (s.profile ? <ProfileView host="panel" name={s.profile} id={s.profileId ?? undefined} /> :
             s.tab === 'headlines' ? <Headlines signedIn={signedIn} /> :
             s.tab === 'players' ? <Players signedIn={signedIn} /> :
             s.tab === 'chat' ? <GlobalChat signedIn={signedIn} /> :
@@ -312,7 +325,7 @@ function SocialPanel() {
             s.tab === 'career' ? (signedIn && acct.user?.username
               ? <ProfileView host="panel" name={acct.user.username} noBack />
               : <SignInNote what="see your career profile" />) :
-            <SettingsTab signedIn={signedIn} />}
+            <SettingsTab signedIn={signedIn} />)}
         </div>
         {/* BWM Central Phase 3: the celebration host — the hub queue's
             current item, tap to dismiss; unmounting with the panel

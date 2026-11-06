@@ -14,6 +14,7 @@ import { destOfTab, tabForDest, CENTRAL_DEST_IDS, type CentralDest } from './cen
 export type { CentralDest };
 import { playChatSound } from './chatSounds';
 import { coverThen } from '../spray';
+import { noteCrumb } from '../telemetry';
 
 export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'challenges' | 'settings'
   // BWM Central destinations (Phase 1): headlines/matchups/career are tabs of
@@ -490,6 +491,10 @@ export const social = {
   },
   setMyTable(t: MyTable | null) { set({ myTable: t }); },
   open(tab?: SocialTab, extra: Partial<Pick<SocialState, 'dmWith' | 'profile'>> = {}) {
+    // crash-social3: menu/Social deaths leave no telemetry of their
+    // own (the unclean-exit witness arms only at tables) — a crumb
+    // makes the road visible on any later report from this session.
+    noteCrumb('social', 'open');
     social.start();
     const apply = () => {
       set((s) => ({ open: true, tab: tab ?? s.tab, ...extra }));
@@ -504,6 +509,7 @@ export const social = {
     else coverThen(apply, 'profile-social');
   },
   close() {
+    noteCrumb('social', 'close');
     const apply = () => set({ open: false, profile: null, profileId: null });
     if (state.open) coverThen(apply, 'profile-social');
     else apply();
