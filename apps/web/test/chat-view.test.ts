@@ -55,7 +55,9 @@ describe('social chat view persistence (session-scoped)', () => {
     const { social } = await import('../src/social/store');
     const s = social.get();
     expect(s.open).toBe(false);
-    expect(s.tab).toBe('players');
+    // BWM Central: a fresh panel opens on Headlines, the hub home.
+    expect(s.tab).toBe('headlines');
+    expect(s.dest).toBe('headlines');
     expect(s.dmWith).toBeNull();
   });
 

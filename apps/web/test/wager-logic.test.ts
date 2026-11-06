@@ -159,8 +159,10 @@ describe('wiring pins', () => {
   const wager = readFileSync(new URL('../src/social/Wager.tsx', import.meta.url), 'utf8');
   const store = readFileSync(new URL('../src/social/store.ts', import.meta.url), 'utf8');
   const mig = readFileSync(new URL('../../server/migrations/0017_wager_open.sql', import.meta.url), 'utf8');
-  it('the challenges tab is reachable from the gear menu and renders the tab body', () => {
-    expect(social).toContain('data-testid="soc-tab-challenges"');
+  it('challenges live in Matchups (BWM Central P1 — out of the gear menu) and the tab body still renders', () => {
+    const central = readFileSync(new URL('../src/social/Central.tsx', import.meta.url), 'utf8');
+    expect(central).toContain('<WagerChallenges signedIn={signedIn} />');
+    expect(social).not.toContain('data-testid="soc-tab-challenges"');
     expect(social).toContain("s.tab === 'challenges' ? <WagerChallenges signedIn={signedIn} />");
     expect(social).toContain('<UnlockPopups />');
   });

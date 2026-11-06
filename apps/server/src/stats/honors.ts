@@ -2,9 +2,10 @@
  * League Awards + Record Book (league P-F, Demetrius 2026-10-20).
  *
  * Season awards come from season_ratings (wins / win %) and the per-game
- * stat JSON in game_players (Wheels, Bostons) scoped to the current season.
+ * stat JSON in game_players (Wheels, Big-Joker trick wins) scoped to the
+ * current season.
  * The Record Book is all-time: ratings.peak for the highest rating ever,
- * game_players aggregates for wins / Wheels / Bostons / win %.
+ * game_players aggregates for wins / Wheels / Big-Joker trick wins / win %.
  *
  * Streak records (league data wave, item 3): streaks ARE stored — the cred
  * system keeps cred_totals (cur_streak / best_streak per player per kind),
@@ -81,7 +82,12 @@ export async function leagueHonors(db: D1Database, now: number): Promise<{ seaso
       `SELECT gp.user_id AS user_id, u.username AS name, SUM(json_extract(gp.stats, '$.bjWins')) AS v, COUNT(*) AS games
        FROM game_players gp JOIN games g ON g.id = gp.game_id JOIN users u ON u.id = gp.user_id
        WHERE gp.ended_at >= ? AND ${FINISHED} GROUP BY gp.user_id ORDER BY v DESC LIMIT 1`,
-      [season.startsAt], 'most-bostons', 'Most Bostons this season', (v) => `${v} Bostons`),
+      // MISLABEL FIX (BWM Central P1): this record sums `bjWins` — tricks won
+      // with the Big Joker — and was displayed as "Bostons", which it does not
+      // measure (a Boston is a side taking every book in a hand; historical
+      // Bostons are unprovable from stored data, so no Boston record is
+      // fabricated here). The id stays 'most-bostons' for stability.
+      [season.startsAt], 'most-bostons', 'Most Big-Joker trick wins this season', (v) => `${v} Big-Joker trick wins`),
   ]);
   const records: (Honor | null)[] = await Promise.all([
     topBy(db,
@@ -102,7 +108,7 @@ export async function leagueHonors(db: D1Database, now: number): Promise<{ seaso
       `SELECT gp.user_id AS user_id, u.username AS name, SUM(json_extract(gp.stats, '$.bjWins')) AS v, COUNT(*) AS games
        FROM game_players gp JOIN games g ON g.id = gp.game_id JOIN users u ON u.id = gp.user_id
        WHERE ${FINISHED} GROUP BY gp.user_id ORDER BY v DESC LIMIT 1`,
-      [], 'most-bostons-ever', 'Most Bostons all-time', (v) => `${v} Bostons`),
+      [], 'most-bostons-ever', 'Most Big-Joker trick wins all-time', (v) => `${v} Big-Joker trick wins`),
     topBy(db,
       `SELECT gp.user_id AS user_id, u.username AS name, ROUND(100.0 * SUM(gp.won) / COUNT(*), 1) AS v, COUNT(*) AS games
        FROM game_players gp JOIN games g ON g.id = gp.game_id JOIN users u ON u.id = gp.user_id

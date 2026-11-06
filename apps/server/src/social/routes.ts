@@ -4,6 +4,9 @@
  *   GET /api/social/profile/:username → public profile (member since, badges, team names, ratings, head-to-head)
  *   GET /api/social/me/stats          → signed-in personal stats, split by 2v2 and Cutthroat
  *   GET /api/social/recent            → players you recently played with (signed in)
+ *   GET /api/social/match/:id         → one recorded game in full (participant, or a public result)
+ *   GET|POST|DELETE /api/social/favorites[/:id] → favorite partners (signed in)
+ *   POST /api/social/crews · GET /api/social/crews · POST /api/social/crews/:id/{invite,respond,leave} · GET /api/social/crews/:id/leaderboard → crews (signed in; BWM Central P3)
  *   POST /api/social/presence         → report your own friend-activity presence (signed in; body { activity })
  *   GET /api/social/reports           → admin only: latest reports
  * The websocket (/api/social/ws) is routed in index.ts to the Social Durable Object.
@@ -14,6 +17,7 @@ import { regionOf } from '../cred/region';
 import { leaderboard, myStats, personalStats, serverStats, type PersonalStats } from '../stats/boards';
 import { ensurePowerSnapshot, powerRankings } from '../stats/power';
 import { recentResults } from '../stats/results';
+import { matchDetail } from '../stats/match';
 import { recentHighlights } from '../stats/highlights';
 import { leagueHonors } from '../stats/honors';
 import { usernameKey } from '../auth/username';
@@ -231,6 +235,55 @@ export async function profileFor(db: D1Database, username: string, viewer: strin
   return out;
 }
 
+/* ------------------------------------------------------------ favorites */
+
+/** Favorite partners (migration 0036, BWM Central P1): a signed-in player's
+ *  own list. The INNER JOIN on users is the "drop rows whose user vanished"
+ *  rule — favorite_partners carries no FK, so a deleted account's row can
+ *  outlive it and must never surface. */
+export async function listFavorites(db: D1Database, uid: string): Promise<{ userId: string; name: string }[]> {
+  const rows = (await db.prepare(`SELECT f.partner_id AS id, u.username AS name FROM favorite_partners f
+    JOIN users u ON u.id = f.partner_id WHERE f.user_id = ? ORDER BY f.created_at ASC, u.username ASC`)
+    .bind(uid).all<{ id: string; name: string | null }>()).results;
+  return rows.map((r) => ({ userId: r.id, name: r.name ?? 'Player' }));
+}
+
+/** The caller's friends-board id set: accepted `friends` rows + the caller,
+ *  derived entirely server-side (the notify.ts pattern) — never client ids. */
+export async function friendIdSet(db: D1Database, uid: string): Promise<string[]> {
+  const rows = (await db.prepare(`SELECT CASE WHEN a = ? THEN b ELSE a END AS fid FROM friends
+    WHERE (a = ? OR b = ?) AND status = 'friends'`).bind(uid, uid, uid).all<{ fid: string }>()).results;
+  return [uid, ...rows.map((r) => r.fid)];
+}
+
+/* --------------------------------------------------------------- crews */
+
+export interface CrewMemberOut { userId: string; name: string; role: string; status: string }
+export interface CrewOut { id: string; name: string; ownerId: string; members: CrewMemberOut[] }
+
+/** One crew in the wire shape (BWM Central P3; tables from migration 0036,
+ *  status from 0037). The INNER JOIN on users is the "drop rows whose user
+ *  vanished" rule (crew_members carries no FK): a deleted account's
+ *  membership row can outlive it and must never surface. */
+export async function crewOut(db: D1Database, crewId: string): Promise<CrewOut | null> {
+  const crew = await db.prepare('SELECT id, name, owner_id AS ownerId FROM crews WHERE id = ?').bind(crewId).first<{ id: string; name: string; ownerId: string }>();
+  if (!crew) return null;
+  const rows = (await db.prepare(`SELECT m.user_id AS userId, u.username AS name, m.role AS role, m.status AS status
+    FROM crew_members m JOIN users u ON u.id = m.user_id WHERE m.crew_id = ? ORDER BY m.joined_at ASC, u.username ASC`)
+    .bind(crewId).all<{ userId: string; name: string | null; role: string; status: string }>()).results;
+  return { id: crew.id, name: crew.name, ownerId: crew.ownerId, members: rows.map((r) => ({ userId: r.userId, name: r.name ?? 'Player', role: r.role, status: r.status })) };
+}
+
+async function crewMembership(db: D1Database, crewId: string, uid: string): Promise<{ role: string; status: string } | null> {
+  return db.prepare('SELECT role, status FROM crew_members WHERE crew_id = ? AND user_id = ?').bind(crewId, uid).first<{ role: string; status: string }>();
+}
+
+/** The crew standings id set: ACTIVE members only — an invitation confers no standing. */
+async function crewActiveIds(db: D1Database, crewId: string): Promise<string[]> {
+  const rows = (await db.prepare("SELECT user_id AS id FROM crew_members WHERE crew_id = ? AND status = 'active'").bind(crewId).all<{ id: string }>()).results;
+  return rows.map((r) => r.id);
+}
+
 export async function recentPlayers(db: D1Database, uid: string): Promise<{ id: string; name: string; games: number; last: number; partner: boolean }[]> {
   const rows = (await db.prepare(`SELECT o.user_id AS id, u.username AS name, COUNT(*) AS games, MAX(o.ended_at) AS last, MAX(CASE WHEN o.side = me.side THEN 1 ELSE 0 END) AS partner
     FROM game_players me JOIN game_players o ON o.game_id = me.game_id AND o.user_id != me.user_id JOIN users u ON u.id = o.user_id
@@ -293,7 +346,124 @@ export async function handleSocialHttp(req: Request & { cf?: unknown }, env: Soc
       if (!declared) return json({ rows: [], region: null, note: 'Set your region on your profile to see your regional board.' });
       return json({ rows: await leaderboard(db, { board, kind, period, region: null, declaredRegion: declared, now }), region: declared });
     }
+    if (q.get('scope') === 'friends') {
+      // BWM Central P1: the friends board = the caller + their accepted
+      // friends, resolved server-side from the friends table. Signed-in
+      // only, following the regions scope above: a signed-out viewer gets
+      // an honest empty board with a note, never someone else's set.
+      if (!me) return json({ rows: [], region: null, note: 'Sign in to see your friends board.' });
+      return json({ rows: await leaderboard(db, { board, kind, period, region: null, friendIds: await friendIdSet(db, me.id), now }), region: null });
+    }
     return json({ rows: await leaderboard(db, { board, kind, period, region, now }), region });
+  }
+  if (a === 'match' && parts[3] && req.method === 'GET') {
+    // Match detail (BWM Central P1): participants always; everyone else
+    // only when the game is a public result (see stats/match.ts). A game
+    // the caller may not see is a 404, same as one that does not exist.
+    const d = await matchDetail(db, decodeURIComponent(parts[3]).slice(0, 80), me?.id ?? null);
+    return d ? json(d) : json({ error: 'not found' }, 404);
+  }
+  if (a === 'favorites' && req.method === 'GET' && !parts[3]) {
+    if (!me) return json({ error: 'Sign in to see your favorites.' }, 401);
+    return json({ favorites: await listFavorites(db, me.id) });
+  }
+  if (a === 'favorites' && parts[3] && (req.method === 'POST' || req.method === 'DELETE')) {
+    if (!me) return json({ error: 'Sign in to manage your favorites.' }, 401);
+    const target = decodeURIComponent(parts[3]).replace(/^u:/, '').slice(0, 80);
+    if (req.method === 'DELETE') {
+      await db.prepare('DELETE FROM favorite_partners WHERE user_id = ? AND partner_id = ?').bind(me.id, target).run();
+      return json({ ok: true });
+    }
+    if (target === me.id) return json({ error: "You can't favorite yourself." }, 400);
+    if (!(await db.prepare('SELECT 1 AS ok FROM users WHERE id = ?').bind(target).first())) return json({ error: 'not found' }, 404);
+    await db.prepare('INSERT OR IGNORE INTO favorite_partners (user_id, partner_id, created_at) VALUES (?, ?, ?)').bind(me.id, target, now).run();
+    return json({ ok: true });
+  }
+  if (a === 'crews' && !parts[3] && req.method === 'POST') {
+    // Create a crew (BWM Central P3): the creator is its owner and first
+    // active member. The name is display text — trimmed, 1–40 chars.
+    if (!me) return json({ error: 'Sign in to create a crew.' }, 401);
+    const body = (await req.json().catch(() => null)) as { name?: unknown } | null;
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (name.length < 1 || name.length > 40) return json({ error: 'Crew names are 1–40 characters.' }, 400);
+    const id = crypto.randomUUID();
+    await db.batch([
+      db.prepare('INSERT INTO crews (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)').bind(id, name, me.id, now),
+      db.prepare("INSERT INTO crew_members (crew_id, user_id, role, joined_at, status) VALUES (?, ?, 'owner', ?, 'active')").bind(id, me.id, now),
+    ]);
+    return json({ crew: await crewOut(db, id) });
+  }
+  if (a === 'crews' && !parts[3] && req.method === 'GET') {
+    // Your crews (you are ACTIVE) split from your pending invitations
+    // (you are INVITED) — an invite never auto-joins anyone.
+    if (!me) return json({ error: 'Sign in to see your crews.' }, 401);
+    const mine = (await db.prepare('SELECT crew_id AS id, status FROM crew_members WHERE user_id = ? ORDER BY joined_at ASC').bind(me.id).all<{ id: string; status: string }>()).results;
+    const crews: CrewOut[] = [];
+    const invites: CrewOut[] = [];
+    for (const m of mine) {
+      const c = await crewOut(db, m.id);
+      if (c) (m.status === 'active' ? crews : invites).push(c);
+    }
+    return json({ crews, invites });
+  }
+  if (a === 'crews' && parts[3] && parts[4] === 'invite' && req.method === 'POST') {
+    if (!me) return json({ error: 'Sign in to invite to a crew.' }, 401);
+    const crewId = decodeURIComponent(parts[3]).slice(0, 80);
+    const mine = await crewMembership(db, crewId, me.id);
+    if (!mine || mine.status !== 'active') return json({ error: 'Only active crew members can invite.' }, 403);
+    const body = (await req.json().catch(() => null)) as { userId?: unknown } | null;
+    const target = typeof body?.userId === 'string' ? body.userId.replace(/^u:/, '').slice(0, 80) : '';
+    const existing = target ? await crewMembership(db, crewId, target) : null;
+    if (existing?.status === 'active') return json({ ok: true }); // already a member: inviting them is a no-op
+    // Anti-spam: crew invites go to the caller's ACCEPTED friends only —
+    // never to strangers, pending friends, or accounts that don't exist.
+    if (!target || !(await new SocialStore(db).areFriends(me.id, target))) return json({ error: 'You can only invite your friends to a crew.' }, 400);
+    await db.prepare("INSERT OR IGNORE INTO crew_members (crew_id, user_id, role, joined_at, status) VALUES (?, ?, 'member', ?, 'invited')").bind(crewId, target, now).run();
+    await db.prepare("UPDATE crew_members SET status = 'invited' WHERE crew_id = ? AND user_id = ? AND status != 'active'").bind(crewId, target).run();
+    return json({ ok: true });
+  }
+  if (a === 'crews' && parts[3] && parts[4] === 'respond' && req.method === 'POST') {
+    if (!me) return json({ error: 'Sign in to answer a crew invite.' }, 401);
+    const crewId = decodeURIComponent(parts[3]).slice(0, 80);
+    const mine = await crewMembership(db, crewId, me.id);
+    if (!mine || mine.status !== 'invited') return json({ error: 'You have no crew invitation to answer.' }, 403);
+    const body = (await req.json().catch(() => null)) as { accept?: unknown } | null;
+    if (body?.accept) await db.prepare("UPDATE crew_members SET status = 'active' WHERE crew_id = ? AND user_id = ?").bind(crewId, me.id).run();
+    else await db.prepare('DELETE FROM crew_members WHERE crew_id = ? AND user_id = ?').bind(crewId, me.id).run(); // decline removes the row, so a re-invite starts clean
+    return json({ ok: true });
+  }
+  if (a === 'crews' && parts[3] && parts[4] === 'leave' && req.method === 'POST') {
+    if (!me) return json({ error: 'Sign in to leave a crew.' }, 401);
+    const crewId = decodeURIComponent(parts[3]).slice(0, 80);
+    const mine = await crewMembership(db, crewId, me.id);
+    if (!mine) return json({ error: 'not found' }, 404);
+    if (mine.status !== 'active') return json({ error: 'Decline the invitation instead of leaving.' }, 403);
+    const crew = await db.prepare('SELECT owner_id AS ownerId FROM crews WHERE id = ?').bind(crewId).first<{ ownerId: string }>();
+    if (crew?.ownerId === me.id) {
+      // The owner leaving DISSOLVES the crew: the crew row and every
+      // membership row go, so nobody is left in a crew with no owner.
+      await db.batch([
+        db.prepare('DELETE FROM crew_members WHERE crew_id = ?').bind(crewId),
+        db.prepare('DELETE FROM crews WHERE id = ?').bind(crewId),
+      ]);
+    } else {
+      await db.prepare('DELETE FROM crew_members WHERE crew_id = ? AND user_id = ?').bind(crewId, me.id).run();
+    }
+    return json({ ok: true });
+  }
+  if (a === 'crews' && parts[3] && parts[4] === 'leaderboard' && req.method === 'GET') {
+    // Crew standings (BWM Central P3): the board id-set is the crew's
+    // ACTIVE members, resolved server-side — same response shape as
+    // /api/social/leaderboard.
+    if (!me) return json({ error: 'Sign in to see crew standings.' }, 401);
+    const crewId = decodeURIComponent(parts[3]).slice(0, 80);
+    const mine = await crewMembership(db, crewId, me.id);
+    if (!mine || mine.status !== 'active') return json({ error: 'Crew standings are for active members.' }, 403);
+    const q = url.searchParams;
+    const board = (['rating', 'wins', 'accuracy', 'duos', 'winpct', 'books', 'nils', 'streak', 'pace'] as const).find((b) => b === q.get('board')) ?? 'rating';
+    const kind = q.get('kind') === 'cutthroat' ? 'cutthroat' : 'team';
+    const period = (['all', 'month', 'week'] as const).find((p) => p === q.get('period')) ?? 'all';
+    return json({ rows: await leaderboard(db, { board, kind, period, region: null, idSet: await crewActiveIds(db, crewId), now }), region: null });
   }
   if (a === 'me' && parts[3] === 'stats' && req.method === 'GET') {
     if (!me) return json({ error: 'Sign in to see your stats.' }, 401);

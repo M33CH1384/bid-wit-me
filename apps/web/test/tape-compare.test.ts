@@ -48,6 +48,6 @@ describe('tape + compare placement', () => {
     expect(pv).toContain('{!me && socialP && acct.user?.username && <CompareBlock');
     expect(pv).toContain("'Partnership rating'");
     expect(pv).toContain("'Books / hand'");
-    expect(pv).toContain("'Bostons'");
+    expect(pv).toContain("'Big-Joker trick wins'");
   });
 });

@@ -2532,7 +2532,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
         // only when the settled after-profile's recorded count confirms
         // this game moved it (computeRewards owns that check).
         tko: tkoDirectionFor(st, mySide),
-      }, { online: !!online });
+      }, { online: !!online, finalizeRating: true });
       // Postgame Report (league P-D): your line vs the other sides + best
       // moments, from the finished game's hand history.
       if (st.result) {
