@@ -183,4 +183,20 @@ describe('the toss poll (online room)', () => {
     env.send('b', { t: 'tossCall' });
     expect(env.errors('b').map((e) => e.code)).toContain('POLL_DEAD');
   });
+
+  it('refuses the call at one trick remaining: no poll, no freeze, no announcement (owner, 2026-11-06)', () => {
+    const env = started();
+    // 12 tricks played: side 0 (bid 8) took 5 and needs 3 with exactly one
+    // trick left — a locked set, but the hand just plays out.
+    const g = rig(env, { bids: [5, 4, 3, 3], winners: [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1], turn: 0 });
+    env.clear();
+    env.send('a', { t: 'tossCall' });
+    expect(env.errors('a').map((e) => e.code)).toContain('CANNOT_TOSS');
+    expect(env.room.data.tossPoll ?? null).toBeNull();
+    // nothing was announced, and the hand is untouched — still playing its last trick
+    const chat = env.msgs('b').filter((m) => m.t === 'chat').map((m) => (m as Extract<ServerMsg, { t: 'chat' }>).line.text);
+    expect(chat.some((t) => t.includes('toss'))).toBe(false);
+    expect(g.phase).toBe('playing');
+    expect(env.room.data.game?.tricks).toHaveLength(12);
+  });
 });

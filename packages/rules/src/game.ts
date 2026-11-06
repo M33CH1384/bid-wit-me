@@ -688,6 +688,9 @@ const tossStatusCache = new WeakMap<GameState, TossStatus | null>();
  * progress still counts as remaining). Even with a set locked, a hand
  * carrying a live nil plays out unless that nil is DECIDED — already
  * busted by played tricks, or provably unbustable (`nilUnbustable`).
+ * And with exactly ONE trick remaining there is no toss at all (owner
+ * 2026-11-06): each player holds one card, so the hand simply plays out —
+ * no offer, and no blocked-by-nil explanation either.
  * Returns null outside partnership trick play; otherwise the standing,
  * cached per state (states are immutable, so identity is exact — seat
  * views ask for this on every render).
@@ -708,6 +711,10 @@ function computeTossStatus(st: GameState): TossStatus | null {
   if (bids.length !== r.playerCount || bids.some((b) => b === null || b === undefined)) return none;
   if (isBooksHand(bids)) return none;
   const remaining = tricksStillRemaining(st);
+  // One trick left = one card each: the hand plays out (owner 2026-11-06).
+  // The standing is empty — no set is reported, no nil block is raised —
+  // so no surface offers or explains a toss that cannot happen.
+  if (remaining <= 1) return none;
   const setSides: number[] = [];
   for (let side = 0; side < sideCount(r); side++) {
     const needed = booksStillNeeded(r, bids, st.tricksWon, side);

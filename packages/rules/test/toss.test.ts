@@ -314,3 +314,56 @@ describe('the seat view carries the poll', () => {
     expect(viewFor(st, 0).tossBlockedByNil).toBe(false);
   });
 });
+
+describe('the final trick — no toss with one card each (owner, 2026-11-06)', () => {
+  // Side 0 bid 8 (5+3). After 12 tricks it holds 5 books and needs 3 with
+  // exactly ONE trick remaining: a locked set on the last trick, every
+  // player down to one card. There is nothing left worth voting on — the
+  // hand simply plays out, so the toss is not offered at all.
+  const lastTrick = () => midHand({ bids: [5, 4, 3, 3], winners: [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1] });
+
+  it('the standing is empty at one trick remaining: no offer, no explanation, no action', () => {
+    const st = lastTrick();
+    const t = tossStatus(st);
+    expect(t?.available).toBe(false);
+    expect(t?.setSides).toEqual([]);
+    expect(t?.blockedByNil).toBe(false);
+    // the seat view is what the table renders from: no toss data (the pill
+    // never renders) and no blocked-by-nil flag (the chip never renders)
+    expect(viewFor(st, 0).toss).toBeNull();
+    expect(viewFor(st, 0).tossBlockedByNil).toBe(false);
+    expect(spectatorView(st, 0).toss).toBeNull();
+    expect(() => applyAction(st, { type: 'toss', seat: 0 })).toThrowError(RuleError);
+  });
+
+  it('control: the same lock at two tricks remaining offers the toss as always', () => {
+    const st = midHand({ bids: [5, 4, 3, 3], winners: [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1] });
+    expect(tossStatus(st)?.available).toBe(true);
+    expect(tossStatus(st)?.setSides).toEqual([0]);
+    expect(viewFor(st, 0).toss).toEqual({ setSides: [0], points: [-80, 70] });
+  });
+
+  it('a live Nil at one trick remaining raises no blocked chip; at two tricks it does', () => {
+    // 12 played: side 1 (bid 9) took 6, needs 3 > 1 left — locked. Seat 0's
+    // Nil is live and its last card is the little trump: led hearts, it
+    // still busts. Bustable or not, at one trick there is no toss for the
+    // chip to explain, so the view carries neither the offer nor the block.
+    const oneLeft = midHand({
+      bids: ['nil', 5, 4, 4], winners: [1, 2, 1, 2, 1, 2, 2, 2, 3, 3, 3, 2],
+      hands: [['2S'], ['KH'], ['QH'], ['9H']], turn: 1,
+    });
+    expect(nilUnbustable(oneLeft, 0)).toBe(false);
+    const v1 = viewFor(oneLeft, 0);
+    expect(v1.toss).toBeNull();
+    expect(v1.tossBlockedByNil).toBe(false);
+    expect(tossStatus(oneLeft)?.available).toBe(false);
+    // the same standing one trick earlier: the chip shows, as shipped
+    const twoLeft = midHand({
+      bids: ['nil', 5, 4, 4], winners: [1, 2, 1, 2, 1, 2, 2, 2, 3, 3, 3],
+      hands: [['3H', '2S'], ['AH', 'KH'], ['QH', 'JH'], ['TH', '9H']], turn: 1,
+    });
+    const v2 = viewFor(twoLeft, 0);
+    expect(v2.toss).toEqual({ setSides: [1], points: [140, -90] });
+    expect(v2.tossBlockedByNil).toBe(true);
+  });
+});
