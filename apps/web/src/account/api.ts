@@ -10,7 +10,7 @@ import { invalidateVenueUnlocks } from '../venues';
 import { badges, mergeBadges } from '../badges';
 import { loadSeries } from '../Series';
 import { myTeamName, pairTeamNames } from '../TeamName';
-import { loadName, saveName } from '../online/identity';
+import { saveName } from '../online/identity';
 
 export type ProviderId = 'google' | 'discord' | 'x' | 'facebook' | 'mock';
 export interface AccountUser {
@@ -116,9 +116,9 @@ export function takePendingOpen(): 'account' | null { const p = pendingOpen; pen
 /** The entry flow retires the first-sign-in marker once the preferences step is done/skipped. */
 export function clearFirstSignIn(): void { if (state.firstSignIn) set({ firstSignIn: null }); }
 
-/** After any sign-in: use the username as the online display name if none is set; pull account badges onto this device. */
+/** After any sign-in: the username IS the online display name — the stored seat name syncs to it unconditionally (owner, 2026-11-06: the 'Your name' field is gone for signed-in players, so a typed override must die here, at the one place every sign-in path funnels through); pull account badges onto this device. */
 async function afterSignIn(u: AccountUser, fresh: boolean) {
-  if (u.username && !loadName()) saveName(u.username);
+  if (u.username) saveName(u.username);
   if (fresh && u.progressImported) {
     const r = await call<{ progress?: { badges?: { id: string; earnedAt: number }[]; teamName?: string | null; teamNames?: Record<string, string> } }>('progress', {});
     mergeDownBadges(r.progress?.badges ?? []);
@@ -143,7 +143,7 @@ export async function checkUsername(u: string): Promise<{ ok: boolean; reason?: 
 }
 export async function setUsername(u: string): Promise<string | null> {
   const r = await call<{ user?: AccountUser }>('username', { username: u });
-  if (r.user) { const prev = state.user?.username; set({ user: r.user }); if (!loadName() || loadName() === prev) saveName(r.user.username ?? ''); return null; }
+  if (r.user) { set({ user: r.user }); saveName(r.user.username ?? ''); return null; }
   return r.reason ?? r.error ?? 'Could not save that name.';
 }
 export async function signOut() { await call('logout', {}); noteSession('guest'); set({ user: null, notice: 'Signed out. You can keep playing as a guest.', noticeKind: 'ok' }); }
@@ -186,7 +186,7 @@ export async function passkeyRegister(username?: string): Promise<string | null>
   if (!v.user) return v.reason ?? v.error ?? 'Could not save the passkey.';
   set({ user: v.user, notice: v.outcome === 'new' ? `Welcome, ${v.user.username}!` : 'Passkey added.', noticeKind: 'ok' });
   if (!wasSignedIn) set({ firstSignIn: v.user }); // account creation IS the first sign-in
-  if (v.user.username && !loadName()) saveName(v.user.username);
+  if (v.user.username) saveName(v.user.username);
   return null;
 }
 function passkeyError(e: unknown): string {

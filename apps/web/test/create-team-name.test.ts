@@ -12,7 +12,11 @@
  * lobby applies it through the SAME {t:'teamName'} send + rosterBlock
  * validation as the TeamChip. Your name stays — demoted under the team
  * name, honestly labelled — because it is the seat display name (the hello
- * name) and a guest's only name. Cutthroat create has no team row.
+ * name) and a guest's only name. (That demotion was superseded the same
+ * night, 2026-11-06: the field is now REMOVED for signed-in players and
+ * remains for guests only — see remove-name-field.test.ts. The renders
+ * below that assert the field are guest renders, where it still appears.)
+ * Cutthroat create has no team row.
  */
 import { createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -74,12 +78,16 @@ function Harness() {
   return createElement(Setup, { settings: s, onChange: setS, tips, onTips: setTips, onStart: () => {} });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear(); sessionStorage.clear();
   history.replaceState(null, '', '/');
   teamsPayload = { teams: TEAMS };
   signedIn = false;
   mockFetch();
+  // the account store is module state: force it back to signed-out so a
+  // guest test never inherits an earlier test's sign-in (the wizard's
+  // name field depends on it since the 2026-11-06 removal)
+  await act(async () => { await loadAccount(true); });
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }) });
   el = document.createElement('div');
   document.body.appendChild(el);

@@ -624,10 +624,12 @@ export function RulesStatLine({ settings }: { settings: Settings }) {
 
 /**
  * The online 'table' step (owner, 2026-10-20 lobby restructure): TWO screens.
- * The lobby comes first — your name, join with a code, the open tables, and
- * exactly ONE "Create a table" entry. The create form is its own step (the
- * wizard's Back returns here), regrouped ESPN-style into cards. Name and music
- * state live here so moving between the two screens keeps what you typed.
+ * The lobby comes first — your name (guests only: a signed-in player sits
+ * under their account name, owner 2026-11-06), join with a code, the open
+ * tables, and exactly ONE "Create a table" entry. The create form is its own
+ * step (the wizard's Back returns here), regrouped ESPN-style into cards.
+ * Name and music state live here so moving between the two screens keeps
+ * what you typed.
  */
 function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSummary, onHouseRules, onTargetScore, summary, tipsRow, view, onOpenCreate }: {
   settings: Settings; venue: VenueChoice; onVenue: (v: VenueChoice) => void; deck: ReactNode; deckId: string; deckGallery: ReactNode;
@@ -647,7 +649,19 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
   const [teamName, setTeamName] = useState('');
   const partnerships = settingsToRules(settings).partnerships;
   const acct = useAccount();
-  const nameOk = name.trim().length > 0;
+  /* The 'Your name' field is REMOVED from both online screens for signed-in
+   * players (owner, 2026-11-06: "if it's a guest it can appear, but if the
+   * user is signed in it's just in the way"). While signed in, the seat
+   * name is the account username, full stop — the per-table override dies
+   * with the field, and the account layer syncs the stored name to the
+   * username so every downstream reader (OnlineApp hello, presence) sees
+   * the account name. Guests keep the field exactly as before — it is
+   * their only name. A signed-in account with no username yet has no
+   * account name to sit under, so it keeps the field until it has one. */
+  const accountName = acct.user?.username?.trim() ?? '';
+  const useAccountName = accountName.length > 0;
+  const effectiveName = useAccountName ? accountName : name;
+  const nameOk = effectiveName.trim().length > 0;
   const create = async () => {
     if (!nameOk) { setErr('Enter your name first'); return; }
     if (music?.mode === 'link' && !isMusicLink(music.url.trim())) { setErr('Paste an open.spotify.com or music.apple.com link (or set Table music to Off)'); return; }
@@ -657,7 +671,7 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
       savePendingVenue(c, venue);
       savePendingMusic(c, music?.mode === 'link' ? { ...music, url: music.url.trim() } : music);
       if (partnerships) savePendingTeamName(c, teamName);
-      saveName(name.trim());
+      saveName(effectiveName.trim());
       sessionStorage.setItem(`bwm.created.${c}`, '1');
       navigate(`/t/${c}`);
     } catch (e) { setErr((e as Error).message || "Can't reach the game server."); } finally { setBusy(false); }
@@ -671,7 +685,7 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
     try {
       const i = await tableInfo(serverUrl(), c);
       if (!i.exists) { setErr(`No table with code ${c}`); return; }
-      saveName(name.trim());
+      saveName(effectiveName.trim());
       navigate(`/t/${c}`);
     } catch { setErr("Can't reach the game server."); } finally { setBusy(false); }
   };
@@ -684,20 +698,23 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
   if (view === 'create') {
     return (
       <div className="ess ess-barred" key="create">
-        <SetupCard title="Table">
-          {partnerships && (
-            <div className="ess-row stack">
-              <span className="ess-label">Team name<small>your side plays under it — you can change it in the lobby</small></span>
-              <TeamNameInput value={teamName} placeholder="e.g. Homies" onChange={setTeamName} testId="create-team-name" />
-              <PreviousTeamChips current={teamName} onPick={setTeamName} testId="create-team-prev" />
-            </div>
-          )}
-          {/* Your name is the seat display name (the hello name) — a guest's
-              only name, and for a signed-in player an override of the account
-              name it was seeded from. It stays, demoted under the team name
-              and honestly labelled (owner, 2026-11-05). */}
-          {nameRow(acct.user ? 'shown at the table — your account name, unless you change it here' : 'shown at the table')}
-        </SetupCard>
+        {/* The TABLE card exists only while it has a question to ask: the
+            team name (partnership) and/or a guest's name. A signed-in
+            cutthroat creator has neither — no empty card shell. */}
+        {(partnerships || !useAccountName) && (
+          <SetupCard title="Table">
+            {partnerships && (
+              <div className="ess-row stack">
+                <span className="ess-label">Team name<small>your side plays under it — you can change it in the lobby</small></span>
+                <TeamNameInput value={teamName} placeholder="e.g. Homies" onChange={setTeamName} testId="create-team-name" />
+                <PreviousTeamChips current={teamName} onPick={setTeamName} testId="create-team-prev" />
+              </div>
+            )}
+            {/* Guests only — a signed-in player sits under their account
+                name and is never asked (owner, 2026-11-06). */}
+            {!useAccountName && nameRow('shown at the table')}
+          </SetupCard>
+        )}
         <SetupCard title="Deck & venue">
           {deck}
           <div className="ess-row stack"><span className="ess-label">Pick your deck — tap to choose it; tap it again, or tap the eye, to browse its cards</span>{deckGallery}</div>
@@ -729,10 +746,15 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
   }
   return (
     <div className="ess" key="lobby">
-      <section className="setup-card" aria-label="You">
-        <h3 className="setup-card-h">You</h3>
-        {nameRow()}
-      </section>
+      {/* The "You" card held ONLY the name field, so for a signed-in
+          player (account name is the seat name) the whole card goes —
+          guests keep it exactly as it was (owner, 2026-11-06). */}
+      {!useAccountName && (
+        <section className="setup-card" aria-label="You">
+          <h3 className="setup-card-h">You</h3>
+          {nameRow()}
+        </section>
+      )}
       <section className="setup-card" aria-label="Join with a code">
         <h3 className="setup-card-h">Join with a code</h3>
         <form className="join-row quiet-join" onSubmit={join}>
