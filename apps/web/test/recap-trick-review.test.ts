@@ -216,11 +216,16 @@ describe('wiring — one browser, both doors', () => {
     expect(panel).toContain('className="lt-nav" data-testid="trick-next"');
   });
 
-  it('the recap receives the browser from the table, over the hand just played — exactly one mount', () => {
+  it('the recap receives the browser from the table, over the hand just played — one recap mount, plus the two results doors', () => {
     expect(table).toContain("import { RecapTrickReview } from './TrickBrowser';");
     expect(table).toContain('trickReview={<RecapTrickReview key={st.handNo} tricks={piles} face={face} />}');
-    // one door only: the import plus the single mount, never a second entry
-    expect(table.split('RecapTrickReview').length - 1).toBe(2);
+    // The recap keeps exactly ONE entry (the header's). Option C (owner,
+    // 2026-11-05) additionally carries the same control onto both results
+    // surfaces — a set ending's showcase beat has no recap to hold the
+    // door — so the file's count is the import + the recap mount + the
+    // two results mounts, never a second browser or a second recap entry.
+    expect(table.split('RecapTrickReview').length - 1).toBe(4);
+    expect(table.split('trickReview={').length - 1).toBe(1);
   });
 
   it('the entry renders in the recap HEADER — the top of the sheet, ahead of the body', () => {

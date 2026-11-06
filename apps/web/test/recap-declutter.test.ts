@@ -7,13 +7,21 @@ import { chooseBotAction } from '@spades/bots';
 import { Intermission } from '../src/Intermission';
 
 function toHandOver(rules: ReturnType<typeof makeRules>): GameState {
-  let st = newGame(rules, 'recap-declutter');
-  for (let g = 0; g < 8000 && st.phase !== 'handOver' && st.phase !== 'gameOver'; g++) {
-    const t = pendingTurn(st);
-    if (!t) break;
-    st = applyAction(st, chooseBotAction(viewFor(st, t.seat), 'pro')!);
+  // The original 'recap-declutter' seed ENDS its joker game on hand 1
+  // (shot out) — and since Option C (owner, 2026-11-05) a set-ending game
+  // renders the ending showcase beat, not this recap. The furniture this
+  // suite pins lives on a genuinely mid-hand recap, so scan seeds for a
+  // game that is between hands and use the first one found.
+  for (let i = 0; i < 40; i++) {
+    let st = newGame(rules, i === 0 ? 'recap-declutter' : `recap-declutter-${i}`);
+    for (let g = 0; g < 8000 && st.phase !== 'handOver' && st.phase !== 'gameOver'; g++) {
+      const t = pendingTurn(st);
+      if (!t) break;
+      st = applyAction(st, chooseBotAction(viewFor(st, t.seat), 'pro')!);
+    }
+    if (st.phase === 'handOver') return st;
   }
-  return st;
+  throw new Error('no handOver seed found');
 }
 
 function recap(st: GameState, names: string[], series = false) {
@@ -45,8 +53,10 @@ describe('hand recap', () => {
     expect(html).toContain(`to ${st.rules.targetScore}`);
     expect(html).toContain('Score pad');
     expect(html).toContain('data-testid="talk-ready"');
-    // this seed actually ends the game on hand 1 (shot out): the CTA is the winner flow, not a next hand
-    expect(html).toContain(st.phase === 'gameOver' ? 'See final results' : 'Continue');
+    // a mid-hand recap's CTA is the next hand — a decided game never
+    // reaches this surface's button at all anymore (Option C's beat)
+    expect(st.phase).toBe('handOver');
+    expect(html).toContain('Continue');
     expect(html).toContain('primary big');
     for (const gone of ['talk-grid', 'react-gg', 'data-testid="tt-team-name"', 'Shuffling', 'Talk your talk', 'YOUR TEAM NAME', 'class="tt-chat"', 'tt-deal', 'tt-reacts']) {
       expect(html).not.toContain(gone);

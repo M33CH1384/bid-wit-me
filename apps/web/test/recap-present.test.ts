@@ -156,10 +156,12 @@ describe('the gates start closed', () => {
     expect(reduced).not.toContain('data-wait');
   });
 
-  it('a third-set decided recap: winner flow, flash, and the finale — gated, delay intact', () => {
+  it('a third-set ending: the showcase beat — flash and the finale, gated, delay intact, no results button', () => {
     const html = renderToStaticMarkup(recapEl(stamp(toHandOver(), [[1], [], [1], [], [1]], { lost: [1], thirdSet: true })));
     expect(html).toContain('data-decided="yes"');
-    expect(html).toContain('See final results');
+    expect(html).toContain('data-showcase="yes"');
+    expect(html).toContain('data-testid="ending-showcase"');
+    expect(html).not.toContain('See final results');
     expect(html).toContain('data-testid="hardway-flash"');
     expect(html).toContain('data-tier="finale"');
     expect(html).toContain('--sc-delay:2300ms');
@@ -167,10 +169,11 @@ describe('the gates start closed', () => {
   });
 });
 
-/* ---------- the third-set decided-recap hold in Table ---------- */
+/* ---------- the third-set ending beat in Table ---------- */
 
-describe('Table routes a third-set ending through the decided recap', () => {
-  it('the hold covers shotOut and third-set alike (its flash + finale live there)', () => {
-    expect(tableSrc).toContain("(st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !shotRecapAck");
+describe('Table routes a third-set ending through the ending beat', () => {
+  it('the beat covers shotOut and third-set alike (its flash + finale live there)', () => {
+    expect(tableSrc).toContain("(st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !endingBeatDone");
+    expect(tableSrc).not.toContain('shotRecapAck');
   });
 });

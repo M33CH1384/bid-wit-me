@@ -62,7 +62,7 @@ describe('hand recap: top scores, spacing, and the decided-game flow', () => {
     expect(html).toContain('to ' + st.rules.targetScore);
   });
 
-  it('a DECIDED game (winner already decided) shows the winner flow, never Continue to Hand N', () => {
+  it('a DECIDED game ended by a set shows the showcase beat (Option C) — no Continue, no See-final-results button', () => {
     const base = toHandOver('recap-decided-b');
     const winners = [base.scores.indexOf(Math.max(...base.scores))];
     const st: GameState = {
@@ -70,13 +70,20 @@ describe('hand recap: top scores, spacing, and the decided-game flow', () => {
       result: { endReason: 'shotOut', shotOut: [1], finalScores: [...base.scores], placements: base.scores.map((s) => 1 + base.scores.filter((o) => o > s).length), winners },
     };
     const html = recap(st);
-    expect(html).toContain('See final results');
+    // the beat: the bare showcase stage, and NONE of the recap's furniture
+    expect(html).toContain('data-showcase="yes"');
+    expect(html).toContain('data-testid="ending-showcase"');
+    expect(html).not.toContain('See final results');
     expect(html).not.toContain('Continue to hand');
+    expect(html).not.toContain('TOP SCORES');
+    expect(html).not.toContain('data-testid="talk-ready"');
     expect(html).toContain('data-decided="yes"');
-    // Table routes that button to the results (ack), not to nextHand — source wiring, not a hidden button
+    // Table's wiring: the beat's completion callback flips endingBeatDone
+    // (opening the results), never nextHand — source wiring, not a hidden button
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
-    expect(table).toContain("if (st.phase === 'gameOver') setShotRecapAck(true); else apply({ type: 'nextHand' })");
-    expect(table).toContain("(st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !shotRecapAck");
+    expect(table).toContain("if (st.phase === 'gameOver') setEndingBeatDone(true); else apply({ type: 'nextHand' })");
+    expect(table).toContain("(st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !endingBeatDone");
+    expect(table).not.toContain('shotRecapAck');
   });
 
   it('an undecided hand still offers Continue to Hand N', () => {

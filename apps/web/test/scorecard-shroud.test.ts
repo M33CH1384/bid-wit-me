@@ -437,8 +437,8 @@ describe('scorecard shot covers (tape/sheet facts; the visuals retired 2026-10-2
     const dim = blocks.find((b) => b.includes('police-lights') || b.includes('police-red'));
     expect(dim).toBeUndefined();
     const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
-    expect(table).toContain("(st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !shotRecapAck");
-    expect(table).toContain('setShotRecapAck(true)');
+    expect(table).toContain("(st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !endingBeatDone");
+    expect(table).toContain('setEndingBeatDone(true)');
     // the recap's old Run It pill is REMOVED (owner 2026-10-26) — its label
     // and testid must never come back; the recap's one review entry is the
     // header's "Review the tricks" (recap-trick-review.test.ts pins it)

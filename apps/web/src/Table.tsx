@@ -2303,14 +2303,19 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // A nuke's hold is the 3D blast, so the score stays covered until that allowance ends.
   // Scoring toasts and hype no longer add another wait on top.
   const [talkOpen, setTalkOpen] = useState(false);
-  // A shot-out ends the hand in gameOver, which used to skip this recap. Hold the scorecard (blast, tape, sheet)
-  // until Continue, then open the results. The ack is local; the shot count still comes from synced history.
-  // The third-set ending holds the same way (owner, 2026-10-21): its signature
-  // 3 THE HARD WAY flash and the stop's finale set animation live in this
-  // decided recap — without the hold, a third-set game went straight to the
-  // results modal and neither ever played.
-  const [shotRecapAck, setShotRecapAck] = useState(false);
-  useEffect(() => { setShotRecapAck(false); }, [st.phase, st.handNo]);
+  // A shot-out ends the hand in gameOver, which used to skip this recap.
+  // The ending showcase beat (Option C, owner 2026-11-05): a game ended by
+  // a set (shotOut / third-set) stops at Intermission's showcase — the
+  // finale cover card(s) alone, no between-hands furniture and no Continue
+  // button — and Intermission calls back when the show completes (or the
+  // player taps through), flipping this flag to open the results. The
+  // third-set ending takes the same beat: its signature 3 THE HARD WAY
+  // flash and the stop's finale set animation live in the showcase —
+  // without a hold, a third-set game would go straight to the results
+  // modal and neither would ever play. The flag is local; the shot count
+  // still comes from synced history.
+  const [endingBeatDone, setEndingBeatDone] = useState(false);
+  useEffect(() => { setEndingBeatDone(false); }, [st.phase, st.handNo]);
   // Post-hand collection (Demetrius 2026-10-19): after a hand ends (not game over), books slide to the
   // next dealer for 4-6s while bots talk trash. The recap waits until collection finishes.
   // The pass waits out the finished-trick hold (pause): every card must have landed and the final
@@ -2492,9 +2497,9 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     haptic(HAPTIC.gameWin, 'game-win');
   }, [localWin]);
   // any modal up: the table, plates, chat, video bubbles etc. dim + blur behind it and can't paint over it
-  const shotOutRecap = st.phase === 'gameOver' && (st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !shotRecapAck;
-  const showRecap = !pause && !collecting && talkOpen && (st.phase === 'handOver' || shotOutRecap);
-  const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !shotOutRecap;
+  const endingBeat = st.phase === 'gameOver' && (st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !endingBeatDone;
+  const showRecap = !pause && !collecting && talkOpen && (st.phase === 'handOver' || endingBeat);
+  const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !endingBeat;
   // Story Mode: a finished story match NEVER takes the generic rewards
   // report — every exit from this modal routes through the host's exit
   // into StoryHome's outro (win: reward line, deck/set-anim unlock
@@ -3526,10 +3531,10 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
           names={names}
           mySide={mySide}
           setAnimCtx={{ storyStopId: story?.scene?.stop.id ?? null, venueId: venue, setting: settings.setAnim ?? 'auto' }}
-          secs={shotOutRecap ? null : (online?.talk?.secs ?? null)}
-          ready={shotOutRecap ? undefined : online?.talk?.ready}
-          online={shotOutRecap ? false : !!online}
-          onReady={() => { if (st.phase === 'gameOver') setShotRecapAck(true); else apply({ type: 'nextHand' }); }}
+          secs={endingBeat ? null : (online?.talk?.secs ?? null)}
+          ready={endingBeat ? undefined : online?.talk?.ready}
+          online={endingBeat ? false : !!online}
+          onReady={() => { if (st.phase === 'gameOver') setEndingBeatDone(true); else apply({ type: 'nextHand' }); }}
           onScorePad={() => setShowPad(true)}
           onLeave={() => { if (online) leave(); else setConfirmLeave(true); }}
           series={seriesChip()}
@@ -3611,6 +3616,12 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                       <li key={x.side} className={`${x.side === mySide ? 'mine' : ''}${res.winners.includes(x.side) ? ' win' : ''}`}><span className="place">#{x.place}</span><span>{sideName(r, x.side, names)}</span><b><RollNum to={x.score} play reduced={reduceFx} duration={1150} delay={200 + i * 120} step={50} tone={tallyTone(x.score, res.winners.includes(x.side))} origin="100% 50%" format={(v) => String(v)} /></b></li>
                     ))}
                 </ol>
+                {/* Review the tricks rides the results too (Option C, owner
+                    2026-11-05): a set ending's showcase beat carries no
+                    recap, so the door the recap used to hold lives here —
+                    the same control, over the final hand's tricks, beside
+                    the box score it belongs with */}
+                <RecapTrickReview key={st.handNo} tricks={piles} face={face} />
                 <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} roll reduced={reduceFx} />
                 {seriesChip()}
                 <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
@@ -3666,6 +3677,10 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                   hero + standings block; VictoryReport below omits its
                   own copy (omitXp) */}
               {!storyGame && mergedRewards && <VictoryXpStrip d={mergedRewards} />}
+              {/* Review the tricks, carried from the recap (Option C — see
+                  the victory surface): the final hand stays re-walkable
+                  after a set ending's showcase beat */}
+              <RecapTrickReview key={st.handNo} tricks={piles} face={face} />
               <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} roll reduced={reduceFx} />
               {/* the merged report (2026-11-01): Postgame Report + reward
                   rows join the box score in the scroll region — standings

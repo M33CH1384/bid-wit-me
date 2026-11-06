@@ -17,6 +17,33 @@ import { useClearedStoryStops } from './storyDecks';
 import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
 /**
+ * The ending showcase beat (Option C, owner 2026-11-05): when a game ends
+ * BY A SET (shotOut / third-set), the decided stop is no longer the
+ * between-hands recap with a "See final results" button — it is the
+ * finale cover card(s) alone on a bare stage, auto-advancing to the
+ * results when the show completes; a tap on the backdrop clears it
+ * sooner, and no press is ever required. The beat's length is the show's
+ * own length, counted from the presented gate (the same lift that starts
+ * every cover clock):
+ *  - FINALE_FLASH_DELAY_MS — the third-set finale's EXISTING delay: the
+ *    3 THE HARD WAY flash plays first and the finale rides behind it.
+ *    One const, shared with the SetCover delayMs below, so the card and
+ *    the beat can never drift apart.
+ *  - ENDING_BEAT_COVER_MS — a full finale cover play. The roster's
+ *    longest is the rooftop at 4.7s (animfx.css); the finale headline is
+ *    fully stamped at delay + 1.55s, well inside this window.
+ *  - ENDING_BEAT_HOLD_MS — the stamped end state holds, readable, before
+ *    the cut to results (transient reveals linger — standing rule).
+ * No animation duration changes; this only decides when the SURFACE moves on.
+ */
+export const FINALE_FLASH_DELAY_MS = 2300;
+export const ENDING_BEAT_COVER_MS = 5000;
+export const ENDING_BEAT_HOLD_MS = 1000;
+export function endingBeatMs(thirdSet: boolean): number {
+  return (thirdSet ? FINALE_FLASH_DELAY_MS : 0) + ENDING_BEAT_COVER_MS + ENDING_BEAT_HOLD_MS;
+}
+
+/**
  * Hand recap between hands (online and offline).
  * Header (hand number + series chip), one card per side — two teams, or one card per player in Cutthroat —
  * then Score pad and Continue. Chat, the avatar strip, the shuffle animation, and the team-name editor
@@ -98,8 +125,8 @@ export function Intermission({
 }) {
   const r = st.rules;
   const rec = st.history[st.history.length - 1]!;
-  // The match is decided when the engine has a result: this recap is then the last stop before
-  // the winner flow, never an offer to deal another hand (the shot-out hold in Table.tsx).
+  // The match is decided when the engine has a result: this surface is then the last stop before
+  // the winner flow, never an offer to deal another hand (the ending beat in Table.tsx).
   const decided = st.phase === 'gameOver' && !!st.result;
   const callouts = calloutsFor(st, mySide, names);
   const notes = callouts.filter((c) => c.kind !== 'shot' && c.kind !== 'gotShot');
@@ -127,6 +154,17 @@ export function Intermission({
   // The third-set ending's signature moment: this recap is the final hand
   // and the engine says the game ended BY the third set.
   const thirdSetEnd = decided && isThirdSetEnd(st.result);
+  // Option C (owner, 2026-11-05): a game ended BY A SET takes the showcase
+  // beat — the finale cover card(s) alone, no recap furniture, then the
+  // auto-advance below hands over to the results. Any other decided state
+  // keeps the decided recap exactly as before (Table never routes one
+  // here — target/floor endings go straight to results — so this is the
+  // component's unchanged fallback, not a flow).
+  const showcase = decided && (st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set');
+  // The beat's cast: exactly the sides whose cover is finale-tier (the
+  // sheet — the sides this ending knocked out), rendered by the same card
+  // map as the recap. Null outside the beat.
+  const beatCast = showcase ? sides.filter((s) => setTierForCover(covers[s.side] ?? { tape: false, sheet: false }) === 'finale') : null;
   // Hole count is the team's shot count. A new hole buzzes [30] once.
   // The sheet is the engine's elimination. It waits ~400ms after a new punch.
   const streaks = holeMarks(r, st.history);
@@ -175,6 +213,29 @@ export function Intermission({
     const t = window.setTimeout(() => setPresented(true), 350);
     return () => window.clearTimeout(t);
   }, []);
+  // The beat's advance (Option C): once the presented gate lifts, the
+  // clock runs the show's own length (endingBeatMs), then onReady fires
+  // exactly once — Table reads that as "the beat is done" and opens the
+  // results. A tap on the backdrop takes the same path sooner. onReady is
+  // read through a ref so a Table re-render (chat ticks, fx state) can
+  // never restart the clock, and the done-ref makes timer-vs-tap
+  // exactly-once. An empty cast (unreachable for set endings — they
+  // always sheet the out side) collapses the beat to zero rather than
+  // holding a blank stage.
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const beatDoneRef = useRef(false);
+  useEffect(() => { beatDoneRef.current = false; }, [handKey]);
+  const advanceBeat = () => {
+    if (beatDoneRef.current) return;
+    beatDoneRef.current = true;
+    onReadyRef.current();
+  };
+  useEffect(() => {
+    if (!showcase || !presented) return;
+    const t = window.setTimeout(advanceBeat, beatCast && beatCast.length ? endingBeatMs(thirdSetEnd) : 0);
+    return () => window.clearTimeout(t);
+  }, [showcase, presented, handKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // The victory celebration (owner, 2026-10-28: "when this screen loads
   // in landscape I never get to see the animation"). The confetti and
   // the Photo Finish tape used to be fired by AnimFxLayer on the
@@ -213,7 +274,7 @@ export function Intermission({
     if (el) el.scrollTop = 0;
   }, [handKey]);
   return (
-    <div className={`tt-backdrop${presented ? ' presented' : ''}`} data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} data-presented={presented ? 'yes' : 'no'} role="dialog" aria-label="Hand recap" onPointerDown={() => setFxOff(true)}>
+    <div className={`tt-backdrop${presented ? ' presented' : ''}`} data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} data-presented={presented ? 'yes' : 'no'} data-showcase={showcase ? 'yes' : 'no'} role="dialog" aria-label={showcase ? 'Game over' : 'Hand recap'} onPointerDown={() => { setFxOff(true); if (showcase) advanceBeat(); }}>
       {/* 3 THE HARD WAY — the third-set ending's title card (the rule's own
           callout, game-wide, NOT an unlock). Held ~3s, then the game-over
           flow proceeds; in a story match the stop's finale set animation is
@@ -231,8 +292,8 @@ export function Intermission({
           <i className="hw-rule bot" />
         </div>
       )}
-      <div className="tt glass slant espn">
-        <header className="tt-head">
+      <div className={`tt glass slant espn${showcase ? ' showcase' : ''}`}>
+        {!showcase && (<header className="tt-head">
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
           {series}
           {secs !== null && !decided && <span className={`tt-count ${secs <= 5 ? 'hot' : ''}`} data-testid="talk-count">Next deal {secs}s</span>}
@@ -252,10 +313,10 @@ export function Intermission({
             {chatOpen ? '✕' : '💬'}
             {!chatOpen && unread > 0 && <span className="unread" data-testid="recap-unread">{unread}</span>}
           </button>
-        </header>
+        </header>)}
 
-        <div className="tt-body" ref={bodyRef}>
-          <section className="tt-top-scores" data-testid="recap-top-scores" aria-label="Top scores">
+        <div className={showcase ? 'tt-showcase' : 'tt-body'} data-testid={showcase ? 'ending-showcase' : undefined} ref={bodyRef}>
+          {!showcase && (<section className="tt-top-scores" data-testid="recap-top-scores" aria-label="Top scores">
             <h3>TOP SCORES</h3>
             <ol>
               {[...sides].sort((a, b) => b.totalScore - a.totalScore || a.side - b.side).map((s, i) => (
@@ -267,18 +328,18 @@ export function Intermission({
                 </li>
               ))}
             </ol>
-          </section>
-          <section className="tt-strip" aria-label="Hands so far">
+          </section>)}
+          {!showcase && (<section className="tt-strip" aria-label="Hands so far">
             <h3>HANDS</h3>
             <HandsStrip history={st.history} sides={sides.map((s) => s.side)} label={(s) => sideName(r, s, names)} color={(s) => sideColor(r, s)} testId="recap-strip" />
-          </section>
-          {notes.length > 0 && (
+          </section>)}
+          {!showcase && notes.length > 0 && (
             <div className="tt-callouts">
               {notes.map((c, i) => <span key={i} className={`tt-callout ${c.kind}`}>{c.kind === 'streak' ? '🔥 ' : ''}{c.text}</span>)}
             </div>
           )}
-          <div className={`tt-recap${sides.length > 2 ? ' crowded' : ''}`} data-testid="talk-recap">
-            {sides.map((s) => {
+          <div className={`tt-recap${(beatCast ?? sides).length > 2 ? ' crowded' : ''}`} data-testid="talk-recap">
+            {(beatCast ?? sides).map((s) => {
               // same words as the score pad: "Bid 8 · Took 6 · SET · −80", then "You: bid 5, took 4" per player
               const books = s.seats.every((x) => rec.bids[x] === 'books');
               const pct = Math.max(0, Math.min(1, s.totalScore / target));
@@ -363,7 +424,7 @@ export function Intermission({
                       mode={setFresh ? 'fresh' : 'static'}
                       reduced={reduceFx}
                       side={s.side}
-                      delayMs={setTier === 'finale' && thirdSetEnd ? 2300 : 0}
+                      delayMs={setTier === 'finale' && thirdSetEnd ? FINALE_FLASH_DELAY_MS : 0}
                       finaleHeadline={finaleHeadline}
                       waitFallbackMs={setTier === 'finale' ? 2500 : 0}
                     />
@@ -407,22 +468,26 @@ export function Intermission({
           </div>
         </div>
 
-        <footer className="tt-foot stack">
+        {!showcase && (<footer className="tt-foot stack">
           <button type="button" className="quiet-row-btn" onClick={onScorePad}>Score pad</button>
           {ready && <span className="muted" data-testid="talk-ready-count">{ready.count}/{ready.of} ready</span>}
           <button type="button" className="primary big" data-testid="talk-ready" data-decided={decided ? 'yes' : 'no'} disabled={!!ready?.mine} onClick={onReady}>
             {decided ? 'See final results' : online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : `Continue to hand ${rec.handNo + 1}`}
           </button>
           {onLeave && <><div className="exit-divider" aria-hidden="true" /><button type="button" className="leave-red" data-testid="recap-leave" onClick={onLeave}>Leave game</button></>}
-        </footer>
+        </footer>)}
         {/* Photo Finish tape — presented-gated, riding the sheet itself
-            (the .tt in-recap placement), printing both real final scores */}
-        {photo && presented && !fxOff && (
+            (the .tt in-recap placement), printing both real final scores.
+            Not on the showcase beat: the tape is a results-arrival piece
+            and mounts there when the beat hands over (Option C). */}
+        {!showcase && photo && presented && !fxOff && (
           <PhotoFinishTape inRecap winnerScore={photo.w} loserScore={photo.l} margin={photo.m} />
         )}
       </div>
-      {/* Victory Confetti — presented-gated, over the presented sheet */}
-      {iWon && presented && !fxOff && (
+      {/* Victory Confetti — presented-gated, over the presented sheet.
+          The showcase beat skips it: the rain is the results surface's
+          arrival celebration and fires there instead (Option C). */}
+      {!showcase && iWon && presented && !fxOff && (
         <VictoryConfetti seed={st.seed ?? null} still={reduceFx} colors={[sideColor(r, mySide), CONFETTI_GOLDS[0]!, sideColor(r, mySide), CONFETTI_GOLDS[1]!]} />
       )}
     </div>
