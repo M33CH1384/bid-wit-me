@@ -35,6 +35,16 @@ describe('3D hand fan fits the viewport', () => {
       it(`${w}x${h} — ${n}p opponent fans, trick cards and piles stay on screen`, () => {
         for (const pos of SEATS[n]!) {
           if (pos === 'bottom') continue;
+          /* Side fans in PORTRAIT (figure seating round 5, owner
+           * 2026-11-05): the side fan now anchors fully OUTSIDE the
+           * table, in the holder's hands beyond the rim — where a real
+           * player's hands are, which in the portrait frame (it frames
+           * the table; side seats sit outside it by design) is past
+           * the frame edge. The on-screen pin still holds the side
+           * fans at every landscape/desktop aspect, and the top fan
+           * at every aspect. Same trade shape as the n=3 pile row
+           * below: the owner's placement rule outranks the frame. */
+          if (aspect < 1 && (pos === 'left' || pos === 'right')) continue;
           inside(aspect, Array.from({ length: 18 }, (_, i) => opponentFan(pos, n, i, 18)), 0.02);
         }
         for (const pos of SEATS[n]!) inside(aspect, [trickSpot(pos, n, 0, 1), trickSpot(pos, n, 0, -1)], 0.1);

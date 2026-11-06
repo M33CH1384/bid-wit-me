@@ -149,10 +149,101 @@ export const OPP_FAN_REST_TIGHTEN = 0.45;
  *  by ~0.0026 and the centre-card flight corner by ~0.012; the rest
  *  of the sightline gain comes from FIGURE_SCALE (1.33). */
 export const OPP_FAN_BASE_OUT = 0.10;
-export const OPP_FAN_BASE_OUT_SIDE = 0.16;
+/** Round 5 (owner 2026-11-05, second seating report): the side seats'
+ *  fans still sat ON the table — at BASE_OUT_SIDE 0.16 the side fan's
+ *  centre rode at |x| 1.37, inboard of the felt edge (1.5), its whole
+ *  body over the felt — and the grips sat ~0.93 from the side chair
+ *  centres, so the placement reach settle dragged the side figures in
+ *  against the rim ("too close to the table"). The side fan now anchors
+ *  fully OUTSIDE the table: centre |x| 1.89, every corner past the
+ *  table's outermost material (rail bevel ends at |x| ~1.75), grips
+ *  ~0.46 from the classic chair centres — an easier reach than the top
+ *  seat's proven geometry, so the side figures sit back in their
+ *  chairs and hold the fan beyond the rim the way a real player does.
+ *  Kit-venue side chairs sit closer in (±2.14), which only shortens
+ *  the same reach. REST_OUT_SIDE is unchanged: the rest still settles
+ *  a touch further toward the holder. */
+export const OPP_FAN_BASE_OUT_SIDE = 0.68;
 export const OPP_FAN_REST_OUT_SIDE = 0.05;
 
 const clampRest = (rest: number | undefined): number => (Number.isFinite(rest) && rest! > 0 ? Math.min(1, rest!) : 0);
+
+/** Round 5 (owner 2026-11-05: "sometime one of the cards poke thru
+ *  the table"): round 4 verified the fan CENTRE card's bottom edge
+ *  against the FELT PLANE — but at rest the fan sits over the RAIL,
+ *  whose cap (RAIL_TOP_Y) stands 0.10 above the felt, and a fan is an
+ *  arc: the wing cards' bottom corners ride a further ~0.09 below the
+ *  centre card's line (the arc droop plus the roll's corner swing).
+ *  Measured per-card against the table's true surface, the rested
+ *  13-card fan's wing corners reached 0.149 UNDER the rail cap at the
+ *  top seat (counts >= 4 already break the surface), and the rested
+ *  side wings pierced the felt itself — and the same arc grazed the
+ *  rail's bevel slope at the open fan's extreme wing tips from count
+ *  9 up (0.062 under the surface at 13). The guarantee is now
+ *  PER-CARD, enforced here in the shared pose function: no card's
+ *  corner enters the table in ANY state — open, rested, or anywhere
+ *  in the transition between them, at any count. A card that would
+ *  intersect rises by exactly its deficit (plus FAN_FLOOR_MARGIN);
+ *  a card already clear is returned untouched, so the fan's centre
+ *  card — every grip point and placement gate reads it — keeps round
+ *  4's exact transform, and the lift, being continuous in the pose,
+ *  introduces no pop as the fan lowers. In practice the floor binds
+ *  on the fan over the rim: the fan settles until its bottom edge
+ *  meets the rim-top plane and no further, the way a real fan
+ *  settles when the holder's hands rest at rim height. */
+export const FAN_FLOOR_MARGIN = 0.01;
+
+/** Signed distance to a rounded-rect outline centred on the origin (negative inside). */
+function roundedRectSDF(x: number, z: number, hx: number, hz: number, r: number): number {
+  const qx = Math.abs(x) - (hx - r), qz = Math.abs(z) - (hz - r);
+  const ax = Math.max(qx, 0), az = Math.max(qz, 0);
+  return Math.hypot(ax, az) + Math.min(Math.max(qx, qz), 0) - r;
+}
+
+/** The table's top surface height under a point, or null where no
+ *  table material reaches. Raycast profile of geometry.ts's meshes
+ *  (the table every venue shares), in signed distance to the felt
+ *  outline (negative inside it): flat felt (0) up to the rail bevel's
+ *  foot 0.05 inside the outline; the bevel climbs steeply (0.080 at
+ *  0.04 inside, 0.098 at 0.01) to the RAIL_TOP_Y cap, which holds
+ *  across the ring; the outer bevel falls (0.080 at 0.04 past the
+ *  rail outline) and the material ends just beyond. Piecewise-linear
+ *  between the measured points with a small safety bias on the ramps;
+ *  the felt and the cap are exact. */
+/* (The cap value 0.1 in these profiles is RAIL_TOP_Y, declared with
+ * the book-pile layout below; the profiles initialize first.) */
+const BEVEL_IN: readonly (readonly [number, number])[] = [[0.05, 0], [0.04, 0.08], [0.03, 0.09], [0.02, 0.095], [0.01, 0.098], [0, 0.1]];
+const BEVEL_OUT: readonly (readonly [number, number])[] = [[0, 0.1], [0.01, 0.098], [0.02, 0.095], [0.03, 0.09], [0.04, 0.08]];
+function bevelAt(profile: readonly (readonly [number, number])[], t: number): number {
+  for (let k = 0; k + 1 < profile.length; k++) {
+    const [t0, y0] = profile[k]!, [t1, y1] = profile[k + 1]!;
+    if (t >= Math.min(t0, t1) && t <= Math.max(t0, t1)) return y0 + ((y1 - y0) * (t - t0)) / (t1 - t0) + 0.003;
+  }
+  return profile[profile.length - 1]![1];
+}
+export function tableTopY(x: number, z: number): number | null {
+  const dFelt = roundedRectSDF(x, z, FELT.hx, FELT.hz, FELT.r);
+  if (dFelt <= -0.05) return 0;
+  if (dFelt < 0) return bevelAt(BEVEL_IN, -dFelt);
+  const dRail = roundedRectSDF(x, z, FELT.hx + RAIL, FELT.hz + RAIL, FELT.r + RAIL);
+  if (dRail <= 0) return RAIL_TOP_Y;
+  if (dRail <= 0.04) return bevelAt(BEVEL_OUT, dRail);
+  return null;
+}
+
+/** How far the card at this pose must rise so that none of its eight
+ *  corners enters the table (0 when already clear). Pure +y, so a
+ *  card's surface test is exact at its un-lifted (x, z). */
+function fanFloorLift(pose: Xform): number {
+  const q = new Quaternion(...pose.q);
+  let lift = 0;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    const c = new Vector3((sx * CW) / 2, (sy * CH) / 2, (sz * CT) / 2).multiplyScalar(pose.s).applyQuaternion(q);
+    const top = tableTopY(pose.p[0] + c.x, pose.p[2] + c.z);
+    if (top !== null) lift = Math.max(lift, top + FAN_FLOOR_MARGIN - (pose.p[1] + c.y));
+  }
+  return lift;
+}
 
 /** Opponent's held fan: upright cards near the rail, backs toward the table centre.
  *  `rest` is the DROP channel (0..1, off-turn only — scope in fanRest.ts:
@@ -173,7 +264,17 @@ export function opponentFan(pos: SeatPos, n: number, i: number, count: number, r
   const tangent = new Vector3(Math.cos(yaw), 0, -Math.sin(yaw)); // local +x of a card facing outward
   const p = base.clone().add(tangent.multiplyScalar(off * spread)).add(new Vector3(0, -Math.abs(off) * off * 0 - off * off * 0.0016, 0)).add(d.clone().multiplyScalar(i * 0.0016));
   // face toward the owner (outward), tilted back, fanned by roll
-  return xf([p.x, p.y, p.z], [0.55, yaw, -off * 0.075 * (1 - OPP_FAN_REST_TIGHTEN * pc)], 1);
+  const pose = xf([p.x, p.y, p.z], [0.55, yaw, -off * 0.075 * (1 - OPP_FAN_REST_TIGHTEN * pc)], 1);
+  /* Per-card clearance floor (round 5, above): a card never enters
+   * the table. The lift is a continuous function of the pose, so the
+   * rest transition eases onto the floor with no pop; a card already
+   * clear of the surface is returned untouched, so the fan's centre
+   * (every grip and gate reads it) and every clear card keep round
+   * 4's exact transforms — only a card that would intersect moves,
+   * by exactly its deficit. */
+  const lift = fanFloorLift(pose);
+  if (lift > 0) pose.p[1] += lift;
+  return pose;
 }
 
 /** Trick-card scale: big enough that rank + suit read clearly on a phone. */

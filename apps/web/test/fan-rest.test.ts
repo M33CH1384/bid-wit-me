@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
+import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   FAN_REST_MS, fanRestAnim, fanRestSeconds, fanRestTarget, setFanRestTarget, stepFanRest,
   type FanRestPose,
 } from '../src/three/fanRest';
 import {
-  type FanOpts, cardScreenQuad, handCardPlane, handFan, opponentFan, phoneHandFan,
+  CW, CH, CT, FAN_FLOOR_MARGIN, type FanOpts, type Xform, cardScreenQuad, handCardPlane, handFan, opponentFan, phoneHandFan, tableTopY,
 } from '../src/three/layout';
 
 /**
@@ -277,6 +278,30 @@ describe('human fan rest pose in portrait SITTING (phoneHandFan transforms)', ()
 
 describe('opponent fan rest pose (opponentFan transforms)', () => {
   const positions = ['bottom', 'left', 'top', 'right'] as const;
+  /* Round 5 (owner 2026-11-05, figure seating round 2): opponentFan now
+   * carries a per-card clearance floor — no card's corner may enter the
+   * table (layout.ts). At the top/bottom seats the resting fan lowers
+   * ONTO that floor over the rim: its cards end at rim height, not a
+   * full drop below the open fan, and a wing's floored height answers
+   * its roll, so pinch/drop height equalities that held when the fan
+   * could sink through the rim now hold exactly only where the floor
+   * never binds — the side seats (fans fully outboard of the table
+   * since round 5) and the centre card. The pins below were updated
+   * for exactly that, and each resting pose is additionally held to
+   * the stronger guarantee the floor exists for: every card clears
+   * the table's surface by FAN_FLOOR_MARGIN. */
+  const SIDE = (pos: (typeof positions)[number]) => pos === 'left' || pos === 'right';
+  const cardClearance = (pose: Xform): number => {
+    const q = new Quaternion(...pose.q);
+    let v = Infinity;
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      const c = new Vector3((sx * CW) / 2, (sy * CH) / 2, (sz * CT) / 2).multiplyScalar(pose.s).applyQuaternion(q);
+      const top = tableTopY(pose.p[0] + c.x, pose.p[2] + c.z);
+      if (top !== null) v = Math.min(v, pose.p[1] + c.y - top);
+    }
+    return v;
+  };
+  const clearsTable = (pose: Xform) => expect(cardClearance(pose)).toBeGreaterThanOrEqual(FAN_FLOOR_MARGIN - 1e-9);
   it('rest 0 reproduces today\u2019s fan exactly (with and without an explicit pinch)', () => {
     for (const pos of positions) {
       for (let i = 0; i < 9; i++) {
@@ -286,11 +311,20 @@ describe('opponent fan rest pose (opponentFan transforms)', () => {
       }
     }
   });
-  it('every fully-resting card is lower (world Y down) and the fan is tighter', () => {
+  it('every fully-resting card clears the table and the fan is tighter; off the rim the drop is the full drop', () => {
     for (const pos of positions) {
       const open = Array.from({ length: 9 }, (_, i) => opponentFan(pos, 4, i, 9, 0));
       const rest = Array.from({ length: 9 }, (_, i) => opponentFan(pos, 4, i, 9, 1));
-      for (let i = 0; i < 9; i++) expect(rest[i]!.p[1]).toBeLessThan(open[i]!.p[1] - 0.05);
+      for (let i = 0; i < 9; i++) {
+        clearsTable(rest[i]!); // the round-5 guarantee, every card
+        /* Side seats: the fan hangs past the rim, the floor never binds,
+         * and the original pin holds verbatim — a full drop lower. At
+         * the top/bottom seats the fan lowers onto the floor over the
+         * rim instead (centre card: ends within a hair of its open
+         * height, its bottom edge riding the rim cap + margin). */
+        if (SIDE(pos)) expect(rest[i]!.p[1]).toBeLessThan(open[i]!.p[1] - 0.05);
+      }
+      if (!SIDE(pos)) expect(Math.abs(rest[4]!.p[1] - open[4]!.p[1])).toBeLessThanOrEqual(0.001);
       const gap = (xs: typeof open) => Math.hypot(xs[5]!.p[0] - xs[4]!.p[0], xs[5]!.p[2] - xs[4]!.p[2]);
       expect(gap(rest)).toBeLessThan(gap(open));
       const span = (xs: typeof open) => Math.hypot(xs[8]!.p[0] - xs[0]!.p[0], xs[8]!.p[2] - xs[0]!.p[2]);
@@ -303,7 +337,17 @@ describe('opponent fan rest pose (opponentFan transforms)', () => {
       const full = Array.from({ length: 9 }, (_, i) => opponentFan(pos, 4, i, 9, 1, 1));
       const drop = Array.from({ length: 9 }, (_, i) => opponentFan(pos, 4, i, 9, 1, 0));
       for (let i = 0; i < 9; i++) {
-        expect(drop[i]!.p[1]).toBe(full[i]!.p[1]); // same drop as the full rest
+        /* Same drop as the full rest — exact where the clearance floor
+         * never binds (side seats, centre card). A floored wing's
+         * height answers its roll, so drop-only and full rest may
+         * differ there by the floor's roll response only (<= 0.012,
+         * measured <= 0.0094), and both poses clear the table. */
+        if (SIDE(pos) || i === 4) expect(drop[i]!.p[1]).toBe(full[i]!.p[1]);
+        else {
+          expect(Math.abs(drop[i]!.p[1] - full[i]!.p[1])).toBeLessThanOrEqual(0.012);
+          clearsTable(drop[i]!);
+          clearsTable(full[i]!);
+        }
         expect(drop[i]!.r).toEqual(open[i]!.r); // roll untouched (pinch closes roll)
       }
       const gap = (xs: typeof open) => Math.hypot(xs[5]!.p[0] - xs[4]!.p[0], xs[5]!.p[2] - xs[4]!.p[2]);
@@ -317,7 +361,19 @@ describe('opponent fan rest pose (opponentFan transforms)', () => {
       const open = Array.from({ length: 9 }, (_, i) => opponentFan(pos, 4, i, 9, 0));
       const full = Array.from({ length: 9 }, (_, i) => opponentFan(pos, 4, i, 9, 1, 1));
       const pinch = Array.from({ length: 9 }, (_, i) => opponentFan(pos, 4, i, 9, 0, 1));
-      for (let i = 0; i < 9; i++) expect(pinch[i]!.p[1]).toBe(open[i]!.p[1]); // no drop at all
+      for (let i = 0; i < 9; i++) {
+        /* No drop at all — heights are the open fan's exactly where the
+         * clearance floor never binds (side seats, centre card). A
+         * floored wing's height answers its roll through the floor
+         * only (<= 0.013, measured <= 0.0117), and both poses clear
+         * the table. */
+        if (SIDE(pos) || i === 4) expect(pinch[i]!.p[1]).toBe(open[i]!.p[1]);
+        else {
+          expect(Math.abs(pinch[i]!.p[1] - open[i]!.p[1])).toBeLessThanOrEqual(0.013);
+          clearsTable(pinch[i]!);
+          clearsTable(open[i]!);
+        }
+      }
       const gap = (xs: typeof open) => Math.hypot(xs[5]!.p[0] - xs[4]!.p[0], xs[5]!.p[2] - xs[4]!.p[2]);
       expect(gap(pinch)).toBeCloseTo(gap(full), 9);
       const span = (xs: typeof open) => Math.hypot(xs[8]!.p[0] - xs[0]!.p[0], xs[8]!.p[2] - xs[0]!.p[2]);
@@ -328,10 +384,22 @@ describe('opponent fan rest pose (opponentFan transforms)', () => {
     for (const pos of positions) {
       for (let i = 0; i < 9; i++) {
         const yOpen = opponentFan(pos, 4, i, 9, 0).p[1];
-        const yMid = opponentFan(pos, 4, i, 9, 0.5).p[1];
+        const mid = opponentFan(pos, 4, i, 9, 0.5);
+        const yMid = mid.p[1];
         const yRest = opponentFan(pos, 4, i, 9, 1).p[1];
-        expect(yMid).toBeLessThan(yOpen);
-        expect(yMid).toBeGreaterThan(yRest);
+        if (SIDE(pos)) {
+          expect(yMid).toBeLessThan(yOpen);
+          expect(yMid).toBeGreaterThan(yRest);
+        } else {
+          /* Over the rim the floor engages as the fan lowers, so a
+           * wing's mid-way height rides on the floor: never below its
+           * settled rest, never more than the floor's lift above open
+           * (<= 0.05, measured <= 0.0467), and clear of the table at
+           * every point of the travel. */
+          expect(yMid).toBeGreaterThanOrEqual(yRest - 0.001);
+          expect(yMid).toBeLessThanOrEqual(yOpen + 0.05);
+          clearsTable(mid);
+        }
       }
     }
   });
