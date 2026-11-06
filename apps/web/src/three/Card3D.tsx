@@ -7,7 +7,7 @@ import { cardFaceOutlinePoints, cardGeometry, cardOutlineGeometry } from './geom
 import { raiseSeconds, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
 import { CH, CT, CW, FACE_CAP_GAP, type Xform } from './layout';
 import { type Sfx, sound } from '../audio';
-import { blastPose } from './blastSweep';
+import { blastClaimsCard, blastPose } from './blastSweep';
 import { releaseTornadoCard, sweepParamsFor, sweepPoseAt, type SweepCardParams } from './tornadoSweep';
 import { fireCue, fx, tornadoPresentedT } from '../fx';
 import { restingFlightWait } from '../trickTiming';
@@ -228,7 +228,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const hideUntilStart = useRef(holdUntilMove);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
-  const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false, flung: false, stamp: -1 });
+  const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false, flung: false, stamp: -1, claimed: true });
+  /** When this card first rendered. The blast may only claim cards that were
+   *  already on the table when its flash went off (see applyBlast). */
+  const bornAt = useRef(-1);
   const invalidate = useThree((s) => s.invalidate);
   const cam = useThree((s) => s.camera);
   const viewSize = useThree((s) => s.size);
@@ -520,7 +523,21 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const applyBlast = (g: Group) => {
     const ig = inner.current, B = fx.blast, st = bl.current;
     if (!ig) return;
-    if (B && st.stamp !== B.start) { st.stamp = B.start; st.on = false; st.flung = false; }
+    if (bornAt.current < 0) bornAt.current = performance.now();
+    if (B && st.stamp !== B.start) {
+      st.stamp = B.start; st.on = false; st.flung = false;
+      // Only a card that was on the table when the flash went off belongs
+      // to the blown set. A card thrown after it (the next trick's lead,
+      // arriving while a starved blast is still clearing) is never swept:
+      // the sweep would displace it past the rail and the flung latch
+      // would keep it off the cloth for its whole life — the lead would
+      // never appear (owner report 2026-11-06). It simply renders under
+      // the blast cloud and is there when the cloud clears. (The pause
+      // gate keeps play from starting before clearance in the first
+      // place; this is the guard for every path a gate cannot reach.)
+      st.claimed = blastClaimsCard(bornAt.current, B.start);
+    }
+    if (B && !st.claimed) return;
     // the cards ride the blast's PRESENTED clock (fx.nukeT, published by Nuke3D
     // every frame): a mid-show stall stretches the blow-away with the fireball
     // instead of the cards leaping on wall time. The wall read remains only as

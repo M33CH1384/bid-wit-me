@@ -10,6 +10,7 @@ import { dealTimeline } from './three/dealTimeline';
 import { misdealSequenceMs } from './misdeal';
 import { dealClockArmed } from './three/dealFlight';
 import { finishedTrickHoldMs } from './trickTiming';
+import { releaseAfterNukeClearance } from './nukeGate';
 
 export const HUMAN = 0;
 /** Mean bot think time per played card at normal speed (the seeded pacing draw in @spades/rules varies each turn around it). */
@@ -160,11 +161,24 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       run,
       nuke: nuke ? (fx.tableNuke ?? fx.prefs.nuke) : null,
     });
-    const t = setTimeout(() => {
-      if (!run && !nuke) haptic(HAPTIC.trickWin, 'trick-win');
-      setPause(false);
-    }, ms);
-    return () => clearTimeout(t);
+    // Owner's clearance rule (2026-11-06): after a nuked trick the turn
+    // opens on the explosion's CLEARANCE, not the timer alone — the blast
+    // runs on a presented clock that stretches under load, and a card
+    // thrown into it was blown off the felt and never appeared. The
+    // designed hold above stays the minimum; the gate only extends the
+    // pause while this client's blast episode is still open (bots are
+    // pause-gated below and the plate names nobody during pause, so no
+    // player — bot or human — can throw early), capped so a lost
+    // completion signal can never stick the table.
+    return releaseAfterNukeClearance({
+      holdMs: ms,
+      gated: nuke,
+      episodeOpen: () => fx.blastEpisodeOpen,
+      onRelease: () => {
+        if (!run && !nuke) haptic(HAPTIC.trickWin, 'trick-win');
+        setPause(false);
+      },
+    });
   }, [pause, k, hold]);
 
   // bots move on their turn

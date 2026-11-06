@@ -133,7 +133,28 @@ class FxBus {
   }
   getNuke = () => this.prefs.nuke;
   /** 3D blast impulse (cards lifted / blown outward, then settle), read by every Card3D each frame. `mega` = the both-Jokers run tier: the sweep reaches farther. */
-  blast: { start: number; hand: boolean; mega?: boolean } | null = null;
+  private _blast: { start: number; hand: boolean; mega?: boolean } | null = null;
+  get blast(): { start: number; hand: boolean; mega?: boolean } | null { return this._blast; }
+  set blast(v: { start: number; hand: boolean; mega?: boolean } | null) {
+    const was = this._blast;
+    this._blast = v;
+    // The blast episode (below) tracks the impulse's own life as a backstop:
+    // a blast that starts opens it, a blast that ends closes it.
+    if (v && !was) this._blastEpisode = true;
+    if (!v && was) this._blastEpisode = false;
+  }
+  /**
+   * A nuke/mega blast EPISODE: opened by the emit that starts the show
+   * (before the flash — the fire itself can be delayed by certification)
+   * and closed when the running blast clears (fx.blast returns to null:
+   * the photoreal host's stop, Nuke3D's cleanup, its stall/context bails —
+   * every end funnels through that assignment). The trick-pause gate reads
+   * this so the next turn opens on the explosion's actual clearance, never
+   * on the trick timer alone (owner rule 2026-11-06). Nuke Off opens no
+   * episode: there is no explosion to wait for.
+   */
+  private _blastEpisode = false;
+  get blastEpisodeOpen(): boolean { return this._blastEpisode; }
   /** The running blast's presented time in seconds (Nuke3D publishes it every
    *  frame; null when no blast is running). The blown cards read the SAME
    *  presented clock as the fireball, so a mid-show stall stretches the
@@ -262,6 +283,10 @@ class FxBus {
     if (kind === 'nuke') { const now = performance.now(); if (now - this.lastNukeAt < 4500) return; this.lastNukeAt = now; }
     const e: FxEvent = { id: this.seq++, kind, at: performance.now(), level: opts.level, text: opts.text, sub: opts.sub };
     this.fired[kind] = (this.fired[kind] ?? 0) + 1;
+    // A real blast opens its EPISODE here (see blastEpisodeOpen): this emit
+    // is the single doorway both blast presenters start from, so the pause
+    // gate can hold the next turn from the fire until the clearance.
+    if ((kind === 'nuke' || kind === 'mega') && this.nukeMode !== 'off') this._blastEpisode = true;
     const holdMs = FX_HOLD_MS[kind];
     if (holdMs) { const release = this.hold(holdMs, kind); if (kind === 'wheelsCar') this.carRelease = release; }
     // hero blasts with a 3D run defer their boom to the first presented frame (heroPresented);
