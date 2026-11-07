@@ -2630,6 +2630,61 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const endingBeat = st.phase === 'gameOver' && (st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !endingBeatDone;
   const showRecap = !pause && !collecting && talkOpen && (st.phase === 'handOver' || endingBeat);
   const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !endingBeat;
+  // Victory settle (owner, 2026-11-06: "After the animation the box score
+  // area should slide down to show the avatars"): the online victory
+  // screen's entrance keeps the frame-budget layout, in which the
+  // spotlight is the shrinkable region and the winner cards end up
+  // clipped under the foot panel. When the entrance completes the screen
+  // settles — the spotlight takes its natural height (.vic-settled in
+  // styles.css) and the panel slides down to rest below the full cards.
+  // A tap settles at once (the same tap that clears the celebration fx);
+  // reduced motion settles from the first frame, with no slide.
+  const [vicSettled, setVicSettled] = useState(false);
+  useEffect(() => { if (st.phase !== 'gameOver') setVicSettled(false); }, [st.phase]);
+  const vicScreenRef = useRef<HTMLDivElement>(null);
+  const vicSlideDelta = useRef(0);
+  const settleVictory = () => {
+    const screen = vicScreenRef.current;
+    if (!screen || screen.classList.contains('vic-settled')) return;
+    // FLIP, first half: measure the squeeze BEFORE the settled layout
+    // lands — the spotlight's content height (its scrollHeight, with the
+    // settled cap applied) against the height the budget actually gave
+    // it. The slide below starts the panel exactly that far up.
+    const spot = screen.querySelector<HTMLElement>('.victory-spot');
+    let delta = 0;
+    if (spot && window.matchMedia('(min-height: 561px)').matches) {
+      const cap = Math.max(0, screen.clientHeight - 320);
+      delta = Math.max(0, Math.min(spot.scrollHeight, cap) - spot.clientHeight);
+    }
+    vicSlideDelta.current = delta;
+    setVicSettled(true);
+  };
+  const vicPresented = showResults && !!online?.victory && !!st.result;
+  useEffect(() => {
+    if (!vicPresented) return;
+    // reduced motion: no entrance to wait out and no slide — the panel
+    // simply rests in the slid-down position from the first frame
+    if (reduceFx) { setVicSettled(true); return; }
+    const t = window.setTimeout(() => settleVictory(), 1200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vicPresented, reduceFx]);
+  // FLIP, second half: the settled layout has landed (layout effects run
+  // before paint) — hold the panel where the entrance left it, then let
+  // its transition carry it down over the measured distance.
+  useLayoutEffect(() => {
+    if (!vicSettled) return;
+    const delta = vicSlideDelta.current;
+    vicSlideDelta.current = 0;
+    const foot = vicScreenRef.current?.querySelector<HTMLElement>('.vic-foot');
+    if (!foot || delta <= 4 || reduceFx) return;
+    foot.style.transform = `translateY(${-delta}px)`;
+    foot.classList.add('vic-sliding');
+    const raf = requestAnimationFrame(() => { foot.style.transform = ''; });
+    const done = window.setTimeout(() => { foot.classList.remove('vic-sliding'); foot.style.transform = ''; }, 700);
+    return () => { cancelAnimationFrame(raf); window.clearTimeout(done); foot.classList.remove('vic-sliding'); foot.style.transform = ''; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vicSettled]);
   // Story Mode: a finished story match NEVER takes the generic rewards
   // report — every exit from this modal routes through the host's exit
   // into StoryHome's outro (win: reward line, deck/set-anim unlock
@@ -3762,7 +3817,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
         const title = winHeadline(res.winners.map((w) => sideName(r, w, names)), r.partnerships);
         const iWon = !spectating && res.winners.includes(mySide);
         return (
-          <div className="victory-screen espn" role="dialog" aria-label="Game over" data-testid="victory" onPointerDown={() => setGoFxOff(true)}>
+          <div className={`victory-screen espn${vicSettled ? ' vic-settled' : ''}`} ref={vicScreenRef} role="dialog" aria-label="Game over" data-testid="victory" onPointerDown={() => { setGoFxOff(true); settleVictory(); }}>
             {/* Victory confetti is ONE system (Wave B): the rebuilt seeded canvas
                 rain (RecapFx), mounted on the PRESENTING surface — this screen
                 only exists once the result is presented (showResults waits out

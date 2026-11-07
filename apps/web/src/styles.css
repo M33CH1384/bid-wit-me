@@ -4345,6 +4345,34 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .vic-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; width: 100%; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .vic-foot .confirm-actions { flex: none; width: 100%; }
 
+/* Victory settle (owner, 2026-11-06, screenshot: "After the animation the
+   box score area should slide down to show the avatars" — the budget
+   squeeze above lands on the spotlight: at phone heights it rendered
+   ~110px tall and the winner cards + losers row sat clipped inside its
+   own scroll region, reading exactly as if the foot panel covered them).
+   Choreography: the entrance keeps the budget layout verbatim; when it
+   completes, Table.tsx adds .vic-settled and FLIP-slides the foot panel
+   down while the spotlight takes its natural height — the foot's
+   .vic-scroll absorbs the difference, as it was designed to. In the
+   settled layout the winners can never be squeezed again: the cap only
+   ever lets the LOSERS' tail scroll inside the spot, on screens too
+   short for everything, so the foot (pinned actions included) always
+   keeps its floor. Column composition only (min-height 561px): the
+   ≤560px grid further below is a side-by-side layout that rests as the
+   D8 audit left it — there is no panel-over-cards stack to slide. */
+@media (min-height: 561px) {
+  .victory-screen.vic-settled .victory-spot { flex: 0 0 auto; max-height: calc(100dvh - 320px); overflow-y: auto; }
+  .victory-screen .vic-foot.vic-sliding { transition: transform .6s cubic-bezier(.22, .9, .26, 1); will-change: transform; }
+}
+/* Short portrait phones (561–740px tall): the settled spotlight compacts
+   the way the landscape grid already does (winner cards 96px, loser
+   frames capped), so the foot keeps a usable scroll window at rest
+   instead of a sliver. Entrance composition is untouched. */
+@media (min-height: 561px) and (max-height: 740px) {
+  .victory-screen.vic-settled .vs-card { min-height: 96px; }
+  .victory-screen.vic-settled .vs-tile.lose.quiet .vs-frame { max-height: 48px; }
+}
+
 /* D8 (design audit 2026-10-24): short-height composition — in phone landscape
    (375–430px tall) the stacked column crushed the winner spotlight to a ~100px
    scroll window and the placements region to ~0–15px. Below 560px tall the
