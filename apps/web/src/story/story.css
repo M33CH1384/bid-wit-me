@@ -1822,3 +1822,24 @@ html[data-theme="neon"] .story-you-face {
 @media (orientation: landscape) and (max-height: 540px) {
   .dee-video-frame { width: min(100%, calc((100dvh - 120px) * 16 / 9)); }
 }
+
+/* Story stage 3D figures (three/characters): the canvas fills the stage box; a slot's 2D portrait fades only once its
+   figure has rendered (data-3d="on"), and comes back by itself if the 3D side tears down. */
+.story-stage-3d-host { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.story-stage-3d { position: absolute; inset: 0; display: block; }
+.story-stage-one[data-3d="on"] .story-stage-face { opacity: 0; transition: opacity 0.35s ease; }
+
+/* 3D stage on (StageCharacters3D sets data-stage3d once its figures render): open a figure band between the cast row
+   and the dialogue card so the card sits BELOW the figures and never covers a face. The figures are framed into
+   whatever band this leaves (measured live), so these are the only layout numbers. */
+.story-scene[data-stage3d="on"] .story-cast-role { display: none; }
+/* the figures now show who is at the table, so the cast chips go compact (still tappable for the bio) */
+.story-scene[data-stage3d="on"] .story-cast-one { height: auto; flex-direction: row; justify-content: center; padding: 6px 8px; gap: 6px; }
+.story-scene[data-stage3d="on"] .story-cast-one .story-face.cast-face { width: 28px; height: 28px; font-size: 13px; flex: none; }
+.story-scene[data-stage3d="on"] .story-script-card { margin-top: min(var(--s3d-band, 420px), clamp(200px, 38vh, 420px)); }
+@media (orientation: landscape) and (max-height: 540px) {
+  /* landscape phones: compact chips, card on the bottom ~30%, figures above it */
+  .story-scene[data-stage3d="on"] .story-scene-inner { padding-top: 32px; padding-bottom: 30px; gap: 8px; }
+  .story-scene[data-stage3d="on"] .story-script-card { margin-top: min(var(--s3d-band, 240px), clamp(110px, 34vh, 240px)); padding: 10px 14px; gap: 10px; }
+  .story-scene[data-stage3d="on"] .story-script-card .story-face.speaker-face { width: 40px; height: 40px; font-size: 18px; }
+}

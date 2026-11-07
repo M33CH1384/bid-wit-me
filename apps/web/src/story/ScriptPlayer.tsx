@@ -19,7 +19,7 @@
  * carried fact is in hand. Found eggs insert their secret beats into the
  * scene in place — discovery feels like the scene opening a side door.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { STORY_CHARACTERS, personaForName, storyPortraitFor, type StoryBeat } from '@spades/bots';
 import { sound } from '../audio';
 import { cancelActiveSpeech } from '../audioSession';
@@ -30,6 +30,9 @@ import KingGunArt from './KingGunArt';
 import { PORCH_LIVING_MOOD, livingClipFor, livingMoodVars, type LivingClip, type LivingMood } from './storyLiving';
 import { useReduceEffects } from '../fx';
 import type { SeatPos } from '../spatial';
+import { importChunk } from '../chunkLoad';
+/** Story stage 3D figures: lazy (three + GLTF + meshopt load only once a stop's stage mounts). */
+const StageCharacters3D = lazy(() => importChunk(() => import('../three/characters/StageCharacters3D')));
 
 export function speakerName(speaker: string): string {
   if (speaker === 'you') return 'You';
@@ -417,6 +420,8 @@ export default function ScriptPlayer({ beats, cta, onDone, bgUrl, cast = [], egg
                   </div>
                 );
               })}
+              {/* 3D figures (lazy; the portraits above stay until each figure renders, and remain the fallback) */}
+              <Suspense fallback={null}><StageCharacters3D stagePair={stagePair} beat={beat} /></Suspense>
             </div>
           )}
         </>
