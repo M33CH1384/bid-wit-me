@@ -6,6 +6,7 @@ import { CLASSIC_JOKER, cardLabel, firstHandMinOf, hostMinimum, type Mode, type 
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
 import { trumpLadderText } from './trumpLadder';
 import { DEFAULT_VIEW_ADJUST, normalizeViewAdjust, type ViewAdjust } from './viewAdjust';
+import { normalizeEyeZoomCalibration, type EyeGazeCalibration } from './eyeZoom';
 
 export type ModeKey = 'joker' | 'cutthroat4' | 'cutthroat3' | 'aceDown';
 
@@ -58,6 +59,13 @@ export interface Settings {
    *  drives the same viewAdjust tilt and a push/pull gesture steps its zoom (motionView.ts).
    *  Turning it on asks the platform's motion permission from the toggle tap itself. */
   motionView: boolean;
+  /** Eye zoom (owner, 2026-11-07): opt-in, OFF by default, SEPARATE from Motion view. When on,
+   *  the front camera reads — on-device only — whether the player is looking at their cards or
+   *  the table and eases the viewAdjust zoom (eyeZoom.ts). */
+  eyeZoom: boolean;
+  /** The player's personal eye-zoom calibration (two-look medians from eyeZoom calibration),
+   *  local to this device's settings; null = never calibrated, gaze control stays inactive. */
+  eyeZoomCal: EyeGazeCalibration | null;
   /** Turn up (slam mode): OFF by default for everyone. When ON, Standing plays slam at max and Sitting's V-gesture slams (sent online). When OFF, NO play slams by any route (drag, flick, V-gesture, tap/toss). */
   turnUp: boolean;
   /** Card deck art pack (Desi decks; all unlocked for now, Story/purchase lock later). */
@@ -87,7 +95,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', viewAdjust: { ...DEFAULT_VIEW_ADJUST }, motionView: false, turnUp: false, deck: 'classic', setAnim: 'auto',
+  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', viewAdjust: { ...DEFAULT_VIEW_ADJUST }, motionView: false, eyeZoom: false, eyeZoomCal: null, turnUp: false, deck: 'classic', setAnim: 'auto',
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -227,6 +235,8 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
   if (s.view !== 'sitting' && s.view !== 'standing') s.view = 'sitting'; // no saved preference (or junk) -> Sitting
   s.viewAdjust = normalizeViewAdjust(s.viewAdjust); // clamped tilt/zoom; junk -> the stock framing
   if (typeof s.motionView !== 'boolean') s.motionView = false; // motion view is opt-in; old saves start OFF
+  if (typeof s.eyeZoom !== 'boolean') s.eyeZoom = false; // eye zoom is opt-in; old saves start OFF
+  s.eyeZoomCal = normalizeEyeZoomCalibration(s.eyeZoomCal); // personal gaze threshold; junk -> uncalibrated
   if (typeof s.turnUp !== 'boolean') s.turnUp = false; // slam mode is opt-in; old saves start OFF
   if (!DECK_IDS.includes(s.deck) || s.deck === 'base') s.deck = 'classic';
   if (!isValidSetAnimSetting(s.setAnim)) s.setAnim = 'auto';

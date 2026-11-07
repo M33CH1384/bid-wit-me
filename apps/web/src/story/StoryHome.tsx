@@ -929,6 +929,7 @@ export default function StoryHome() {
         onView={(view) => applySettings({ ...settings, view })}
         onViewAdjust={(viewAdjust) => applySettings({ ...settings, viewAdjust })}
         onTurnUp={(turnUp) => applySettings({ ...settings, turnUp })}
+        onEyeZoomCalibration={(eyeZoomCal) => applySettings({ ...settings, eyeZoomCal })}
       />
     );
   } else if (screen.k === 'outro') {

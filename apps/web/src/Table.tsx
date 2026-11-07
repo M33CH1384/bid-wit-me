@@ -6,6 +6,11 @@ import { RecapTrickReview } from './TrickBrowser';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { getViewAdjustState, isDefaultViewAdjust, onViewAdjustCommit, seedViewAdjust, subscribeViewAdjust, viewAdjustLabel, type ViewAdjust } from './viewAdjust';
 import { seedMotionViewEnabled } from './motionView';
+import {
+  clearEyeCalibrationRequest, getEyeCalibrationRequested, seedEyeZoomCalibration, seedEyeZoomEnabled,
+  subscribeEyeCalibrationRequested, type EyeGazeCalibration,
+} from './eyeZoom';
+import { EyeZoomCalibrate } from './EyeZoomCalibrate';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
 import { FIRST_FRAME_FALLBACK_MS, dealGateOpen } from './three/dealFlight';
@@ -363,6 +368,8 @@ interface Props {
   /** Adjustable table view: a finished tilt/zoom gesture (or a double-tap reset) saves here. */
   onViewAdjust?: (adj: ViewAdjust) => void;
   onTurnUp?: (on: boolean) => void;
+  /** Eye zoom: a finished two-look calibration saves here (settings, this device only). */
+  onEyeZoomCalibration?: (cal: EyeGazeCalibration | null) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
   /** Rematch or resume: keep the series tally. A new game leaves this unset and starts at 0–0. */
@@ -1023,7 +1030,7 @@ function ViewAdjustChip() {
   );
 }
 
-function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onViewAdjust, onTurnUp, resume, continueSeries, carryNames, online, onMainMenu, startDealer, story, publishScene, publishAnchor, rehomeScene, seatNamesRef }: Props & SceneSink) {
+function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onViewAdjust, onTurnUp, onEyeZoomCalibration, resume, continueSeries, carryNames, online, onMainMenu, startDealer, story, publishScene, publishAnchor, rehomeScene, seatNamesRef }: Props & SceneSink) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // Adjustable table view (owner, 2026-10-29): seed the tilt/zoom store from
   // the saved settings during this first render — before the Scene mounts and
@@ -1040,6 +1047,31 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // the Settings toggle tap that turned the setting on.
   useState(() => { seedMotionViewEnabled(settings.motionView === true); return true; });
   useEffect(() => { seedMotionViewEnabled(settings.motionView === true); }, [settings.motionView]);
+  // Eye zoom (owner, 2026-11-07): the toggle + calibration mirrors ride the
+  // same seed lifecycle. Scene's gaze driver subscribes to them; the camera
+  // permission was already settled by the Settings toggle tap.
+  useState(() => { seedEyeZoomEnabled(settings.eyeZoom === true); seedEyeZoomCalibration(settings.eyeZoomCal ?? null); return true; });
+  useEffect(() => { seedEyeZoomEnabled(settings.eyeZoom === true); }, [settings.eyeZoom]);
+  useEffect(() => { seedEyeZoomCalibration(settings.eyeZoomCal ?? null); }, [settings.eyeZoomCal]);
+  // Eye zoom calibration overlay state. It opens on its own the first
+  // time an enabled-but-uncalibrated player is actually AT the table —
+  // the auto-open effect lives further down, gated on the loader being
+  // gone, so the steps never burn behind the versus intro — and whenever
+  // the Settings row's Calibrate / Recalibrate raises the request flag.
+  // Dismissing it just leaves gaze inactive.
+  const [eyeCalOpen, setEyeCalOpen] = useState(false);
+  const eyeCalDismissedRef = useRef(false);
+  useEffect(() => {
+    const check = () => {
+      if (getEyeCalibrationRequested()) {
+        clearEyeCalibrationRequest();
+        eyeCalDismissedRef.current = false;
+        setEyeCalOpen(true);
+      }
+    };
+    check();
+    return subscribeEyeCalibrationRequested(check);
+  }, []);
   const onViewAdjustRef = useRef(onViewAdjust);
   onViewAdjustRef.current = onViewAdjust;
   useEffect(() => onViewAdjustCommit((adj) => onViewAdjustRef.current?.(adj)), []);
@@ -1490,6 +1522,12 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // actually loaded. The loader holds for it alongside dressed/effectsWarm.
   const [assetsSettled, setAssetsSettled] = useState(false);
   const [loadGone, setLoadGone] = useState(false);
+  // Eye zoom auto-calibration: the loader lifting IS "we are at the
+  // table" — only then may the two-look setup open on its own.
+  useEffect(() => {
+    if (!loadGone) return;
+    if (settings.eyeZoom === true && !settings.eyeZoomCal && !eyeCalDismissedRef.current) setEyeCalOpen(true);
+  }, [loadGone, settings.eyeZoom, settings.eyeZoomCal]);
   // Versus intro (boxing match card on the loader): eligibility is decided once, at
   // mount — a fresh game start that hasn't shown the intro for this match seed yet.
   // A mid-game refresh reuses the seed (and `resume` offline / a started game online),
@@ -4010,6 +4048,12 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       {/* profile modal over the table (face taps): a direct child so the .modal-open
           blur rule exempts its .modal-backdrop like every other table modal */}
       <TableProfileModal />
+      {eyeCalOpen && settings.eyeZoom === true && (
+        <EyeZoomCalibrate
+          onCalibrated={(cal) => { onEyeZoomCalibration?.(cal); }}
+          onClose={() => { eyeCalDismissedRef.current = true; setEyeCalOpen(false); }}
+        />
+      )}
     </div>
   );
 }

@@ -401,6 +401,14 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .modal-backdrop { position: fixed; inset: 0; background: rgba(6,3,12,.55); display: grid; place-items: center; padding: 16px; z-index: 20; }
 .modal { width: min(580px, 100%); max-height: 88dvh; display: flex; flex-direction: column; gap: 12px; padding: 18px; --slant: 18px; }
 .modal h2 { margin: 0; text-align: center; font-family: var(--display); font-weight: 800; font-size: 34px; letter-spacing: .05em; color: var(--gold); text-shadow: 0 0 18px rgba(var(--gold-rgb),.7); }
+/* Eye zoom calibration (2026-11-07): the two-look setup over the table. */
+.eye-cal-card { text-align: center; align-items: stretch; }
+.eye-cal-card h3 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: .04em; color: var(--gold); }
+.eye-cal-card p { margin: 0; color: var(--muted); font-size: 15px; }
+.eye-cal-bar { height: 8px; border-radius: 4px; background: rgba(var(--edge-rgb),.25); overflow: hidden; }
+.eye-cal-bar i { display: block; height: 100%; background: var(--gold); border-radius: 4px; transition: width .1s linear; }
+.eye-cal-card .link { align-self: center; }
+.eye-zoom-cal-btn { display: block; padding: 4px 0 0; font-size: 13px; }
 .scroll { overflow: auto; }
 .summary-table, .pad { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 .summary-table th, .pad th { color: var(--purple-hot); font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; padding: 4px; text-align: center; }

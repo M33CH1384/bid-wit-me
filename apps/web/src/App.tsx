@@ -112,6 +112,7 @@ export default function App() {
       onView={(view) => { const s = { ...game.settings, view }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
       onViewAdjust={(viewAdjust) => { const s = { ...game.settings, viewAdjust }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
       onTurnUp={(turnUp) => { const s = { ...game.settings, turnUp }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
+      onEyeZoomCalibration={(eyeZoomCal) => { const s = { ...game.settings, eyeZoomCal }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
     />
     {/* the speaker at the table opens the same one Settings sheet (sound landing);
         edits land on the saved settings — the live hand keeps its snapshot, exactly

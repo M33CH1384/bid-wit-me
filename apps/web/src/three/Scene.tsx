@@ -20,7 +20,8 @@ import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
 import { ViewGestureTracker, applyViewAdjustToSpec, beginViewAdjustGesture, endViewAdjustGesture, getViewAdjustState, isDefaultViewAdjust, resetViewAdjust, subscribeViewAdjust, updateViewAdjustLive, zoomForWheelDelta, type ViewAdjust } from '../viewAdjust';
-import { MotionViewDriver, getMotionViewEnabled, noteExternalViewGesture, subscribeMotionViewEnabled, type MotionEventTargetLike } from '../motionView';
+import { MotionViewDriver, getMotionViewEnabled, isExternalViewGestureActive, noteExternalViewGesture, subscribeExternalViewGesture, subscribeMotionViewEnabled, type MotionEventTargetLike } from '../motionView';
+import { EyeZoomDriver, getEyeCalibrating, getEyeZoomCalibration, getEyeZoomEnabled, setEyeZoomNote, subscribeEyeCalibrating, subscribeEyeZoomCalibration, subscribeEyeZoomEnabled } from '../eyeZoom';
 import { useSettingsSheet } from '../settingsSheet';
 import { social } from '../social/store';
 import { paintFace } from '../cardArt';
@@ -523,6 +524,64 @@ function MotionViewControls({ covered }: { covered: boolean }) {
     };
   }, []);
   useEffect(() => { driverRef.current?.setEnabled(enabled); }, [enabled]);
+  useEffect(() => { driverRef.current?.setSuspended('sheet', sheet.open); }, [sheet.open]);
+  useEffect(() => { driverRef.current?.setSuspended('covered', covered); }, [covered]);
+  return null;
+}
+
+/**
+ * Eye zoom mount (owner, 2026-11-07): the gaze driver lives exactly as
+ * long as this table view does — the same mount as MotionViewControls
+ * above, so every table surface carries it (Low included). The driver
+ * owns a LOCAL-ONLY camera session that exists only while it is running:
+ * pause reasons ride the app's own signals (the Settings sheet, the
+ * Social panel, this scene's covered state, the app backgrounding,
+ * Reduce effects, the calibration overlay holding the camera), and one
+ * cooldown feed implements last-input-wins — a felt touch gesture rests
+ * gaze while it lasts and for 5 s after it ends. A session failure is
+ * surfaced once, in plain words, on the Settings row.
+ */
+function EyeZoomControls({ covered }: { covered: boolean }) {
+  const enabled = useSyncExternalStore(subscribeEyeZoomEnabled, getEyeZoomEnabled, getEyeZoomEnabled);
+  const calibration = useSyncExternalStore(subscribeEyeZoomCalibration, getEyeZoomCalibration, getEyeZoomCalibration);
+  const calibrating = useSyncExternalStore(subscribeEyeCalibrating, getEyeCalibrating, getEyeCalibrating);
+  const sheet = useSettingsSheet();
+  const driverRef = useRef<EyeZoomDriver | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const d = new EyeZoomDriver({
+      onSessionError: () => setEyeZoomNote('Camera stopped — Eye zoom is resting.'),
+    });
+    driverRef.current = d;
+    const onVis = () => d.setSuspended('hidden', document.visibilityState === 'hidden');
+    onVis();
+    document.addEventListener('visibilitychange', onVis);
+    const onPrefs = () => d.setSuspended('reduced', fx.reduced || fx.osReducedMotion);
+    onPrefs();
+    const unsubPrefs = fx.subscribePrefs(onPrefs);
+    const applySocial = () => d.setSuspended('social', social.get().open);
+    applySocial();
+    const unsubSocial = social.subscribe(applySocial);
+    const onTouch = () => {
+      const active = isExternalViewGestureActive();
+      d.setSuspended('touch', active);
+      if (!active) d.noteExternalInput();
+    };
+    const unsubTouch = subscribeExternalViewGesture(onTouch);
+    d.setEnabled(getEyeZoomEnabled());
+    d.setCalibration(getEyeZoomCalibration());
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      unsubPrefs();
+      unsubSocial();
+      unsubTouch();
+      d.dispose();
+      driverRef.current = null;
+    };
+  }, []);
+  useEffect(() => { driverRef.current?.setEnabled(enabled); }, [enabled]);
+  useEffect(() => { driverRef.current?.setCalibration(calibration); }, [calibration]);
+  useEffect(() => { driverRef.current?.setSuspended('calibrating', calibrating); }, [calibrating]);
   useEffect(() => { driverRef.current?.setSuspended('sheet', sheet.open); }, [sheet.open]);
   useEffect(() => { driverRef.current?.setSuspended('covered', covered); }, [covered]);
   return null;
@@ -2603,6 +2662,7 @@ export default function Scene(props: SceneProps) {
       <RoomYawEnv yaw={roomYaw} />
       <ViewAdjustControls />
       <MotionViewControls covered={!!props.covered} />
+      <EyeZoomControls covered={!!props.covered} />
       <FxShake table={tableGroup} />
       {/* Everything from here down owns GPU resources (rooms, table,
           cards, figures, effects, badges). The keyed Fragment is the

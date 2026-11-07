@@ -222,6 +222,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
         onView={(view) => { const s = { ...settings, view }; setSettings(s); saveSettings({ ...loadSettings(), view }); }}
         onViewAdjust={(viewAdjust) => { const s = { ...settings, viewAdjust }; setSettings(s); saveSettings({ ...loadSettings(), viewAdjust }); }}
         onTurnUp={(turnUp) => { const s = { ...settings, turnUp }; setSettings(s); saveSettings({ ...loadSettings(), turnUp }); }}
+        onEyeZoomCalibration={(eyeZoomCal) => { const s = { ...settings, eyeZoomCal }; setSettings(s); saveSettings({ ...loadSettings(), eyeZoomCal }); }}
         online={{
           source, names, seatExtra, seatVideos, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity, toss: tossBinding,
           // Streaming surfaces reshape the chat binding: the broadcast frame has

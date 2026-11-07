@@ -4,6 +4,8 @@ import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
 import { BotTrashTalkRow, ChatSoundsRow, NukeIntensityRow, ReduceEffectsRow, SoundFields, SoundQuickActions } from './SoundControls';
 import { MotionViewRow } from './MotionViewRow';
+import { EyeZoomRow } from './EyeZoomRow';
+import { requestEyeCalibration } from './eyeZoom';
 import { SetAnimRow } from './SetAnimPicker';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
@@ -378,6 +380,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
             <Toggle label="Turn up (slam mode)" value={s.turnUp === true} onChange={(v) => set('turnUp', v)} />
           </Row>
           <MotionViewRow value={s.motionView === true} onChange={(v) => set('motionView', v)} />
+          <EyeZoomRow value={s.eyeZoom === true} calibrated={!!s.eyeZoomCal} onChange={(v) => set('eyeZoom', v)} onCalibrate={() => requestEyeCalibration()} />
           <ReduceEffectsRow />
           <NukeIntensityRow />
           <SetAnimRow value={s.setAnim ?? 'auto'} onChange={(v) => set('setAnim', v)} />
