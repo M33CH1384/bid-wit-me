@@ -4,7 +4,7 @@ import {
   HYPE_SETTLE_MAX_MS, MEGA_RUN_FX_MS, NUKE_ALLOWANCE_MS, RUN_FX_MS, TRICK_HOLD_MS, handEndLeadMs,
 } from '@spades/protocol';
 import { RUN_MEGA_SHOW_EXTRA_MS, RUN_SHOW_MS, RUN_TORNADO_AFTER_MS, RUN_TORNADO_MS, RUN_ZOOM_MS } from '../src/runIt';
-import { SCORE_TOAST_MS, TRICK_SWEEP_MS, finishedTrickHoldMs } from '../src/trickTiming';
+import { SCORE_TOAST_MS, TRICK_PACING_TRIM_MS, TRICK_SWEEP_MS, finishedTrickHoldMs } from '../src/trickTiming';
 
 /**
  * Old delay, normal speed, from the completing play (the card starts its 500 ms flight at the same moment):
@@ -34,8 +34,11 @@ describe('score screen after the last trick', () => {
   });
 
   it('keeps the mid-hand trick hold, and still scales the hand-end beat with table speed', () => {
-    expect(finishedTrickHoldMs({ speed: 1, handEnding: false, run: false, nuke: null })).toBe(TRICK_HOLD_MS);
-    expect(finishedTrickHoldMs({ speed: 0.5, handEnding: false, run: false, nuke: null })).toBe(Math.round(TRICK_HOLD_MS * 0.5));
+    // Superseded 2026-11-06 (owner pacing trim): the plain mid-hand hold is
+    // TRICK_HOLD_MS − TRICK_PACING_TRIM_MS — see trick-pacing.test.ts.
+    // TRICK_HOLD_MS itself is unchanged: it remains the nuke branch's base.
+    expect(finishedTrickHoldMs({ speed: 1, handEnding: false, run: false, nuke: null })).toBe(TRICK_HOLD_MS - TRICK_PACING_TRIM_MS);
+    expect(finishedTrickHoldMs({ speed: 0.5, handEnding: false, run: false, nuke: null })).toBe(Math.round((TRICK_HOLD_MS - TRICK_PACING_TRIM_MS) * 0.5));
     // turbo (automated tests) stays short; the 600–900 window is the normal-speed beat
     expect(finishedTrickHoldMs({ speed: 0.03, handEnding: true, run: false, nuke: null })).toBe(Math.round(HAND_END_REVEAL_MS * 0.03));
     expect(finishedTrickHoldMs({ speed: 2.2, handEnding: true, run: false, nuke: null })).toBe(Math.round(HAND_END_REVEAL_MS * 2.2));

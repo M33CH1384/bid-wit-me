@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { botPaceDelayMs } from '@spades/rules';
 import { serializedPlayDelaySec, spacedPlayDelaySec } from '../src/three/sweepGate';
+import { HAND_END_REVEAL_MS, TRICK_HOLD_MS } from '@spades/protocol';
 import { finishedTrickHoldMs } from '../src/trickTiming';
 
 const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
@@ -51,7 +52,14 @@ function simulate(paced: boolean, k: number, hands = 6): SimResult {
   let lastRest = 0;
   for (let handNo = 0; handNo < hands; handNo++) {
     for (let trickNo = 0; trickNo < 13; trickNo++) {
-      const holdSec = finishedTrickHoldMs({ speed: k, handEnding: trickNo === 12, run: false, nuke: null }) / 1000;
+      // The paced model composes today's live hold. The constant-model
+      // control reconstructs the 2026-10-30 pipeline it documents, whose
+      // hold was the untrimmed TRICK_HOLD_MS — the 2026-11-06 pacing trim
+      // (TRICK_PACING_TRIM_MS) postdates that model, so the control keeps
+      // the era's constant rather than today's finishedTrickHoldMs.
+      const holdSec = (paced
+        ? finishedTrickHoldMs({ speed: k, handEnding: trickNo === 12, run: false, nuke: null })
+        : Math.round((trickNo === 12 ? HAND_END_REVEAL_MS : TRICK_HOLD_MS) * k)) / 1000;
       let trickFirstStart = 0;
       for (let position = 0; position < 4; position++) {
         const seat = (trickNo + position) % 4;
