@@ -5,6 +5,7 @@ import { browsedTrick, stepTrickIndex, trickPositionLabel } from './lastTrickBro
 import { RecapTrickReview } from './TrickBrowser';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { getViewAdjustState, isDefaultViewAdjust, onViewAdjustCommit, seedViewAdjust, subscribeViewAdjust, viewAdjustLabel, type ViewAdjust } from './viewAdjust';
+import { seedMotionViewEnabled } from './motionView';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
 import { FIRST_FRAME_FALLBACK_MS, dealGateOpen } from './three/dealFlight';
@@ -1032,6 +1033,13 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // back out through onViewAdjust and persist with the rest of the settings.
   useState(() => { seedViewAdjust(settings.viewAdjust); return true; });
   useEffect(() => { if (!getViewAdjustState().adjusting) seedViewAdjust(settings.viewAdjust); }, [settings.viewAdjust]);
+  // Motion view (owner, 2026-11-07): the toggle's runtime mirror rides the
+  // same seed lifecycle as the view offset itself — set before the Scene
+  // mounts, kept in step with the saved setting after. Scene's motion
+  // driver subscribes to it; the sensor permission was already settled by
+  // the Settings toggle tap that turned the setting on.
+  useState(() => { seedMotionViewEnabled(settings.motionView === true); return true; });
+  useEffect(() => { seedMotionViewEnabled(settings.motionView === true); }, [settings.motionView]);
   const onViewAdjustRef = useRef(onViewAdjust);
   onViewAdjustRef.current = onViewAdjust;
   useEffect(() => onViewAdjustCommit((adj) => onViewAdjustRef.current?.(adj)), []);

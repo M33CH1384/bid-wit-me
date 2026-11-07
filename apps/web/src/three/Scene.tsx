@@ -20,6 +20,9 @@ import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
 import { ViewGestureTracker, applyViewAdjustToSpec, beginViewAdjustGesture, endViewAdjustGesture, getViewAdjustState, isDefaultViewAdjust, resetViewAdjust, subscribeViewAdjust, updateViewAdjustLive, zoomForWheelDelta, type ViewAdjust } from '../viewAdjust';
+import { MotionViewDriver, getMotionViewEnabled, noteExternalViewGesture, subscribeMotionViewEnabled, type MotionEventTargetLike } from '../motionView';
+import { useSettingsSheet } from '../settingsSheet';
+import { social } from '../social/store';
 import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
 import { DEFAULT_SLAM, type DragSample, clearDrop, dragSlamIntensity, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
@@ -424,10 +427,14 @@ function ViewAdjustControls() {
     const queueLive = (adj: ViewAdjust) => { pending = adj; if (!raf) raf = requestAnimationFrame(flush); };
     const settle = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } pending = null; };
     const tracker = new ViewGestureTracker({
-      onBegin: () => beginViewAdjustGesture(),
+      // The touch flag tells Motion view a finger owns the view right now
+      // (motionView.ts): motion input yields for the whole gesture and
+      // re-baselines when it ends. The store's adjusting flag cannot say
+      // this — motion itself sets it.
+      onBegin: () => { noteExternalViewGesture(true); beginViewAdjustGesture(); },
       onLive: (adj) => queueLive(adj),
-      onEnd: (adj) => { settle(); endViewAdjustGesture(adj); },
-      onReset: () => { settle(); resetViewAdjust(); },
+      onEnd: (adj) => { settle(); noteExternalViewGesture(false); endViewAdjustGesture(adj); },
+      onReset: () => { settle(); noteExternalViewGesture(false); resetViewAdjust(); },
     });
     let wheelAdj: ViewAdjust | null = null;
     let wheelTimer: ReturnType<typeof setTimeout> | null = null;
@@ -444,12 +451,12 @@ function ViewAdjustControls() {
     const onWheel = (e: WheelEvent) => {
       if (e.target !== el || tracker.active) return;
       e.preventDefault();
-      if (!wheelAdj) beginViewAdjustGesture();
+      if (!wheelAdj) { noteExternalViewGesture(true); beginViewAdjustGesture(); }
       const base = wheelAdj ?? getViewAdjustState().adj;
       wheelAdj = { tilt: base.tilt, zoom: zoomForWheelDelta(base.zoom, e.deltaY) };
       queueLive(wheelAdj);
       if (wheelTimer) clearTimeout(wheelTimer);
-      wheelTimer = setTimeout(() => { wheelTimer = null; const a = wheelAdj; wheelAdj = null; if (a) { settle(); endViewAdjustGesture(a); } }, 350);
+      wheelTimer = setTimeout(() => { wheelTimer = null; const a = wheelAdj; wheelAdj = null; if (a) { settle(); noteExternalViewGesture(false); endViewAdjustGesture(a); } }, 350);
     };
     const onInterrupt = () => tracker.cancelAll();
     wrap.addEventListener('pointerdown', onDown);
@@ -469,9 +476,55 @@ function ViewAdjustControls() {
       window.removeEventListener('blur', onInterrupt);
       if (wheelTimer) clearTimeout(wheelTimer);
       settle();
+      noteExternalViewGesture(false);
       tracker.cancelAll();
     };
   }, [gl]);
+  return null;
+}
+
+/**
+ * Motion view mount (owner, 2026-11-07): the sensor driver lives exactly
+ * as long as this table view does — the same mount as ViewAdjustControls
+ * above, so every table surface carries it (Low included: Low rides this
+ * same Canvas) and nothing outlives the table. The driver writes through
+ * the viewAdjust store, so the chip, the save channel and everything
+ * downstream are the drag's own. Pause reasons ride the app's own
+ * signals: the felt touch flag (fed by ViewAdjustControls), the Settings
+ * sheet, the Social panel, this scene's covered state (recap / results
+ * up), the app backgrounding, and Reduce effects (the app's switch or
+ * the OS setting, via the fx prefs). Every resume re-anchors inside the
+ * driver, so the view never jumps when a pause lifts.
+ */
+function MotionViewControls({ covered }: { covered: boolean }) {
+  const enabled = useSyncExternalStore(subscribeMotionViewEnabled, getMotionViewEnabled, getMotionViewEnabled);
+  const sheet = useSettingsSheet();
+  const driverRef = useRef<MotionViewDriver | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const d = new MotionViewDriver({ target: window as unknown as MotionEventTargetLike });
+    driverRef.current = d;
+    const onVis = () => d.setSuspended('hidden', document.visibilityState === 'hidden');
+    onVis();
+    document.addEventListener('visibilitychange', onVis);
+    const onPrefs = () => d.setSuspended('reduced', fx.reduced || fx.osReducedMotion);
+    onPrefs();
+    const unsubPrefs = fx.subscribePrefs(onPrefs);
+    const applySocial = () => d.setSuspended('social', social.get().open);
+    applySocial();
+    const unsubSocial = social.subscribe(applySocial);
+    d.setEnabled(getMotionViewEnabled());
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      unsubPrefs();
+      unsubSocial();
+      d.dispose();
+      driverRef.current = null;
+    };
+  }, []);
+  useEffect(() => { driverRef.current?.setEnabled(enabled); }, [enabled]);
+  useEffect(() => { driverRef.current?.setSuspended('sheet', sheet.open); }, [sheet.open]);
+  useEffect(() => { driverRef.current?.setSuspended('covered', covered); }, [covered]);
   return null;
 }
 
@@ -2549,6 +2602,7 @@ export default function Scene(props: SceneProps) {
       <CameraRig view={props.view} people={storyFiguresActive} />
       <RoomYawEnv yaw={roomYaw} />
       <ViewAdjustControls />
+      <MotionViewControls covered={!!props.covered} />
       <FxShake table={tableGroup} />
       {/* Everything from here down owns GPU resources (rooms, table,
           cards, figures, effects, badges). The keyed Fragment is the

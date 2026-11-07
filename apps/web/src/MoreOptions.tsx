@@ -3,6 +3,7 @@ import { useEscapeClose } from './useEscapeClose';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
 import { BotTrashTalkRow, ChatSoundsRow, NukeIntensityRow, ReduceEffectsRow, SoundFields, SoundQuickActions } from './SoundControls';
+import { MotionViewRow } from './MotionViewRow';
 import { SetAnimRow } from './SetAnimPicker';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
@@ -376,6 +377,7 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
           <Row label="Turn up (slam mode)" hint="On: Standing plays slam hard. Off (default): Standing plays are gentle. Sitting's V-gesture slam always works.">
             <Toggle label="Turn up (slam mode)" value={s.turnUp === true} onChange={(v) => set('turnUp', v)} />
           </Row>
+          <MotionViewRow value={s.motionView === true} onChange={(v) => set('motionView', v)} />
           <ReduceEffectsRow />
           <NukeIntensityRow />
           <SetAnimRow value={s.setAnim ?? 'auto'} onChange={(v) => set('setAnim', v)} />
