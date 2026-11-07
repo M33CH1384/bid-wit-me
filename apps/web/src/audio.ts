@@ -2813,7 +2813,7 @@ class Engine {
   }
   lastSmack: SmackSound | null = null;
 
-  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number; seat?: SeatPos; playerCount?: number; versusSide?: -1 | 0 | 1 } = {}) {
+  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number; rate?: number; seat?: SeatPos; playerCount?: number; versusSide?: -1 | 0 | 1 } = {}) {
     if (!this.settings.on || !this.unlocked) return;
     if ((name === 'dmChime' || name === 'chatBlip') && this.settings.chatSounds === false) return;
     if (!this.atTable && !Engine.UI_SFX.has(name)) { this.blocked[name] = (this.blocked[name] ?? 0) + 1; return; }
@@ -2858,7 +2858,11 @@ class Engine {
       // cannot ground a seat for its plate events either). No delay —
       // play() already set t = ctx.currentTime, and the fracture's first
       // visible frame is the shot's mount instant.
-      case 'glassCrack': return this.sample('glassCrack', t, 0.85 * g, 0.98 + Math.random() * 0.04);
+      // (opts.rate is the Whip-Crack's channel: the photoreal host pitches
+      // the same recording up for the Little Joker's snap. Callers that
+      // pass no rate — the plate crack, the quake — get exactly the
+      // staging above, unchanged.)
+      case 'glassCrack': return this.sample('glassCrack', t, 0.85 * g, (opts.rate ?? 1) * (0.98 + Math.random() * 0.04));
       // Menu fire entrance: the ignition build, centred (it belongs to
       // the whole home screen, no seat) and staged at the family's
       // level — the file is mastered to the event-SFX staging, so no

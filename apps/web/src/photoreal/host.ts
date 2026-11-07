@@ -26,12 +26,13 @@ import { importChunk } from '../chunkLoad';
 import { loadSettings } from '../settings';
 import type { PhotorealFxInstance, PhotorealFxOpts } from './modules/modules';
 
-export type PhotorealName = 'lightning' | 'meteor' | 'quake' | 'goldrain' | 'nuke';
+export type PhotorealName = 'lightning' | 'meteor' | 'quake' | 'whip' | 'goldrain' | 'nuke';
 type Mod = { createFx(c: HTMLCanvasElement, o?: PhotorealFxOpts): PhotorealFxInstance };
 const LOAD: Record<PhotorealName, () => Promise<Mod>> = {
   lightning: () => import('./modules/lightning.js') as Promise<Mod>,
   meteor: () => import('./modules/meteor.js') as Promise<Mod>,
   quake: () => import('./modules/quake.js') as Promise<Mod>,
+  whip: () => import('./modules/whip.js') as Promise<Mod>,
   goldrain: () => import('./modules/goldrain.js') as Promise<Mod>,
   nuke: () => import('./modules/nuke.js') as Promise<Mod>,
 };
@@ -62,6 +63,16 @@ export const QUAKE_CRACK_GAIN = [0.85, 1.1, 1.3, 1.35];
  * time). Same gates as the fracture fire: live runs, presented clock,
  * once per instance. */
 export const QUAKE_SETTLE_T = 1.75;
+/** The Whip-Crack's snap point (module s, presented clock): whip.js
+ * starts its single stroke at t0 ≈ .06–.10 and lands it in ~.34 s, so
+ * the front is mid-table as presented T crosses this point. The cue is
+ * the SAME glassCrack recording as the quake's fracture, presented as
+ * a snap instead of a shatter: under the quake's STANDARD gain and
+ * pitched up (rate), which also shortens it. Change it only with
+ * whip.js's stroke. */
+export const WHIP_SNAP_T = 0.18;
+export const WHIP_SNAP_GAIN = 0.9;
+export const WHIP_SNAP_RATE = 1.35;
 
 /** iPhone / iPad Safari: the 2D nuke replaces Nuke3D. `bwm.fx.nuke2d` = '1' forces it anywhere (QA / captures). */
 export function nuke2D(): boolean {
@@ -73,6 +84,7 @@ export function nuke2D(): boolean {
 export function photorealFor(e: Pick<FxEvent, 'kind' | 'level'>): PhotorealName | null {
   switch (e.kind) {
     case 'jokerBig': return 'quake'; // Big Joker landing rumble
+    case 'jokerWhip': return 'whip'; // Little Joker throw (the whip gate lives in landCue: never a steal, never a nuked trick)
     case 'overcut': return (e.level ?? 2) >= 3 ? 'lightning' : null; // the big over-cut (overcut3)
     case 'shot': return 'meteor'; // SHOT!
     case 'wheelsRain': return 'goldrain'; // Wheels EARNED: the declaring side's books reached the contract (the rain left the bid call — owner, 2026-11-05)
@@ -199,6 +211,15 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
       if (name === 'quake' && power === 4 && !settled && opts.at === undefined && T >= QUAKE_SETTLE_T) {
         settled = true;
         try { sound.play('glassCrack', { gain: 0.55 }); } catch { /* audio never blocks the picture */ }
+      }
+      // the whip's snap: the single stroke strikes almost at once, so
+      // the recording fires as presented T crosses WHIP_SNAP_T — under
+      // the quake's gain and pitched up (WHIP_SNAP_RATE), a snap
+      // instead of a shatter. Same gates as the fracture fire: live
+      // runs only, presented clock, once per instance.
+      if (name === 'whip' && !cracked && opts.at === undefined && T >= WHIP_SNAP_T) {
+        cracked = true;
+        try { sound.play('glassCrack', { gain: WHIP_SNAP_GAIN, rate: WHIP_SNAP_RATE }); } catch { /* audio never blocks the picture */ }
       }
       if (opts.at !== undefined) return; // a pinned capture frame stays up until the next call
       if (T >= inst.duration) { stop(); return; }

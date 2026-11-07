@@ -5,6 +5,7 @@ import {
   type Play,
   type TableRules,
   booksStillNeeded,
+  cardPower,
   checkGameEnd,
   isBooksHand,
   isNilBid,
@@ -37,8 +38,46 @@ export function landCueFor(st: GameState, card: Card): string {
     return base;
   }
   // a Joker landing only ever rumbles — even the second Joker of a trick, which arms the nuke.
-  // The Big Joker's rumble carries its crack tier (see bigJokerCrackTier).
-  return `${base},${card === 'BJ' ? `jokerBig|${bigJokerCrackTier(st, card)}` : 'jokerLittle'}`;
+  // The Big Joker's rumble carries its crack tier (see bigJokerCrackTier);
+  // the Little Joker's carries the whip when the throw is its own moment
+  // (see littleJokerWhips).
+  if (card === 'BJ') return `${base},jokerBig|${bigJokerCrackTier(st, card)}`;
+  return `${base},jokerLittle${littleJokerWhips(st, card) ? ',jokerWhip' : ''}`;
+}
+
+/**
+ * The Whip-Crack gate (owner-approved 2026-11-06): does this Little
+ * Joker landing get the whip — its own throw action, one fast crack
+ * line across the table? The whip answers the THROW, never the steal,
+ * and it never shares a moment another effect already owns:
+ *
+ *  - A trump steal is The Cut's moment: when the Little Joker crosses
+ *    a standing trump for its side (classifyDeuceFx's Cut test, held
+ *    to the same primitives), the cue carries trumpCut and NO whip.
+ *  - A both-Jokers trick is the nuke's moment: if the Big Joker is
+ *    already down in this trick — or anywhere in it, for a cue built
+ *    late — the whip yields. Thrown FIRST, the Little keeps its own
+ *    moment; the Big answers when it lands (MAX quake, then the blast
+ *    at completion), exactly as shipped.
+ *
+ * Everything else — led plainly, following a plain lead, played over
+ * its own side's standing trump — is a throw, and the whip fires.
+ */
+export function littleJokerWhips(st: GameState, card: Card): boolean {
+  const t = [...st.tricks, st.trick].find((x) => x.plays.some((p) => p.card === card));
+  if (!t) return false;
+  if (t.plays.some((p) => p.card === 'BJ')) return false; // the nuke owns this trick
+  const idx = t.plays.findIndex((p) => p.card === card);
+  if (idx <= 0) return true; // led the trick: a plain throw
+  const seat = t.plays[idx]!.seat;
+  const before = t.plays.slice(0, idx);
+  const w = trickWinner(before, st.rules);
+  if (w < 0) return true;
+  const beaten = before.find((p) => p.seat === w);
+  if (!beaten || !isTrump(beaten.card, st.rules)) return true; // standing winner not trump: an ordinary take
+  if (cardPower(card, st.rules) <= cardPower(beaten.card, st.rules)) return true; // did not cross it
+  if (sideOf(w, st.rules) === sideOf(seat, st.rules)) return true; // partner's trump: the side already held it
+  return false; // a trump steal — The Cut's moment
 }
 
 /**

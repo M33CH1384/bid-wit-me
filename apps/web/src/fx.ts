@@ -88,7 +88,7 @@ const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
   jokerBig: 1100, jokerLittle: 500, nuke: 3700, mega: 4400, wheelsCar: 3000,
 };
 
-export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'wheelsRain' | 'overcut' | 'hustled' | 'ranIt';
+export type FxKind = 'jokerLittle' | 'jokerBig' | 'jokerWhip' | 'nuke' | 'mega' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'wheelsRain' | 'overcut' | 'hustled' | 'ranIt';
 export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
 
 const KEY = 'bwm.fx';
@@ -341,7 +341,7 @@ export function sfxFor(e: Pick<FxEvent, 'kind' | 'level'>): Sfx {
 export const fx = new FxBus();
 if (typeof window !== 'undefined') (window as unknown as { __bwmFx?: FxBus }).__bwmFx = fx;
 
-const FX_CUES = new Set(['jokerLittle', 'jokerBig', 'nuke', 'overcut', 'overcut3']);
+const FX_CUES = new Set(['jokerLittle', 'jokerBig', 'jokerWhip', 'nuke', 'overcut', 'overcut3']);
 /** A landing cue from a card animation: plain sounds play; joker cues go through the effects bus (sound + visuals). */
 export function fireCue(c: string, delay = 0, seat?: import('./three/layout').SeatPos, playerCount = 4) {
   if (FX_CUES.has(c.split('|')[0]!)) {
@@ -350,6 +350,16 @@ export function fireCue(c: string, delay = 0, seat?: import('./three/layout').Se
       // "overcut|SAY LESS!" / "overcut3|…": level 2 / 3+ with the (seeded) callout text
       const [k, text] = c.split('|');
       const emit = () => fx.emit('overcut', { level: k === 'overcut3' ? 3 : 2, text });
+      if (delay) window.setTimeout(emit, delay * 1000); else emit();
+      return;
+    }
+    if (c === 'jokerWhip') {
+      // The Whip-Crack (2026-11-06): the Little Joker's throw action.
+      // Emitted silent — like the quake's fracture crack, the whip's
+      // snap is fired by the photoreal host, with the picture; the bus
+      // carries the event only (no rumble of its own, no shake, no
+      // hold: visuals never gate progression).
+      const emit = () => fx.emit('jokerWhip', { silent: true });
       if (delay) window.setTimeout(emit, delay * 1000); else emit();
       return;
     }

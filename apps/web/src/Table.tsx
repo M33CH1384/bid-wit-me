@@ -2586,7 +2586,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // trick completes); the quake warms at hand start in joker modes.
   const trickArmed = isNukeTrick(st.trick.plays);
   useEffect(() => { if (trickArmed && photorealFor({ kind: 'nuke' }) === 'nuke') warmPhotoreal('nuke'); }, [trickArmed]);
-  useEffect(() => { if (r.deck === 'joker54' && photorealFor({ kind: 'jokerBig' }) === 'quake') warmPhotoreal('quake'); }, [st.handNo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (r.deck === 'joker54' && photorealFor({ kind: 'jokerBig' }) === 'quake') { warmPhotoreal('quake'); warmPhotoreal('whip'); } }, [st.handNo]); // eslint-disable-line react-hooks/exhaustive-deps
   const nukeFiredFor = useRef<string | null>(null);
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;
