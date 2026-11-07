@@ -307,10 +307,25 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
       // The ignition cue: once, at the build's first frame, and never
       // under calm (the fireOut hiss's reduce-effects gate). The
       // engine's own SFX settings rule it from there (off = silent).
-      if (fireTier > 0 && !calmHome) sound.play('fireIgnite');
+      // The sustained crackle bed starts beside it under the same
+      // gate (owner, 2026-11-07: the fire sound should persist, not
+      // stop when the build ends) — the engine fades it in behind the
+      // cue's settle and holds it for the fire band's whole lifetime.
+      if (fireTier > 0 && !calmHome) { sound.play('fireIgnite'); sound.menuFireStart(true); }
     });
     return () => { live = false; };
   }, [step, homeStreak, fireTier, blizTier, calmHome]);
+  // The fire bed's lifetime is the fire band's lifetime: it stops when
+  // Home is left, when the streak state changes off fire, or when calm
+  // applies — and if calm clears mid-arrival after the entrance has
+  // played, the bed (only the bed; the ignite moment has passed)
+  // starts plain. The engine reconciles the rest (the sound/music
+  // switches, backgrounding, context rebuilds) against the same want.
+  useEffect(() => {
+    if (step !== 'home' || fireTier === 0 || calmHome) { sound.menuFireStop(); return; }
+    if (entranceDecided && entrancePlayedRef.current) sound.menuFireStart(false);
+  }, [step, fireTier, calmHome, entranceDecided]);
+  useEffect(() => () => { sound.menuFireStop(); }, []);
   // The band's live params: kindling → tier row across the entrance
   // (settled / calm read the tier row as-is; calm fades the band in
   // instead — the reduced-motion fallback).

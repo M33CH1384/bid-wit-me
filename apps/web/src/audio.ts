@@ -732,6 +732,35 @@ const FILES: Record<string, string[]> = {
 /** Total one-shot SFX buffers a complete load() decodes (the watchdog's readiness bar). */
 const SFX_COUNT = Object.values(FILES).reduce((n, a) => n + a.length, 0);
 
+/* ---------- Menu fire bed (owner, 2026-11-07) ----------
+ * The sustained crackle under Home's streak fire. The fireIgnite cue is
+ * an ignition BUILD — it lights the fire and ends, and the burning band
+ * then stood silent for the rest of the Home stay ("the fire sound
+ * speeds up for a few seconds and then stops altogether — it should
+ * persist"). This bed is what persists: a 3.2 s seamless loop baked
+ * from the ignite recording's OWN crackle body (the same SSE Library
+ * CC0 take — CREDITS.md), faded in behind the cue's settle and held
+ * for the fire band's whole lifetime. Deliberately NOT a FILES entry:
+ * it lazy-loads on first want, so the eager SFX set (SFX_COUNT, the
+ * watchdog's readiness bar) is untouched. */
+/** The bed's staging on the sfx bus: ≈10.5 dB under the ignite cue's
+ *  0.9 — a quiet bed under the menu music, never an event. */
+const MENU_FIRE_BED_GAIN = 0.3;
+const MENU_FIRE_LOOP_URL = '/assets/sfx/fire-loop.mp3';
+/** The loop's MP3 trim, from the shipped file's own LAME offsets:
+ *  576 samples of encoder delay + the 529 a decoder adds = 1105. */
+const MENU_FIRE_LOOP_LEAD_S = 1105 / 44100;
+const MENU_FIRE_LOOP_SECONDS = 3.2;
+/** With the ignite: the bed stays silent this long (the cue's build
+ *  owns those seconds), then settles in over the fade below,
+ *  crossfading the cue's own ease-down tail — full by ≈4.4 s. */
+const MENU_FIRE_IGNITE_DELAY_S = 2.4;
+const MENU_FIRE_IGNITE_FADE_S = 2.0;
+/** A plain start (a resume, a settled arrival, calm clearing) fades in. */
+const MENU_FIRE_FADE_IN_S = 1.2;
+/** Every stop is this short exponential fade — never a hard cut. */
+const MENU_FIRE_FADE_OUT_S = 0.35;
+
 type Ctx = AudioContext;
 const AC: typeof AudioContext | undefined = typeof window !== 'undefined'
   ? (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
@@ -1189,6 +1218,21 @@ class Engine {
   private ambVenue: VenueBed | null = null;
   /** Live spray-transition hiss (looping source + its gain) while a cover runs. */
   private sprayNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  /** Live menu fire bed (looping source + its gain) while Home's streak
+   *  fire stands. menuFireWanted is Setup's standing desire; the nodes
+   *  exist only while the gates let it sound (menu context, sound on,
+   *  music on) — syncMenuFire reconciles the two, stem-style. */
+  private fireNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  private menuFireWanted = false;
+  /** The current want's fade profile: true while this arrival's ignite
+   *  cue sounds, so the bed settles in behind it. Captured on the
+   *  want's rising edge only — a later plain start call in the same
+   *  arrival can never shorten the ignite crossfade. */
+  private menuFireIgnite = false;
+  private menuFireGen = 0;
+  /** The decoded fire loop, keyed to the live context like the ambience cache. */
+  private fireLoopCache: { ctx: Ctx; buf: AudioBuffer } | null = null;
+  private fireLoopLoading: { ctx: Ctx; p: Promise<AudioBuffer | null> } | null = null;
   /** Noise the shot, sheet, and tornado build on first play. Keyed by duration in milliseconds. */
   private noiseBank = new Map<number, AudioBuffer>();
   private loading: Promise<void> | null = null;
@@ -1300,6 +1344,7 @@ class Engine {
     this.syncAmbient();
     this.syncVenue();
     this.syncMusic();
+    this.syncMenuFire(); // a switch flipped under the home fire lands on its bed in the same turn
     this.emit();
   }
   /** Everything off at once (long-press / double-tap on the speaker); calling again restores what was on. */
@@ -1937,8 +1982,10 @@ class Engine {
     window.addEventListener('touchend', gesture, true);
     window.addEventListener('pointerup', gesture, true);
     window.addEventListener('click', gesture, true);
-    // backgrounding suspends the context; pageshow also fires when iOS restores the page from bfcache
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) show(); });
+    // backgrounding suspends the context; pageshow also fires when iOS restores the page from bfcache.
+    // The menu fire bed fades out as the app backgrounds (its want survives — the
+    // wake on return resyncs it, plain fade, no ignite replay: same arrival).
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.stopMenuFireNodes(); else show(); });
     window.addEventListener('pageshow', show);
   }
 
@@ -1948,6 +1995,7 @@ class Engine {
     this.syncAmbient();
     this.syncVenue();
     this.syncMusic();
+    this.syncMenuFire();
   }
 
   /**
@@ -2335,6 +2383,7 @@ class Engine {
     this.releaseDecks();
     this.stopBeds();
     this.sprayNodes = null; // the old hiss nodes die with the old context
+    this.fireNodes = null; // the old fire-bed nodes die with it too (the rebuild's resync restarts the bed if still wanted)
     const old = this.ctx;
     this.ctx = null;
     this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
@@ -3451,6 +3500,121 @@ class Engine {
       g.exponentialRampToValueAtTime(0.0001, t + fade);
       nodes.src.stop(t + fade + 0.05);
     } catch { /* context already rebuilt: the old nodes died with it */ }
+  }
+
+  /* ---------- menu fire bed (owner, 2026-11-07) ----------
+   * The sustained crackle under Home's streak fire, driven by Setup:
+   * menuFireStart beside the entrance's fireIgnite cue (the same gate),
+   * menuFireStop when the fire's lifetime ends. Everything else — the
+   * fades, the switches, backgrounding, context rebuilds — reconciles
+   * through syncMenuFire, stem-style, so the bed behaves exactly like
+   * the engine's other standing layers. It rides the sfx bus, so the
+   * master mute and the SFX category volume govern it live. */
+
+  /** Home's streak fire wants its crackle bed. `ignite` is true only
+   *  for the call that rides the entrance's cue: the bed then stays
+   *  silent through the build and settles in behind the cue's tail.
+   *  Idempotent — a repeat call in the same arrival changes nothing. */
+  menuFireStart(ignite: boolean): void {
+    if (!this.menuFireWanted) this.menuFireIgnite = ignite;
+    this.menuFireWanted = true;
+    this.syncMenuFire();
+  }
+
+  /** The fire's lifetime ended (left Home, streak off fire, calm):
+   *  the want clears and a sounding bed fades out. Safe when silent. */
+  menuFireStop(): void {
+    this.menuFireWanted = false;
+    this.menuFireIgnite = false;
+    this.syncMenuFire();
+  }
+
+  /** Whether the bed is sounding right now (checks). */
+  get menuFireOn(): boolean { return this.fireNodes != null; }
+
+  /** The bed may sound only in the menus, with sound on AND music on
+   *  (it must never outrank either switch), after the first gesture
+   *  unlock, on a running context with a live sfx bus. */
+  private menuFireGatesPass(): boolean {
+    return this.context === 'menu' && this.settings.on && this.settings.music
+      && this.unlocked && !!this.ctx && this.ctx.state === 'running' && !!this.sfxBus;
+  }
+
+  /** Reconcile the want with the gates: wanted + gates → sounding;
+   *  sounding + a gate fell → faded out. Re-run from set(), enterContext
+   *  (through its set), resyncAll() and the seam itself, so a toggle, a
+   *  context move, a wake or a rebuild lands on the bed in the same
+   *  turn it lands on every other stem. */
+  private syncMenuFire(): void {
+    if (!this.menuFireWanted || !this.menuFireGatesPass()) {
+      this.stopMenuFireNodes();
+      return;
+    }
+    if (this.fireNodes) return;
+    const gen = ++this.menuFireGen;
+    void this.loadMenuFireLoop().then((raw) => {
+      if (!raw || gen !== this.menuFireGen) return;
+      if (!this.menuFireWanted || !this.menuFireGatesPass() || this.fireNodes || !this.ctx || !this.sfxBus) return;
+      const c = this.ctx;
+      const src = c.createBufferSource();
+      src.buffer = trimLoopBuffer(c, raw, MENU_FIRE_LOOP_LEAD_S, MENU_FIRE_LOOP_SECONDS);
+      src.loop = true;
+      const g = c.createGain();
+      const t = c.currentTime;
+      if (this.menuFireIgnite) {
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.setValueAtTime(0.0001, t + MENU_FIRE_IGNITE_DELAY_S);
+        g.gain.exponentialRampToValueAtTime(MENU_FIRE_BED_GAIN, t + MENU_FIRE_IGNITE_DELAY_S + MENU_FIRE_IGNITE_FADE_S);
+      } else {
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(MENU_FIRE_BED_GAIN, t + MENU_FIRE_FADE_IN_S);
+      }
+      src.connect(g).connect(this.sfxBus);
+      src.start(t);
+      this.fireNodes = { src, gain: g };
+      this.played.menuFire = (this.played.menuFire ?? 0) + 1;
+    });
+  }
+
+  /** Fade a sounding bed out and clear it — the gates fell, or the app
+   *  backgrounded. The WANT is untouched: a gate returning (or the page
+   *  showing again) resyncs it back. Safe when nothing is playing. */
+  private stopMenuFireNodes(): void {
+    const nodes = this.fireNodes;
+    this.fireNodes = null;
+    if (!nodes || !this.ctx) return;
+    try {
+      const t = this.ctx.currentTime;
+      const g = nodes.gain.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(Math.max(g.value, 0.0001), t);
+      g.exponentialRampToValueAtTime(0.0001, t + MENU_FIRE_FADE_OUT_S);
+      nodes.src.stop(t + MENU_FIRE_FADE_OUT_S + 0.05);
+    } catch { /* context already rebuilt: the old nodes died with it */ }
+  }
+
+  /** Fetch + decode the fire loop into its own per-context cache (the
+   *  loadAmbience pattern): a load that outlives its context caches
+   *  nothing and reports null — the next want retries from HTTP cache. */
+  private loadMenuFireLoop(): Promise<AudioBuffer | null> {
+    const c = this.ctx;
+    if (!c) return Promise.resolve(null);
+    if (this.fireLoopCache && this.fireLoopCache.ctx === c) return Promise.resolve(this.fireLoopCache.buf);
+    if (this.fireLoopLoading && this.fireLoopLoading.ctx === c) return this.fireLoopLoading.p;
+    const entry: { ctx: Ctx; p: Promise<AudioBuffer | null> } = { ctx: c, p: Promise.resolve(null) };
+    entry.p = (async (): Promise<AudioBuffer | null> => {
+      try {
+        const res = await fetch(MENU_FIRE_LOOP_URL);
+        if (!res.ok) return null;
+        const buf = await decodeAudioBuffer(c, await res.arrayBuffer());
+        if (this.ctx !== c) return null;
+        this.fireLoopCache = { ctx: c, buf };
+        return buf;
+      } catch { return null; }
+      finally { if (this.fireLoopLoading === entry) this.fireLoopLoading = null; }
+    })();
+    this.fireLoopLoading = entry;
+    return entry.p;
   }
 
   /**
