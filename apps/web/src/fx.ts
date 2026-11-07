@@ -353,6 +353,16 @@ export function fireCue(c: string, delay = 0, seat?: import('./three/layout').Se
       if (delay) window.setTimeout(emit, delay * 1000); else emit();
       return;
     }
+    if (c.startsWith('jokerBig')) {
+      // Big Joker crack tier (2026-11-06): "jokerBig|<tier>" rides the segment onto
+      // the event's level, where the photoreal host reads it as the quake's degree
+      // of fracture. A bare 'jokerBig' emits level-less — the host's default tier
+      // is today's quake.
+      const tier = Number(c.split('|')[1]);
+      const emit = () => fx.emit('jokerBig', tier >= 1 && tier <= 4 ? { level: tier } : {});
+      if (delay) window.setTimeout(emit, delay * 1000); else emit();
+      return;
+    }
     if (delay) window.setTimeout(go, delay * 1000); else go();
     return;
   }

@@ -1,4 +1,21 @@
-import { type Card, type GameState, type Play, type TableRules, isBooksHand, isTrump, trickWinner } from '@spades/rules';
+import {
+  type Bid,
+  type Card,
+  type GameState,
+  type Play,
+  type TableRules,
+  booksStillNeeded,
+  checkGameEnd,
+  isBooksHand,
+  isNilBid,
+  isNukeTrick,
+  isTrump,
+  scoreHand,
+  sideCount,
+  sideOf,
+  trickWinner,
+  tricksStillRemaining,
+} from '@spades/rules';
 
 /**
  * Landing cues for a played card: always 'play'; + 'cut' when trumping a non-trump lead; + 'broken' (bigger, wins) for
@@ -19,8 +36,100 @@ export function landCueFor(st: GameState, card: Card): string {
     if (lvl === 0 && base.endsWith(',cut')) return 'play'; // a lower trump that doesn't take the lead: just a card
     return base;
   }
-  // a Joker landing only ever rumbles — even the second Joker of a trick, which arms the nuke
-  return `${base},${card === 'BJ' ? 'jokerBig' : 'jokerLittle'}`;
+  // a Joker landing only ever rumbles — even the second Joker of a trick, which arms the nuke.
+  // The Big Joker's rumble carries its crack tier (see bigJokerCrackTier).
+  return `${base},${card === 'BJ' ? `jokerBig|${bigJokerCrackTier(st, card)}` : 'jokerLittle'}`;
+}
+
+/**
+ * Big Joker crack tier (Demetrius 2026-11-06): how hard the photoreal quake fractures
+ * the screen when the Big Joker lands, keyed to what the throw DOES. The Big Joker
+ * tops the trump order, so NO card played after it can take its trick — the book it
+ * wins is sealed the moment it lands, and every consequence below is computed from
+ * public state with certainty, the same standard as the cut caller above. Pure and
+ * seat-blind: every client (offline, online, story, spectator) derives the identical
+ * tier from the identical public state.
+ *
+ *   4 MAX      the Little Joker is already down in this trick — the nuke pair. (The
+ *              blast itself lands at trick completion; the crack under it reads as
+ *              the top degree. Reverse order is unknowable at the throw — the BJ
+ *              takes its honest tier and the blast alone is the moment.)
+ *   3 HEAVY    the throw carries a consequence: it busts the thrower's live nil;
+ *              saves a live nil (takes the book off a nil bidder who stood winning);
+ *              wins the book that makes its side's contract; wins the book that
+ *              locks another side's set — in cutthroat the same lock is an
+ *              elimination on hand 1 or on a second consecutive set; or, on the
+ *              final trick, ends the game on the projected score.
+ *   2 STANDARD a trump steal — the Big Joker crosses a real trump the other side
+ *              was winning with. Today's five-crack quake.
+ *   1 LIGHT    everything else: led plainly, a plain follow, over its own side's
+ *              standing trump.
+ *
+ * Contract/set facts use the engine's own booksStillNeeded with the book PROJECTED
+ * in (thrower +1), so every boundary is exact — a nil partner's book completes the
+ * contract only when the table's rules actually count it, and a set counts as
+ * locked by THIS throw only when it was not already locked before it (the toss
+ * poll's lock standard). Books hands have no contracts: those triggers are skipped.
+ */
+export function bigJokerCrackTier(st: GameState, card: Card): 1 | 2 | 3 | 4 {
+  const r = st.rules;
+  const all = [...st.tricks, st.trick];
+  const ti = all.findIndex((t) => t.plays.some((p) => p.card === card));
+  if (ti < 0) return 2; // no trick context — today's quake
+  const plays = all[ti].plays;
+  const idx = plays.findIndex((p) => p.card === card);
+  const seat = plays[idx].seat;
+  const before = plays.slice(0, idx);
+  // 4 — MAX: the pair is down in this trick (a run's cards never arm a nuke).
+  if (isNukeTrick(plays.slice(0, idx + 1))) return 4;
+  // Books as of the START of this trick, so a cue built late (the trick already
+  // complete, a surface remounted) reads the tier the throw actually had: un-bank
+  // the winners of this trick and every later one.
+  const won = st.tricksWon.map((n) => Math.max(0, n));
+  for (let k = ti; k < st.tricks.length; k++) {
+    const w = trickWinner(st.tricks[k].plays, r);
+    if (w >= 0) won[w] = Math.max(0, won[w] - 1);
+  }
+  const total = tricksStillRemaining(st) + st.tricks.length;
+  const afterTrick = total - ti - 1; // tricks left once this one completes
+  const mySide = sideOf(seat, r);
+  // 3 — HEAVY.
+  if (isNilBid(st.bids[seat]) && won[seat] === 0) return 3; // busts the thrower's live nil
+  if (before.length > 0) {
+    const w = trickWinner(before, r);
+    if (w >= 0 && isNilBid(st.bids[w]) && won[w] === 0) return 3; // saves that nil bidder's live nil
+  }
+  if (!isBooksHand(st.bids)) {
+    const landed = [...won];
+    landed[seat]++; // the sealed book, projected in
+    if (
+      booksStillNeeded(r, st.bids, won, mySide) === 1 &&
+      booksStillNeeded(r, st.bids, landed, mySide) === 0
+    )
+      return 3; // the contract book
+    for (let s = 0; s < sideCount(r); s++) {
+      if (s === mySide) continue;
+      const need = booksStillNeeded(r, st.bids, won, s);
+      // locked once this book is gone (need > tricks left after), and not already
+      // locked before it (need <= tricks left including this one)
+      if (need !== null && need > afterTrick && need <= afterTrick + 1) return 3; // the set lock
+    }
+    if (afterTrick === 0) {
+      // Final trick: the hand's outcome is fully determined — score it and ask
+      // the engine whether the game ends on it. (The cast mirrors finishHand:
+      // a landing cue exists only during play, when every bid is in.)
+      const res = scoreHand(r, st.bids as Bid[], landed, st.scores, st.bags);
+      const totals = st.scores.map((sc, s) => sc + (res[s]?.points ?? 0));
+      if (checkGameEnd(r, totals)) return 3;
+    }
+  }
+  // 2 — STANDARD: a trump steal (the Cut test, minus the deuce specifics).
+  if (before.length > 0) {
+    const w = trickWinner(before, r);
+    if (w >= 0 && sideOf(w, r) !== mySide && isTrump(before.find((p) => p.seat === w)!.card, r))
+      return 2;
+  }
+  return 1;
 }
 
 /**

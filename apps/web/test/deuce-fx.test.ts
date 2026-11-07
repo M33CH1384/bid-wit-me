@@ -68,13 +68,15 @@ describe('the Cut: a marquee trump crosses the standing trump for its side', () 
   it('Joker over a deuce: the rumble stays, the metal layers on', () => {
     const st = state(joker, ['2D', 'BJ']);
     expect(classifyDeuceFx(st, 'BJ')).toEqual({ drop: false, cut: { victim: '2D', victimSeat: 0 }, wasOvercut: false, duel: false });
-    expect(deuceLandCue(st, 'BJ')).toBe('play,jokerBig,deuceThump,trumpCut');
+    // crack tiers (2026-11-06): the jokerBig segment carries its tier —
+    // crossing a standing trump is a STANDARD steal, so jokerBig|2.
+    expect(deuceLandCue(st, 'BJ')).toBe('play,jokerBig|2,deuceThump,trumpCut');
   });
   it('Little Joker over a deuce; Big over Little', () => {
     expect(classifyDeuceFx(state(joker, ['2S', 'LJ']), 'LJ').cut).toEqual({ victim: '2S', victimSeat: 0 });
     expect(deuceLandCue(state(joker, ['2S', 'LJ']), 'LJ')).toBe('play,jokerLittle,deuceThump,trumpCut');
     expect(classifyDeuceFx(state(joker, ['LJ', 'BJ']), 'BJ').cut).toEqual({ victim: 'LJ', victimSeat: 0 });
-    expect(deuceLandCue(state(joker, ['LJ', 'BJ']), 'BJ')).toBe('play,jokerBig,deuceThump,trumpCut');
+    expect(deuceLandCue(state(joker, ['LJ', 'BJ']), 'BJ')).toBe('play,jokerBig|4,deuceThump,trumpCut'); // pair down = MAX tier
   });
   it('a Joker that does not cross gets its normal treatment, byte for byte', () => {
     const st = state(joker, ['BJ', 'LJ']);
@@ -130,7 +132,7 @@ describe('the Cut replaces the generic over-cut treatment — for marquee steals
   it('wasOvercut pins the preserved flight: jokers never had the over-cut flight', () => {
     const st = state(joker, ['KH', 'AS', 'BJ']);
     expect(classifyDeuceFx(st, 'BJ')).toEqual({ drop: false, cut: { victim: 'AS', victimSeat: 1 }, wasOvercut: false, duel: false });
-    expect(deuceLandCue(st, 'BJ')).toBe('play,jokerBig,deuceThump,trumpCut');
+    expect(deuceLandCue(st, 'BJ')).toBe('play,jokerBig|2,deuceThump,trumpCut');
   });
   it('a non-marquee over-cut (Q♠ over 9♠) keeps the generic treatment byte for byte', () => {
     const st = state(standard, ['KH', '9S', 'QS']);
@@ -216,7 +218,7 @@ describe('the Deuce Duel: 2♦ over 2♠ gets its OWN moment (owner 2026-11-04)'
     expect(deuceLandCue(st, '2S')).toBe('play,deuceThump,trumpCut');
     const st2 = state(joker, ['2S', 'BJ']);
     expect(classifyDeuceFx(st2, 'BJ').duel).toBe(false);
-    expect(deuceLandCue(st2, 'BJ')).toBe('play,jokerBig,deuceThump,trumpCut');
+    expect(deuceLandCue(st2, 'BJ')).toBe('play,jokerBig|2,deuceThump,trumpCut');
   });
   it("NOT a duel: taking your own partner's 2♠ is no steal at all (no Cut, no Duel)", () => {
     const st = state(joker, ['2S', '5H', '2D']); // seat 2 is seat 0's partner

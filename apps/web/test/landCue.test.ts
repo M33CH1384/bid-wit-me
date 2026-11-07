@@ -15,7 +15,9 @@ describe('joker landing cues', () => {
     expect(landCueFor(withTrick(['AH', 'BJ']), 'BJ')).toContain('jokerBig');
   });
   it('Big Joker landing on a Little Joker mid-hand only ARMS the nuke: the landing cues the rumble, never the blast', () => {
-    expect(landCueFor(withTrick(['LJ', '3H', 'BJ']), 'BJ')).toMatch(/jokerBig$/);
+    // since the crack tiers (2026-11-06) the rumble segment carries its tier:
+    // LJ already down in this trick = MAX, so the segment ends jokerBig|4.
+    expect(landCueFor(withTrick(['LJ', '3H', 'BJ']), 'BJ')).toMatch(/jokerBig\|4$/);
     expect(landCueFor(withTrick(['LJ', '3H', 'BJ']), 'BJ')).not.toContain('nuke');
     // the Little Joker itself (played first) only rumbles
     expect(landCueFor(withTrick(['LJ', '3H', 'BJ']), 'LJ')).toMatch(/jokerLittle$/);
@@ -25,13 +27,15 @@ describe('joker landing cues', () => {
     expect(landCueFor(withTrick(['BJ', 'LJ']), 'LJ')).not.toContain('nuke');
   });
   it('jokers in different tricks never nuke', () => {
-    expect(landCueFor(withTrick(['BJ', '2H'], [['LJ', '3H', '4H', '5H']]), 'BJ')).toMatch(/jokerBig$/);
+    // crack tiers (2026-11-06): a plain led BJ with nothing at stake is LIGHT.
+    expect(landCueFor(withTrick(['BJ', '2H'], [['LJ', '3H', '4H', '5H']]), 'BJ')).toMatch(/jokerBig\|1$/);
   });
   it('the final trick never cues the blast on landing either: the second Joker only arms it (same as any trick)', () => {
     const done12: Card[][] = Array.from({ length: 12 }, () => ['2H', '3H', '4H', '5H']);
     const st = withTrick(['LJ', 'BJ'], done12);
     // the second Joker landing on the final trick gets its rumble, not the blast cue
-    expect(landCueFor(st, 'BJ')).toMatch(/jokerBig$/);
+    // (crack tiers, 2026-11-06: the segment ends jokerBig|4 — the pair is down)
+    expect(landCueFor(st, 'BJ')).toMatch(/jokerBig\|4$/);
     expect(landCueFor(st, 'BJ')).not.toContain('nuke');
     expect(landCueFor(st, 'LJ')).toMatch(/jokerLittle$/);
   });

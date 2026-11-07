@@ -7,6 +7,10 @@
  *   const stop = fx.play(onEnd)  // realtime via requestAnimationFrame
  * Pass drawScene to get refraction/heat shimmer over the scene; without it the canvas is a transparent
  * overlay (put it above the table canvas) and refraction is skipped. lowPower: fewer particles (iPhone).
+ * Degree (2026-11-06, hand-parameterized in this shipped module — the Motion Director sources are not
+ * in the repo): opts.power 1..4 (Big Joker crack tier; absent = 2 STANDARD, the original fracture)
+ * scales crack count/length/width, shake and the darkness wash. Crack-start t0 is tier-invariant —
+ * the host's fracture-sound sync (QUAKE_CRACK_T) keys on it. A regeneration must port the power opt.
  */
 export function createFx(canvas, opts = {}) {
 /* ---- shared core (inlined into every module by build.sh) ---- */
@@ -40,7 +44,7 @@ function makeEnv(canvas,opts,eff){
   const trx=opts.tableRx??Math.min(W*.46,S*.95),tryy=opts.tableRy??trx*.42;
   const snap=mkCanvas(W,H),sctx=snap.getContext('2d');
   const grains=[0,1,2].map(k=>{const g=mkCanvas(160,160),gx=g.getContext('2d'),id=gx.createImageData(160,160),r=rngOf(seed+k*99);for(let p=0;p<id.data.length;p+=4){const v=r()*255;id.data[p]=id.data[p+1]=id.data[p+2]=v;id.data[p+3]=255;}gx.putImageData(id,0,0);return g;});
-  const env={_grains:grains,trx,tryy,lowPower,ctx,W,H,S,cx,cy,seed,Q,snap,sctx,R:rngOf(seed),
+  const env={_grains:grains,trx,tryy,lowPower,ctx,W,H,S,cx,cy,seed,power:opts.power??2,Q,snap,sctx,R:rngOf(seed),
     G:{white:glow(128,[255,250,240]),warm:glow(128,[255,150,60]),blue:glow(128,[170,190,255]),gold:glow(128,[255,210,120])},
     spritesSmoke(col,n=6,size=SP,rough=.9){size=Math.min(size,SP);return Array.from({length:n},(_,k)=>puff(size,seed*31+k*13+col[0],'smoke',col,rough));},
     spritesFire(n=3,size=SP){return[.25,.5,.75,1].map(T=>Array.from({length:n},(_,k)=>puff(size,seed*17+k*7+T*50|0,'fire',T,1)));},
@@ -68,18 +72,20 @@ function build(env){const{ctx,W,H,S,cx,cy,Q}=env,R=env.R,D=4.2,N=v=>Math.round(v
   const amp=t=>sstep(.1,1.0,t)*(1-sstep(2.6,3.8,t));
   /* fractal cracks: random walk from centre, branches */
   const cracks=[];const rr=rngOf(env.seed+11);
+  /* crack tier by host-passed power (STANDARD row = the original fracture, exactly) */
+  const PW=env.power??2,CN=[3,5,7,9][PW-1]||5,CL=[36,52,64,76][PW-1]||52,CV=[14,20,24,28][PW-1]||20,CW=[.0055,.008,.0105,.013][PW-1]||.008,CS=[.55,1,1.4,1.8][PW-1]||1,CD=[.14,.25,.33,.42][PW-1]||.25;
   function grow(x,y,ang,len,w,t0,depth){const pts=[[x,y,t0]];let tt=t0;const a0=ang;for(let i=0;i<len;i++){ang+=(rr()-.5)*1.3+(a0-ang)*.25;const st=S*.014*(.5+rr());w*=.99;x+=Math.cos(ang)*st;y+=Math.sin(ang)*st*.42;tt+=(.02+rr()*.03)*(1+i*.06)*(rr()<.1?3:1);pts.push([x,y,tt]);
       if(depth<2&&rr()<.05)grow(x,y,ang+(rr()<.5?-1:1)*(.5+rr()*.6),len*.45|0,w*.55,tt,depth+1);}cracks.push({pts,w});}
-  for(let i=0;i<5;i++)grow(cx,cy,i/5*6.283+rr()*.6,52+rr()*20|0,S*.008,.45+rr()*.25,0);
+  for(let i=0;i<CN;i++)grow(cx,cy,i/CN*6.283+rr()*.6,CL+rr()*CV|0,S*CW,.45+rr()*.25,0);
   const tips=[];cracks.forEach(c=>c.pts.forEach((p,i)=>{if(i%4===2)tips.push({x:p[0],y:p[1],t:p[2],v:rr()});}));
   const chips=Array.from({length:N(50)},()=>({i:(rr()*tips.length)|0,a:rr()*6.283,sp:.2+rr()*.5,v:rr()}));
   const fall=Array.from({length:N(120)},()=>({x:rr(),d:rr()*2.5+.5,v:rr()}));
   return{duration:D,
-  shake(t){const A=amp(t);return env.shake(t,S*.018*A,11+6*A).map((v,i)=>v+Math.sin(t*(i?47:53))*S*.004*A);},
+  shake(t){const A=amp(t);return env.shake(t,S*.018*CS*A,11+6*A).map((v,i)=>v+Math.sin(t*(i?47:53))*S*.004*CS*A);},
   draw(t){const fade=1-sstep(D-.6,D,t),A=amp(t);
    /* motion blur: ghost the shaken scene */
    if(A>.2){ctx.globalAlpha=.35*A;ctx.drawImage(env.snap,-S*.01*A*Math.sin(t*50),S*.006*A*Math.cos(t*43));ctx.globalAlpha=1;}
-   env.fill('rgb(10,8,6)',.25*A);
+   env.fill('rgb(10,8,6)',CD*A);
    /* cracks: shadowed gash + 1px lit lip, revealed progressively */
    ctx.save();ctx.beginPath();ctx.ellipse(cx,cy,env.trx*.97,env.tryy*.97,0,0,7);ctx.clip();
    for(const c of cracks){const op=sstep(0,1.2,t-c.pts[0][2]);ctx.lineCap='round';ctx.lineJoin='round';

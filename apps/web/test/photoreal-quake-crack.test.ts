@@ -6,8 +6,12 @@
  *
  * The Big Joker's screen crack is NOT the animfx plate crack: it is the
  * photoreal `quake` overlay (photorealFor: jokerBig → 'quake'), whose
- * module (quake.js, generated — never edited here) grows five fractal
- * cracks from the table centre. Each crack's first point carries module
+ * module (quake.js, generated) grows fractal cracks from the table
+ * centre. (Crack tiers, 2026-11-06: the module was parameterized by
+ * hand — the count/width now follow the throw's tier via opts.power,
+ * STANDARD keeping the original five; the tier pins live in
+ * crack-tiers.test.ts. t0 below is tier-invariant by design.) Each
+ * crack's first point carries module
  * time t0 = .45 + rr()*.25 and points reveal as presented time passes
  * them, so the fracture opens across .45–.70s of module time. The host
  * fires the recorded glassCrack once as presented T crosses

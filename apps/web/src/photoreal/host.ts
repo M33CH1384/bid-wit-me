@@ -43,7 +43,7 @@ export const NUKE_ENGULF = 1.9;
 /** Module ground-zero time of the nuke flash (nuke.js T0): the card sweep + Full-mode HUD blow fire here. */
 const NUKE_FLASH_T = 0.28;
 /** Module time (s, presented clock) at which the quake's table cracks get
- * their fracture sound: quake.js grows its five cracks from the table
+ * their fracture sound: quake.js grows its cracks from the table
  * centre with first-point times t0 = .45 + rr()*.25, so the fracture
  * opens across .45–.70 s of module time. The recorded glassCrack (the
  * plate crack's cue, 87bcbba4) fires once as presented T crosses this
@@ -51,6 +51,17 @@ const NUKE_FLASH_T = 0.28;
  * clock so a stalled frame stretches the picture and its sound
  * together. Change it only with quake.js's t0. */
 export const QUAKE_CRACK_T = 0.55;
+/** Fracture-sound gain by Big Joker crack tier (2026-11-06), indexed by
+ * tier − 1: LIGHT / STANDARD / HEAVY / MAX. STANDARD's 1.1 is the lift
+ * the original binding shipped with; the tier moves the gain, never
+ * the sync point and never the recording. */
+export const QUAKE_CRACK_GAIN = [0.85, 1.1, 1.3, 1.35];
+/** MAX tier only: the presented time at which the recording fires once
+ * more, low — its own crumble-settle, as the fracture crawl finishes
+ * (crack fronts run from t0 ≈ .45–.70 s outward for ~2 s of module
+ * time). Same gates as the fracture fire: live runs, presented clock,
+ * once per instance. */
+export const QUAKE_SETTLE_T = 1.75;
 
 /** iPhone / iPad Safari: the 2D nuke replaces Nuke3D. `bwm.fx.nuke2d` = '1' forces it anywhere (QA / captures). */
 export function nuke2D(): boolean {
@@ -129,7 +140,7 @@ export function warmPhotoreal(name: PhotorealName): void {
   void LOAD[name]().then(() => {}, () => { warmed.delete(name); });
 }
 
-export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { at?: number; mega?: boolean; full?: boolean } = {}): void {
+export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { at?: number; mega?: boolean; full?: boolean; power?: number } = {}): void {
   void LOAD[name]().then((mod) => {
     running.get(name)?.();
     const box = mount.getBoundingClientRect();
@@ -145,8 +156,11 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
     c.width = Math.round(W * pr); c.height = Math.round(H * pr);
     Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: `${W}px`, height: `${H}px`, pointerEvents: 'none', zIndex: '4', ...(p.scale !== 1 ? { transformOrigin: `${p.gx}px ${p.gy}px`, transform: `scale(${p.scale})` } : {}) });
     mount.appendChild(c);
-    const inst = mod.createFx(c, { seed: seed++, lowPower: low, x: p.gx * pr, y: p.gy * pr, tableRx: p.drawRx * pr, tableRy: p.drawRy * pr });
-    let raf = 0, T = 0, last: number | null = null, flashed = false, cracked = false, first = true, done = false;
+    // the quake's degree of fracture (Big Joker crack tier, 2026-11-06);
+    // other modules ignore the opt. Absent = STANDARD, today's quake.
+    const power = Math.min(4, Math.max(1, Math.round(opts.power ?? 2)));
+    const inst = mod.createFx(c, { seed: seed++, lowPower: low, x: p.gx * pr, y: p.gy * pr, tableRx: p.drawRx * pr, tableRy: p.drawRy * pr, power });
+    let raf = 0, T = 0, last: number | null = null, flashed = false, cracked = false, settled = false, first = true, done = false;
     const stop = () => {
       if (done) return; done = true; cancelAnimationFrame(raf); c.remove(); running.delete(name);
       if (name === 'nuke') { fx.blast = null; fx.nukeT = null; }
@@ -170,12 +184,21 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
       }
       // the quake's cracks fracture audibly as they open (QUAKE_CRACK_T);
       // live runs only — a pinned capture frame stays silent, like the
-      // rest of the preview hook. The 1.1 gain is the bigger-beat lift:
-      // this crack spans the table, not a plate (effective .85 x 1.1
-      // staging, spectrally clear of the synth rumble it layers over).
+      // rest of the preview hook. The gain follows the crack tier
+      // (QUAKE_CRACK_GAIN): STANDARD's 1.1 is the bigger-beat lift this
+      // binding shipped with — this crack spans the table, not a plate
+      // (effective .85 x 1.1 staging, spectrally clear of the synth
+      // rumble it layers over).
       if (name === 'quake' && !cracked && opts.at === undefined && T >= QUAKE_CRACK_T) {
         cracked = true;
-        try { sound.play('glassCrack', { gain: 1.1 }); } catch { /* audio never blocks the picture */ }
+        try { sound.play('glassCrack', { gain: QUAKE_CRACK_GAIN[power - 1] }); } catch { /* audio never blocks the picture */ }
+      }
+      // MAX tier only: as the fracture finishes crawling, the recording
+      // plays once more, low — its own crumble-settle under the
+      // completed crack field (and, on a nuked trick, under the blast).
+      if (name === 'quake' && power === 4 && !settled && opts.at === undefined && T >= QUAKE_SETTLE_T) {
+        settled = true;
+        try { sound.play('glassCrack', { gain: 0.55 }); } catch { /* audio never blocks the picture */ }
       }
       if (opts.at !== undefined) return; // a pinned capture frame stays up until the next call
       if (T >= inst.duration) { stop(); return; }
@@ -197,7 +220,7 @@ export function startPhotoreal(mount: HTMLElement): () => void {
     const name = photorealFor(e);
     if (!name) return;
     if (fx.osReducedMotion && name !== 'goldrain' && name !== 'nuke') return; // OS reduce motion: no strobing/shaking overlays (the nuke still plays, as Nuke3D does)
-    playPhotoreal(mount, name, { mega: e.kind === 'mega', full: fx.nukeMode === 'full' });
+    playPhotoreal(mount, name, { mega: e.kind === 'mega', full: fx.nukeMode === 'full', ...(name === 'quake' ? { power: e.level ?? 2 } : {}) });
   });
   // capture / QA hook: draw one effect pinned at time t (no sound, no game state)
   (window as unknown as { __bwmPhotorealPreview?: unknown }).__bwmPhotorealPreview = (name: PhotorealName, t: number) => playPhotoreal(mount, name, { at: t });
