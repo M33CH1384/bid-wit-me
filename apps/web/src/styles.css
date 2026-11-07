@@ -2745,6 +2745,45 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .rw-num.down { color: #ff8a8a; }
 .rw-num.small { font-size: 15px; color: var(--muted); }
 .rw-sub { font-family: var(--display); font-size: 12.5px; letter-spacing: .06em; color: var(--muted); }
+/* Achievement inspect (owner, 2026-11-07): the unlock row is a real
+   button (the .rw-row reset: full width, inherited type, a 44px floor)
+   with a quiet Details hint; its sheet mirrors the Player Card badge
+   sheet (profile/playercard.css .pcard-badge-*) line for line — same
+   anatomy, same deep-band pairing in both themes, same dismissal —
+   portaled to the document root like the card takeover, because the
+   victory panel's glass/slant layers trap position:fixed. The sheet
+   is four short lines over a 52px medal: it fits the short landscape
+   viewports (932×430 / 844×390) whole, with no inner scroll. */
+.rw-ach-row { width: 100%; min-height: 44px; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.rw-ach-row:focus-visible { outline: 2px solid rgba(var(--gold-rgb), .8); outline-offset: 2px; }
+.rw-ach-hint { flex: none; align-self: center; font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--muted); }
+.rw-ach-scrim { position: fixed; inset: 0; z-index: 1190; background: rgba(10, 6, 24, .38); }
+.rw-ach-pop { position: fixed; z-index: 1191; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(320px, calc(100vw - 32px)); max-height: calc(100dvh - 32px);
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 36px 14px 14px; border-radius: 12px;
+  background: linear-gradient(180deg, #201a3d, #131022);
+  color: #f7f1de; text-align: left;
+  box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb), .55), 0 10px 30px rgba(5, 2, 16, .55); }
+.rw-ach-pop-medal { width: 52px; height: 52px; flex: none; border-radius: 50%;
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 34% 28%, #f4dc8e, #c9a227 58%, #8a6a14);
+  border: 1.5px solid rgba(255, 246, 214, .65);
+  box-shadow: inset 0 0 0 1.5px rgba(90, 60, 0, .35), 0 3px 8px rgba(0, 0, 0, .4); }
+.rw-ach-pop-medal::before { content: ''; position: absolute; inset: 4px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #3a2c10, #191204 72%);
+  box-shadow: inset 0 0 0 1px rgba(238, 201, 106, .5); }
+.rw-ach-pop-glyph { position: relative; z-index: 1; font-size: 24px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .65)); }
+.rw-ach-pop-body { min-width: 0; flex: 1; }
+.rw-ach-pop-name { margin: 0; font-family: var(--display); font-weight: 800; font-size: 17px; line-height: 1.15; overflow-wrap: anywhere; }
+.rw-ach-pop-kind { margin: 2px 0 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #e8c96a; }
+.rw-ach-pop-about { margin: 6px 0 0; font-size: 13px; line-height: 1.35; color: #e9e2cf; }
+.rw-ach-pop-paid { margin: 6px 0 0; font-size: 12px; color: #bdb49a; font-variant-numeric: tabular-nums; }
+.rw-ach-pop-x { position: absolute; top: 6px; right: 6px;
+  width: 26px; height: 26px; border-radius: 50%;
+  border: none; background: rgba(255, 255, 255, .08);
+  color: #f7f1de; font-size: 12px; line-height: 1; cursor: pointer; }
 /* Play-Well feat lines (owner, 2026-10-29): one compact block in the rows
    column — the feats ride as wrapping pills (each pill one line, pills
    wrap as units) so even a seven-feat game adds only a few line-heights
