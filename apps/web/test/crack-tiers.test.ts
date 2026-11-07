@@ -265,6 +265,32 @@ describe('the tier rides the cue onto the fx event', () => {
   });
 });
 
+describe('the stacking rule: one bust, one crack', () => {
+  // The plate crack (AnimFxLayer) fires on a busted nil and on a
+  // cutthroat elimination with the SAME glassCrack recording the quake
+  // uses. When the Big Joker's own throw caused the event, the quake
+  // is that event's crack and the plate crack stands down; any other
+  // cause keeps it. Behavioural pins: animfx-crack-sound.test.ts and
+  // packages/rules/test/bj-out-seats.test.ts.
+  const layer = readFileSync(new URL('../src/animfx/AnimFxLayer.tsx', import.meta.url), 'utf8');
+  const game = readFileSync(
+    new URL('../../../packages/rules/src/game.ts', import.meta.url),
+    'utf8',
+  );
+
+  it('the nil-bust crack yields when the busting book was the Big Joker', () => {
+    expect(layer).toContain("firstBookCard(st.rules, st.tricks, seat) === 'BJ'");
+  });
+  it('the elimination crack yields to the engine’s causation stamp', () => {
+    expect(layer).toContain('lastRec?.outByBigJoker?.includes(seat)');
+    expect(game).toContain('record.outByBigJoker = bjOut');
+    expect(game).toContain('export function bigJokerOutSeats');
+  });
+  it('the plate crack’s own call sites are untouched — still three', () => {
+    expect(layer.match(/sound\.play\('glassCrack'\)/g)).toHaveLength(3);
+  });
+});
+
 describe('host + module: the degree reaches the glass', () => {
   const host = readFileSync(new URL('../src/photoreal/host.ts', import.meta.url), 'utf8');
   const quake = readFileSync(

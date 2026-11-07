@@ -4,7 +4,7 @@ import { evaluateRunIt } from './runIt';
 import { createRng, shuffle } from './rng';
 import {
   type Bid, type GameResult, type SideHandResult,
-  booksStillNeeded, checkGameEnd, isBooksHand, isNilBid, isShot, partnerOf, scoreHand, scoreTossedHand, shotCounts, shotOutResult, shotOutSides, sideCount, sideOf, thirdSetResult, tricksStillRemaining,
+  booksStillNeeded, checkGameEnd, isBooksHand, isNilBid, isShot, partnerOf, scoreHand, scoreTossedHand, shotCounts, shotOutResult, shotOutSides, sideCount, sideOf, sideSeats, thirdSetResult, tricksStillRemaining,
 } from './scoring';
 
 export type Seat = number;
@@ -49,6 +49,20 @@ export interface HandRecord {
    * hands and on records written before this field existed.
    */
   tossed?: { setSides: number[] };
+  /**
+   * Seats whose failure this hand was CAUSED by a Big Joker throw: a nil
+   * bidder whose first book was won with the Big Joker (that book busts
+   * the nil on the spot), or a seat whose side's set became
+   * mathematically locked on the book a Big Joker won (see
+   * bigJokerOutSeats). Stamped by scoredRecord alongside `nuke`, for the
+   * same reason: the record keeps only trick counts. The AnimFxLayer
+   * reads it for the ONE BUST, ONE CRACK stacking rule — when the Big
+   * Joker's own throw caused the bust or the eliminating set, the
+   * photoreal quake is that event's crack and the seat-plate crack does
+   * not fire for it; any other cause keeps the plate crack. Absent when
+   * no seat qualifies, and on records written before this field existed.
+   */
+  outByBigJoker?: Seat[];
 }
 
 export interface GameState {
@@ -1217,6 +1231,98 @@ function finishPartnershipHand(st: GameState, sides: SideHandResult[], scores: n
  * played-out path (`finishHand`) and the toss path, so both records are
  * built by exactly one hand.
  */
+/**
+ * The card `seat` won their FIRST book of the hand with, or null while
+ * they have none. Replays the completed tricks in order. (The web layer
+ * reads this live, off the current state, for the one-bust-one-crack
+ * stacking rule: a nil whose first book is the Big Joker was busted BY
+ * the Big Joker.)
+ */
+export function firstBookCard(r: TableRules, tricks: readonly Trick[], seat: Seat): Card | null {
+  for (const t of tricks) {
+    if (trickWinnerOf(t, r) === seat) return t.plays.find((p) => p.seat === seat)?.card ?? null;
+  }
+  return null;
+}
+
+/**
+ * A completed trick's winner: from its plays when they can be scored
+ * under the given rules (engine truth), else the winner the trick was
+ * banked with. Play-less tricks occur in reconstructed states
+ * (fixtures, migrations), and active-count deck variants can leave a
+ * legally played card unranked under the base rules; the replay
+ * helpers below run inside every scoredRecord, so they must never
+ * throw where the bestRuns stamp — which trusts t.winner the same
+ * way — would not.
+ */
+function trickWinnerOf(t: Trick, r: TableRules): Seat {
+  if (!t.plays.length) return t.winner ?? -1;
+  try {
+    return trickWinner(t.plays, r);
+  } catch {
+    // A hand dealt under an active-count deck variant (removedForActive)
+    // can hold a card the finishing state's base rules do not rank —
+    // e.g. 3C in a two-player cutthroat endgame. The banked winner is
+    // the engine's own record of the trick; a replay must never throw
+    // where scoring itself did not.
+    return t.winner ?? -1;
+  }
+}
+
+/**
+ * Seats whose failure this hand was CAUSED by a Big Joker throw:
+ *  - a nil bidder whose first book was won with the Big Joker (the
+ *    throw busts their nil on the spot), or
+ *  - a seat whose side's set became mathematically LOCKED on the book a
+ *    Big Joker won — the flip trick: not locked before it (books still
+ *    needed <= tricks left, this one included), locked after it (needed
+ *    > tricks left) — the toss poll's lock standard, evaluated with the
+ *    hand's true trick total so a partial (tossed) prefix stays honest.
+ * Books hands have no contracts to lock, so the lock walk is skipped
+ * there (and nils cannot exist in one). Pure replay over the hand's
+ * tricks; stamped on the record by scoredRecord, the one place the
+ * hand's tricks still exist.
+ */
+export function bigJokerOutSeats(st: Pick<GameState, 'rules' | 'bids' | 'tricks' | 'trickCount'>): Seat[] {
+  const r = st.rules;
+  const bids = st.bids as Bid[];
+  const out = new Set<Seat>();
+  const winners = st.tricks.map((t) => trickWinnerOf(t, r));
+  // Nil busts: the bidder's first book, if the Big Joker won it.
+  for (let seat = 0; seat < r.playerCount; seat++) {
+    if (!isNilBid(bids[seat])) continue;
+    if (firstBookCard(r, st.tricks, seat) === 'BJ') out.add(seat);
+  }
+  // Set locks: walk the books; a side already locked before a trick
+  // keeps its lock unattributed — only the flip trick can cause one.
+  if (!isBooksHand(bids)) {
+    const total = tricksStillRemaining(st) + st.tricks.length;
+    const taken: number[] = Array(r.playerCount).fill(0);
+    const locked = new Set<number>();
+    for (let k = 0; k < st.tricks.length; k++) {
+      const after = total - k - 1; // tricks left once this one completes
+      for (let s = 0; s < sideCount(r); s++) {
+        if (locked.has(s)) continue;
+        const need = booksStillNeeded(r, bids, taken, s);
+        if (need !== null && need > after + 1) locked.add(s); // locked before this trick — not its doing
+      }
+      const w = winners[k]!;
+      if (w >= 0) taken[w] = (taken[w] ?? 0) + 1;
+      for (let s = 0; s < sideCount(r); s++) {
+        if (locked.has(s)) continue;
+        const need = booksStillNeeded(r, bids, taken, s);
+        if (need !== null && need > after) {
+          locked.add(s);
+          if (st.tricks[k]!.plays.find((p) => p.seat === w)?.card === 'BJ') {
+            for (const seat of sideSeats(s, r)) out.add(seat);
+          }
+        }
+      }
+    }
+  }
+  return [...out];
+}
+
 function scoredRecord(st: GameState, sides: SideHandResult[]): { record: HandRecord; scores: number[]; bags: number[] } {
   const bids = st.bids as Bid[];
   const r = st.rules;
@@ -1253,6 +1359,11 @@ function scoredRecord(st: GameState, sides: SideHandResult[]): { record: HandRec
     }
     record.bestRuns = best;
   }
+  // Stamp the seats whose failure the Big Joker caused (a nil it
+  // busted, a set its book locked) while the tricks are still here —
+  // the one-bust-one-crack stacking rule's memory (see HandRecord).
+  const bjOut = bigJokerOutSeats(st);
+  if (bjOut.length) record.outByBigJoker = bjOut;
   return { record, scores, bags };
 }
 

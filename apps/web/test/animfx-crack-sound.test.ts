@@ -114,6 +114,67 @@ describe('the crack cue fires with the picture', () => {
   });
 });
 
+describe('ONE BUST, ONE CRACK — the stacking rule (crack tiers, 2026-11-06)', () => {
+  // Supersession note: the "exactly once" pins above hold for busts and
+  // eliminations caused by any OTHER card. When the Big Joker's own
+  // throw caused the event, the photoreal quake already cracked the
+  // screen for it (HEAVY/MAX, with this same recording) — the plate
+  // crack stands down, so the recording never fires twice for one bust.
+  const bustTrick = (winCard: 'BJ' | 'AH') => ({
+    leader: 0,
+    winner: 1,
+    plays: [
+      { seat: 0, card: 'KH' as const },
+      { seat: 1, card: winCard },
+      { seat: 2, card: '3H' as const },
+      { seat: 3, card: '4H' as const },
+    ],
+  });
+
+  it('a nil busted BY the Big Joker: no plate crack, no second glassCrack', () => {
+    mount(view({ bids: [4, 'nil', 4, 4], tricks: [] }));
+    playSpy.mockClear();
+    rerender(view({ bids: [4, 'nil', 4, 4], tricks: [bustTrick('BJ')], tricksWon: [0, 1, 0, 0] }));
+    expect(Q('animfx-crack')).toBeNull();
+    expect(crackCalls()).toHaveLength(0);
+  });
+
+  it('a nil busted by a plain ace: the plate crack fires exactly as before', () => {
+    mount(view({ bids: [4, 'nil', 4, 4], tricks: [] }));
+    playSpy.mockClear();
+    rerender(view({ bids: [4, 'nil', 4, 4], tricks: [bustTrick('AH')], tricksWon: [0, 1, 0, 0] }));
+    expect(Q('animfx-crack')).not.toBeNull();
+    expect(crackCalls()).toHaveLength(1);
+  });
+
+  const side = (s: number, seats: number[], points: number) => ({
+    side: s, seats, contract: 8, contractTricks: 7, tricks: 7, contractMade: true,
+    contractPoints: 80, nils: [], bagsAdded: 0, bagPenaltyCount: 0, bagPenaltyPoints: 0,
+    bookPoints: 0, points, totalScore: points, totalBags: 0,
+  });
+  const rec = (stamp?: number[]) => ({
+    handNo: 1, dealer: 0, bids: [4, 4, 4, 4] as const, tricksWon: [4, 3, 3, 3],
+    sides: [side(0, [0, 2], 80), side(1, [1, 3], 70)],
+    ...(stamp ? { outByBigJoker: stamp } : {}),
+  });
+
+  it('an elimination the Big Joker caused (record-stamped): no plate crack', () => {
+    mount(view({ history: [rec([1])] }));
+    playSpy.mockClear();
+    rerender(view({ history: [rec([1])], eliminated: [false, true, false, false] }));
+    expect(Q('animfx-crack')).toBeNull();
+    expect(crackCalls()).toHaveLength(0);
+  });
+
+  it('an elimination with no Big Joker causation: the plate crack fires', () => {
+    mount(view({ history: [rec()] }));
+    playSpy.mockClear();
+    rerender(view({ history: [rec()], eliminated: [false, true, false, false] }));
+    expect(Q('animfx-crack')).not.toBeNull();
+    expect(crackCalls()).toHaveLength(1);
+  });
+});
+
 /* The registry / onset-constant / credits pins for this cue live in
  * glass-crack-registry.test.ts (source-reading suites run in the node
  * environment, like boot-sting / streak-fire — happy-dom's module URL
