@@ -1272,6 +1272,10 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // play's flight start, so the sweep floor shifting one flight cannot
     // bunch the next bot's card against it — the rhythm the scheduler
     // (useGame / the server room) drew is the rhythm the table shows.
+    // Flight order (sweepGate.ts, owner 2026-11-06): it also never starts
+    // before the previous play has LANDED plus a small beat — the draw's
+    // floor sits below the 500 ms flight, so spacing alone let follows
+    // leave while the previous card was still in the air.
     // Human-seat plays (and legacy auto / Run It plays) take the plain
     // serialization, exactly as before.
     const pace = props.botPace;
@@ -1282,6 +1286,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
         itemDelaySec: autoDelaySec,
         sweepEndFrameSec: pileSeq.current.sweepUntil,
         prevStartFrameSec: prevPl ? playStarts.current.starts.get(`${handNo}-${prevPl.card}`) ?? null : null,
+        prevRestFrameSec: prevPl ? playRests.current.rests.get(`${handNo}-${prevPl.card}`) ?? null : null,
         spacingSec: (botPaceDelayMs({
           seed: props.gameSeed ?? '', handNo, trickNo, seat: pl.seat, position: order,
           playerCount: n, kind: 'play', baseMs: pace.baseMs,

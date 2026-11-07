@@ -209,11 +209,40 @@ export function serializedPlayDelaySec(o: { itemDelaySec?: number; sweepEndFrame
  * measured from the shifted start, so the rhythm resets after the hold
  * instead of compressing. Human-seat plays never take this term — their
  * timing is the player's own.
+ *
+ * Flight order (owner, 2026-11-06: "I won a book and before my card hit
+ * the table they hit the run it. That's too fast."): start-to-start
+ * spacing alone does NOT order the flights — the draw's floor (online
+ * 750 × 0.62 = 465 ms, last seat ×0.90 → 418.5 ms; offline fast, scaled,
+ * 334.8 ms) sits BELOW the 500 ms play flight, so a follow could leave
+ * while the previous card was still in the air (measured over 46,800
+ * composed follows: 9.2% of online follows and 32.0% of offline-fast
+ * follows started before the previous card landed, worst −81 ms /
+ * −165 ms; offline standard's smallest draw, 669.6 ms, always cleared
+ * the flight). So a bot play ALSO waits out the previous play's rest:
+ * its flight never starts before prevRestFrameSec + LANDING_BEAT_SEC.
+ * State clocks, draws and the sweep floor are untouched — only the
+ * flight's start is floored, and only where the draw would have put
+ * two cards in the air together.
  */
-export function spacedPlayDelaySec(o: { itemDelaySec?: number; sweepEndFrameSec: number; prevStartFrameSec?: number | null; spacingSec?: number | null; nowFrameSec: number }): number {
+export function spacedPlayDelaySec(o: { itemDelaySec?: number; sweepEndFrameSec: number; prevStartFrameSec?: number | null; spacingSec?: number | null; prevRestFrameSec?: number | null; landBeatSec?: number; nowFrameSec: number }): number {
   let d = serializedPlayDelaySec(o);
   if (o.prevStartFrameSec != null && o.spacingSec != null) {
     d = Math.max(d, o.prevStartFrameSec + o.spacingSec - o.nowFrameSec, 0);
   }
+  if (o.prevRestFrameSec != null) {
+    d = Math.max(d, o.prevRestFrameSec + (o.landBeatSec ?? LANDING_BEAT_SEC) - o.nowFrameSec, 0);
+  }
   return d;
 }
+
+/**
+ * The beat a follow keeps after the previous card has LANDED before its
+ * own flight starts (flight order, above). 0.12 s is the codebase's
+ * existing per-card rhythm step — the legacy auto-play stagger steps
+ * cards by exactly this (0.35 + 0.12 × order) — and it is deliberately
+ * the small end of a beat: it separates the flights without reading as
+ * a wait (the owner's pacing is trimmed tight; a fat beat here would
+ * undo that on every trick).
+ */
+export const LANDING_BEAT_SEC = 0.12;
