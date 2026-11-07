@@ -56,7 +56,8 @@ export interface Settings {
    *  stock framing, set by dragging/pinching on the table and saved with the settings. */
   viewAdjust: ViewAdjust;
   /** Motion view (owner, 2026-11-07): opt-in, OFF by default. When on, leaning the phone
-   *  drives the same viewAdjust tilt and a push/pull gesture steps its zoom (motionView.ts).
+   *  drives the same viewAdjust tilt (motionView.ts). (A push/pull zoom gesture shipped
+   *  with it and was removed the same day on the owner's verdict — tilt only.)
    *  Turning it on asks the platform's motion permission from the toggle tap itself. */
   motionView: boolean;
   /** Eye zoom (owner, 2026-11-07): opt-in, OFF by default, SEPARATE from Motion view. When on,

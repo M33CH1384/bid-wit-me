@@ -3,29 +3,30 @@
  *
  * MOTION VIEW (owner, 2026-11-07 — "Let's try both"): an optional Settings
  * toggle, OFF by default. Lean-to-tilt drives the SAME viewAdjust store the
- * drag/pinch gestures drive; push/pull nudge-zoom steps the same zoom.
+ * drag/pinch gestures drive. (Push/pull nudge-zoom shipped alongside the
+ * lean and was REMOVED the same day on the owner's verdict — see the
+ * "zoom half is GONE" describe below.)
  *
  * Pins below are the contract:
  *  - lean sign: leaning the top of the phone AWAY from the player pitches
  *    the view TOWARD the table (+tilt — the same direction a finger-UP
- *    drag takes today, tiltForDragY(0, -70) === 10 in view-adjust.test.ts);
- *  - nudge sign: device +z points OUT of the screen toward the player's
- *    face, so a push AWAY accelerates along -z: MOTION_NUDGE_PUSH_AZ_SIGN
- *    is -1 and az * sign >= threshold means PUSH (zoom IN). Every feel
- *    constant is named in motionView.ts so a one-line flip retunes it.
+ *    drag takes today, tiltForDragY(0, -70) === 10 in view-adjust.test.ts).
+ *    Every feel constant is named in motionView.ts so a one-line flip
+ *    retunes it.
  */
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
-  MOTION_LEAN_DEADZONE_DEG, MOTION_LEAN_RANGE_DEG, MOTION_NUDGE_CONFIRM_SAMPLES,
-  MOTION_NUDGE_PUSH_AZ_SIGN, MOTION_NUDGE_REFRACTORY_MS, MOTION_NUDGE_Z_THRESHOLD,
-  MOTION_PERSIST_INTERVAL_MS, MOTION_SETTLE_MS, MOTION_SMOOTHING_TAU_MS, MOTION_ZOOM_STEP,
-  LeanSmoother, MotionViewDriver, NudgeDetector, enableMotionSensors, getMotionViewEnabled,
+  MOTION_LEAN_DEADZONE_DEG, MOTION_LEAN_RANGE_DEG,
+  MOTION_PERSIST_INTERVAL_MS, MOTION_SETTLE_MS, MOTION_SMOOTHING_TAU_MS,
+  LeanSmoother, MotionViewDriver, enableMotionSensors, getMotionViewEnabled,
   gravityFromOrientation, leanDegFromOrientation, noteExternalViewGesture, seedMotionViewEnabled,
   subscribeMotionViewEnabled, tiltForLeanDelta, __resetMotionViewStore, type MotionEventTargetLike,
 } from '../src/motionView';
+import * as motionViewModule from '../src/motionView';
 import {
   __resetViewAdjustStore, getViewAdjustState, onViewAdjustCommit, seedViewAdjust,
   type ViewAdjust,
@@ -63,11 +64,6 @@ describe('motion view constants (the feel knobs — one named module)', () => {
     expect(MOTION_LEAN_RANGE_DEG).toBe(20);
     expect(MOTION_LEAN_DEADZONE_DEG).toBe(2);
     expect(MOTION_SMOOTHING_TAU_MS).toBe(150);
-    expect(MOTION_NUDGE_Z_THRESHOLD).toBe(3.0);
-    expect(MOTION_NUDGE_CONFIRM_SAMPLES).toBe(2);
-    expect(MOTION_NUDGE_REFRACTORY_MS).toBe(700);
-    expect(MOTION_NUDGE_PUSH_AZ_SIGN).toBe(-1); // +z faces the player; a push away is -z
-    expect(MOTION_ZOOM_STEP).toBe(0.08);
     expect(MOTION_PERSIST_INTERVAL_MS).toBe(500);
     expect(MOTION_SETTLE_MS).toBe(600);
   });
@@ -129,94 +125,29 @@ describe('lean math', () => {
   });
 });
 
-/* ----------------------------------------------------------- nudge detect */
+/* -------------------------------------- the zoom half is GONE (owner) */
 
-describe('nudge detector (synthetic traces)', () => {
-  const STEP = 16;
-  /** Feed a constant az for n samples starting at t; returns the fires. */
-  function run(det: NudgeDetector, az: number | null, azIncl: number | null, t: number, n: number): Array<'in' | 'out'> {
-    const fires: Array<'in' | 'out'> = [];
-    for (let i = 0; i < n; i++) {
-      const f = det.push(az, azIncl, t);
-      if (f) fires.push(f);
-      t += STEP;
-    }
-    return fires;
-  }
-
-  it('a deliberate push (az -6 sustained) fires exactly one zoom-IN; a pull fires OUT', () => {
-    const det = new NudgeDetector();
-    let t = 1000;
-    expect(run(det, 0, null, t, 5)).toEqual([]); t += 5 * STEP;
-    expect(run(det, -6, null, t, 10)).toEqual(['in']); t += 10 * STEP;
-    expect(run(det, 0, null, t, 5)).toEqual([]); t += 5 * STEP;
-    t += 800; // past the refractory
-    expect(run(det, 6, null, t, 10)).toEqual(['out']);
-  });
-
-  it('refractory: a second push 300ms later is swallowed; one at +900ms fires', () => {
-    const det = new NudgeDetector();
-    let t = 1000;
-    expect(run(det, -6, null, t, 10)).toEqual(['in']);
-    const firedAt = t + (MOTION_NUDGE_CONFIRM_SAMPLES - 1) * STEP;
-    t += 10 * STEP;
-    expect(run(det, 0, null, t, 3)).toEqual([]); t += 3 * STEP;
-    t = firedAt + 300;
-    expect(run(det, -6, null, t, 10)).toEqual([]); // inside the refractory window
-    t += 10 * STEP;
-    expect(run(det, 0, null, t, 3)).toEqual([]);
-    t = firedAt + 900;
-    expect(run(det, -6, null, t, 10)).toEqual(['in']); // window passed
-  });
-
-  it('a one-sample spike never fires (confirmation needs sustained push)', () => {
-    const det = new NudgeDetector();
-    expect(run(det, -9, null, 1000, 1)).toEqual([]);
-    expect(run(det, 0, null, 1016, 5)).toEqual([]);
-  });
-
-  it('pure tilt, hand tremor and walking shake fire NOTHING', () => {
-    const det = new NudgeDetector();
-    // pure tilt on the gravity-removed channel: ~zero + sensor noise
-    for (let i = 0; i < 60; i++) {
-      const az = 0.2 * Math.sin(i * 1.7);
-      expect(det.push(az, null, i * STEP)).toBeNull();
-    }
-    // tremor: 10 Hz, 0.4 m/s²
-    for (let i = 0; i < 200; i++) {
-      const az = 0.4 * Math.sin(2 * Math.PI * 10 * (i * STEP) / 1000);
-      expect(det.push(az, null, 10000 + i * STEP)).toBeNull();
-    }
-    // walking: ~2 Hz bounce + harmonics, peaks under the threshold
-    for (let i = 0; i < 300; i++) {
-      const tt = i * STEP / 1000;
-      const az = 1.6 * Math.sin(2 * Math.PI * 2 * tt) + 0.3 * Math.sin(2 * Math.PI * 7.3 * tt);
-      expect(det.push(az, null, 20000 + i * STEP)).toBeNull();
+// Owner verdict, 2026-11-07 (hours after the feature shipped): "I like
+// the motion control as far as tilt. The zoom isn't working but that's
+// fine — remove that part". The push/pull nudge-zoom is REMOVED, not
+// fixed: the whole nudge-detector describe that used to live here is
+// replaced by absence pins so the machinery cannot creep back.
+describe('the zoom half is GONE (owner verdict, 2026-11-07)', () => {
+  it('the module exports no nudge machinery anymore', () => {
+    const mod = motionViewModule as Record<string, unknown>;
+    for (const k of [
+      'MOTION_NUDGE_Z_THRESHOLD', 'MOTION_NUDGE_CONFIRM_SAMPLES',
+      'MOTION_NUDGE_REFRACTORY_MS', 'MOTION_NUDGE_PUSH_AZ_SIGN',
+      'MOTION_ZOOM_STEP', 'NudgeDetector',
+    ]) {
+      expect(mod[k], k).toBeUndefined();
     }
   });
 
-  it('fallback path (incl-gravity only): a lean does not fire; a push against a leaning baseline does', () => {
-    const det = new NudgeDetector();
-    // held leaning (beta 70): gravity z settles at -9.8*cos(70°) ≈ -3.35
-    let t = 1000;
-    // lean INTO that posture over ~300ms: azIncl ramps 0 -> -3.35 (az channel absent)
-    for (let i = 0; i <= 20; i++) {
-      const gz = -3.35 * (i / 20);
-      expect(det.push(null, gz, t)).toBeNull();
-      t += 15;
-    }
-    // hold the lean for a second: baseline catches up, still nothing
-    for (let i = 0; i < 60; i++) { expect(det.push(null, -3.35, t)).toBeNull(); t += 15; }
-    // now a real push: azIncl dips to -9 (residual ≈ -5.6 beyond the leaning baseline)
-    expect(run(det, null, -9, t, 8)).toEqual(['in']);
-  });
-
-  it('reset clears the gravity baseline and any half-built run', () => {
-    const det = new NudgeDetector();
-    expect(run(det, -6, null, 1000, 1)).toEqual([]); // one sample of a run
-    det.reset();
-    expect(run(det, 0, null, 2000, 3)).toEqual([]);
-    expect(run(det, -6, null, 3000, 10)).toEqual(['in']); // still works after reset
+  it('the source never registers for motion events — no listener can exist', () => {
+    const srcText = readFileSync('apps/web/src/motionView.ts', 'utf8');
+    expect(srcText).not.toContain("'devicemotion'");
+    expect(srcText).not.toContain('DeviceMotionEvent');
   });
 });
 
@@ -259,7 +190,8 @@ describe('motion view driver (fake sensor target + fake clock)', () => {
     expect(target.count('devicemotion')).toBe(0);
     driver.setEnabled(true);
     expect(target.count('deviceorientation')).toBe(1);
-    expect(target.count('devicemotion')).toBe(1);
+    // NO motion listener, ever (owner 2026-11-07: the nudge-zoom is removed).
+    expect(target.count('devicemotion')).toBe(0);
     expect(driver.isListening()).toBe(true);
     driver.setEnabled(false);
     expect(target.count('deviceorientation')).toBe(0);
@@ -340,25 +272,19 @@ describe('motion view driver (fake sensor target + fake clock)', () => {
     expect(Math.abs(adj().tilt - 15)).toBeLessThan(0.75);
   });
 
-  it('push steps zoom in by the fixed step, pull steps back out; the refractory is honoured', () => {
+  it('motion events are inert: the push/pull traces that used to step the zoom change nothing now', () => {
+    // Supersedes 'push steps zoom in by the fixed step…' (removed with
+    // the nudge-zoom, owner 2026-11-07). The driver registers no motion
+    // listener, so even sustained hard traces are dead air: zoom, tilt
+    // and saves all stay exactly where the lean left them.
     driver.setEnabled(true);
     feed(90, 3);
-    const push = () => { for (let i = 0; i < 3; i++) { vi.advanceTimersByTime(30); motion(-6); } };
-    const pull = () => { for (let i = 0; i < 3; i++) { vi.advanceTimersByTime(30); motion(6); } };
-    const calm = () => { for (let i = 0; i < 2; i++) { vi.advanceTimersByTime(30); motion(0); } };
-    push(); calm();
-    expect(adj().zoom).toBeCloseTo(1 + MOTION_ZOOM_STEP, 6);
-    vi.advanceTimersByTime(800);
-    pull(); calm();
-    expect(adj().zoom).toBeCloseTo(1, 6);
-    push(); calm(); // ~300ms after the pull fired: swallowed by the refractory
-    expect(adj().zoom).toBeCloseTo(1, 6);
-    vi.advanceTimersByTime(600);
-    push(); calm();
-    expect(adj().zoom).toBeCloseTo(1 + MOTION_ZOOM_STEP, 6);
-    // zoom clamps at the shipped view bound, never past it
-    for (let i = 0; i < 6; i++) { vi.advanceTimersByTime(800); push(); calm(); }
-    expect(adj().zoom).toBe(1.3);
+    for (let i = 0; i < 10; i++) { vi.advanceTimersByTime(30); motion(-6); } // a hard push
+    for (let i = 0; i < 10; i++) { vi.advanceTimersByTime(30); motion(6); } // a hard pull
+    vi.advanceTimersByTime(1500);
+    expect(adj().zoom).toBe(1);
+    expect(adj().tilt).toBe(0);
+    expect(commits).toEqual([]);
   });
 
   it('persistence throttle: a 3s continuous wiggle commits a handful of times, never per tick', () => {
@@ -453,9 +379,13 @@ describe('enableMotionSensors (permission + probe, injected env)', () => {
     await expect(enableMotionSensors({ orientationCtor: deniedCtor, motionCtor: grantedCtor, target }, 500)).resolves.toBe('denied');
   });
 
-  it('orientation granted but motion denied -> denied', async () => {
+  it('motion permission is never consulted anymore (superseded 2026-11-07)', async () => {
+    // Was: 'orientation granted but motion denied -> denied'. With the
+    // nudge-zoom removed, nothing reads motion events, so the enable
+    // flow no longer asks for (or cares about) motion permission at
+    // all: an orientation grant + a live sensor is enough.
     const target = new ProbeTarget({ beta: 75, gamma: 0 });
-    await expect(enableMotionSensors({ orientationCtor: grantedCtor, motionCtor: deniedCtor, target }, 500)).resolves.toBe('denied');
+    await expect(enableMotionSensors({ orientationCtor: grantedCtor, motionCtor: deniedCtor, target }, 500)).resolves.toBe('granted');
   });
 
   it('no permission gate + live sensor -> granted (desktop/Android shape)', async () => {

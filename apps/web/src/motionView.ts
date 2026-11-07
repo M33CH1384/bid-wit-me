@@ -5,16 +5,19 @@
  * pinch gestures drive, so the readout chip, the save channel, plate layout
  * and seat video all follow for free):
  *
- *  1. Lean-to-tilt — the angle the phone is held at drives the table tilt.
- *     The holding angle at enable (or at any resume) is the neutral anchor;
- *     leaning from there maps onto the view tilt. No anchor, no jump: the
- *     anchor carries the tilt the view already had, so a resume continues
- *     exactly where the view rests.
- *  2. Push/pull nudge-zoom — a deliberate push of the phone away steps the
- *     zoom in; a pull toward the player steps it out. (A web app cannot
- *     measure the phone's distance — motion sensors report acceleration,
- *     whose double integral drifts within a second — so this is a gesture,
- *     not a dolly. That is the version the owner approved.)
+ *  Lean-to-tilt — the angle the phone is held at drives the table tilt.
+ *  The holding angle at enable (or at any resume) is the neutral anchor;
+ *  leaning from there maps onto the view tilt. No anchor, no jump: the
+ *  anchor carries the tilt the view already had, so a resume continues
+ *  exactly where the view rests.
+ *
+ *  (A push/pull nudge-zoom shipped alongside the lean on 2026-11-07 and
+ *  was REMOVED the same day on the owner's verdict — "I like the motion
+ *  control as far as tilt. The zoom isn't working but that's fine —
+ *  remove that part". This module is tilt-only now: nothing here reads
+ *  motion/acceleration events or ever writes the view zoom, and the
+ *  absence pins in test/motion-view.test.ts keep it that way. Players'
+ *  saved zoom values are untouched — drag/pinch still own zoom.)
  *
  * Pure math + a small driver class — no three, no React — like viewAdjust.
  * The driver is mounted by Scene next to ViewAdjustControls (mounted
@@ -25,10 +28,6 @@
  *  - Lean: leaning the top of the phone AWAY from the player is positive
  *    lean and maps to +tilt — the view pitches TOWARD the table, the same
  *    direction a finger-UP drag takes (tiltForDragY(0, -70) === 10).
- *  - Nudge: device +z points OUT of the screen toward the player's face,
- *    so a push AWAY accelerates along -z: MOTION_NUDGE_PUSH_AZ_SIGN = -1.
- *    If a physical phone ever disagrees, flipping that one constant (and
- *    its pin) reverses the nudge direction.
  */
 import {
   clampViewAdjust, getViewAdjustState, beginViewAdjustGesture, updateViewAdjustLive,
@@ -45,16 +44,6 @@ export const MOTION_LEAN_RANGE_DEG = 20;
 export const MOTION_LEAN_DEADZONE_DEG = 2;
 /** Exponential smoothing time constant for the lean, ms. */
 export const MOTION_SMOOTHING_TAU_MS = 150;
-/** Gravity-removed |z| acceleration that counts as a deliberate push/pull, m/s². */
-export const MOTION_NUDGE_Z_THRESHOLD = 3.0;
-/** Consecutive beyond-threshold samples a push/pull must sustain to fire. */
-export const MOTION_NUDGE_CONFIRM_SAMPLES = 2;
-/** Minimum ms between two accepted nudges. */
-export const MOTION_NUDGE_REFRACTORY_MS = 700;
-/** Push/pull sign: az × this >= threshold is a PUSH (zoom in). See header. */
-export const MOTION_NUDGE_PUSH_AZ_SIGN = -1;
-/** Zoom change per accepted nudge (clamped to the view's 0.85–1.30 range). */
-export const MOTION_ZOOM_STEP = 0.08;
 /** While motion is moving the view, the save channel fires at most this often, ms. */
 export const MOTION_PERSIST_INTERVAL_MS = 500;
 /** Quiet time after the last motion change before the gesture closes (and saves), ms. */
@@ -63,11 +52,6 @@ export const MOTION_SETTLE_MS = 600;
 export const MOTION_DRIVER_TICK_MS = 100;
 /** Enable-probe: how long to wait for a first real sensor event before calling it absent, ms. */
 export const MOTION_PROBE_TIMEOUT_MS = 800;
-/** Fallback gravity baseline tracking rate (per sample) when only
- *  accelerationIncludingGravity is available: fast enough that a lean's
- *  slow gravity swing stays under the nudge threshold, slow enough that a
- *  push's first samples still clear it. */
-export const MOTION_GRAVITY_BASELINE_ALPHA = 0.14;
 /** A lean change below this many tilt degrees is not applied (float dust). */
 const MOTION_TILT_EPSILON = 0.01;
 
@@ -139,76 +123,6 @@ export class LeanSmoother {
   }
 }
 
-/* --------------------------------------------------------- nudge detect */
-
-/**
- * Push/pull gesture detector over gravity-removed z acceleration.
- * Feed it the acceleration channel when the platform provides one
- * (event.acceleration.z); when only accelerationIncludingGravity exists,
- * a slow baseline tracks gravity's z component and the residual is the
- * linear acceleration (see MOTION_GRAVITY_BASELINE_ALPHA).
- *
- * A nudge fires once per deliberate gesture: the signal must stay beyond
- * the threshold for MOTION_NUDGE_CONFIRM_SAMPLES consecutive samples
- * (a lone spike, tremor and walking shake never do), then the detector
- * disarms until the signal returns to calm, and a refractory window
- * swallows any immediate repeat. Sustained-beyond-threshold samples that
- * land inside the refractory are consumed, not queued.
- */
-export class NudgeDetector {
-  private gravityZ: number | null = null;
-  private runSign = 0;
-  private runCount = 0;
-  private lastFiredAt = -Infinity;
-  private armed = true;
-
-  reset(): void {
-    this.gravityZ = null;
-    this.runSign = 0;
-    this.runCount = 0;
-    this.lastFiredAt = -Infinity;
-    this.armed = true;
-  }
-
-  /** Returns 'in' (push: zoom in), 'out' (pull: zoom out), or null. */
-  push(az: number | null, azIncl: number | null, nowMs: number): 'in' | 'out' | null {
-    let lin: number | null = null;
-    if (typeof az === 'number' && Number.isFinite(az)) {
-      lin = az;
-    } else if (typeof azIncl === 'number' && Number.isFinite(azIncl)) {
-      if (this.gravityZ === null) this.gravityZ = azIncl;
-      lin = azIncl - this.gravityZ;
-      this.gravityZ += (azIncl - this.gravityZ) * MOTION_GRAVITY_BASELINE_ALPHA;
-    }
-    if (lin === null) return null;
-    const signed = lin * MOTION_NUDGE_PUSH_AZ_SIGN; // > 0 = push-away direction
-    if (Math.abs(signed) < MOTION_NUDGE_Z_THRESHOLD * 0.5) {
-      this.armed = true; // back to calm: the next gesture may fire
-      this.runSign = 0;
-      this.runCount = 0;
-      return null;
-    }
-    if (signed >= MOTION_NUDGE_Z_THRESHOLD) {
-      if (this.runSign === 1) this.runCount++; else { this.runSign = 1; this.runCount = 1; }
-    } else if (signed <= -MOTION_NUDGE_Z_THRESHOLD) {
-      if (this.runSign === -1) this.runCount++; else { this.runSign = -1; this.runCount = 1; }
-    } else {
-      this.runSign = 0; // between calm and threshold: no run builds
-      this.runCount = 0;
-      return null;
-    }
-    if (this.runCount < MOTION_NUDGE_CONFIRM_SAMPLES) return null;
-    const dir: 'in' | 'out' = this.runSign === 1 ? 'in' : 'out';
-    this.runSign = 0;
-    this.runCount = 0;
-    if (!this.armed) return null;
-    if (nowMs - this.lastFiredAt < MOTION_NUDGE_REFRACTORY_MS) return null; // swallowed, not queued
-    this.armed = false;
-    this.lastFiredAt = nowMs;
-    return dir;
-  }
-}
-
 /* --------------------------------------------- enabled + touch signals */
 
 /** The toggle's runtime mirror. Table seeds it from settings next to
@@ -256,6 +170,9 @@ export type MotionEnableResult = 'granted' | 'denied' | 'absent';
 
 export interface MotionSensorEnv {
   orientationCtor?: unknown;
+  /** Accepted for env compatibility with earlier callers/tests; NEVER
+   *  consulted — since the 2026-11-07 removal nothing reads motion
+   *  events, so motion permission is neither requested nor required. */
   motionCtor?: unknown;
   target?: MotionEventTargetLike;
 }
@@ -279,9 +196,8 @@ export async function enableMotionSensors(env: MotionSensorEnv = {}, probeTimeou
   const has = (k: keyof MotionSensorEnv) => Object.prototype.hasOwnProperty.call(env, k);
   const win = (typeof window !== 'undefined' ? window : {}) as Record<string, unknown>;
   const orientationCtor = has('orientationCtor') ? env.orientationCtor : win['DeviceOrientationEvent'];
-  const motionCtor = has('motionCtor') ? env.motionCtor : win['DeviceMotionEvent'];
-  if (!orientationCtor && !motionCtor) return 'absent';
-  for (const ctor of [orientationCtor, motionCtor]) {
+  if (!orientationCtor) return 'absent';
+  for (const ctor of [orientationCtor]) {
     const rp = (ctor as PermissionCtor | null | undefined)?.requestPermission;
     if (typeof rp === 'function') {
       let res: unknown;
@@ -370,7 +286,6 @@ export class MotionViewDriver {
   private wasRunning = false;
 
   private smoother = new LeanSmoother();
-  private detector = new NudgeDetector();
   private anchored = false;
   private pendingAnchor = false;
   private anchorLean = 0;
@@ -427,8 +342,7 @@ export class MotionViewDriver {
   }
 
   /** running() edge transitions: falling -> commit any open gesture;
-   *  rising -> re-anchor on the next sample and reset the nudge detector
-   *  (its gravity baseline is stale after a pause). */
+   *  rising -> re-anchor on the next sample. */
   private syncState(): void {
     const r = this.running();
     if (r === this.wasRunning) return;
@@ -437,14 +351,12 @@ export class MotionViewDriver {
       if (this.gestureOpen) this.closeGesture();
     } else {
       this.pendingAnchor = true;
-      this.detector.reset();
     }
   }
 
   private attach(): void {
     if (this.listening) return;
     this.target.addEventListener('deviceorientation', this.onOrientation);
-    this.target.addEventListener('devicemotion', this.onMotion);
     this.target.addEventListener('orientationchange', this.onReorient);
     this.listening = true;
     this.tickTimer = setInterval(this.onTick, MOTION_DRIVER_TICK_MS);
@@ -453,7 +365,6 @@ export class MotionViewDriver {
   private detach(): void {
     if (!this.listening) return;
     this.target.removeEventListener('deviceorientation', this.onOrientation);
-    this.target.removeEventListener('devicemotion', this.onMotion);
     this.target.removeEventListener('orientationchange', this.onReorient);
     this.listening = false;
     if (this.tickTimer !== null) { clearInterval(this.tickTimer); this.tickTimer = null; }
@@ -493,26 +404,6 @@ export class MotionViewDriver {
     if (Math.abs(tilt - cur.tilt) <= MOTION_TILT_EPSILON) return;
     this.openGestureIfNeeded(now);
     updateViewAdjustLive({ tilt, zoom: cur.zoom });
-    this.lastChangeAt = now;
-  };
-
-  private onMotion = (e: unknown): void => {
-    if (!this.running()) return;
-    const ev = e as {
-      acceleration?: { z?: unknown } | null;
-      accelerationIncludingGravity?: { z?: unknown } | null;
-    } | null | undefined;
-    const now = this.nowFn();
-    const dir = this.detector.push(numOrNull(ev?.acceleration?.z), numOrNull(ev?.accelerationIncludingGravity?.z), now);
-    if (!dir) return;
-    const cur = getViewAdjustState().adj;
-    const zoom = clampViewAdjust({
-      tilt: cur.tilt,
-      zoom: cur.zoom + (dir === 'in' ? MOTION_ZOOM_STEP : -MOTION_ZOOM_STEP),
-    }).zoom;
-    if (zoom === cur.zoom) return; // already at the bound: nothing to show or save
-    this.openGestureIfNeeded(now);
-    updateViewAdjustLive({ tilt: cur.tilt, zoom });
     this.lastChangeAt = now;
   };
 

@@ -472,6 +472,24 @@ describe('recap chat affordance (owner: no floating button over the scores)', ()
     expect(html).toContain('data-testid="recap-unread"');
     expect(html).toContain('>16<');
   });
+  it('PORTRAIT home (owner, 2026-11-07): a second copy rides the footer Score pad row, badge and all', () => {
+    // The chat button moves to the BOTTOM in portrait: a second copy
+    // renders in the footer's Score pad row (opposite end from the
+    // Score pad link, same footer footprint — no new row). The header
+    // copy above stays the landscape one; CSS shows exactly one.
+    const html = renderToStaticMarkup(recapEl({ unread: 16 }));
+    const row = html.slice(html.indexOf('tt-foot-toprow'), html.indexOf('data-testid="talk-ready"'));
+    expect(row).toContain('Score pad');
+    expect(row).toContain('data-testid="recap-chat"');
+    expect(row).toContain('data-testid="recap-unread"');
+    expect(row).toContain('>16<');
+    // two copies total (header first, footer second) — never more
+    expect(html.split('data-testid="recap-chat"').length - 1).toBe(2);
+  });
+  it('exactly one chat copy shows per orientation: the footer copy is hidden by default, portrait flips them', () => {
+    expect(css).toContain('.tt-foot .tt-chat-btn { display: none; }');
+    expect(css).toContain('@media (orientation: portrait) {\n  .tt-head > .tt-chat-btn { display: none; }\n  .tt-foot .tt-chat-btn { display: grid; }\n}');
+  });
   it('the button is not fixed-positioned — no viewport overlay is possible', () => {
     const rule = css.match(/\.tt-chat-btn \{[^}]*\}/)?.[0] ?? '';
     expect(rule).toContain('position: relative');

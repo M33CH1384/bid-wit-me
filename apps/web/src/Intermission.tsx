@@ -101,13 +101,16 @@ export function Intermission({
   /** rematch series chip */
   series?: ReactNode;
   /** the trick browser over the hand just played (the score card's Review
-   *  control, owner 2026-10-24), rendered in the HEADER — the top of the
-   *  sheet — so it is visible and tappable with no scroll in every
-   *  orientation (owner, 2026-10-26; it used to sit at the foot of the
-   *  scroll, where the landscape rail clipped it at its edge). The recap's
-   *  ONLY review entry: the Run It cleared-hands pill that used to sit
-   *  beside it was removed by the same order — the tornado's cleared
-   *  hands stay reachable from the table's RUN IT! chip once play resumes. */
+   *  control, owner 2026-10-24), rendered in the FOOTER in line with the
+   *  Leave button — one row, two half-width buttons (owner, 2026-11-07,
+   *  superseding the 2026-10-26 header siting: the header line cost the
+   *  score cards their height in portrait — the second team card was
+   *  sliced by the pinned footer — while the footer is pinned and visible
+   *  with no scroll in every orientation, so the 2026-10-26 landscape
+   *  requirement still holds). The recap's ONLY review entry: the Run It
+   *  cleared-hands pill that used to sit beside it was removed by the
+   *  2026-10-26 order — the tornado's cleared hands stay reachable from
+   *  the table's RUN IT! chip once play resumes. */
   trickReview?: ReactNode;
   /** Set-animation context (owner, 2026-10-21): the story stop this match is
    *  played at (the house — its animation plays here earned or not), the
@@ -305,11 +308,14 @@ export function Intermission({
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
           {series}
           {secs !== null && !decided && <span className={`tt-count ${secs <= 5 ? 'hot' : ''}`} data-testid="talk-count">Next deal {secs}s</span>}
-          {trickReview}
-          {/* Chat lives IN the header row (owner 2026-10-20: the old fixed
-              corner button floated over the TOP SCORES card — "out of place
-              and an eye sore"). In-flow, right end of the header: it can
-              never cover a score, in either orientation. */}
+          {/* Chat — TWO copies render (here and in the footer's Score pad
+              row); CSS shows exactly one per orientation. This header copy
+              is the LANDSCAPE one (owner 2026-10-20 put chat in the header
+              row: the old fixed corner button floated over the TOP SCORES
+              card — "out of place and an eye sore"). In PORTRAIT the
+              footer copy shows instead (owner, 2026-11-07: the chat
+              button moves to the bottom with the rest of the actions).
+              Same behaviour, badge and aria either way. */}
           <button
             type="button"
             className={`tt-chat-btn ${chatOpen ? 'on' : ''}`}
@@ -477,12 +483,40 @@ export function Intermission({
         </div>
 
         {!showcase && (<footer className="tt-foot stack">
-          <button type="button" className="quiet-row-btn" onClick={onScorePad}>Score pad</button>
+          <div className="tt-foot-toprow">
+            <button type="button" className="quiet-row-btn" onClick={onScorePad}>Score pad</button>
+            {/* The PORTRAIT chat copy (owner, 2026-11-07): rides the
+                Score pad row at its opposite end, inside the existing
+                footer footprint — no new row. CSS hides this copy in
+                landscape, where the header copy shows instead. */}
+            <button
+              type="button"
+              className={`tt-chat-btn ${chatOpen ? 'on' : ''}`}
+              data-testid="recap-chat"
+              aria-expanded={chatOpen}
+              aria-label={chatOpen ? 'Close chat' : 'Open chat'}
+              onClick={onChat}
+            >
+              {chatOpen ? '✕' : '💬'}
+              {!chatOpen && unread > 0 && <span className="unread" data-testid="recap-unread">{unread}</span>}
+            </button>
+          </div>
           {ready && <span className="muted" data-testid="talk-ready-count">{ready.count}/{ready.of} ready</span>}
           <button type="button" className="primary big" data-testid="talk-ready" data-decided={decided ? 'yes' : 'no'} disabled={!!ready?.mine} onClick={onReady}>
             {decided ? 'See final results' : online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : `Continue to hand ${rec.handNo + 1}`}
           </button>
-          {onLeave && <><div className="exit-divider" aria-hidden="true" /><button type="button" className="leave-red" data-testid="recap-leave" onClick={onLeave}>Leave game</button></>}
+          {(trickReview || onLeave) && (<>
+            <div className="exit-divider" aria-hidden="true" />
+            {/* Review + Leave share ONE row, half the screen each (owner,
+                2026-11-07): the Review pill moved down out of the header
+                so the score cards get the height back in portrait. The
+                trick browser itself, when open, takes the row's full
+                width below them. */}
+            <div className="tt-foot-row">
+              {trickReview}
+              {onLeave && <button type="button" className="leave-red" data-testid="recap-leave" onClick={onLeave}>Leave game</button>}
+            </div>
+          </>)}
         </footer>)}
         {/* Photo Finish tape — presented-gated, riding the sheet itself
             (the .tt in-recap placement), printing both real final scores.

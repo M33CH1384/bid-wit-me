@@ -1093,6 +1093,16 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .tt-chat-btn { position: relative; flex: none; margin-left: auto; width: 44px; height: 44px; border: 0; border-radius: 12px; font-size: 17px; line-height: 1; color: #fff; background: rgba(var(--purple-rgb),.92); box-shadow: 0 4px 10px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; pointer-events: auto; cursor: pointer; }
 .tt-chat-btn.on { background: rgba(40,24,64,.95); }
 .tt-chat-btn .unread { top: -6px; right: -6px; }
+/* The recap renders the chat button TWICE (header + the footer's Score
+   pad row) and exactly one copy shows per orientation: landscape keeps
+   the header copy (owner, 2026-10-20 — in the header row it can never
+   float over a score), portrait shows the footer copy at the bottom of
+   the screen (owner, 2026-11-07). Identical behaviour, badge and aria. */
+.tt-foot .tt-chat-btn { display: none; }
+@media (orientation: portrait) {
+  .tt-head > .tt-chat-btn { display: none; }
+  .tt-foot .tt-chat-btn { display: grid; }
+}
 .tt-count { margin-left: auto; font-size: 14px; color: var(--muted); white-space: nowrap; }
 .tt-count.hot { color: var(--red); }
 .tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; justify-content: flex-start; align-items: center; gap: 24px; padding: 22px 16px 30px; }
@@ -1369,35 +1379,38 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* Score-card trick browser (owner 2026-10-24): the recap's Review control —
    a pill in the Run It review's idiom that opens the trick browser (the
    table readout's own lt-* classes and stepping helpers) over the hand
-   just played. Since 2026-10-26 it renders in the recap's HEADER (the
-   rules right below), not the sheet's flow. */
+   just played. Since 2026-11-07 it renders in the recap's FOOTER, in
+   line with the Leave button (the rules right below); from 2026-10-26
+   to 2026-11-07 it rendered in the recap's header. */
 .tt-tricks { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
 .tt-tricks-show { align-self: center; margin: 0; padding: 6px 14px; min-height: 44px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
-/* The tricks entry rides the recap HEADER (owner, 2026-10-26: "move the
-   review the tricks to the top of the ui so there's no need to scroll in
-   landscape" — it sat at the foot of the body's flow, the landscape
-   rail's last row, clipped at the rail's edge in his Hand 5 shot). The
-   header wraps: on wide sheets the pill sits in the title row, inside
-   the header's existing 44px content height, so no landscape budget
-   moves; on phone-width sheets it takes its own full-width line under
-   the title row. The open browser always takes a full-width header
-   line, measure-capped at the same 520px its in-flow siting had, and
-   closing hands the header back. The recap's old second review entry —
-   the Run It cleared-hands pill (the .tt-run* rules, removed with it) —
-   is gone entirely: the recap keeps exactly this one door, and the
-   tornado's cleared hands stay reachable from the table's RUN IT! chip
-   once play resumes. */
+/* The tricks entry rides the recap FOOTER (owner, 2026-11-07: "move the
+   review tricks button to the lower area and put it in line with the
+   leave button make them each have half of the screen so the score
+   cards fully show"). From 2026-10-26 to 2026-11-07 it sat in the
+   HEADER (owner, 2026-10-26: "move the review the tricks to the top of
+   the ui so there's no need to scroll in landscape" — back then it had
+   sat at the foot of the body's flow, the landscape rail's last row,
+   clipped at the rail's edge in his Hand 5 shot) — but in portrait the
+   pill's own header line cost the score cards their height (his
+   2026-11-07 shot: the second team card sliced by the pinned footer).
+   The footer is pinned in EVERY orientation, so the no-scroll
+   landscape requirement still holds, and the header line goes back to
+   the cards. The recap's old second review entry — the Run It
+   cleared-hands pill (the .tt-run* rules, removed with it) — is gone
+   entirely: the recap keeps exactly this one door, and the tornado's
+   cleared hands stay reachable from the table's RUN IT! chip once
+   play resumes. */
 .tt-head { flex-wrap: wrap; }
-.tt-head > .tt-tricks-show { flex: none; }
-.tt-head > .tt-tricks { flex: 1 1 100%; width: 100%; margin: 2px 0 4px; display: flex; justify-content: center; order: 2; }
-.tt-head > .tt-tricks > .trick-browser { flex: none; width: min(520px, 100%); }
-@media (max-width: 560px) {
-  /* phone widths: the chat button keeps the title row (flex order puts it
-     ahead of the full-width pill line — greedy line-breaking would
-     otherwise strand it on a third line under the pill) */
-  .tt-head .tt-chat-btn { order: 1; }
-  .tt-head > .tt-tricks-show { flex: 1 1 100%; margin-top: 2px; order: 2; }
-}
+.tt-foot-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; width: 100%; }
+.tt-foot-row > .tt-tricks-show { flex: 1 1 0; }
+.tt-foot-row > .leave-red { flex: 1 1 0; }
+.tt-foot-row > .tt-tricks { flex: 1 1 100%; min-width: 0; display: flex; justify-content: center; }
+.tt-foot-row > .tt-tricks > .trick-browser { flex: 0 1 520px; max-width: 100%; }
+/* The footer's top row: Score pad at one end, the portrait chat copy at
+   the other (owner, 2026-11-07), inside the footer's existing height —
+   no new row, and no width taken from the Review/Leave halves below. */
+.tt-foot-toprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
 .trick-browser { display: flex; flex-direction: column; gap: 5px; padding: 8px 12px; border-radius: 12px; background: rgba(16, 8, 30, .55); border: 1px solid rgba(var(--edge-rgb), .45); }
 .tb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tb-head .lt-label { width: auto; text-align: left; }
@@ -1923,11 +1936,17 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    the toss a trick-play one), in the game's blue/violet rather than amber so
    the two calls can never be confused. Like the misdeal call it paints at
    full strength from its first frame: availability is honest by presence. */
-.toss-wrap { position: fixed; left: 50%; bottom: calc(26vh + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 12; }
+.toss-wrap { position: fixed; left: 50%; bottom: calc(26vh + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 12; display: flex; align-items: center; gap: 8px; }
 .toss-btn { font-family: var(--display); font-weight: 900; font-style: italic; font-size: 19px; letter-spacing: .04em; text-transform: uppercase; color: #fff; padding: 9px 20px 10px; border-radius: 999px; border: 2px solid rgba(255,255,255,.85); cursor: pointer;
   background: linear-gradient(180deg, #7a5cff, #4338ca); box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(99,102,241,.55); }
 .toss-btn:hover { filter: brightness(1.1); }
 .toss-btn:active { transform: scale(.97); }
+/* The pill's dismiss ✕ (owner, 2026-11-07): its own round target riding
+   at the pill's trailing edge — hides the pill for this player for the
+   rest of the hand (local state only; never a poll opt-out). */
+.toss-dismiss { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 2px solid rgba(255,255,255,.85); background: rgba(24, 16, 54, .94); color: #fff; font-size: 15px; line-height: 1; display: grid; place-items: center; cursor: pointer; box-shadow: 0 6px 22px rgba(0,0,0,.55); }
+.toss-dismiss:hover { filter: brightness(1.2); }
+.toss-dismiss:active { transform: scale(.94); }
 .toss-note { font-family: var(--display); font-weight: 800; letter-spacing: .05em; font-size: 13.5px; text-transform: uppercase; color: #e6e2ff; background: rgba(38,30,80,.82); border: 1px solid rgba(255,255,255,.35); padding: 6px 14px; border-radius: 999px; white-space: nowrap; }
 .toss-overlay { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 14px; background: rgba(5,2,10,.45); }
 .toss-sheet { position: relative; width: min(94vw, 430px); max-height: calc(100dvh - 28px); overflow-y: auto; padding: 18px 20px 15px; text-align: center; border-radius: 18px; }
@@ -2435,7 +2454,21 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    shows on screen — a tuning aid, never permanent chrome. Sits below the
    pre-deal note's slot so the two never collide. NO entrance animation: an
    opacity-0 first frame is the misdeal invisibility defect family. */
-.view-adjust-chip { position: absolute; left: 50%; top: calc(128px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 31; display: flex; flex-direction: column; align-items: center; gap: 2px;
+/* The view-adjust readout lives in the bottom strip now, below the
+   player's card fan (owner, 2026-11-07): with Motion view's lean it can
+   be up almost constantly, and its old home over the felt (top: 128px,
+   under the partner plates) sat in the game's face. Placement, measured
+   in the lane rig at 390×844: the own-plate cluster owns the very
+   bottom (~64px with its YOUR TURN tab), so the chip rides directly
+   above it — under the fan's arc at centre (the fan's lowest corners
+   are at its ends, clear of the chip's width), clear of the played
+   cards and the bid panel (centre felt, far above), the toss pill
+   (26vh up) and the chat rail (right edge). The fan's lowest centre
+   cards pass behind its top edge — their bottom corner band only; the
+   card indices live at the fan's tops. In phone landscape the closed
+   fan rides lower and the strip under it is only ~40px, so there the
+   chip hugs the bottom edge instead. */
+.view-adjust-chip { position: absolute; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 31; display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 8px 16px; border-radius: 999px; background: rgba(10, 6, 18, .82); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .35), 0 12px 28px rgba(0,0,0,.5); text-align: center; pointer-events: none; }
 .view-adjust-chip .va-label { font: 800 14px/1.1 var(--display); letter-spacing: .08em; color: var(--gold); white-space: nowrap; }
 .view-adjust-chip .va-hint { font-size: 11.5px; font-weight: 600; color: var(--ink); opacity: .85; white-space: nowrap; }
@@ -2450,6 +2483,9 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    cells across the wide pane) instead of stacking label over cells.
    Portrait and taller screens keep the stacked card, untouched. */
 @media (orientation: landscape) and (max-height: 560px) {
+  /* the readout hugs the bottom edge under the closed fan (see the
+     .view-adjust-chip note above) */
+  .view-adjust-chip { bottom: calc(6px + env(safe-area-inset-bottom)); }
   .bwm-loading-card:has(.versus) { width: min(100%, 920px); gap: 5px; }
   .bwm-loading-card:has(.versus) .bwm-loading-mark { width: min(36%, 148px); }
   .versus-shake { display: grid; grid-template-columns: minmax(272px, 330px) minmax(0, 1fr); grid-template-areas: "stage tape" "stage cards" "skip skip"; column-gap: 22px; row-gap: 8px; align-items: start; }
@@ -2979,7 +3015,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 
 /* score pad v2 */
 .modal-backdrop.pad-backdrop { z-index: 1200; background: rgba(6,3,12,.72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-.pad-open .tt-team-edit, .pad-open .tt-head, .pad-open .tt-foot > button:not(.primary) { visibility: hidden; }
+.pad-open .tt-team-edit, .pad-open .tt-head, .pad-open .tt-foot > button:not(.primary), .pad-open .tt-foot-toprow > button, .pad-open .tt-foot-row > button { visibility: hidden; }
 .score-pad.v2 { position: relative; }
 .pad-sticky { position: sticky; top: 0; z-index: 4; background: #1E1424; padding: 0 40px 12px 0; box-shadow: 0 10px 0 #1E1424; }
 .pad-sticky .pad-x { top: 0; right: 0; }
@@ -4785,6 +4821,12 @@ html[data-theme="neon"] .rw-takeover-stage::before { background: radial-gradient
   .tt-foot.stack .exit-divider { display: none; }
   .tt-foot .quiet-row-btn { flex: none; }
   .tt-foot .leave-red { flex: none; padding: 0 18px; }
+  /* In the row-direction footer the Review/Leave row sits in line with
+     the other actions as one flexible unit (its two halves still split
+     it evenly), and the Score pad top row keeps its natural width. */
+  .tt-foot-row { flex: 1 1 0; width: auto; }
+  .tt-foot-row > .leave-red { flex: 1 1 0; padding: 0 10px; }
+  .tt-foot-toprow { flex: none; width: auto; }
 }
 
 /* Recap rail fit at SE landscape (owner via Yoda, 2026-10-25: no scrolling

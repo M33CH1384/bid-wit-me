@@ -46,6 +46,17 @@
  * simply ends at the callouts now, and reaching trick review takes
  * zero scroll at every size by construction.
  *
+ * Footer move (owner, 2026-11-07, superseding the 2026-10-26 header
+ * siting): the entry now rides the FOOTER's action row, in line with
+ * Leave — in portrait its header line was costing the score cards
+ * their height. Neither budget moves: HEAD's 44px is the chat button,
+ * which in LANDSCAPE stays in the header (the portrait chat move rides
+ * the footer's Score pad row instead), and FOOT's action row already
+ * prices the 52px primary — the Review/Leave row's tallest item (the
+ * pill at its 44px floor) rides inside that height. The footer is
+ * pinned as the sheet's last flex child, so zero-scroll reach holds
+ * by the same construction.
+ *
  * Budgets below recompute from the shipped CSS constants plus measured
  * render constants (the house idiom — cf. layout-lobby-fit's TEAMS_W):
  *   HEAD 57   (head padding 6+6 around the 44px chat button + border)
@@ -56,8 +67,9 @@
  *   STRIP 53 / 88 (HANDS tracker, partnership / cutthroat)
  *   CALLOUT 21 (a one-line streak banner in the rail)
  *   PILL 44   (the Review-the-tricks entry, at the tap floor — since
- *              2026-10-26 it sits in the header, whose 57 = 6 + 44 + 6
- *              + border already prices it in)
+ *              2026-11-07 it sits in the footer's action row beside
+ *              Leave, inside FOOT's existing 52px primary height; from
+ *              2026-10-26 to 2026-11-07 it sat in the header)
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -131,17 +143,28 @@ describe('landscape recap: the tier and its composition', () => {
     expect(main).toBeGreaterThanOrEqual(300);
   });
 
-  it('the tricks entry sits in the header — priced into HEAD, zero scroll to reach', () => {
-    // Intermission renders the entry inside the header, ahead of the body
-    expect(tsx.indexOf('{trickReview}')).toBeGreaterThan(tsx.indexOf('tt-head'));
-    expect(tsx.indexOf('{trickReview}')).toBeLessThan(tsx.indexOf('tt-body'));
-    // the pill is 44px; the header's content height is already 44 (the chat
-    // button), so HEAD does not grow: 6 + 44 + 6 + 1 border = 57
-    expect(6 + PILL + 6 + 1).toBe(HEAD);
+  it('the tricks entry sits in the footer action row — inside FOOT, zero scroll to reach', () => {
+    // Supersedes 'the tricks entry sits in the header' (2026-10-26 →
+    // 2026-11-07, owner): Intermission renders the entry inside the
+    // footer, below the body, in the Review/Leave row.
+    expect(tsx.indexOf('{trickReview}')).toBeGreaterThan(tsx.indexOf('tt-foot'));
+    expect(tsx.indexOf('{trickReview}')).toBeGreaterThan(tsx.indexOf('tt-body'));
+    const head = tsx.slice(tsx.indexOf('tt-head'), tsx.indexOf('tt-body'));
+    expect(head).not.toContain('{trickReview}');
+    // HEAD does not change: its 44px content is the chat button, which
+    // stays in the header in landscape — 6 + 44 + 6 + 1 border = 57
+    expect(6 + 44 + 6 + 1).toBe(HEAD);
     expect(css).toContain('.tt-head { flex-wrap: wrap; }');
+    // FOOT does not change either: in this tier the Review/Leave row is
+    // one flex unit in line with the other actions, and its tallest
+    // item (the pill at its 44px tap floor) rides inside the action
+    // row's priced 52px primary height
+    expect(land).toContain('.tt-foot-row { flex: 1 1 0; width: auto; }');
+    expect(land).toContain('.tt-foot-row > .leave-red { flex: 1 1 0;');
+    expect(PILL).toBeLessThanOrEqual(52);
   });
 
-  it('the footer is ONE pinned action row (Score pad · Continue · Leave), never a 190px stack', () => {
+  it('the footer is ONE pinned action row (Score pad · Continue · Review/Leave), never a 190px stack', () => {
     expect(land).toContain('.tt-foot.stack { flex-direction: row; align-items: center;');
     expect(land).toContain('.tt-foot.stack .primary { flex: 1; width: auto;');
     expect(land).toContain('.tt-foot.stack .exit-divider { display: none; }');
@@ -205,7 +228,7 @@ describe('landscape recap: content parity for the set states (owner, second walk
   });
 
   it('the owner’s exact state fits whole at 932×430 — both columns, no scroll', () => {
-    // rail: scores + HANDS + HEAT CHECK (the review entry rides the header now)
+    // rail: scores + HANDS + HEAT CHECK (the review entry rides the footer now)
     const rail = scoresH(2) + STRIP_P + CALLOUT + 2 * GAP;
     expect(rail).toBe(187);
     expect(rail).toBeLessThanOrEqual(body(430));

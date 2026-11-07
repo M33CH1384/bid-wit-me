@@ -825,11 +825,22 @@ function MisdealButton({ onCall }: { onCall: () => void }) {
  * 'Toss the hand?' — shown only while the engine proves a set is locked
  * (view.toss). Offline the tap opens the confirm sheet (the human's vote is
  * the only one; the bots consent). Online the tap calls the room poll.
+ * The ✕ (owner, 2026-11-07) dismisses the pill for THIS player only, for
+ * the rest of the current hand — a local-UI courtesy, never a poll
+ * opt-out: another player's call still presents the vote sheet to the
+ * dismisser exactly as before. Its tap can never fire the call.
  */
-function TossButton({ onCall }: { onCall: () => void }) {
+export function TossButton({ onCall, onDismiss }: { onCall: () => void; onDismiss: () => void }) {
   return (
     <div className="toss-wrap">
       <button type="button" className="toss-btn" data-testid="toss-call" onClick={onCall}>Toss the hand? 🗑</button>
+      <button
+        type="button"
+        className="toss-dismiss"
+        data-testid="toss-dismiss"
+        aria-label="Dismiss"
+        onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+      >✕</button>
     </div>
   );
 }
@@ -1101,6 +1112,11 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // a "Keep playing" already killed the poll for.
   const [tossSheet, setTossSheet] = useState(false);
   const [tossDeadLocal, setTossDeadLocal] = useState<number | null>(null);
+  // Toss pill dismissal (owner, 2026-11-07): the hand key (seed:handNo)
+  // this player dismissed the call pill for. Local UI state only — never
+  // sent to the server, never read by the poll/vote paths; a new hand's
+  // key simply never matches, so the pill returns on its own.
+  const [tossDismissedHand, setTossDismissedHand] = useState<string | null>(null);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
   const n0 = (resume?.state.rules ?? initialRules).playerCount;
   // Rematch seat carry (owner, 2026-11-04): an explicit hand-in (the recovery
@@ -1802,6 +1818,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // mode (excluded by the owner — online story rooms refuse server-side too).
   const tossPoll = online?.toss?.poll ?? null;
   const canToss = !spectating && !story && !dealing && st.phase === 'playing' && !!view.toss && !view.tossBlockedByNil
+    && tossDismissedHand !== `${seed}:${st.handNo}`
     && (online ? (!!online.toss && !tossPoll && online.toss.deadHand !== st.handNo) : tossDeadLocal !== st.handNo && !tossSheet);
   const tossBlockedNote = !spectating && !story && st.phase === 'playing' && !!view.toss && view.tossBlockedByNil;
   const tossSideName = (side: number): string => (online ? online.sideLabel(side) : sideName(r, side, names));
@@ -3743,7 +3760,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
       {canMisdeal && !bidPanelShowing && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
-      {canToss && <TossButton onCall={() => { setSelected(null); if (online) online.toss!.call(); else setTossSheet(true); }} />}
+      {canToss && <TossButton onCall={() => { setSelected(null); if (online) online.toss!.call(); else setTossSheet(true); }} onDismiss={() => setTossDismissedHand(`${seed}:${st.handNo}`)} />}
       {tossBlockedNote && (
         <div className="toss-wrap"><span className="toss-note" data-testid="toss-blocked">Nil still live — this hand plays out</span></div>
       )}
