@@ -5,9 +5,12 @@
  * form the TABLE card asked "YOUR NAME" (prefilled with his account name)
  * and never asked for a team name at all — the team name only existed later,
  * in the table lobby. Now the create form's TABLE card leads with the TEAM
- * name for partnership modes: type a new one, or tap one of his previous
- * teams (his recorded team names from GET /api/social/teams, plus the names
- * saved on this device). The chosen name rides the pending handoff
+ * name for partnership modes: type a new one, or pick one of his previous
+ * teams from the dropdown (his recorded team names from
+ * GET /api/social/teams, plus the names saved on this device — the picker
+ * was a chip stack until the owner's 2026-11-08 dropdown swap; the offered
+ * set and the pick path are unchanged, see teams-dropdown.test.ts). The
+ * chosen name rides the pending handoff
  * (savePendingTeamName, the pendingVenue pattern) into the room, where the
  * lobby applies it through the SAME {t:'teamName'} send + rosterBlock
  * validation as the TeamChip. Your name stays — demoted under the team
@@ -71,6 +74,17 @@ const type = async (input: HTMLInputElement, value: string) => {
   });
   await flush();
 };
+/** Drive the previous-teams dropdown (a native select since the owner's
+ *  2026-11-08 dropdown swap; the repo's venue-test idiom). */
+const choose = async (sel: HTMLSelectElement, value: string) => {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')!.set!;
+  await act(async () => {
+    setter.call(sel, value);
+    sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+  await flush();
+};
+const offered = (sel: HTMLSelectElement) => [...sel.querySelectorAll('option')].map((o) => o.textContent);
 
 function Harness() {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS);
@@ -131,30 +145,29 @@ describe('create form: team name first (partnership)', () => {
     expect(team!.compareDocumentPosition(mine!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('signed in: previous teams render from the roster endpoint; one tap fills the field', async () => {
+  it('signed in: previous teams render from the roster endpoint; picking one fills the field', async () => {
     signedIn = true;
     await act(async () => { await loadAccount(true); });
     await toCreateForm();
-    const chips = [...el.querySelectorAll('[data-testid=create-team-prev-chip]')].map((c) => c.textContent);
-    expect(chips).toEqual(expect.arrayContaining(['Homies', 'Big Dawgs']));
-    const bigDawgs = [...el.querySelectorAll('[data-testid=create-team-prev-chip]')].find((c) => c.textContent === 'Big Dawgs')!;
-    await click(bigDawgs);
+    const sel = qs<HTMLSelectElement>('[data-testid=create-team-prev-select]')!;
+    expect(sel).not.toBeNull();
+    expect(offered(sel)).toEqual(expect.arrayContaining(['Homies', 'Big Dawgs']));
+    await choose(sel, 'Big Dawgs');
     expect(qs<HTMLInputElement>('[data-testid=create-team-name]')!.value).toBe('Big Dawgs');
   });
 
   it('signed out: the device’s own saved pairing names are offered (real data, no fixtures)', async () => {
     pairTeamNames.set(pairKeyForUser('Some Pal'), 'Block Stars');
     await toCreateForm();
-    const chips = [...el.querySelectorAll('[data-testid=create-team-prev-chip]')].map((c) => c.textContent);
-    expect(chips).toContain('Block Stars');
+    const sel = qs<HTMLSelectElement>('[data-testid=create-team-prev-select]')!;
+    expect(offered(sel)).toContain('Block Stars');
   });
 
   it('create with a picked team name hands it to the room as a pending', async () => {
     signedIn = true;
     await act(async () => { await loadAccount(true); });
     await toCreateForm();
-    const homies = [...el.querySelectorAll('[data-testid=create-team-prev-chip]')].find((c) => c.textContent === 'Homies')!;
-    await click(homies);
+    await choose(qs<HTMLSelectElement>('[data-testid=create-team-prev-select]')!, 'Homies');
     await click(qs('[data-testid=create-table]'));
     expect(sessionStorage.getItem('bwm.pendingTeam.XYZ123')).toBe('Homies');
   });
@@ -286,7 +299,7 @@ describe('lobby applies the created table’s team name', () => {
 });
 
 describe('bots setup: previous-teams convenience', () => {
-  it('a previous team is one tap away and saves as the offline pairing name', async () => {
+  it('a previous team is one pick away and saves as the offline pairing name', async () => {
     pairTeamNames.set(OFFLINE_PAIR_KEY, 'Current Crew');
     pairTeamNames.set(pairKeyForUser('Some Pal'), 'Block Stars');
     await act(async () => { root.render(createElement(Harness)); });
@@ -295,11 +308,11 @@ describe('bots setup: previous-teams convenience', () => {
     await click(qs('[data-testid=door-team]'));
     await click(qs('[data-testid=mode-joker]'));
     await click(qs('[data-testid=play-bots]'));
-    const chips = [...el.querySelectorAll('[data-testid=setup-team-prev-chip]')].map((c) => c.textContent);
-    expect(chips).toContain('Block Stars');
-    expect(chips).not.toContain('Current Crew'); // the current name is not offered back
-    const chip = [...el.querySelectorAll('[data-testid=setup-team-prev-chip]')].find((c) => c.textContent === 'Block Stars')!;
-    await click(chip);
+    const sel = qs<HTMLSelectElement>('[data-testid=setup-team-prev-select]')!;
+    expect(sel).not.toBeNull();
+    expect(offered(sel)).toContain('Block Stars');
+    expect(offered(sel)).not.toContain('Current Crew'); // the current name is not offered back
+    await choose(sel, 'Block Stars');
     expect(pairTeamNames.get(OFFLINE_PAIR_KEY)).toBe('Block Stars');
     expect(qs<HTMLInputElement>('[id="setup-team-name-in"]')!.value).toBe('Block Stars');
   });
@@ -313,7 +326,7 @@ describe('bots setup: previous-teams convenience', () => {
     await click(qs('[data-testid=door-team]'));
     await click(qs('[data-testid=mode-joker]'));
     await click(qs('[data-testid=play-bots]'));
-    const chips = [...el.querySelectorAll('[data-testid=setup-team-prev-chip]')].map((c) => c.textContent);
-    expect(chips).toEqual(expect.arrayContaining(['Homies', 'Big Dawgs']));
+    const sel = qs<HTMLSelectElement>('[data-testid=setup-team-prev-select]')!;
+    expect(offered(sel)).toEqual(expect.arrayContaining(['Homies', 'Big Dawgs']));
   });
 });

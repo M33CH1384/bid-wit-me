@@ -22,7 +22,7 @@ import { AccountEntry } from './account/AccountUI';
 import { useAccount } from './account/api';
 import { SocialButton } from './social/Social';
 import { OpenTables } from './social/OpenTables';
-import { OFFLINE_PAIR_KEY, PreviousTeamChips, TeamNameField, TeamNameInput, pairTeamNames, savePendingTeamName, useTeamNameFor } from './TeamName';
+import { OFFLINE_PAIR_KEY, PreviousTeamSelect, TeamNameField, TeamNameInput, pairTeamNames, savePendingTeamName, useTeamNameFor } from './TeamName';
 import { STORY_OWNER_ONLY, fetchStoryAccess, storyLockedFor } from './story/storyApi';
 import FireCanvas from './fire/FireCanvas';
 import EmblemSmoke from './neon/EmblemSmoke';
@@ -568,7 +568,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
                 <div className="ess-row stack">
                   <span className="ess-label">Team name<small>for you + your bot partner — saved for this pairing</small></span>
                   <TeamNameField value={offlineTeamName} placeholder="You & your partner" onSave={(v) => pairTeamNames.set(OFFLINE_PAIR_KEY, v)} testId="setup-team-name" />
-                  <PreviousTeamChips current={offlineTeamName} onPick={(v) => pairTeamNames.set(OFFLINE_PAIR_KEY, v)} testId="setup-team-prev" />
+                  <PreviousTeamSelect current={offlineTeamName} onPick={(v) => pairTeamNames.set(OFFLINE_PAIR_KEY, v)} testId="setup-team-prev" />
                 </div>
               </SetupCard>
             )}
@@ -748,7 +748,7 @@ function OnlineStep({ settings, venue, onVenue, deck, deckId, deckGallery, barSu
               <div className="ess-row stack">
                 <span className="ess-label">Team name<small>your side plays under it — you can change it in the lobby</small></span>
                 <TeamNameInput value={teamName} placeholder="e.g. Homies" onChange={setTeamName} testId="create-team-name" />
-                <PreviousTeamChips current={teamName} onPick={setTeamName} testId="create-team-prev" />
+                <PreviousTeamSelect current={teamName} onPick={setTeamName} testId="create-team-prev" />
               </div>
             )}
             {/* Guests only — a signed-in player sits under their account

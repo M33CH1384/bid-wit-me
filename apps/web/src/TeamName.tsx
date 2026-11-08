@@ -133,16 +133,23 @@ export function takePendingTeamName(code: string): string {
 /* ------------------------------------------------- previous-team picker */
 
 /**
- * "Your teams" — one-tap previous team names (owner, 2026-11-05). The
- * honest sources, merged: a signed-in player's RECORDED team names from
+ * "Your teams" — previous team names in a DROPDOWN (owner, 2026-11-08:
+ * the 2026-11-05 chip stack piled his names rows tall inside the team
+ * card and shoved the landscape form off the screen — "this should be in
+ * a dropdown to save space"). A native <select>, the app's dropdown idiom
+ * (VenueSelect, the settings selects): one row tall at rest no matter how
+ * many teams he has. The offered set and the pick path are the chips'
+ * behaviour, unchanged: a signed-in player's RECORDED team names from
  * the roster endpoint (GET /api/social/teams — the same list My Career
  * manages; bot-table names included, since team_name is recorded on bot
  * games too), plus the names saved on THIS device (the per-pairing map +
  * the retired global name) — the only list that exists when signed out.
  * The current value is never offered back. Renders nothing when there is
- * nothing real to offer.
+ * nothing real to offer. The control rests on its placeholder: a pick
+ * applies immediately through onPick (and the applied name then reads in
+ * the field above, no longer offered here).
  */
-export function PreviousTeamChips({ current, onPick, testId }: {
+export function PreviousTeamSelect({ current, onPick, testId }: {
   current: string; onPick: (name: string) => void; testId: string;
 }) {
   const [recorded, setRecorded] = useState<string[]>([]);
@@ -168,10 +175,14 @@ export function PreviousTeamChips({ current, onPick, testId }: {
   if (!names.length) return null;
   return (
     <div className="prev-teams" data-testid={testId}>
-      <span className="prev-teams-label">Your teams</span>
-      {names.map((n) => (
-        <button key={n} type="button" className="prev-team-chip" data-testid={`${testId}-chip`} onClick={() => onPick(n)}>{n}</button>
-      ))}
+      <label className="prev-teams-label" htmlFor={`${testId}-select`}>Your teams</label>
+      <select id={`${testId}-select`} className="prev-teams-select" data-testid={`${testId}-select`} aria-label="Your teams — pick a previous team name"
+        value="" onChange={(e) => { const v = e.target.value; if (v) onPick(v); }}>
+        <option value="" disabled>Pick a team…</option>
+        {names.map((n) => (
+          <option key={n} value={n}>{n}</option>
+        ))}
+      </select>
     </div>
   );
 }

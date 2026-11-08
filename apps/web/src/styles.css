@@ -1845,14 +1845,20 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .team-name-edit input { flex: 1; min-width: 0; background: rgba(255,255,255,.07); border: 1px solid rgba(var(--edge-rgb),.35); border-radius: 6px; color: var(--ink); padding: 7px 9px; font: inherit; font-size: 16px; }
 .team-name-edit input::placeholder { color: var(--muted); opacity: .8; }
 .team-name-edit button { border: 1px solid rgba(var(--edge-rgb),.45); background: rgba(var(--purple-rgb),.25); color: var(--ink); border-radius: 6px; padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
-/* Previous-team picker (owner, 2026-11-05): one-tap chips of the player's
-   own earlier team names under a team-name field. One neutral rule — the
-   vars carry both themes. Chips are full 44px tap targets. */
-.prev-teams { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
-.prev-teams-label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
-.prev-team-chip { border: 1px solid rgba(var(--edge-rgb),.45); background: rgba(var(--purple-rgb),.18); color: var(--ink); border-radius: 999px; padding: 8px 14px; min-height: 44px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
-.prev-team-chip:is(:hover, :focus-visible) { filter: brightness(1.12); }
-.prev-team-chip:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+/* Previous-team picker (owner, 2026-11-05; DROPDOWN per owner, 2026-11-08):
+   the player's own earlier team names under a team-name field, in a native
+   select — the chip stack it replaces piled the names rows tall and pushed
+   the landscape form off the screen. One row tall at rest, however many
+   teams he has. One neutral rule set — the vars carry both themes; the
+   select wears the app's global select style, sized like the venue select
+   in this same form (full width, 44px, 16px). The wrapper takes the full
+   row (width:100%): the host .ess-row is a wrapping flex row, and a
+   shrink-to-fit picker would share the name field's line and squeeze the
+   field to nothing — the chip stack's bulk used to force the line break. */
+.prev-teams { display: flex; align-items: center; gap: 8px; margin-top: 8px; width: 100%; }
+.prev-teams-label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 2px; flex: none; }
+.prev-teams-select { flex: 1; min-width: 0; width: 100%; min-height: 44px; font-size: 16px; cursor: pointer; }
+.prev-teams-select:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 .team-name-edit button:hover { background: rgba(var(--purple-rgb),.45); }
 .lobby-team-name, .tt-team-edit { display: grid; gap: 3px; margin: 6px 0; }
 .lobby-team-name small, .tt-team-edit small { font-size: 10px; letter-spacing: .12em; opacity: .75; }
@@ -5334,6 +5340,17 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .ess-barred .dg-cover .dg-tag, .wizard.step-table .ess-barred .dg-cover .dg-inuse { display: none; }
   .wizard.step-table .ess-barred .dg-more { display: inline-flex; align-items: center; align-self: flex-start; position: relative; height: 30px; padding: 0 12px; margin: 0 0 6px; border: 0; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .04em; color: var(--lav, #cdb8ff); background: rgba(var(--purple-rgb),.14); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35); clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
   .wizard.step-table .ess-barred .dg-more::after { content: ''; position: absolute; inset: -7px 0; }
+  /* Whole labels in the strip (owner, 2026-11-08): the tile width rides on
+     the CELL, not the cover. The cover's % --dg-w resolved against its own
+     flex-item cell — the cell sized to the cover's 96px max-width
+     contribution, then (96-16)/3 collapsed the cover to a 27px sliver in
+     Chromium (names wider than their tiles); Safari resolved it as
+     designed but snap-align:center parked the strip with half-cut tiles
+     at both edges (the owner's "…HIST" clip). Cells now take the gallery
+     share directly (the S2 three-across row), covers fill their cell, and
+     the strip rests flush at a tile edge — every visible name whole. */
+  .wizard.step-table .ess-barred .dg-cell { flex-basis: calc((100% - 16px) / 3); max-width: 96px; scroll-snap-align: start; }
+  .wizard.step-table .ess-barred .dg-cover { width: 100%; }
 }
 @media (orientation: landscape) and (max-height: 540px) and (max-width: 700px) {
   .wizard.step-table .wiz-crumb { display: none; }
