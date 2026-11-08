@@ -745,7 +745,7 @@ const SFX_COUNT = Object.values(FILES).reduce((n, a) => n + a.length, 0);
  * watchdog's readiness bar) is untouched. */
 /** The bed's staging on the sfx bus: ≈10.5 dB under the ignite cue's
  *  0.9 — a quiet bed under the menu music, never an event. */
-const MENU_FIRE_BED_GAIN = 0.3;
+const MENU_FIRE_BED_GAIN = 0.2;
 const MENU_FIRE_LOOP_URL = '/assets/sfx/fire-loop.mp3';
 /** The loop's MP3 trim, from the shipped file's own LAME offsets:
  *  576 samples of encoder delay + the 529 a decoder adds = 1105. */

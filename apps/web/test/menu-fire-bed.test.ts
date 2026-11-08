@@ -171,7 +171,7 @@ describe('the menu fire bed at the engine', () => {
     expect(ev.some((e) => e.m === 'set' && e.v === 0.0001 && Math.abs(e.t - 12.4) < 0.05)).toBe(true);
     const settle = ev.at(-1)!;
     expect(settle.m).toBe('exp');
-    expect(settle.v).toBeCloseTo(0.3, 5);
+    expect(settle.v).toBeCloseTo(0.2, 5);
     expect(settle.t).toBeCloseTo(14.4, 1);
     expect(sound.played.menuFire).toBe(1);
     expect(fetchedUrls.some((u) => u === '/assets/sfx/fire-loop.mp3')).toBe(true);
@@ -209,7 +209,7 @@ describe('the menu fire bed at the engine', () => {
     expect(fresh).toHaveLength(1);
     const settle = gainOf(fresh[0]!).gain.events.at(-1)!;
     expect(settle.m).toBe('exp');
-    expect(settle.v).toBeCloseTo(0.3, 5);
+    expect(settle.v).toBeCloseTo(0.2, 5);
     expect(settle.t).toBeCloseTo(201.2, 1);
   });
 
@@ -271,7 +271,7 @@ describe('the wiring (source pins)', () => {
   it('the engine carries the bed: seam, gain, loop trim, lazy URL — and FILES is untouched', () => {
     expect(audio).toContain('menuFireStart(');
     expect(audio).toContain('menuFireStop(');
-    expect(audio).toContain('MENU_FIRE_BED_GAIN = 0.3');
+    expect(audio).toContain('MENU_FIRE_BED_GAIN = 0.2');
     expect(audio).toContain("MENU_FIRE_LOOP_URL = '/assets/sfx/fire-loop.mp3'");
     expect(audio).toContain('MENU_FIRE_LOOP_LEAD_S = 1105 / 44100');
     expect(audio).toContain('MENU_FIRE_LOOP_SECONDS = 3.2');
