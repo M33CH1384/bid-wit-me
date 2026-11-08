@@ -274,7 +274,14 @@ export function WheelsStage3D({ neon, onDone }: { neon: boolean; onDone: () => v
     <Canvas
       frameloop="demand"
       shadows
-      dpr={[1, 2]}
+      /* Backing resolution must reach the display: this stage is a small
+       * isolated canvas (min(88vw, 540px) at 16:10), and capping its dpr
+       * at 2 upscaled every frame 1.5x on the owner's DPR-3 phone —
+       * silhouette and surface alike — which is why the car still read
+       * completely blurred there after two texture rounds (owner,
+       * 2026-11-08). At DPR 3 the backing is ~0.8 Mpx on his phone and
+       * ~1.6 Mpx at the desktop size cap, so the full range is bounded. */
+      dpr={[1, 3]}
       gl={{ antialias: true, alpha: true, powerPreference: 'high-performance', toneMappingExposure: 1.05 }}
       camera={{ fov: 38, near: 0.05, far: 30, position: [0, 2.2, 3.0] }}
       onCreated={({ camera }) => camera.lookAt(0, 0, -0.05)}
