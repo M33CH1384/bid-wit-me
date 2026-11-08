@@ -2522,7 +2522,13 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    short landscape the own plate is fixed at bottom-left too
    (x 8–217 / y 360–420 at 932×430) with the fan starting at x 173,
    so there the pill stacks directly above the plate at the left
-   edge, clear of the plate and of its YOUR TURN tab. */
+   edge, clear of the plate and of its YOUR TURN tab.
+   SUPERSEDED at phone sizes (owner, 2026-11-08 — the band above IS
+   his cards on his phone): on portrait phones and short landscape
+   the pill now parks UNDER the plate in the plate's own spot while
+   the plate stack lifts to make room — see the .short rules in the
+   landscape block below and the portrait phone block. This base
+   placement still governs every other screen. */
 .motion-view-btn { position: absolute; left: calc(10px + env(safe-area-inset-left)); bottom: calc(100px + env(safe-area-inset-bottom)); z-index: 31;
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 44px; min-height: 44px; padding: 8px 14px;
   border: 0; border-radius: 999px; background: rgba(10, 6, 18, .82); color: var(--gold);
@@ -2549,8 +2555,17 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   /* the motion quick toggle: the own plate is fixed at bottom-left
      in landscape too, so the pill stacks directly above it — the
      plate's border box tops at y 360 at 932×430 but its YOUR TURN
-     tab pokes ~13px higher, so 92px of lift clears the tab too */
+     tab pokes ~13px higher, so 92px of lift clears the tab too.
+     On .short screens the under-plate rules directly below
+     supersede this (owner, 2026-11-08). */
   .motion-view-btn { left: calc(8px + env(safe-area-inset-left)); bottom: calc(92px + env(safe-area-inset-bottom)); }
+  /* Motion pill UNDER the plate on short screens (owner, 2026-11-08
+     — full note at the portrait phone block): the plate parks 10px
+     above the bottom edge, no room for the 44px pill beneath it, so
+     while the pill exists the pill takes the plate's own parking
+     spot and the plate stack lifts one pill-height + a 6px gap. */
+  .table-screen.short .motion-view-btn { left: calc(8px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .table-screen.short:has(.motion-view-btn) .me-plate { bottom: calc(60px + env(safe-area-inset-bottom)); }
   .bwm-loading-card:has(.versus) { width: min(100%, 920px); gap: 5px; }
   .bwm-loading-card:has(.versus) .bwm-loading-mark { width: min(36%, 148px); }
   .versus-shake { display: grid; grid-template-columns: minmax(272px, 330px) minmax(0, 1fr); grid-template-areas: "stage tape" "stage cards" "skip skip"; column-gap: 22px; row-gap: 8px; align-items: start; }
@@ -3236,6 +3251,18 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .table-screen .me-plate .plate-stats { flex-wrap: wrap; gap: 3px; }
   .table-screen .me-plate .plate-stats .chip { font-size: 9.5px; padding: 0 4px; }
   .table-screen .me-plate .plate-turn { left: 26px; top: -14px; font-size: 10px; letter-spacing: .1em; }
+  /* Motion pill UNDER the plate (owner, 2026-11-08): "the motion
+     button should go under my plate it's covering my card". The
+     plate parks 8px above the bottom edge — no room for the 44px
+     pill beneath it as it sits — so while the pill exists (Motion
+     view on) the pill takes the plate's own parking spot and the
+     whole plate stack lifts by exactly one pill-height + a 6px gap
+     (the YOUR TURN tab is a child of the plate and rides with it).
+     The gate is the pill itself via :has() — pure CSS like this
+     block's own gate, so it cannot miss on a real phone; with
+     Motion off, nothing moves. */
+  .table-screen .motion-view-btn { left: calc(8px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .table-screen:has(.motion-view-btn) .me-plate { bottom: calc(58px + env(safe-area-inset-bottom)); }
 }
 
 /* drag-to-play: the lifted card under your finger, drawn above everything */
