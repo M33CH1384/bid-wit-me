@@ -3422,7 +3422,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     // for the slam + tornado and re-seats by the next hand. Keyed off
     // the same runFx the show itself uses, so every client that
     // renders the show stands the same claimer (bots included).
-    runStand: runFx ? { seat: runFx.claimer, at: runFx.at, mega: runFx.mega } : null,
+    runStand: runFx ? { seat: runFx.claimer, at: runFx.at, mega: runFx.mega, cards: runFx.cards } : null,
     reduceFx,
     venue,
     view: effView,

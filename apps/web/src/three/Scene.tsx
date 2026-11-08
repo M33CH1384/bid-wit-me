@@ -31,7 +31,7 @@ import { reducedMotion } from './handLift';
 import { fanRestSeconds, fanRestTarget, restCharacter, NEUTRAL_REST_CHARACTER, type FanRestPose, type RestCharacter } from './fanRest';
 import { flickFlightFor, pickFlightVariant, type FlightVariant, type FlightVariantId } from './flightPose';
 import { VISIBLE_FELT, landTrick, playSeed, runScatter } from './landing';
-import { runSlamSchedule } from './runSlamPose';
+import { runSlamGripPlan, runSlamSchedule, type SlamGripPlan } from './runSlamPose';
 import { shakeOffset, swayOffset } from './shake';
 import { captureFlipFrame, flipHeld, flipRehearsed, flipUserFlipped, markRehearsed, noteFlipSizeCommit, notePresentedFrame, noteRehearsalSize, registerCover, releaseFlipHold, setFlipHoldLock, subscribeFlipHold } from './flipHold';
 import { isShortLandscape } from '../viewport';
@@ -209,7 +209,7 @@ export interface SceneProps {
   /** 'Run it!' stand (owner 2026-11-08): the claimer's seated figure
    *  stands for the slam + tornado, then re-seats (three/figureStand.ts).
    *  Presentation only; the figure layers ignore it when unmounted. */
-  runStand?: { seat: number; at: number; mega: boolean } | null;
+  runStand?: { seat: number; at: number; mega: boolean; cards: Card[] } | null;
   /** the venue (3D arena) around the table; default classic */
   venue?: VenueId;
   /** Post-hand: books slide to the next dealer for collection (Demetrius 2026-10-19). */
@@ -980,13 +980,15 @@ function flipped(t: Xform): Xform {
   return { p: [t.p[0], t.p[1], t.p[2]], q: [q.x, q.y, q.z, q.w], s: t.s };
 }
 
-function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fontsReady: boolean; safeFrac: number; lit: boolean }) {
+function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fontsReady: boolean; safeFrac: number; lit: boolean; slamGripRef?: RefObject<SlamGripPlan | null> }) {
   const { safeFrac, quality, n, handNo, dealer, positions, human, myHand, handCounts, shownTrick, piles, legal, selected, promoted, onCardTap } = props;
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
   const canvasSize = useThree((s) => s.size);
   // Drag-to-play: where a dropped card starts its flight (the finger point), fixed once per play.
   const dropOrigins = useRef(new Map<string, Xform>());
+  // The claim signature the published slam grip plan belongs to (one plan per Run It claim).
+  const slamGripSig = useRef<string | null>(null);
   const invalidate = useThree((s) => s.invalidate);
   const aniso = Math.min(quality === 'high' ? 8 : 2, gl.capabilities.getMaxAnisotropy());
   const res = quality;
@@ -1473,6 +1475,31 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
           setDeuceCutPose(dfx.cut.victim, { x: victim.target.p[0], y: victim.target.p[1], z: victim.target.p[2], dirX, dirZ, ang: Math.atan2(cd.z, cd.x) });
         }
       }
+    }
+  }
+  // 'Run it!' hands-with-cards (owner 2026-11-08): publish the claimer's
+  // grip plan for the standing figure — the MIDDLE slam card's flight,
+  // computed by runSlamGripPlan from the same calls the slam builder
+  // below makes, once per claim, from the moment runStand appears (the
+  // figure needs it during the zoom, before props.slam renders).
+  // Reduced motion flies no runslam path, so there is no plan and the
+  // figure's hands stay on the shipped solve.
+  if (props.slamGripRef) {
+    const rs = props.runStand;
+    if (rs && !reduced) {
+      const sig = `${rs.at}:${rs.seat}`;
+      if (slamGripSig.current !== sig) {
+        slamGripSig.current = sig;
+        const seatRest = restFor(rs.seat);
+        props.slamGripRef.current = runSlamGripPlan({
+          gameSeed: props.gameSeed ?? '', handNo, seat: rs.seat, at: rs.at,
+          cards: rs.cards, seatPos: positions[rs.seat]!, n,
+          drop: seatRest.drop, pinch: seatRest.pinch, trickScale,
+        });
+      }
+    } else if (!rs && slamGripSig.current !== null) {
+      slamGripSig.current = null;
+      props.slamGripRef.current = null;
     }
   }
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
@@ -2329,6 +2356,11 @@ export default function Scene(props: SceneProps) {
   const hi = props.quality === 'high';
   const badgeLayer = useRef<HTMLDivElement>(null!);
   const tableGroup = useRef<Group>(null);
+  /* Run It hands-with-cards (owner 2026-11-08): Cards writes the
+     claimer's middle-card grip plan here (runSlamGripPlan — the show's
+     own slam path); the figure layers read it to keep the standing
+     figure's hands on the cards through the slam. */
+  const slamGripRef = useRef<SlamGripPlan | null>(null);
   const [layerReady, setLayerReady] = useState(false);
   const def = VENUE_DEFS[props.venue ?? 'classic'];
   const classic = def.id === 'classic';
@@ -2778,7 +2810,7 @@ export default function Scene(props: SceneProps) {
         </group>
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
-      {showTable && <Cards key={props.dealEpoch ?? 0} {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
+      {showTable && <Cards key={props.dealEpoch ?? 0} {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} slamGripRef={slamGripRef} />}
       {showTable && props.crowdCue && ((props.kingRailCast?.length ?? 0) > 0 || (props.seatedFigures ?? []).some(Boolean)) && (
         <KingRail
           cast={props.kingRailCast ?? []}
@@ -2804,6 +2836,7 @@ export default function Scene(props: SceneProps) {
           animate={props.crowdAnimate ?? false}
           seatConfig={figureSeatConfig}
           runStand={props.runStand ?? null}
+          slamGripRef={slamGripRef}
         />
       )}
       {showTable && textured && personaFiguresActive && (
@@ -2817,6 +2850,7 @@ export default function Scene(props: SceneProps) {
           animate={props.crowdAnimate ?? false}
           venue={def.id}
           runStand={props.runStand ?? null}
+          slamGripRef={slamGripRef}
         />
       )}
       {showTable && (props.seatVideos?.some(Boolean) ?? false) && (

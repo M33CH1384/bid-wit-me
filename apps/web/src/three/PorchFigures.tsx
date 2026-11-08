@@ -76,8 +76,8 @@ import { useFigureResidency } from './figureResidency';
 import { opponentFan, seatDir, type SeatPos } from './layout';
 import { fanRestTarget } from './fanRest';
 import {
-  standAmount, standFinished, standPelvisTarget,
-  type RunStandInfo, type StandLatch,
+  RUN_SLAM_GRIP_CURL, slamGripFrame, standAmount, standFinished, standPelvisTarget, standSpineAmount,
+  type RunStandInfo, type SlamGripPlan, type StandLatch,
 } from './figureStand';
 
 /* ------------------------------------------------------------------ */
@@ -734,10 +734,13 @@ interface FigureProps {
    *  for the show (three/figureStand.ts). */
   standAt: number | null;
   standMega: boolean;
+  /** Run It hands-with-cards: the shared grip-plan ref Cards writes
+   *  (Scene owns it) — the claimer's middle slam card flight. */
+  slamGripRef?: { current: SlamGripPlan | null } | null;
   anchors: { trick: Vector3; human: Vector3; heads: Record<string, Vector3> };
 }
 
-function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect, view, animate, standAt, standMega, anchors }: FigureProps) {
+function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect, view, animate, standAt, standMega, slamGripRef, anchors }: FigureProps) {
   const gltf = useLoader(GLTFLoader, url);
   /* Residency (crash hardening): the GLB's decoded textures are
      accounted to the shared figure budget while this seat is mounted
@@ -762,6 +765,10 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
     standRoot: Vector3 | null; ankleL: Vector3; ankleR: Vector3;
   } | null>(null);
   const standLatch = useRef<StandLatch | null>(null);
+  /* The grip plan this figure's latched stand rides (snapshotted from
+     the shared ref at the latch's claim — survives the show props
+     clearing early on a skip). */
+  const slamSnap = useRef<SlamGripPlan | null>(null);
   const standApplied = useRef(false);
   const standCur = useRef(0);
   const solvedFrames = useRef(0);
@@ -1257,6 +1264,21 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
       standCur.current = 0;
       standE = 0;
     }
+    /* Run It hands-with-cards (owner 2026-11-08): while this figure's
+       stand is latched, snapshot the claim's grip plan and read the
+       grip frame on the same wall clock — the hands stay on the run
+       cards through the slam instead of drifting to the sides. The
+       spine rides its own amount (the eagerness coil, figureStand). */
+    if (standLatch.current) {
+      const p = slamGripRef?.current;
+      if (p && p.at === standLatch.current.at) slamSnap.current = p;
+    } else if (slamSnap.current) slamSnap.current = null;
+    const sg = standLatch.current && slamSnap.current
+      ? slamGripFrame(nowMs, standLatch.current, slamSnap.current)
+      : null;
+    const sgC = sg ? new Vector3(...sg.p) : null;
+    const sgQ = sg ? new Quaternion(...sg.q) : null;
+    const spineE = standLatch.current ? standSpineAmount(nowMs, standLatch.current) : 0;
     /* Under reduced life the pose still solves (the fan moves with
        the game), but only until the grips settle; breath/gaze/finger
        phase stay frozen — the King figures' animate contract. */
@@ -1348,7 +1370,7 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
        figure returns to exactly. */
     if (standE > 0 && standA?.standRoot && standA.pelvisStand) {
       for (const nm of ['Spine', 'Spine1', 'Spine2']) {
-        if (b[nm] && prep.bind[nm]) b[nm]!.quaternion.slerp(prep.bind[nm]!, standE);
+        if (b[nm] && prep.bind[nm]) b[nm]!.quaternion.slerp(prep.bind[nm]!, spineE);
       }
       root.updateMatrixWorld(true);
       const aimLive = (boneName: string, childName: string, target: Vector3) => {
@@ -1410,6 +1432,14 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
         );
         targetPos.lerp(group.localToWorld(handG), standE);
       }
+      /* Run It hands-with-cards: while the grip is engaged, the hand
+         target rides the middle slam card instead — lerped from the
+         shipped target (at full stand, the side hang), so as the
+         grip releases after the strike the hands settle home on
+         their own. */
+      if (sg && sgC && sgQ) {
+        targetPos.lerp(fanGripPoint(sgC, sgQ, side, gripBackFor(prep, side)), sg.engage);
+      }
       const S = arm.getWorldPosition(new Vector3());
       const E0 = fore.getWorldPosition(new Vector3());
       const H0 = hand.getWorldPosition(new Vector3());
@@ -1448,7 +1478,12 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
          the hand bone, so the curled fingers ride the rotation
          rigidly; their local drives are untouched. */
       const frame = prep.handFrames[side];
-      if (hasCards && fanQ && frame && standE < 0.35) {
+      /* While the slam grip is firmly engaged, the hand aligns to the
+         slam card's frame instead of the fan's (the same 0.35 step
+         the shipped code uses to drop fan alignment as he rises). */
+      const sgAlign = !!(sg && sgQ && sg.engage > 0.35);
+      if (frame && (sgAlign || (hasCards && fanQ && standE < 0.35))) {
+        const fq = sgAlign ? sgQ! : fanQ!;
         root.updateMatrixWorld(true);
         const hw = hand.getWorldQuaternion(new Quaternion());
         const cur = new Matrix4().makeBasis(
@@ -1456,8 +1491,8 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
           frame.y.clone().applyQuaternion(hw),
           frame.z.clone().applyQuaternion(hw),
         );
-        const yt = new Vector3(0, 0, -1).applyQuaternion(fanQ);
-        const zt = new Vector3(0, 1, 0).applyQuaternion(fanQ);
+        const yt = new Vector3(0, 0, -1).applyQuaternion(fq);
+        const zt = new Vector3(0, 1, 0).applyQuaternion(fq);
         const xt = new Vector3().crossVectors(yt, zt).normalize();
         /* Round 2: pitch the target frame about the fan's right
            (knuckle) axis — the fingers angle TOWARD the fan's
@@ -1484,7 +1519,10 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
       const gripFactor = !hasCards ? 0.45 : active ? 1.0 : 0.8;
       /* Run It stand: the grip loosens to a resting hand as the
          figure rises (the fan is leaving its hands). */
-      const factor = standE > 0 ? gripFactor + (0.45 - gripFactor) * standE : gripFactor;
+      const standFactor = standE > 0 ? gripFactor + (0.45 - gripFactor) * standE : gripFactor;
+      /* Run It hands-with-cards: while the slam grip is engaged the
+         fingers hold the card firmly, loosening as it releases. */
+      const factor = sg ? standFactor + (RUN_SLAM_GRIP_CURL - standFactor) * sg.engage : standFactor;
       const applyHand = (list: FingerJoint[], phase: number, curlF: number) => {
         const f = animate ? Math.min(1.05, Math.max(0, factor * (1 + 0.03 * Math.sin(t * 1.3 + phase)))) : factor;
         for (const j of list) j.bone.quaternion.setFromAxisAngle(j.axis, j.angle * f * (hasCards ? j.gripScale * curlF : 1)).multiply(j.rest);
@@ -1566,9 +1604,11 @@ export interface PorchFiguresProps {
   /** Run It stand: the live show's claim (claimer seat, claim time,
    *  mega), or null when no run is showing. */
   runStand?: RunStandInfo | null;
+  /** Run It hands-with-cards: the shared grip-plan ref (Scene owns it). */
+  slamGripRef?: { current: SlamGripPlan | null } | null;
 }
 
-export default function PorchFigures({ seats, positions, n, handCounts, activeSeat, view, animate, seatConfig, runStand }: PorchFiguresProps) {
+export default function PorchFigures({ seats, positions, n, handCounts, activeSeat, view, animate, seatConfig, runStand, slamGripRef }: PorchFiguresProps) {
   const config = seatConfig ?? FIGURE_SEAT_CONFIGS['porch']!;
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
@@ -1640,6 +1680,7 @@ export default function PorchFigures({ seats, positions, n, handCounts, activeSe
                 animate={animate}
                 standAt={runStand && runStand.seat === seat ? runStand.at : null}
                 standMega={!!runStand?.mega}
+                slamGripRef={slamGripRef}
                 anchors={anchors}
               />
             </Suspense>
