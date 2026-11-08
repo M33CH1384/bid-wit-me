@@ -11,6 +11,7 @@ import {
   subscribeEyeCalibrationRequested, type EyeGazeCalibration,
 } from './eyeZoom';
 import { EyeZoomCalibrate } from './EyeZoomCalibrate';
+import MotionViewButton from './MotionViewButton';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
 import { FIRST_FRAME_FALLBACK_MS, dealGateOpen } from './three/dealFlight';
@@ -3519,6 +3520,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       )}
       {badge && badge.seat !== HUMAN && <SeatBadge badge={badge} />}
       <ViewAdjustChip />
+      <MotionViewButton />
 
       {/* scorebug */}
       <header className="scorebug">

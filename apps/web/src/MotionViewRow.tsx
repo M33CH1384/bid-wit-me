@@ -73,7 +73,7 @@ export function MotionViewRow({ value, onChange, enableFn }: {
       <span>
         Motion view
         <small className="sf-note">
-          {' · lean your phone to tilt the table'}
+          {' · lean your phone to tilt the table, roll it for a gentle sway'}
           {blocked ? ' — off while Reduce effects is on' : note ? ` — ${note}` : ''}
         </small>
       </span>

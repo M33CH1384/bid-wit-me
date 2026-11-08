@@ -20,7 +20,7 @@ import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
 import { ViewGestureTracker, applyViewAdjustToSpec, beginViewAdjustGesture, endViewAdjustGesture, getViewAdjustState, isDefaultViewAdjust, resetViewAdjust, subscribeViewAdjust, updateViewAdjustLive, zoomForWheelDelta, type ViewAdjust } from '../viewAdjust';
-import { MotionViewDriver, getMotionViewEnabled, isExternalViewGestureActive, noteExternalViewGesture, subscribeExternalViewGesture, subscribeMotionViewEnabled, type MotionEventTargetLike } from '../motionView';
+import { MotionViewDriver, applyMotionSwayToSpec, getMotionQuickSuspended, getMotionSwayDeg, getMotionViewEnabled, isExternalViewGestureActive, noteExternalViewGesture, subscribeExternalViewGesture, subscribeMotionQuickSuspend, subscribeMotionSway, subscribeMotionViewEnabled, type MotionEventTargetLike } from '../motionView';
 import { EyeZoomDriver, getEyeCalibrating, getEyeZoomCalibration, getEyeZoomEnabled, setEyeZoomNote, subscribeEyeCalibrating, subscribeEyeZoomCalibration, subscribeEyeZoomEnabled } from '../eyeZoom';
 import { useSettingsSheet } from '../settingsSheet';
 import { social } from '../social/store';
@@ -347,15 +347,23 @@ function CameraRig({ view = 'standing', people = false }: { view?: 'standing' | 
   const vaState = useSyncExternalStore(subscribeViewAdjust, getViewAdjustState);
   const adjRef = useRef(vaState.adj);
   adjRef.current = vaState.adj;
+  // Motion sway (owner, 2026-11-08): the live-only lateral offset rides
+  // on top of the saved tilt/zoom in exactly the same composition seat —
+  // applied AFTER the adjust, in place() and in the Cards fan refit, so
+  // the room pans while the hand keeps its solved layout. It is not part
+  // of the saved adjust and centres the moment motion stops.
+  const sway = useSyncExternalStore(subscribeMotionSway, getMotionSwayDeg, getMotionSwayDeg);
+  const swayRef = useRef(sway);
+  swayRef.current = sway;
   const baseRef = useRef<{ pos: number[]; look: number[] } | null>(null);
   const placeRef = useRef<(pos: readonly number[], look: readonly number[], t: number) => void>(() => undefined);
   placeRef.current = (pos, look, t) => {
     const cam = camera as import('three').PerspectiveCamera;
-    const s = applyViewAdjustToSpec({ pos, look, fov: cam.fov }, adjRef.current);
+    const s = applyMotionSwayToSpec(applyViewAdjustToSpec({ pos, look, fov: cam.fov }, adjRef.current), swayRef.current);
     cam.position.set(s.pos[0]!, s.pos[1]!, s.pos[2]!);
     cam.lookAt(new Vector3(s.look[0]!, s.look[1]!, s.look[2]!));
     sound.setSpatialListener(s.pos, s.look); // the listener follows the ACTUAL camera
-    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom };
+    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom, sway: swayRef.current };
   };
   useLayoutEffect(() => {
     const a = size.width >= 32 && size.height >= 32 ? size.width / size.height : 9 / 16;
@@ -378,16 +386,17 @@ function CameraRig({ view = 'standing', people = false }: { view?: 'standing' | 
     const fromPos = baseRef.current?.pos ?? [cam.position.x, cam.position.y, cam.position.z];
     const fromLook = lookAtRef.current ?? (() => { const d = new Vector3(); cam.getWorldDirection(d); return [cam.position.x + d.x, cam.position.y + d.y, cam.position.z + d.z]; })();
     anim.current = { from: [...fromPos], to: [...spec.pos], fromLook: [...fromLook], toLook: [...spec.look], start: performance.now(), dur: reduced ? 0 : CAMERA_VIEW_TWEEN_MS };
-    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t: 0, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom };
+    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t: 0, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom, sway: swayRef.current };
     invalidate();
   }, [camera, size, short, view, people, invalidate]);
-  // Offset changed (a drag, a reset, a seed): re-place instantly on the
-  // current base pose. A running view tween reads the store live instead.
+  // Offset changed (a drag, a reset, a seed) or the sway moved: re-place
+  // instantly on the current base pose. A running view tween reads the
+  // stores live instead.
   useEffect(() => {
     if (anim.current || !baseRef.current) return;
     placeRef.current(baseRef.current.pos, baseRef.current.look, 1);
     invalidate();
-  }, [vaState.adj, invalidate]);
+  }, [vaState.adj, sway, invalidate]);
   useFrame(() => {
     const a = anim.current; if (!a) return;
     // Wall clock, never raw frame dt (see cameraPoseAt): an idle demand-loop's first dt is huge.
@@ -514,11 +523,18 @@ function MotionViewControls({ covered }: { covered: boolean }) {
     const applySocial = () => d.setSuspended('social', social.get().open);
     applySocial();
     const unsubSocial = social.subscribe(applySocial);
+    // The in-table Motion button (owner, 2026-11-08): its quick suspend
+    // is just another pause reason to the driver — a tap freezes tilt
+    // and sway in place; the next tap resumes and re-baselines.
+    const applyQuick = () => d.setSuspended('quick', getMotionQuickSuspended());
+    applyQuick();
+    const unsubQuick = subscribeMotionQuickSuspend(applyQuick);
     d.setEnabled(getMotionViewEnabled());
     return () => {
       document.removeEventListener('visibilitychange', onVis);
       unsubPrefs();
       unsubSocial();
+      unsubQuick();
       d.dispose();
       driverRef.current = null;
     };
@@ -1126,8 +1142,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // quads stay the stock ones, exactly as with the people framing. At the
   // default offset with no pilot this is byte-identical to before (no refit).
   const vaState = useSyncExternalStore(subscribeViewAdjust, getViewAdjustState);
+  const swayDeg = useSyncExternalStore(subscribeMotionSway, getMotionSwayDeg, getMotionSwayDeg);
   const refitM = useMemo(() => {
-    if (!peopleCam && isDefaultViewAdjust(vaState.adj)) return null;
+    if (!peopleCam && isDefaultViewAdjust(vaState.adj) && swayDeg === 0) return null;
     const stock = cameraFor(aspect, short, view);
     const people = peopleSpec(stock);
     // The people refit, exactly as shipped: M = V * S^-1 against the stock
@@ -1137,17 +1154,18 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const peopleM = peopleCam
       ? camMatrixOf(people.pos, people.look).multiply(camMatrixOf(stock.pos, stock.look).invert())
       : null;
-    if (isDefaultViewAdjust(vaState.adj)) return peopleM;
+    if (isDefaultViewAdjust(vaState.adj) && swayDeg === 0) return peopleM;
     // The player's tilt/zoom composes ON TOP of the base framing (the stock
     // spec, or the people spec at the pilot): its own M = A * B^-1,
     // multiplied onto peopleM where there is one. The product is
     // M(actual) * S^-1 either way, so the fan keeps its solved screen
-    // layout at any offset.
+    // layout at any offset. Motion sway composes after the adjust, in
+    // the same seat, so the fan holds its layout while the room pans.
     const base = peopleCam ? people : stock;
-    const actual = applyViewAdjustToSpec(base, vaState.adj);
+    const actual = applyMotionSwayToSpec(applyViewAdjustToSpec(base, vaState.adj), swayDeg);
     const adjM = camMatrixOf(actual.pos, actual.look).multiply(camMatrixOf(base.pos, base.look).invert());
     return peopleM ? adjM.multiply(peopleM) : adjM;
-  }, [peopleCam, aspect, short, view, vaState.adj]);
+  }, [peopleCam, aspect, short, view, vaState.adj, swayDeg]);
   const refitXf = (x: Xform): Xform => {
     if (!refitM) return x;
     const m = new Matrix4().compose(new Vector3(x.p[0], x.p[1], x.p[2]), new Quaternion(x.q[0], x.q[1], x.q[2], x.q[3]), new Vector3(x.s, x.s, x.s));

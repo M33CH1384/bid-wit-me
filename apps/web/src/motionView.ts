@@ -11,6 +11,18 @@
  *  anchor carries the tilt the view already had, so a resume continues
  *  exactly where the view rests.
  *
+ *  Roll-to-sway (owner, 2026-11-08 — "there should be some slight side
+ *  to side motion to make it realistic as well but not as powerful as
+ *  the tilt"): the phone's ROLL — its top tipping sideways, read in the
+ *  same screen frame as the lean so portrait and both landscapes agree
+ *  — pans the camera's aim sideways by at most ±5°, a third of tilt's
+ *  reach. Sway is a LIVE-ONLY offset: it lives in its own store below,
+ *  never enters ViewAdjust {tilt, zoom}, never opens the readout chip's
+ *  gesture and never persists — when motion stops (a suspend, the
+ *  toggle, a felt touch, unmount) it centres, and the view is exactly
+ *  the player's saved manual tilt/zoom again. The chip keeps reading
+ *  "Tilt N° · Zoom N%": sway is ambience, not a third axis.
+ *
  *  (A push/pull nudge-zoom shipped alongside the lean on 2026-11-07 and
  *  was REMOVED the same day on the owner's verdict — "I like the motion
  *  control as far as tilt. The zoom isn't working but that's fine —
@@ -31,7 +43,7 @@
  */
 import {
   clampViewAdjust, getViewAdjustState, beginViewAdjustGesture, updateViewAdjustLive,
-  endViewAdjustGesture, viewAdjustEquals, type ViewAdjust,
+  endViewAdjustGesture, viewAdjustEquals, type CamSpecLike, type ViewAdjust,
 } from './viewAdjust';
 
 /* ------------------------------------------------------------- constants
@@ -42,6 +54,15 @@ import {
 export const MOTION_LEAN_RANGE_DEG = 20;
 /** Lean inside ±this many degrees of the anchor changes nothing. */
 export const MOTION_LEAN_DEADZONE_DEG = 2;
+/** Roll (degrees from the anchor) that sweeps the FULL ±5° sway — the
+ *  same span as the lean's, so a held phone rolls as far as it leans. */
+export const MOTION_ROLL_RANGE_DEG = 20;
+/** Roll inside ±this many degrees of the anchor changes nothing (a
+ *  touch wider than the lean's — sideways hand tremor is constant). */
+export const MOTION_ROLL_DEADZONE_DEG = 3;
+/** The sway cap: degrees the camera aim pans sideways at full roll.
+ *  Deliberately a third of tilt's ±15° — ambience, not steering. */
+export const MOTION_SWAY_MAX_DEG = 5;
 /** Exponential smoothing time constant for the lean, ms. */
 export const MOTION_SMOOTHING_TAU_MS = 150;
 /** While motion is moving the view, the save channel fires at most this often, ms. */
@@ -54,6 +75,8 @@ export const MOTION_DRIVER_TICK_MS = 100;
 export const MOTION_PROBE_TIMEOUT_MS = 800;
 /** A lean change below this many tilt degrees is not applied (float dust). */
 const MOTION_TILT_EPSILON = 0.01;
+/** A sway change below this many degrees is not written to the store. */
+const MOTION_SWAY_EPSILON = 0.02;
 
 /* ------------------------------------------------------------- lean math */
 
@@ -93,6 +116,66 @@ export function leanDegFromOrientation(betaDeg: number | null, gammaDeg: number 
   const upProj = g.x * Math.sin(t) + g.y * Math.cos(t);
   const lean = (Math.atan2(-g.z, -upProj) * 180) / Math.PI;
   return Math.max(-90, Math.min(90, lean));
+}
+
+/**
+ * The player's ROLL, in degrees: the in-plane angle of gravity in the
+ * SCREEN frame — 0 = the phone held level (its top pointing along
+ * screen-up), positive = the top tipping toward the player's
+ * screen-right. Screen right in device coords is (cosθ, −sinθ, 0) and
+ * screen up is (sinθ, cosθ, 0) for orientation angle θ, so the same
+ * physical tip reads the same in portrait and both landscapes — the
+ * roll axis follows the screen, not the handset. Computed from the
+ * same gravity vector as the lean, sharing its −g·up denominator, so
+ * the two measures are independent reads of one posture. Null when
+ * there are no angles.
+ */
+export function rollDegFromOrientation(betaDeg: number | null, gammaDeg: number | null, screenAngleDeg: number): number | null {
+  const g = gravityFromOrientation(betaDeg, gammaDeg);
+  if (!g) return null;
+  const t = ((screenAngleDeg % 360) * Math.PI) / 180;
+  const rightProj = g.x * Math.cos(t) - g.y * Math.sin(t);
+  const upProj = g.x * Math.sin(t) + g.y * Math.cos(t);
+  const roll = (Math.atan2(rightProj, -upProj) * 180) / Math.PI;
+  return Math.max(-90, Math.min(90, roll));
+}
+
+/**
+ * View sway for a roll delta from the anchor: nothing inside the
+ * deadzone; beyond it, the remaining roll (range − deadzone) sweeps
+ * the full ±MOTION_SWAY_MAX_DEG, clamped at the cap. Symmetric.
+ */
+export function swayForRollDelta(deltaDeg: number): number {
+  if (!Number.isFinite(deltaDeg)) return 0;
+  const a = Math.abs(deltaDeg);
+  if (a <= MOTION_ROLL_DEADZONE_DEG) return 0;
+  const eff = Math.min(a - MOTION_ROLL_DEADZONE_DEG, MOTION_ROLL_RANGE_DEG - MOTION_ROLL_DEADZONE_DEG);
+  return (Math.sign(deltaDeg) * eff * MOTION_SWAY_MAX_DEG) / (MOTION_ROLL_RANGE_DEG - MOTION_ROLL_DEADZONE_DEG);
+}
+
+/**
+ * Compose the sway onto a camera spec: the AIM rotates around the
+ * camera position about the world Y axis — a level pan, so the aim's
+ * height and the pos→look distance survive, and the position never
+ * moves (a pan of the gaze, never a dolly or a room rotation; the
+ * seat-based partner-vantage yaw is a different system entirely).
+ * Positive sway pans the aim toward the camera's OWN screen-right.
+ * Scene composes this AFTER applyViewAdjustToSpec in the rig and in
+ * the fan refit, exactly where tilt is composed, so the hand keeps
+ * its solved layout while the room sways beneath it.
+ */
+export function applyMotionSwayToSpec<T extends CamSpecLike>(spec: T, swayDeg: number): T {
+  if (!Number.isFinite(swayDeg) || swayDeg === 0) return spec;
+  const r = (swayDeg * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  const dx = spec.look[0]! - spec.pos[0]!;
+  const dz = spec.look[2]! - spec.pos[2]!;
+  return {
+    ...spec,
+    pos: [...spec.pos],
+    look: [spec.pos[0]! + dx * cos - dz * sin, spec.look[1]!, spec.pos[2]! + dx * sin + dz * cos],
+  };
 }
 
 /**
@@ -138,7 +221,54 @@ export function seedMotionViewEnabled(on: boolean): void {
   const v = on === true;
   if (v === motionEnabled) return;
   motionEnabled = v;
+  // The master switch turning off also clears the in-table quick
+  // suspend: re-enabling later starts DRIVING, never stuck suspended
+  // with its button just reappearing.
+  if (!v) setMotionQuickSuspended(false);
   for (const fn of [...motionEnabledListeners]) fn();
+}
+
+/* ------------------------------------------------------------ sway store
+ * The live sway offset (degrees of aim pan), written ONLY by the
+ * driver and read by Scene's camera rig + fan refit. It is deliberately
+ * NOT part of ViewAdjust: no gesture channel opens for it, nothing
+ * commits, nothing persists — centring it returns the view to exactly
+ * the saved manual tilt/zoom. */
+
+let motionSwayDeg = 0;
+const motionSwayListeners = new Set<() => void>();
+export function getMotionSwayDeg(): number { return motionSwayDeg; }
+export function subscribeMotionSway(fn: () => void): () => void {
+  motionSwayListeners.add(fn);
+  return () => { motionSwayListeners.delete(fn); };
+}
+export function setMotionSwayDeg(v: number): void {
+  const next = Number.isFinite(v) ? v : 0;
+  if (next === motionSwayDeg) return;
+  motionSwayDeg = next;
+  for (const fn of [...motionSwayListeners]) fn();
+}
+
+/* -------------------------------------------------- quick-suspend store
+ * The in-table Motion button's state (owner, 2026-11-08): while the
+ * option is on, the button flips this IN-MEMORY flag; Scene feeds it to
+ * the driver as the 'quick' suspend reason, so a tap freezes tilt and
+ * sway in place and the next tap resumes with a fresh re-baseline. The
+ * saved setting is never rewritten by the button — turning the option
+ * off in Settings clears this (above), and it starts unset on load. */
+
+let motionQuickSuspended = false;
+const motionQuickListeners = new Set<() => void>();
+export function getMotionQuickSuspended(): boolean { return motionQuickSuspended; }
+export function subscribeMotionQuickSuspend(fn: () => void): () => void {
+  motionQuickListeners.add(fn);
+  return () => { motionQuickListeners.delete(fn); };
+}
+export function setMotionQuickSuspended(on: boolean): void {
+  const v = on === true;
+  if (v === motionQuickSuspended) return;
+  motionQuickSuspended = v;
+  for (const fn of [...motionQuickListeners]) fn();
 }
 
 /** "A finger (or the wheel) is driving the view right now" — fed by
@@ -162,6 +292,8 @@ export function subscribeExternalViewGesture(fn: () => void): () => void {
 export function __resetMotionViewStore(): void {
   if (motionEnabled) { motionEnabled = false; for (const fn of [...motionEnabledListeners]) fn(); }
   if (touchGestureActive) { touchGestureActive = false; for (const fn of [...touchListeners]) fn(); }
+  setMotionSwayDeg(0);
+  setMotionQuickSuspended(false);
 }
 
 /* ---------------------------------------------------- permission/probe */
@@ -273,7 +405,10 @@ const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Numbe
  * through the one save channel — once the view settles. While a long
  * movement continues, the housekeeping tick commits at most every
  * MOTION_PERSIST_INTERVAL_MS (re-opening the gesture instantly), so a
- * sensor stream can never write settings per tick.
+ * sensor stream can never write settings per tick. The ROLL channel
+ * rides the same samples, anchor and smoothing family, but writes only
+ * the live sway store — no gesture, no commit, no persistence — and
+ * centres the moment the driver stops running.
  */
 export class MotionViewDriver {
   private target: MotionEventTargetLike;
@@ -286,9 +421,11 @@ export class MotionViewDriver {
   private wasRunning = false;
 
   private smoother = new LeanSmoother();
+  private swaySmoother = new LeanSmoother();
   private anchored = false;
   private pendingAnchor = false;
   private anchorLean = 0;
+  private anchorRoll = 0;
   private anchorTilt = 0;
   private lastSampleAt: number | null = null;
 
@@ -337,6 +474,7 @@ export class MotionViewDriver {
     this.disposed = true;
     if (this.gestureOpen) this.closeGesture();
     this.detach();
+    setMotionSwayDeg(0); // the live offset dies with the driver
     this.unsubTouch?.();
     this.unsubTouch = null;
   }
@@ -349,6 +487,10 @@ export class MotionViewDriver {
     this.wasRunning = r;
     if (!r) {
       if (this.gestureOpen) this.closeGesture();
+      // Motion stopped: the sway offset is released at once and the
+      // view rests at exactly the saved manual tilt/zoom again.
+      setMotionSwayDeg(0);
+      this.swaySmoother.reset();
     } else {
       this.pendingAnchor = true;
     }
@@ -374,27 +516,40 @@ export class MotionViewDriver {
     // The lean frame rotated with the screen: commit where we are and
     // re-anchor on the next sample rather than swing the view.
     if (this.gestureOpen) this.closeGesture();
+    setMotionSwayDeg(0);
     this.pendingAnchor = true;
   };
 
   private onOrientation = (e: unknown): void => {
     const ev = e as { beta?: unknown; gamma?: unknown } | null | undefined;
-    const lean = leanDegFromOrientation(numOrNull(ev?.beta), numOrNull(ev?.gamma), this.angleFn());
-    if (lean === null) return;
+    const angle = this.angleFn();
+    const lean = leanDegFromOrientation(numOrNull(ev?.beta), numOrNull(ev?.gamma), angle);
+    const roll = rollDegFromOrientation(numOrNull(ev?.beta), numOrNull(ev?.gamma), angle);
+    if (lean === null || roll === null) return;
     const now = this.nowFn();
     const dt = this.lastSampleAt === null ? 0 : Math.min(250, Math.max(0, now - this.lastSampleAt));
     this.lastSampleAt = now;
     if (!this.running()) return;
     if (this.pendingAnchor || !this.anchored) {
-      // Calibration: this posture is neutral, and the view's current
-      // tilt is the base the lean adds to — the view does not move.
+      // Calibration: this posture is neutral — BOTH axes anchor on the
+      // same sample, one shared calibration moment — and the view's
+      // current tilt is the base the lean adds to. The view does not
+      // move, and any sway from before the pause is centred.
       this.smoother.reset(lean);
+      this.swaySmoother.reset(roll);
       this.anchorLean = lean;
+      this.anchorRoll = roll;
       this.anchorTilt = getViewAdjustState().adj.tilt;
+      setMotionSwayDeg(0);
       this.anchored = true;
       this.pendingAnchor = false;
       return;
     }
+    // Sway first: it writes its own live store and must land even when
+    // the tilt below is inside its epsilon and returns early.
+    const smoothedRoll = this.swaySmoother.push(roll, dt);
+    const sway = swayForRollDelta(smoothedRoll - this.anchorRoll);
+    if (Math.abs(sway - getMotionSwayDeg()) > MOTION_SWAY_EPSILON) setMotionSwayDeg(sway);
     const smoothed = this.smoother.push(lean, dt);
     const cur = getViewAdjustState().adj;
     const tilt = clampViewAdjust({

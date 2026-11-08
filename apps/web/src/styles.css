@@ -2506,6 +2506,33 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .view-adjust-chip .va-label { font: 800 14px/1.1 var(--display); letter-spacing: .08em; color: var(--gold); white-space: nowrap; }
 .view-adjust-chip .va-hint { font-size: 11.5px; font-weight: 600; color: var(--ink); opacity: .85; white-space: nowrap; }
 
+/* Motion view's in-table quick toggle (owner, 2026-11-08): a small
+   pill in the lower screen, present only while the option is on. It
+   borrows the readout chip's glass so the pair read as one family.
+   Placement, surveyed by DOM rects in the lane rig at 390×844 (the
+   first guess — the bottom-left corner — sits ON the own plate: in
+   portrait the plate cluster owns the bottom-LEFT, x 8–223 /
+   y 777–836; LAST TRICK owns the bottom-right, the chat/control rail
+   the right edge from y 386): the pill rides at the LEFT of the
+   readout chip's own band (bottom: 100px), immediately left of where
+   the centred chip appears, 3px clear of the YOUR TURN tab's top and
+   clear of the plate; like the chip, it overlaps only the fan's
+   lower-left corner band — the card indices live at the fan's tops.
+   The hit area is a real 44px even though the pill reads small. In
+   short landscape the own plate is fixed at bottom-left too
+   (x 8–217 / y 360–420 at 932×430) with the fan starting at x 173,
+   so there the pill stacks directly above the plate at the left
+   edge, clear of the plate and of its YOUR TURN tab. */
+.motion-view-btn { position: absolute; left: calc(10px + env(safe-area-inset-left)); bottom: calc(100px + env(safe-area-inset-bottom)); z-index: 31;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 44px; min-height: 44px; padding: 8px 14px;
+  border: 0; border-radius: 999px; background: rgba(10, 6, 18, .82); color: var(--gold);
+  box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .45), 0 12px 28px rgba(0,0,0,.5);
+  font: 800 12.5px/1 var(--display); letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.motion-view-btn svg { flex: none; }
+.motion-view-btn.is-suspended { color: var(--ink); opacity: .75; box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .25), 0 12px 28px rgba(0,0,0,.5); }
+.motion-view-btn:active { transform: scale(.96); }
+
 /* Versus intro in LANDSCAPE (owner, 2026-10-28: "it needs to be much wider
    on landscape so that none of the words are hidden — I shouldn't have to
    scroll on this page"). Inside the D5 height band the versus card stops
@@ -2519,6 +2546,11 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   /* the readout hugs the bottom edge under the closed fan (see the
      .view-adjust-chip note above) */
   .view-adjust-chip { bottom: calc(6px + env(safe-area-inset-bottom)); }
+  /* the motion quick toggle: the own plate is fixed at bottom-left
+     in landscape too, so the pill stacks directly above it — the
+     plate's border box tops at y 360 at 932×430 but its YOUR TURN
+     tab pokes ~13px higher, so 92px of lift clears the tab too */
+  .motion-view-btn { left: calc(8px + env(safe-area-inset-left)); bottom: calc(92px + env(safe-area-inset-bottom)); }
   .bwm-loading-card:has(.versus) { width: min(100%, 920px); gap: 5px; }
   .bwm-loading-card:has(.versus) .bwm-loading-mark { width: min(36%, 148px); }
   .versus-shake { display: grid; grid-template-columns: minmax(272px, 330px) minmax(0, 1fr); grid-template-areas: "stage tape" "stage cards" "skip skip"; column-gap: 22px; row-gap: 8px; align-items: start; }
