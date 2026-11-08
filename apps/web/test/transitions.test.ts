@@ -272,7 +272,17 @@ describe('the Card Fan (stage 2)', () => {
     expect(main).toContain('const move = routeMoveClass(cur, next);');
     expect(main).toContain("}, move ?? 'menu-nav');");
     const store = read('social/store.ts');
-    expect(store.split("coverThen(apply, 'profile-social')")).toHaveLength(8); // all seven swaps (BWM Central added openMatch + openCompare, same fan pattern)
+    // crash-social4: the seven swaps (BWM Central's openMatch +
+    // openCompare included) funnel through panelSwap — ONE fan call
+    // site, gated by the iOS skip (entryPeak.socialFanSkipped: on iOS
+    // the fan's own peak is what kills the renderer at this swap, so
+    // the move applies instantly there). Everywhere the fan runs, a
+    // swap still rides the full covered coverThen sequence through
+    // the funnel — proven in the entry rig (desktop-UA open produced
+    // fan cover → reveal → idle, panel + body landed).
+    expect(store.split("coverThen(apply, 'profile-social')")).toHaveLength(2); // the funnel's single fan call
+    expect(store.split('panelSwap(apply)')).toHaveLength(8); // all seven swaps route through panelSwap
+    expect(store).toContain('if (socialFanSkipped(currentSocialEntryDevice())) apply();');
   });
 
   it('construction: nine abstract card backs, compositor-only, the game spade as the mark', () => {
