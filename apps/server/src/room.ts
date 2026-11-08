@@ -338,6 +338,15 @@ export const TOURNAMENT_EMPTY_GRACE_MS = 90_000;
 /** seated host dropped without leaving: pass host after this long so the table can still start or rematch */
 export const HOST_DISCONNECT_GRACE_MS = 30_000;
 export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
+/**
+ * Online trick-pacing trim (owner, 2026-11-08: "Trim plain tricks only — nukes
+ * keep their full pause"). leadIn takes this off the PLAIN trick pause only;
+ * the nuked composition keeps the untrimmed trickPauseMs base under its
+ * NUKE_ALLOWANCE_MS, byte-identical to before. Mirrors the offline trim's
+ * shape (the client's plain branch carries TRICK_PACING_TRIM_MS while its
+ * nuke branch reads the untrimmed base).
+ */
+export const ONLINE_TRICK_PACING_TRIM_MS = 350;
 /** A loader that never reports ready must not freeze the table. Matches the client's give-up. */
 export const LOADER_HOLD_MAX_MS = 45_000;
 /**
@@ -2641,7 +2650,9 @@ export class Room {
       // a nuked trick (Big Joker over Little Joker) gets the table's fixed nuke allowance on top
       const last = g.tricks[g.tricks.length - 1]!.plays;
       const nuked = isNukeTrick(last); // either Joker order
-      return this.timing.trickPauseMs + (nuked ? NUKE_ALLOWANCE_MS[this.data.nukeIntensity ?? 'full'] : 0);
+      if (nuked) return this.timing.trickPauseMs + NUKE_ALLOWANCE_MS[this.data.nukeIntensity ?? 'full'];
+      // plain trick: the owner's pacing trim (2026-11-08) — the nuked branch above keeps the untrimmed base
+      return Math.max(0, this.timing.trickPauseMs - ONLINE_TRICK_PACING_TRIM_MS);
     }
     return 0;
   }
