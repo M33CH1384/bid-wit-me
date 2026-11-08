@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   EYE_CAL_MIN_SAMPLES, EYE_CAL_STEP_MS, computeCalibration, setEyeCalibrating,
   type EyeGazeCalibration, type EyeGazeSessionLike,
@@ -11,7 +11,11 @@ import { importChunk } from './chunkLoad';
  * screen is showing). "Look at your cards" samples the player's downward gaze
  * for a second; "Look at the table" samples the level gaze; the pair
  * becomes the player's personal zone threshold, saved in settings on this
- * device only. While it runs it owns the camera — the gaze driver rests
+ * device only. The screen itself draws a simulated table (owner,
+ * 2026-11-08) — felt mid-screen, fan low and centred, the step's target
+ * lit — so each look lands where the real thing sits in a game, even when
+ * calibrating from Settings where no table exists.
+ * While it runs it owns the camera — the gaze driver rests
  * (the calibrating flag), and the stream closes the moment it finishes
  * or is cancelled.
  *
@@ -23,6 +27,15 @@ type Phase = 'cards' | 'table' | 'done' | 'error';
 type ErrorKind = 'samples' | 'degenerate' | 'camera';
 
 const TICK_MS = 100;
+
+/** The simulated fan's arc (owner, 2026-11-08): seven cards rolled to the
+ *  real hand's roll cap (0.2 rad ≈ 11.5°, three/layout.ts PHONE_HAND_ROLL),
+ *  the outer cards riding a touch lower, like a held fan. */
+const FAN_CARDS: readonly { tilt: number; lift: number }[] = [
+  { tilt: -11, lift: 10 }, { tilt: -7.5, lift: 4.5 }, { tilt: -3.5, lift: 1 },
+  { tilt: 0, lift: 0 },
+  { tilt: 3.5, lift: 1 }, { tilt: 7.5, lift: 4.5 }, { tilt: 11, lift: 10 },
+];
 
 async function defaultSessionFactory(): Promise<EyeGazeSessionLike> {
   const m = await importChunk(() => import('./eyeGazeSession'));
@@ -147,8 +160,31 @@ export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory, doneLa
     onClose();
   };
 
+  const sampling = phase === 'cards' || phase === 'table';
+
   return (
-    <div className="modal-backdrop eye-cal-backdrop" data-testid="eye-zoom-calibrate" role="dialog" aria-label="Eye zoom setup">
+    <div className={`modal-backdrop eye-cal-backdrop${sampling ? ' eye-cal-live' : ''}`} data-testid="eye-zoom-calibrate" role="dialog" aria-label="Eye zoom setup">
+      {sampling && (
+        /* The simulated table (owner, 2026-11-08): something real for each
+           look to land on — a felt mid-screen and the player's fan low and
+           centred, in the proportions of the real table view — with the
+           current step's target lit and the other at rest. Decorative: the
+           prompts above remain the instructions. */
+        <div className="eye-cal-sim" data-testid="eye-cal-sim" data-step={phase} aria-hidden="true">
+          <div className={`eye-cal-sim-table${phase === 'table' ? ' lit' : ''}`} data-testid="eye-cal-sim-table">
+            <i className="eye-cal-sim-centre" />
+          </div>
+          <div className={`eye-cal-sim-fan${phase === 'cards' ? ' lit' : ''}`} data-testid="eye-cal-sim-fan">
+            {FAN_CARDS.map((c) => (
+              <i
+                key={c.tilt}
+                className="eye-cal-sim-card"
+                style={{ '--tilt': `${c.tilt}deg`, '--lift': `${c.lift}px` } as CSSProperties}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       <div className="modal glass slant eye-cal-card">
         {phase === 'done' ? (
           <>

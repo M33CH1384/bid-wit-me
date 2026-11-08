@@ -16,6 +16,7 @@
  *  - OFF means no session, no stream, no library — byte-identical to today;
  *  - every feel constant is named in eyeZoom.ts for one-line retunes.
  */
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
@@ -36,6 +37,8 @@ import { DEFAULT_SETTINGS, normalizeSettings } from '../src/settings';
 import { fx } from '../src/fx';
 import EyeZoomRow from '../src/EyeZoomRow';
 import EyeZoomCalibrate from '../src/EyeZoomCalibrate';
+
+const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 vi.setConfig({ testTimeout: 20000 });
@@ -738,5 +741,51 @@ describe('EyeZoomCalibrate (two looks over the table)', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onCalibrated).not.toHaveBeenCalled();
     expect(session.active).toBe(false);
+  });
+
+  it('shows a simulated table and fan, with the fan lit on the cards step', async () => {
+    const c = await renderCal({});
+    const sim = c.querySelector('[data-testid="eye-cal-sim"]');
+    expect(sim).not.toBeNull();
+    expect(sim!.getAttribute('data-step')).toBe('cards');
+    // Both targets are on screen from the first step: the felt mid-screen
+    // and a fanned hand low and centred — the player looks at real shapes,
+    // not at empty space where the prompt hopes their cards would be.
+    expect(c.querySelector('[data-testid="eye-cal-sim-table"]')).not.toBeNull();
+    const fan = c.querySelector('[data-testid="eye-cal-sim-fan"]');
+    expect(fan).not.toBeNull();
+    expect(fan!.querySelectorAll('.eye-cal-sim-card').length).toBeGreaterThanOrEqual(5);
+    expect(fan!.classList.contains('lit')).toBe(true);
+    expect(c.querySelector('[data-testid="eye-cal-sim-table"]')!.classList.contains('lit')).toBe(false);
+  });
+
+  it('moves the light to the table on the second step, and the sim leaves with the done card', async () => {
+    const onCalibrated = vi.fn();
+    const c = await renderCal({ onCalibrated });
+    await runStep(0.8);
+    const sim = c.querySelector('[data-testid="eye-cal-sim"]');
+    expect(sim).not.toBeNull();
+    expect(sim!.getAttribute('data-step')).toBe('table');
+    expect(c.querySelector('[data-testid="eye-cal-sim-table"]')!.classList.contains('lit')).toBe(true);
+    expect(c.querySelector('[data-testid="eye-cal-sim-fan"]')!.classList.contains('lit')).toBe(false);
+    await runStep(0.4);
+    expect(onCalibrated).toHaveBeenCalledWith({ cards: 0.8, table: 0.4 });
+    expect(c.querySelector('[data-testid="eye-cal-done"]')).not.toBeNull();
+    expect(c.querySelector('[data-testid="eye-cal-sim"]')).toBeNull();
+  });
+
+  it('an unreadable step swaps the sim for the error card', async () => {
+    const c = await renderCal({});
+    expect(c.querySelector('[data-testid="eye-cal-sim"]')).not.toBeNull();
+    await runStep(null); // face never readable
+    expect(c.querySelector('[data-testid="eye-cal-retry"]')).not.toBeNull();
+    expect(c.querySelector('[data-testid="eye-cal-sim"]')).toBeNull();
+  });
+
+  it('the sim styles ship in styles.css (both targets, lit + rest states)', () => {
+    const css = read('../src/styles.css');
+    for (const sel of ['.eye-cal-sim', '.eye-cal-sim-table', '.eye-cal-sim-fan', '.eye-cal-sim-card', '.eye-cal-sim-table.lit', '.eye-cal-sim-fan.lit']) {
+      expect(css).toContain(sel);
+    }
   });
 });

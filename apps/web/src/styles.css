@@ -409,6 +409,33 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .eye-cal-bar i { display: block; height: 100%; background: var(--gold); border-radius: 4px; transition: width .1s linear; }
 .eye-cal-card .link { align-self: center; }
 .eye-zoom-cal-btn { display: block; padding: 4px 0 0; font-size: 13px; }
+/* The simulated table inside the calibration (owner, 2026-11-08): a drawn
+   felt + the player's own fan in the proportions of the real table view
+   (three/layout.ts: the felt centre projects to the upper-middle of the
+   screen; the own fan's bottom edge rides ~5% of the height above the
+   screen's bottom, cards rolled to the 0.2 rad hand cap). Pure CSS shapes —
+   no scene, no images — so it renders identically in Settings, the lobby,
+   and over a real table, in both themes. The prompt card rides the top while
+   sampling so it never covers the table centre. */
+.eye-cal-backdrop.eye-cal-live .eye-cal-card { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(580px, calc(100vw - 32px)); }
+.eye-cal-sim { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.eye-cal-sim-table { position: absolute; left: 50%; top: 42%; width: min(88vw, 600px); aspect-ratio: 2.05; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(ellipse at 50% 40%, #27694a 0%, #17452f 58%, #0d2f1f 100%); box-shadow: inset 0 0 0 6px rgba(122, 82, 40, .85), inset 0 0 0 9px rgba(var(--gold-rgb), .28), inset 0 -18px 34px rgba(0, 0, 0, .45), 0 24px 48px rgba(0, 0, 0, .4); opacity: .55; filter: saturate(.65); transition: opacity .3s ease, filter .3s ease, box-shadow .3s ease; }
+.eye-cal-sim-centre { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid transparent; }
+.eye-cal-sim-table.lit { opacity: 1; filter: none; box-shadow: inset 0 0 0 6px rgba(122, 82, 40, .85), inset 0 0 0 9px rgba(var(--gold-rgb), .45), inset 0 -18px 34px rgba(0, 0, 0, .45), 0 24px 48px rgba(0, 0, 0, .4), 0 0 44px rgba(var(--gold-rgb), .22); }
+.eye-cal-sim-table.lit .eye-cal-sim-centre { border-color: rgba(var(--gold-rgb), .85); box-shadow: 0 0 18px rgba(var(--gold-rgb), .5), inset 0 0 12px rgba(var(--gold-rgb), .35); }
+.eye-cal-sim-fan { --sim-card-w: clamp(42px, 14.5vmin, 62px); position: absolute; left: 50%; bottom: 4.5%; transform: translateX(-50%); display: flex; justify-content: center; opacity: .55; filter: saturate(.65); transition: opacity .3s ease, filter .3s ease; }
+.eye-cal-sim-card { display: block; width: var(--sim-card-w); aspect-ratio: .72; margin-inline: calc(var(--sim-card-w) * -.18); border: 1px solid rgba(20, 12, 40, .35); border-radius: 7px; background: linear-gradient(160deg, #fdfbf5, #e9e2d2); box-shadow: 0 6px 14px rgba(0, 0, 0, .35); transform: rotate(var(--tilt)) translateY(var(--lift)); transform-origin: 50% 140%; position: relative; transition: border-color .3s ease, box-shadow .3s ease; }
+.eye-cal-sim-card::after { content: '♠'; position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--sim-card-w) * .42); color: rgba(24, 16, 48, .5); }
+.eye-cal-sim-fan.lit { opacity: 1; filter: none; }
+.eye-cal-sim-fan.lit .eye-cal-sim-card { border-color: rgba(var(--gold-rgb), .9); box-shadow: 0 0 16px rgba(var(--gold-rgb), .55), 0 8px 16px rgba(0, 0, 0, .35); }
+@media (prefers-reduced-motion: no-preference) {
+  .eye-cal-sim-table.lit .eye-cal-sim-centre { animation: eye-cal-pulse 1.1s ease-in-out infinite; }
+}
+@keyframes eye-cal-pulse { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.18); } }
+@media (orientation: landscape) and (max-height: 500px) {
+  .eye-cal-sim-table { top: 55%; width: min(56vw, 620px); }
+  .eye-cal-sim-fan { bottom: 3%; --sim-card-w: clamp(38px, 15vh, 56px); }
+}
 .scroll { overflow: auto; }
 .summary-table, .pad { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 .summary-table th, .pad th { color: var(--purple-hot); font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; padding: 4px; text-align: center; }
