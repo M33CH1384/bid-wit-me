@@ -541,6 +541,11 @@ const XFADE = 4; // seconds of crossfade between tracks
 /** Dropout watchdog cadence: how often the engine verifies its stems are
  *  actually sounding (see watchdogTick). */
 const WATCHDOG_MS = 2000;
+/** How long a recorded bed gets to land its async start before the
+ *  watchdog calls it dead, and the minimum gap between bed heals —
+ *  a 64 s loop's fetch + decode on a pressured phone is slow, but it
+ *  is not twenty seconds slow (2026-11-08). */
+const BED_HEAL_GRACE_MS = 20_000;
 /** Splash sting: how long the splash entry point may wait for the sting's
  *  buffer to finish decoding before failing closed. The SFX load only
  *  starts inside the unlocking gesture's ensure(), so the wait is the
@@ -1992,10 +1997,11 @@ class Engine {
   /** Re-run every stem's sync (lounge pad, venue bed, music). All three are idempotent:
    *  a stem that is already sounding early-returns, a torn-down one rebuilds. */
   private resyncAll() {
-    this.syncAmbient();
-    this.syncVenue();
-    this.syncMusic();
-    this.syncMenuFire();
+    // Stems isolated (2026-11-08): one throw cannot starve the rest.
+    try { this.syncAmbient(); } catch { /* stem down */ }
+    try { this.syncVenue(); } catch { /* stem down */ }
+    try { this.syncMusic(); } catch { /* stem down */ }
+    try { this.syncMenuFire(); } catch { /* stem down */ }
   }
 
   /**
@@ -2353,6 +2359,16 @@ class Engine {
     // Beds: a bed that claims to be playing must own live nodes.
     if (this.venuePlaying !== 'none' && this.venueNodes.length === 0) {
       this.stopBeds(); this.syncVenue(); this.syncAmbient();
+    } else if (this.venuePlaying !== 'none' && RECORDED_AMBIENCE[this.venuePlaying] && this.bedLoopsAlive === 0
+      && now - this.bedBuiltAt > BED_HEAL_GRACE_MS && now - this.bedHealedAt > BED_HEAL_GRACE_MS) {
+      // A recorded bed whose one-shot start failed (its fetch/decode
+      // died at table entry) leaves only its silent through-gain in
+      // venueNodes — the count above never sees the death, and
+      // syncVenue's identity gate never rebuilds (2026-11-08, the
+      // owner's fourth report of this family). The loop witness is
+      // the ground truth; past the load window, rebuild the bed.
+      this.bedHealedAt = now;
+      this.stopBeds(); this.syncVenue(); this.syncAmbient();
     } else if (this.ambTimer !== null && this.ambNodes.length === 0) {
       this.stopBeds(); this.syncAmbient(); this.syncVenue();
     }
@@ -2451,6 +2467,7 @@ class Engine {
     this.venueTimers = [];
     const nodes = this.venueNodes; this.venueNodes = [];
     nodes.forEach((n) => { try { n.stop(); } catch { /* dead context */ } });
+    this.bedLoopsAlive = 0; // the loop wrappers above already decremented; this is the belt to their braces
     this.venuePlaying = 'none';
   }
 
@@ -2640,7 +2657,14 @@ class Engine {
   /* ---------- table gate: game sound only while a game is on screen ---------- */
   /** True while the table screen is mounted. Off it, only the settings previews (tap, bid) can sound. */
   atTable = false;
-  enterTable() { this.atTable = true; }
+  enterTable() {
+    this.atTable = true;
+    // A film hold belongs to its surface (2026-11-08): if the rundown
+    // unmounted without releasing (a missed onPause/onEnded), the hold
+    // must not follow the player into the table — the master would sit
+    // at 0 and the watchdog reads that as intended silence.
+    if (this.videoHold) { this.videoHold = false; this.applyGain(); }
+  }
   /** Leaving the table: refuse game sound, and cut everything already scheduled (delayed deal ticks, stingers, voice, wind). */
   leaveTable() {
     this.atTable = false;
@@ -3951,6 +3975,16 @@ class Engine {
   private venueBedId: VenueBed = 'none';
   private venuePlaying: VenueBed = 'none';
   private venueNodes: { stop: () => void }[] = [];
+  /** Recorded-bed loops actually started on the live context — the
+   *  ground-truth witness for the watchdog's bed check (2026-11-08):
+   *  a recorded starter whose load failed leaves venuePlaying set and
+   *  a silent through-gain in venueNodes, which reads as "playing" to
+   *  every flag check while the room is dead. */
+  private bedLoopsAlive = 0;
+  /** performance.now() of the latest buildBed (the heal's load window). */
+  private bedBuiltAt = 0;
+  /** performance.now() of the last watchdog bed heal (its throttle). */
+  private bedHealedAt = 0;
   private venueTimers: number[] = [];
   /** which bed is running (exposed for checks) */
   get venueBedNow(): VenueBed { return this.venuePlaying; }
@@ -4352,7 +4386,8 @@ class Engine {
       src.loop = true;
       src.connect(this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...PJS_EVENT_URLS.voice, ...PJS_EVENT_URLS.car]) void this.loadAmbience(url, url);
     this.scheduleStreetEvents();
@@ -4445,7 +4480,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...SPK_EVENT_URLS.glass, ...SPK_EVENT_URLS.laugh, ...SPK_EVENT_URLS.door]) void this.loadAmbience(url, url);
     this.scheduleSpeakeasyEvents();
@@ -4508,7 +4544,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...BRB_EVENT_URLS.trimmer, ...BRB_EVENT_URLS.clippersOff, ...BRB_EVENT_URLS.scissors, ...BRB_EVENT_URLS.laugh, ...BRB_EVENT_URLS.doorBell, ...BRB_EVENT_URLS.broom, ...BRB_EVENT_URLS.register]) void this.loadAmbience(url, url);
     this.scheduleBarbershopEvents();
@@ -4576,7 +4613,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...GMA_EVENT_URLS.dishes, ...GMA_EVENT_URLS.screenDoor, ...GMA_EVENT_URLS.rockingChair, ...GMA_EVENT_URLS.potLid, ...GMA_EVENT_URLS.chairScrape]) void this.loadAmbience(url, url);
     this.scheduleGrandmasEvents();
@@ -4642,7 +4680,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...CTT_EVENT_URLS.ice, ...CTT_EVENT_URLS.screenDoor, ...CTT_EVENT_URLS.kids, ...CTT_EVENT_URLS.grillFlare]) void this.loadAmbience(url, url);
     this.scheduleCookoutEvents();
@@ -4707,7 +4746,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...CHU_EVENT_URLS.percolator, ...CHU_EVENT_URLS.door, ...CHU_EVENT_URLS.cupPour, ...CHU_EVENT_URLS.chairScrape, ...CHU_EVENT_URLS.foldChair, ...CHU_EVENT_URLS.spoonCup]) void this.loadAmbience(url, url);
     this.scheduleChurchEvents();
@@ -4778,7 +4818,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...ROO_EVENT_URLS.gustFront, ...ROO_EVENT_URLS.roofDoor, ...ROO_EVENT_URLS.footsteps, ...ROO_EVENT_URLS.looseMetal]) void this.loadAmbience(url, url);
     this.scheduleRooftopEvents();
@@ -4846,7 +4887,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...YACHT_EVENT_URLS.waveSwell, ...YACHT_EVENT_URLS.hullCreak, ...YACHT_EVENT_URLS.flagSnap, ...YACHT_EVENT_URLS.gullCalls, ...YACHT_EVENT_URLS.farHorn]) void this.loadAmbience(url, url);
     this.scheduleYachtEvents();
@@ -4916,7 +4958,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...BEACH_EVENT_URLS.waveSet, ...BEACH_EVENT_URLS.gullCalls, ...BEACH_EVENT_URLS.clothFlap, ...BEACH_EVENT_URLS.torchFlare]) void this.loadAmbience(url, url);
     this.scheduleBeachEvents();
@@ -4986,7 +5029,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...MAN_EVENT_URLS.iceInGlass, ...MAN_EVENT_URLS.glassClink, ...MAN_EVENT_URLS.pour, ...MAN_EVENT_URLS.elevatorDoors, ...MAN_EVENT_URLS.footsteps]) void this.loadAmbience(url, url);
     this.scheduleMansionEvents();
@@ -5057,7 +5101,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...VEG_EVENT_URLS.chipStack, ...VEG_EVENT_URLS.cardShuffle, ...VEG_EVENT_URLS.iceInGlass, ...VEG_EVENT_URLS.slotPayout]) void this.loadAmbience(url, url);
     this.scheduleVegasEvents();
@@ -5127,7 +5172,8 @@ class Engine {
       src.loop = true;
       src.connect(through ?? this.venueBus);
       src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.bedLoopsAlive++;
+      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
     });
     for (const url of [...CLS_EVENT_URLS.cardShuffle, ...CLS_EVENT_URLS.cardDeal, ...CLS_EVENT_URLS.glassSetDown, ...CLS_EVENT_URLS.chairShift]) void this.loadAmbience(url, url);
     this.scheduleClassicEvents();
@@ -5179,6 +5225,7 @@ class Engine {
   }
 
   private buildBed(bed: VenueBed) {
+    this.bedBuiltAt = performance.now(); // the watchdog's load window for this build
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
     const murmur = (k: number) => { this.vNoise('bandpass', 520, 0.7, 0.05 * k, 0.21, 0.5); this.vNoise('bandpass', 900, 1.2, 0.02 * k, 0.13, 0.6); };
