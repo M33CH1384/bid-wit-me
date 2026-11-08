@@ -122,15 +122,26 @@ const ANKLE_FWD = 0.38;    // ankle target forward of the hip joint (seat frame)
 
 /* Grip calibration against the production opponent fan (opponentFan's
  * middle card), built in the FAN's own frame: GRIP_HALF to each side
- * of the fan's centre line (fan-local +x runs from the seat's right
- * hand toward its left), GRIP_EDGE below the centre along the fan's
- * face — just under the bottom edge of the 0.35-tall cards — and
- * GRIP_BACK to the seat side of the fan's plane, a palm's thickness
- * off it. The previous calibration targeted a point 0.26 behind +
- * 0.13 below the fan CENTRE in seat space: ~0.35 from the fan's
- * bottom edge, past fingertip reach, so the fan floated in front of
- * the hands (owner 2026-10-30: "the characters hands look a lil
- * crazy" — see the hand-orientation solve in the frame loop). */
+ * of the fan's centre line (fan-local +x runs from the seat's LEFT
+ * hand toward its RIGHT — opponentFan's yaw makes +x the seated
+ * figure's anatomical-right direction at every seat, so the Left
+ * wrist sits at −GRIP_HALF and the Right at +GRIP_HALF), GRIP_EDGE
+ * below the centre along the fan's face — just under the bottom edge
+ * of the 0.35-tall cards — and GRIP_BACK to the seat side of the
+ * fan's plane, a palm's thickness off it. The previous calibration
+ * targeted a point 0.26 behind + 0.13 below the fan CENTRE in seat
+ * space: ~0.35 from the fan's bottom edge, past fingertip reach, so
+ * the fan floated in front of the hands (owner 2026-10-30: "the
+ * characters hands look a lil crazy" — see the hand-orientation
+ * solve in the frame loop).
+ * HANDEDNESS (owner 2026-11-08: "The bot's hands are backwards"):
+ * this block previously recorded the axis the other way round and
+ * fanGripPoint placed 'Left' at +GRIP_HALF — each wrist was driven
+ * to the fan corner on the figure's opposite side, so the hand's
+ * measured anatomical frame landed thumb-out and the hand read as
+ * the opposite hand. Every audit then in the file was invariant
+ * under the swap (unsigned distances), so three calibration rounds
+ * never saw it; grip-handedness.test.ts now pins the sign. */
 const GRIP_HALF = 0.085;
 /* Round 2 (owner 2026-10-30 13:17: fingers "poke thru the cards"):
  * the wrist sat only 0.01 below the fan's bottom edge, so fingers
@@ -151,7 +162,7 @@ function fanGripPoint(fanC: Vector3, fanQ: Quaternion, side: 'Left' | 'Right', b
   const up = new Vector3(0, 1, 0).applyQuaternion(fanQ);
   const normal = new Vector3(0, 0, 1).applyQuaternion(fanQ);
   return fanC.clone()
-    .addScaledVector(right, side === 'Left' ? GRIP_HALF : -GRIP_HALF)
+    .addScaledVector(right, side === 'Left' ? -GRIP_HALF : GRIP_HALF)
     .addScaledVector(up, -GRIP_EDGE)
     .addScaledVector(normal, back);
 }
