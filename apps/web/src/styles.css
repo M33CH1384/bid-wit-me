@@ -5377,7 +5377,11 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
      share directly (the S2 three-across row), covers fill their cell, and
      the strip rests flush at a tile edge — every visible name whole. */
   .wizard.step-table .ess-barred .dg-cell { flex-basis: calc((100% - 16px) / 3); max-width: 96px; scroll-snap-align: start; }
-  .wizard.step-table .ess-barred .dg-cover { width: 100%; }
+  /* No space before the brace, matching the scoped cover rule above:
+     deck-tile-fit.test.ts pins ONE spaced cover-rule definition site for
+     both themes (parity) — a spaced selector here would read as a second
+     one (its count runs over the raw file, comments included). */
+  .wizard.step-table .ess-barred .dg-cover{ width: 100%; }
 }
 @media (orientation: landscape) and (max-height: 540px) and (max-width: 700px) {
   .wizard.step-table .wiz-crumb { display: none; }
