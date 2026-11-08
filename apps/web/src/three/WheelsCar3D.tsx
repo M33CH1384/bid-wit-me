@@ -105,7 +105,7 @@ const SMOKE_FRAG = /* glsl */ `
   }
 `;
 
-function WheelsCarRig() {
+function WheelsCarRig({ onShowChange }: { onShowChange?: (active: boolean) => void }) {
   const gltf = useLoader(GLTFLoader, WHEELS_CAR_URL);
   const invalidate = useThree((s) => s.invalidate);
   const size = useThree((s) => s.size);
@@ -195,6 +195,17 @@ function WheelsCarRig() {
     const id = window.setInterval(() => invalidate(), 40);
     return () => clearInterval(id);
   }, [show, invalidate]);
+
+  /* The table renderer's moment-scoped DPR lift (three/wheelsDprLift.ts)
+     keys off this exact show state: engage when a show starts, release
+     when it ends. The cleanup also fires when a show is skipped
+     (setShow(null)) and when the rig unmounts — quality flip, context-
+     restore remount, scene teardown — so the lift can never strand. */
+  useEffect(() => {
+    if (!show) return;
+    onShowChange?.(true);
+    return () => { onShowChange?.(false); };
+  }, [show, onShowChange]);
 
   useFrame((_, delta) => {
     const grp = outer.current;
@@ -380,12 +391,12 @@ function WheelsCarRig() {
   );
 }
 
-export default function WheelsCar3D({ quality }: { quality: 'high' | 'low' }) {
+export default function WheelsCar3D({ quality, onShowChange }: { quality: 'high' | 'low'; onShowChange?: (active: boolean) => void }) {
   if (quality !== 'high') return null;
   return (
     <WheelsBoundary>
       <Suspense fallback={null}>
-        <WheelsCarRig />
+        <WheelsCarRig onShowChange={onShowChange} />
       </Suspense>
     </WheelsBoundary>
   );

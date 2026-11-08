@@ -9,6 +9,7 @@ import { enterFigureLeanMode } from './figureResidency';
 import { perfCrumb, publishPerfCensus } from '../perfCensus';
 import { noteSceneActivity, sceneIsActive, setSceneCovered, setLifeHeld } from './framePulse';
 import { perfGovernor, applyCaps, capsFor } from './perfGovernor';
+import { effectiveCanvasDprCap } from './wheelsDprLift';
 import { createBackCardMaterial } from './cardBack';
 import DeuceFxLayer from './DeuceFxLayer';
 import { CUT_FACE_ANGLE, setDeuceCutPose } from './deuceImpact';
@@ -2528,6 +2529,14 @@ export default function Scene(props: SceneProps) {
   // and can only ever trim below it, never raise.
   const [govLevel, setGovLevel] = useState(() => perfGovernor.level);
   const govCaps = applyCaps(dprCap, shadowSize, govLevel);
+  // Wheels DPR lift (2026-11-08): while the 3D Wheels car is presenting
+  // in this scene, the canvas DPR ceiling lifts to native so the car is
+  // not compositor-upscaled from the 1.75 ramp ceiling (see
+  // wheelsDprLift.ts). The car rig's own show state drives this through
+  // onWheelsShow — engage on show start, release on show end/skip/
+  // unmount — so the lift is scoped to the moment and the ramp +
+  // governor path above owns the DPR again the instant it ends.
+  const [wheelsShow, setWheelsShow] = useState(false);
   // Scene rest (perf round 3): covered by a post-hand overlay AND the
   // load settled — the load gate always finishes first, so a cold
   // resume straight into a recap still loads the table Continue needs.
@@ -2699,6 +2708,7 @@ export default function Scene(props: SceneProps) {
   const onDressed = props.onTableDressed;
   const onTextured = useCallback(() => { setTextured(true); onDressed?.(); }, [onDressed]);
   const onDpr = useCallback((n: number) => setDprCap(n), []);
+  const onWheelsShow = useCallback((active: boolean) => setWheelsShow(active), []);
   const onShadow = useCallback((n: number) => setShadowSize(n), []);
   const onHall = useCallback(() => setHallGo(true), []);
   useEffect(() => { setLayerReady(true); }, []);
@@ -2708,7 +2718,7 @@ export default function Scene(props: SceneProps) {
       className="table-canvas"
       frameloop={resting ? 'never' : 'demand'}
       shadows={govCaps.shadow > 0 ? 'soft' : false}
-      dpr={hi ? [1, govCaps.dpr] : 1}
+      dpr={hi ? [1, effectiveCanvasDprCap(govCaps.dpr, wheelsShow)] : 1}
       gl={{ antialias: hi, powerPreference: 'high-performance', toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       camera={{ fov: 50, near: 0.05, far: 60, position: [0, 4, 3.5] }}
       onCreated={({ gl, size }) => {
@@ -2965,7 +2975,7 @@ export default function Scene(props: SceneProps) {
       )}
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
       <DeuceFxLayer reducedProp={!!props.reduceFx} />
-      <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} />
+      <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} onWheelsShow={onWheelsShow} />
       {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
       </Fragment>
       </OwnChairHiddenContext.Provider>
@@ -3005,7 +3015,7 @@ function EffectWarmup({ quality }: { quality: 'high' | 'low' }) {
  * Nuke and Run it! shaders, including the postprocessing library, load only after the felt is up.
  * They are not on the reload path: a cold open used to download and compile them before the table could paint.
  */
-function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low'; tableUp: boolean; trickArmed?: boolean }) {
+function AfterTable({ quality, tableUp, trickArmed, onWheelsShow }: { quality: 'high' | 'low'; tableUp: boolean; trickArmed?: boolean; onWheelsShow?: (active: boolean) => void }) {
   const [nuke, setNuke] = useState<typeof import('./Nuke3D') | null>(null);
   const [tornado, setTornado] = useState<typeof import('./Tornado3D') | null>(null);
   const [wheels, setWheels] = useState<typeof import('./WheelsCar3D') | null>(null);
@@ -3043,7 +3053,7 @@ function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low';
       {nuke && <nuke.NukeGuard><nuke.Nuke3D quality={quality} /></nuke.NukeGuard>}
       {nuke && <nuke.NukeArmedGlow armed={!!trickArmed} />}
       {tornado && <tornado.Tornado3D quality={quality} />}
-      {wheels && <wheels.default quality={quality} />}
+      {wheels && <wheels.default quality={quality} onShowChange={onWheelsShow} />}
     </>
   );
 }
