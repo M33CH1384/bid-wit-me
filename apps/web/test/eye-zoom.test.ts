@@ -454,7 +454,7 @@ describe('EyeZoomRow (the Settings toggle)', () => {
         value: false,
         calibrated: false,
         onChange: () => {},
-        onCalibrate: () => {},
+        onCalibrated: () => {},
         enableFn: async () => 'granted' as const,
         ...props,
       }));
@@ -507,13 +507,11 @@ describe('EyeZoomRow (the Settings toggle)', () => {
   });
 
   it('on but uncalibrated: a needs-calibration note and a Calibrate button', async () => {
-    const onCalibrate = vi.fn();
-    const c = await renderRow({ value: true, calibrated: false, onCalibrate });
+    const c = await renderRow({ value: true, calibrated: false });
     expect(c.textContent).toContain('calibrat');
     const btn = c.querySelector('[data-testid="eye-zoom-calibrate"]') as HTMLButtonElement;
     expect(btn).not.toBeNull();
-    await act(async () => { btn.click(); });
-    expect(onCalibrate).toHaveBeenCalledTimes(1);
+    expect(btn.textContent).toContain('Calibrate');
   });
 
   it('on and calibrated: the button reads Recalibrate; a driver note shows on the row', async () => {
@@ -544,6 +542,130 @@ describe('EyeZoomRow (the Settings toggle)', () => {
     await act(async () => { sw.click(); });
     await flush();
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------- row-hosted calibration (in place) */
+
+describe('EyeZoomRow calibration (runs in place — no table needed)', () => {
+  let el: HTMLDivElement;
+  let root: Root;
+  let session: FakeSession;
+  let factoryCalls: number;
+
+  function stubMatchMedia() {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (q: string) => ({
+        matches: false, media: q,
+        addEventListener: () => {}, removeEventListener: () => {},
+        addListener: () => {}, removeListener: () => {},
+      }),
+    });
+  }
+
+  async function renderRowCal(props: Record<string, unknown>) {
+    stubMatchMedia();
+    el = document.createElement('div');
+    document.body.appendChild(el);
+    root = createRoot(el);
+    factoryCalls = 0;
+    await act(async () => {
+      root.render(createElement(EyeZoomRow, {
+        value: true,
+        calibrated: false,
+        onChange: () => {},
+        onCalibrated: () => {},
+        enableFn: async () => 'granted' as const,
+        calSessionFactory: () => { factoryCalls++; return session; },
+        ...props,
+      }));
+    });
+    return el;
+  }
+  const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
+  /** Run one full capture step: 1 s of readings at 10 Hz. */
+  const runStep = async (gazeV: number | null) => {
+    for (let i = 0; i < 11; i++) {
+      await act(async () => { vi.advanceTimersByTime(100); session.emit(gazeV); });
+    }
+  };
+
+  beforeEach(() => { vi.useFakeTimers(); session = new FakeSession(); });
+  afterEach(async () => {
+    fx.setReduce(false);
+    __resetEyeZoomStore();
+    if (root) await act(async () => { root.unmount(); });
+    el?.remove();
+    vi.useRealTimers();
+  });
+
+  it('tapping Calibrate starts the two-step setup right here and saves the result', async () => {
+    const onCalibrated = vi.fn();
+    const c = await renderRowCal({ onCalibrated });
+    const btn = c.querySelector('[data-testid="eye-zoom-calibrate"]') as HTMLButtonElement;
+    expect(btn.textContent).toContain('Calibrate');
+    await act(async () => { btn.click(); });
+    await flush();
+    // The camera session was requested from the tap itself…
+    expect(factoryCalls).toBe(1);
+    expect(session.startCalls).toBe(1);
+    // …and the first prompt is on screen (portaled over the current screen).
+    const step = document.querySelector('[data-testid="eye-cal-step"]');
+    expect(step).not.toBeNull();
+    expect(step!.textContent).toContain('Look at your cards');
+    await runStep(0.8);
+    expect(document.querySelector('[data-testid="eye-cal-step"]')!.textContent).toContain('Look at the table');
+    await runStep(0.4);
+    expect(onCalibrated).toHaveBeenCalledWith({ cards: 0.8, table: 0.4 });
+    expect(document.querySelector('[data-testid="eye-cal-done"]')).not.toBeNull();
+    expect(session.active).toBe(false); // camera released once captured
+    // The done button is worded for settings — there may be no table here.
+    const doneBtn = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Done');
+    expect(doneBtn).toBeTruthy();
+    await act(async () => { (doneBtn as HTMLButtonElement).click(); });
+    expect(document.querySelector('[data-testid="eye-cal-done"]')).toBeNull();
+    expect(document.querySelector('[data-testid="eye-cal-step"]')).toBeNull();
+  });
+
+  it('Recalibrate starts the same setup in place', async () => {
+    const c = await renderRowCal({ calibrated: true });
+    const btn = c.querySelector('[data-testid="eye-zoom-calibrate"]') as HTMLButtonElement;
+    expect(btn.textContent).toContain('Recalibrate');
+    await act(async () => { btn.click(); });
+    await flush();
+    expect(factoryCalls).toBe(1);
+    expect(session.startCalls).toBe(1);
+    expect(document.querySelector('[data-testid="eye-cal-step"]')!.textContent).toContain('Look at your cards');
+  });
+
+  it('a camera that will not start says so plainly — never a silent nothing', async () => {
+    session.failStart = true;
+    const onCalibrated = vi.fn();
+    const c = await renderRowCal({ onCalibrated });
+    const btn = c.querySelector('[data-testid="eye-zoom-calibrate"]') as HTMLButtonElement;
+    await act(async () => { btn.click(); });
+    await flush();
+    expect(document.querySelector('[data-testid="eye-cal-retry"]')).not.toBeNull();
+    expect(document.body.textContent).toContain('didn’t start');
+    expect(onCalibrated).not.toHaveBeenCalled();
+    const cancel = document.querySelector('[data-testid="eye-cal-cancel"]') as HTMLButtonElement;
+    await act(async () => { cancel.click(); });
+    expect(document.querySelector('[data-testid="eye-cal-retry"]')).toBeNull();
+  });
+
+  it('cancelling mid-setup closes it, stops the camera, and stores nothing', async () => {
+    const onCalibrated = vi.fn();
+    const c = await renderRowCal({ onCalibrated });
+    const btn = c.querySelector('[data-testid="eye-zoom-calibrate"]') as HTMLButtonElement;
+    await act(async () => { btn.click(); });
+    await flush();
+    expect(session.active).toBe(true);
+    const cancel = document.querySelector('[data-testid="eye-cal-cancel"]') as HTMLButtonElement;
+    await act(async () => { cancel.click(); });
+    expect(document.querySelector('[data-testid="eye-cal-step"]')).toBeNull();
+    expect(session.active).toBe(false);
+    expect(onCalibrated).not.toHaveBeenCalled();
   });
 });
 

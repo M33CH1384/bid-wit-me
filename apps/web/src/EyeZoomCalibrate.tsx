@@ -6,8 +6,9 @@ import {
 import { importChunk } from './chunkLoad';
 
 /**
- * Eye zoom calibration (owner, 2026-11-07): the two-step setup that runs
- * OVER THE TABLE. "Look at your cards" samples the player's downward gaze
+ * Eye zoom calibration (owner, 2026-11-07): the two-step setup, hosted by
+ * the table AND by the Settings row (which runs it in place, over whatever
+ * screen is showing). "Look at your cards" samples the player's downward gaze
  * for a second; "Look at the table" samples the level gaze; the pair
  * becomes the player's personal zone threshold, saved in settings on this
  * device only. While it runs it owns the camera — the gaze driver rests
@@ -28,11 +29,14 @@ async function defaultSessionFactory(): Promise<EyeGazeSessionLike> {
   return m.createEyeGazeSession();
 }
 
-export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory }: {
+export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory, doneLabel }: {
   onCalibrated: (cal: EyeGazeCalibration) => void;
   onClose: () => void;
   /** Injectable for tests; the real session is eyeGazeSession.ts (lazy). */
   sessionFactory?: () => EyeGazeSessionLike | Promise<EyeGazeSessionLike>;
+  /** The done button's words: the table host keeps the default; a host with
+   *  no table on screen (the Settings row) passes plainer words. */
+  doneLabel?: string;
 }) {
   const [phase, setPhase] = useState<Phase>('cards');
   const [errorKind, setErrorKind] = useState<ErrorKind>('samples');
@@ -150,7 +154,7 @@ export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory }: {
           <>
             <h3 data-testid="eye-cal-done">Eye zoom is set</h3>
             <p>Look at your cards to open the view up; look at the table to zoom in close.</p>
-            <button type="button" className="primary big" onClick={onClose}>Back to the table</button>
+            <button type="button" className="primary big" onClick={onClose}>{doneLabel ?? 'Back to the table'}</button>
           </>
         ) : phase === 'error' ? (
           <>

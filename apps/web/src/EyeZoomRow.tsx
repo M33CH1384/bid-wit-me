@@ -1,8 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { fx, useReduceEffects } from './fx';
 import {
-  enableEyeCamera, getEyeZoomNote, subscribeEyeZoomNote, type EyeEnableResult,
+  enableEyeCamera, getEyeZoomNote, subscribeEyeZoomNote,
+  type EyeEnableResult, type EyeGazeCalibration, type EyeGazeSessionLike,
 } from './eyeZoom';
+import { EyeZoomCalibrate } from './EyeZoomCalibrate';
 
 /**
  * Settings sheet row: "Eye zoom" (owner, 2026-11-07). Lives in the Look
@@ -15,26 +18,38 @@ import {
  * says so in plain words under the row. Turning it OFF is immediate.
  *
  * On but not yet calibrated: the row says so and offers Calibrate —
- * the two-step setup runs over the table (this row only raises the
- * request; the table opens the overlay). Afterwards the same button
- * reads Recalibrate.
+ * the two-step setup runs RIGHT HERE, over whatever screen is showing:
+ * this row hosts the overlay (portaled to the document root, like the
+ * results sheets, so it paints over the sheet), the tap itself is the
+ * gesture the camera session starts from, and a finished calibration
+ * saves through onCalibrated. Afterwards the same button reads
+ * Recalibrate. (It used to only raise a request flag for the table to
+ * open the overlay later; from the Home settings sheet, where no table
+ * is mounted, that read as a dead button — owner report 2026-11-07.
+ * The row deliberately does NOT raise that flag anymore: with the
+ * sheet open over a table, the table would mount a second overlay and
+ * the two would fight for the camera.)
  *
  * Reduce effects (the app's switch or the OS reduce-motion setting)
  * blocks enabling outright — a view that zooms on its own is exactly
  * what that setting calms — with the same plain note Motion view uses.
  */
-export function EyeZoomRow({ value, calibrated, onChange, onCalibrate, enableFn }: {
+export function EyeZoomRow({ value, calibrated, onChange, onCalibrated, enableFn, calSessionFactory }: {
   value: boolean;
   calibrated: boolean;
   onChange: (v: boolean) => void;
-  onCalibrate: () => void;
+  /** A finished in-place calibration saves here (settings, this device only). */
+  onCalibrated: (cal: EyeGazeCalibration) => void;
   /** Injectable for tests; the real flow is enableEyeCamera. */
   enableFn?: () => Promise<EyeEnableResult>;
+  /** Injectable for tests; passed through to the calibration overlay. */
+  calSessionFactory?: () => EyeGazeSessionLike | Promise<EyeGazeSessionLike>;
 }) {
   const appReduced = useReduceEffects();
   const [osReduced, setOsReduced] = useState<boolean>(() => fx.osReducedMotion);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [calOpen, setCalOpen] = useState(false);
   const runtimeNote = useSyncExternalStore(subscribeEyeZoomNote, getEyeZoomNote, getEyeZoomNote);
 
   useEffect(() => {
@@ -87,6 +102,7 @@ export function EyeZoomRow({ value, calibrated, onChange, onCalibrate, enableFn 
           : '';
 
   return (
+    <>
     <label className="sf-row">
       <span>
         Eye zoom
@@ -99,7 +115,7 @@ export function EyeZoomRow({ value, calibrated, onChange, onCalibrate, enableFn 
             type="button"
             className="link eye-zoom-cal-btn"
             data-testid="eye-zoom-calibrate"
-            onClick={(e) => { e.preventDefault(); onCalibrate(); }}
+            onClick={(e) => { e.preventDefault(); setCalOpen(true); }}
           >
             {calibrated ? 'Recalibrate' : 'Calibrate'}
           </button>
@@ -118,6 +134,16 @@ export function EyeZoomRow({ value, calibrated, onChange, onCalibrate, enableFn 
         <i />
       </button>
     </label>
+    {calOpen && createPortal(
+      <EyeZoomCalibrate
+        onCalibrated={onCalibrated}
+        onClose={() => setCalOpen(false)}
+        sessionFactory={calSessionFactory}
+        doneLabel="Done"
+      />,
+      document.body,
+    )}
+    </>
   );
 }
 
