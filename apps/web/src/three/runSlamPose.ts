@@ -188,6 +188,12 @@ export function runSlamGripPlan(args: {
   drop: number;
   pinch: number;
   trickScale?: number;
+  /** The HUMAN claimer's origin: his cards depart from his held
+   *  strip slots, not a fan — Cards passes the middle card's own
+   *  departureSlot (the slam builder's call) when the claimer is the
+   *  local human, whose figure now stands for his own run (owner
+   *  2026-11-08). Absent for figure claimers: the fan origin below. */
+  fromOverride?: Xform;
 }): SlamGripPlan | null {
   const k = args.cards.length;
   if (k === 0) return null;
@@ -200,7 +206,7 @@ export function runSlamGripPlan(args: {
     at: args.at,
     seat: args.seat,
     startAt: args.at + RUN_ZOOM_MS,
-    from: opponentFan(args.seatPos, args.n, Math.min(m, k - 1), k, args.drop, args.pinch),
+    from: args.fromOverride ?? opponentFan(args.seatPos, args.n, Math.min(m, k - 1), k, args.drop, args.pinch),
     to: flatRest(d.dx, d.dz, d.spin, 4 + m, base.s),
     delaySec: 0.02 + plan[m]!.delay,
     durationSec: plan[m]!.duration,

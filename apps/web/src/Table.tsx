@@ -3202,6 +3202,16 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
         const key = personaFigureKeyForName(seat.name);
         if (key) gate.add(`glb figure (persona ${key})`, fetchSettled(personaFigureGlbUrl(key)));
       }
+      // The viewer's own Run It figure (owner 2026-11-08): his
+      // persona GLB joins the same gate — the figure mounts only
+      // for his own show, but a cold fetch at claim time would eat
+      // the rise, so the body is in place before he can ever run
+      // it. Spectators have no own figure. Story tables included:
+      // the story layer resolves his figure through the same key.
+      if (!spectating) {
+        const ownKey = personaFigureKeyForName(names[HUMAN] ?? '');
+        if (ownKey) gate.add(`glb figure (own run-it ${ownKey})`, fetchSettled(personaFigureGlbUrl(ownKey)));
+      }
     }
 
     publish();
@@ -3423,6 +3433,11 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     // the same runFx the show itself uses, so every client that
     // renders the show stands the same claimer (bots included).
     runStand: runFx ? { seat: runFx.claimer, at: runFx.at, mega: runFx.mega, cards: runFx.cards } : null,
+    // 'Run it!' — the viewer's OWN player stands for his own run
+    // (owner 2026-11-08): the persona figure key his seat name
+    // resolves to. The figure layers mount it only while HE claims;
+    // spectators have no own seat, so theirs is null.
+    ownFigureKey: spectating ? null : personaFigureKeyForName(names[HUMAN] ?? ''),
     reduceFx,
     venue,
     view: effView,

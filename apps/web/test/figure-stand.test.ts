@@ -38,7 +38,10 @@ import {
   runSlamSchedule,
   type SlamGripPlan,
 } from '../src/three/runSlamPose';
-import { opponentFan } from '../src/three/layout';
+import { cameraFor, opponentFan, trickSpot, type CamSpec, type Xform } from '../src/three/layout';
+import { PerspectiveCamera, Vector3 } from 'three';
+import { ownShowSpec, peopleSpec } from '../src/three/Scene';
+import { CHAIR_SPOTS } from '../src/three/classicStudioLayout';
 import { playSeed, runScatter } from '../src/three/landing';
 import { RUN_MEGA_SHOW_EXTRA_MS, RUN_SHOW_MS, RUN_ZOOM_MS } from '../src/runIt';
 import type { Card } from '@spades/rules';
@@ -351,5 +354,203 @@ describe('slam grip frame — hands ride the show\'s own slam path, then let go 
     expect(later!.p).toEqual(frozen!.p); // frozen — no continued flight
     expect(later!.engage).toBeCloseTo(0.5, 6);
     expect(slamGripFrame(skipAt + RUN_SLAM_GRIP_SKIP_FADE_MS, l, plan)).toBeNull();
+  });
+});
+
+describe('slam grip plan — the HUMAN claimer departs from his held strip slot', () => {
+  // runSlamGripPlan's default origin is opponentFan — the call Cards
+  // makes for a figure-seated claimer. The human's cards do not sit
+  // in a fan: the slam builder departs them from his held strip
+  // slots (departureSlot over held.current). Until the viewer's own
+  // figure existed (owner 2026-11-08) no figure ever consumed a
+  // human claim's plan, so the mismatch was inert; with his figure
+  // standing for his own run, the plan must start where his cards
+  // actually start or his hands tear off the middle card.
+  const cards = ['A♠', 'K♠', 'Q♠', 'J♠', '10♠'] as Card[];
+  const heldSlot: Xform = { p: [0.12, 0.46, 2.62], q: [0, 0, 0, 1], s: 1 };
+
+  it('uses the held-slot override as the plan origin when given', () => {
+    const plan = runSlamGripPlan({
+      gameSeed: 'seed-1', handNo: 3, seat: 0, at: AT,
+      cards, seatPos: 'bottom', n: 4, drop: 0, pinch: 0,
+      fromOverride: heldSlot,
+    });
+    expect(plan).not.toBeNull();
+    expect(plan!.from).toEqual(heldSlot);
+    // the rest of the plan is the show's own schedule, unchanged
+    expect(plan!.startAt).toBe(AT + RUN_ZOOM_MS);
+  });
+
+  it('without an override the origin is the fan slot, exactly as shipped for figure claimers', () => {
+    const plan = runSlamGripPlan({
+      gameSeed: 'seed-1', handNo: 3, seat: 0, at: AT,
+      cards, seatPos: 'bottom', n: 4, drop: 0, pinch: 0,
+    });
+    const m = Math.round((cards.length - 1) / 2);
+    expect(plan!.from).toEqual(opponentFan('bottom', 4, Math.min(m, cards.length - 1), cards.length, 0, 0));
+  });
+
+  it('Scene passes the override only for the human claimer, from the builder’s own departureSlot call', () => {
+    const scene = readFileSync(join(process.cwd(), 'apps/web/src/three/Scene.tsx'), 'utf8');
+    expect(scene).toContain('fromOverride: rs.seat === human && midCard ? departureSlot(held.current.slots, held.current.cards, midCard) : undefined');
+    const pose = readFileSync(join(process.cwd(), 'apps/web/src/three/runSlamPose.ts'), 'utf8');
+    expect(pose).toContain('fromOverride?: Xform');
+    expect(pose).toContain('from: args.fromOverride ?? opponentFan(');
+  });
+});
+
+describe('wiring — the viewer’s own player stands for his own run (owner 2026-11-08)', () => {
+  const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
+
+  it('Table resolves the viewer’s own figure key from his seat name (spectators: none)', () => {
+    const table = src('src/Table.tsx');
+    expect(table).toContain("ownFigureKey: spectating ? null : personaFigureKeyForName(names[HUMAN] ?? '')");
+    // and his GLB joins the High asset gate, so the body is warm before he can claim
+    expect(table).toContain('glb figure (own run-it ');
+  });
+
+  it('Scene threads ownFigureKey + ownShow through the rig, the fan refit and both figure layers', () => {
+    const scene = src('src/three/Scene.tsx');
+    expect(scene).toContain('ownFigureKey?: string | null;');
+    expect(scene).toContain('const ownShow = !!props.ownFigureKey && !props.spectator && !!props.runStand && props.runStand.seat === props.human;');
+    expect(scene).toContain('const spec = ownShow ? ownShowSpec(base, a) : base;');
+    expect(scene).toContain('ownShow={ownShow}');
+    expect(scene).toContain('ownFigureKey={props.ownFigureKey ?? null}');
+    expect(scene).toContain('ownSeat={props.human}');
+    // the fan refit composes the show matrix, so his hand keeps its
+    // solved screen layout while the world takes the show framing
+    expect(scene).toContain('const showM = ownShowCam');
+  });
+
+  it('both figure layers hold a show-window latch for the viewer’s seat and nothing else changes', () => {
+    for (const f of ['src/three/PersonaFigures.tsx', 'src/three/PorchFigures.tsx']) {
+      const s = src(f);
+      expect(s).toContain('ownFigureKey?: string | null;');
+      expect(s).toContain('ownSeat?: number;');
+      expect(s).toContain('setOwnClaim');
+      // the figure leaves exactly when the envelope finishes — the
+      // natural deadline is the show end + the full sit, never a
+      // mid-motion unmount
+      expect(s).toContain('claim.at + standShowEndMs(claim.mega) + RUN_STAND_SIT_MS + 250');
+      expect(s).toContain('RUN_STAND_SKIP_SIT_MS + 250');
+    }
+    // PorchFigures resolves the viewer's story figure through the
+    // same persona register table the regular layer uses — one asset
+    // path, no second register
+    expect(src('src/three/PersonaFigures.tsx')).toContain('export { FIGURE_REGISTERS as PERSONA_FIGURE_REGISTERS };');
+    expect(src('src/three/PorchFigures.tsx')).toContain('PERSONA_FIGURE_REGISTERS');
+  });
+});
+
+describe('own-show framing — his standing figure never covers his slam', () => {
+  // The proof projects the standing figure's silhouette (head /
+  // chest / pelvis / legs as screen discs at the most-occluding
+  // placement: pelvis over the ankles at standE = 1, head directly
+  // above it) against the slam pile point and the tornado centre
+  // through the SHIPPED camera math — every view, both bottom-spot
+  // geometries in the game (studio 2.8 / kit 1.98 — figureSeats.ts
+  // proves those are the only two), both floor heights, and the
+  // full stature band read out of the shipped registers.
+  const poseSrc = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
+  const statures = [...poseSrc('src/three/PersonaFigures.tsx').matchAll(/stature: ([\d.]+)/g),
+    ...poseSrc('src/three/PorchFigures.tsx').matchAll(/stature: ([\d.]+)/g)].map((m) => Number(m[1]));
+  const FIG_SCALE = 1.33; // FIGURE_SCALE in both figure layers
+  const spots = [CHAIR_SPOTS[1]!.z, 1.98];
+  const floors = [-0.9, -0.855]; // FLOOR_Y; the beach mural floor sits 4.5 cm higher
+  const pile = trickSpot('bottom', 4, 1, 0).p;
+  const pileP: [number, number, number] = [pile[0]!, pile[1]!, pile[2]!];
+  const vortexC: [number, number, number] = [0, 1.05, 0]; // the tornado's column centre over the felt
+
+  const camOf = (spec: CamSpec, aspect: number) => {
+    const cam = new PerspectiveCamera(spec.fov, aspect, 0.05, 60);
+    cam.position.set(...spec.pos);
+    cam.lookAt(new Vector3(...spec.look));
+    cam.updateMatrixWorld(true);
+    return cam;
+  };
+  const ndc = (cam: PerspectiveCamera, p: [number, number, number]) => new Vector3(...p).project(cam);
+  function clearance(cam: PerspectiveCamera, P: [number, number, number], headY: number, headZ: number, pelvisY: number, aspect: number) {
+    const p = ndc(cam, P);
+    const discs: { c: [number, number, number]; r: number }[] = [
+      { c: [0, headY - 0.13, headZ], r: 0.14 },
+      // the chest sits a step behind the head plane (the standing
+      // lean puts the face foremost) at the broadest shoulder
+      // half-breadth the cast carries
+      { c: [0, headY - 0.45, headZ + 0.05], r: 0.26 },
+      { c: [0, pelvisY + 0.1, headZ + 0.03], r: 0.24 },
+      { c: [-0.11, (pelvisY - 0.9) / 2 + 0.2, headZ + 0.02], r: 0.095 },
+      { c: [0.11, (pelvisY - 0.9) / 2 + 0.2, headZ + 0.02], r: 0.095 },
+    ];
+    let worst = Infinity;
+    for (const d of discs) {
+      const c = ndc(cam, d.c);
+      const rx = Math.abs(ndc(cam, [d.c[0] + d.r, d.c[1], d.c[2]]).x - c.x);
+      const ry = Math.abs(ndc(cam, [d.c[0], d.c[1] + d.r, d.c[2]]).y - c.y);
+      const dist = Math.hypot((p.x - c.x) * aspect, p.y - c.y);
+      worst = Math.min(worst, dist - Math.max(rx * aspect, ry));
+    }
+    return worst;
+  }
+  const views: { name: string; aspect: number; short: boolean; view: 'standing' | 'sitting'; people?: boolean }[] = [
+    { name: 'portrait-standing', aspect: 390 / 844, short: false, view: 'standing' },
+    { name: 'portrait-sitting', aspect: 390 / 844, short: false, view: 'sitting' },
+    { name: 'landscape-standing', aspect: 932 / 430, short: true, view: 'standing' },
+    { name: 'landscape-sitting', aspect: 932 / 430, short: true, view: 'sitting' },
+    { name: 'portrait-sitting-people', aspect: 390 / 844, short: false, view: 'sitting', people: true },
+    { name: 'landscape-sitting-people', aspect: 932 / 430, short: true, view: 'sitting', people: true },
+    { name: 'desktop-standing', aspect: 1440 / 900, short: false, view: 'standing' },
+    { name: 'desktop-sitting', aspect: 1440 / 900, short: false, view: 'sitting' },
+  ];
+  const band = [Math.min(...statures), (Math.min(...statures) + Math.max(...statures)) / 2, Math.max(...statures)];
+
+  it('the register band the proof runs against is the shipped one (1.6–1.95 m)', () => {
+    expect(Math.min(...statures)).toBeGreaterThanOrEqual(1.6);
+    expect(Math.max(...statures)).toBeLessThanOrEqual(1.95);
+  });
+
+  it('at stock framing the upright figure DOES cover the pile somewhere — the show framing is necessary', () => {
+    let minPile = Infinity;
+    for (const v of views) {
+      let base = cameraFor(v.aspect, v.short, v.view);
+      if (v.people) base = peopleSpec(base);
+      const cam = camOf(base, v.aspect);
+      for (const sz of spots) for (const floorY of floors) for (const st of band) {
+        const headY = floorY + st * FIG_SCALE;
+        minPile = Math.min(minPile, clearance(cam, pileP, headY, sz - 0.2, floorY + st * FIG_SCALE * 0.52, v.aspect));
+      }
+    }
+    expect(minPile).toBeLessThan(0);
+  });
+
+  it('under the own-show framing the pile and the tornado centre clear his silhouette in every cell', () => {
+    for (const v of views) {
+      let base = cameraFor(v.aspect, v.short, v.view);
+      if (v.people) base = peopleSpec(base);
+      const cam = camOf(ownShowSpec(base, v.aspect), v.aspect);
+      for (const sz of spots) for (const floorY of floors) for (const st of band) {
+        const headY = floorY + st * FIG_SCALE;
+        const headZ = sz - 0.2;
+        const pelvisY = floorY + st * FIG_SCALE * 0.52;
+        expect(clearance(cam, pileP, headY, headZ, pelvisY, v.aspect), `${v.name} pile spot${sz} floor${floorY} st${st}`).toBeGreaterThan(0.02);
+        expect(clearance(cam, vortexC, headY, headZ, pelvisY, v.aspect), `${v.name} vortex spot${sz} floor${floorY} st${st}`).toBeGreaterThan(0.02);
+      }
+    }
+  });
+
+  it('under the own-show framing he still reads: head in frame, settled left of the action', () => {
+    for (const v of views) {
+      let base = cameraFor(v.aspect, v.short, v.view);
+      if (v.people) base = peopleSpec(base);
+      const cam = camOf(ownShowSpec(base, v.aspect), v.aspect);
+      for (const sz of spots) for (const floorY of floors) for (const st of band) {
+        const headY = floorY + st * FIG_SCALE;
+        const head = ndc(cam, [0, headY, sz - 0.2]);
+        expect(head.y, `${v.name} headTop spot${sz} st${st}`).toBeLessThanOrEqual(0.98);
+        expect(head.y, `${v.name} headTop spot${sz} st${st}`).toBeGreaterThanOrEqual(-1.0);
+        const centre = ndc(cam, [0, headY - 0.13, sz - 0.2]);
+        expect(Math.abs(centre.x), `${v.name} headCentreX spot${sz} st${st}`).toBeLessThanOrEqual(0.92);
+        expect(centre.x, `${v.name} headCentreX spot${sz} st${st}`).toBeLessThan(-0.05);
+      }
+    }
   });
 });

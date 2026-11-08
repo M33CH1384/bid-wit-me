@@ -55,7 +55,7 @@
  * camera: regular tables keep the stock camera in Batch A; whether
  * the raised framing generalizes is the owner's ratification call.
  */
-import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import {
   Box3, Euler, Group, Matrix4, Mesh, Object3D, Quaternion, Vector3, type Material, type MeshStandardMaterial,
@@ -69,7 +69,7 @@ import { CHAIR_SPOTS } from './classicStudioLayout';
 import { opponentFan, seatDir, type SeatPos } from './layout';
 import { fanRestTarget } from './fanRest';
 import {
-  RUN_SLAM_GRIP_CURL, slamGripFrame, standAmount, standFinished, standPelvisTarget, standSpineAmount,
+  RUN_SLAM_GRIP_CURL, RUN_STAND_SIT_MS, RUN_STAND_SKIP_SIT_MS, slamGripFrame, standAmount, standFinished, standPelvisTarget, standShowEndMs, standSpineAmount,
   type RunStandInfo, type SlamGripPlan, type StandLatch,
 } from './figureStand';
 
@@ -476,6 +476,11 @@ const FIGURE_REGISTERS: Record<string, FigureRegister> = {
     gaze: ['human', 'fan', 'human', 'trick'],
   },
 };
+
+/** The persona register table, shared with PorchFigures: the
+ *  viewer's own Run It figure at a story table resolves through the
+ *  same registers (one asset path for his body everywhere). */
+export { FIGURE_REGISTERS as PERSONA_FIGURE_REGISTERS };
 
 const FIGURE_URLS: Record<string, string> = Object.fromEntries(
   PERSONA_FIGURE_KEYS.map((k) => [k, `/assets/figures/personas/${k}.glb`]),
@@ -1755,9 +1760,16 @@ export interface PersonaFiguresProps {
   runStand?: RunStandInfo | null;
   /** Run It hands-with-cards: the shared grip-plan ref (Scene owns it). */
   slamGripRef?: { current: SlamGripPlan | null } | null;
+  /** Run It — the viewer's own stand (owner 2026-11-08): the persona
+   *  figure key for the local human seat, and that seat's index. The
+   *  layer mounts a figure for it ONLY while the viewer claims a run
+   *  (the show-window latch below); every other moment his seat
+   *  renders exactly as it always has — no figure. */
+  ownFigureKey?: string | null;
+  ownSeat?: number;
 }
 
-export default function PersonaFigures({ seats, positions, n, handCounts, activeSeat, view, animate, venue, runStand, slamGripRef }: PersonaFiguresProps) {
+export default function PersonaFigures({ seats, positions, n, handCounts, activeSeat, view, animate, venue, runStand, slamGripRef, ownFigureKey, ownSeat }: PersonaFiguresProps) {
   const geo = seatGeometryFor(venue);
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
@@ -1790,6 +1802,51 @@ export default function PersonaFigures({ seats, positions, n, handCounts, active
       heads,
     };
   }, [seats, positions, geo]);
+  /* Run It — the viewer's own stand (owner 2026-11-08): his seat
+     carries no figure outside his own show (human seats never do),
+     so the layer holds a show-window latch: when the live claim
+     names his seat, his figure mounts and stands with the same
+     envelope as any claimer; it stays mounted until the envelope
+     has fully finished (the sit lands — never a mid-motion cut) and
+     then leaves with the show. On a skip the window shortens to the
+     skip sit; a claim cleared at/after the show's natural end is
+     NOT a skip (the Figure's own latch rule, mirrored here for the
+     unmount deadline). His chair is never built for this (the rooms
+     suppress it at his seat, as always): a standing player needs
+     no chair under him, the pre-rise beat (≤250 ms) sits behind the
+     opening RunZoom, and the figure unmounts fully seated at
+     standE 0 exactly at the envelope's finish, so nothing pops.
+     Under reduced effects the stand itself is gated off for every
+     figure, his included — his seat stays as it is today. */
+  const ownSeatIdx = ownSeat ?? 0;
+  const ownReady = !!ownFigureKey && animate && ownSeatIdx >= 0 && ownSeatIdx < n;
+  const [ownClaim, setOwnClaim] = useState<{ at: number; mega: boolean } | null>(null);
+  const ownTimer = useRef<number | null>(null);
+  // Parse-warm his GLB as soon as the table knows his key (the asset
+  // gate already fetched the bytes): the figure mounts at claim
+  // time and must not spend its rise parsing.
+  useEffect(() => {
+    if (!ownFigureKey) return;
+    const url = FIGURE_URLS[ownFigureKey];
+    if (url) useLoader.preload(GLTFLoader, url);
+  }, [ownFigureKey]);
+  useEffect(() => {
+    if (!ownReady) { setOwnClaim(null); return; }
+    if (runStand && runStand.seat === ownSeatIdx) {
+      const claim = { at: runStand.at, mega: runStand.mega };
+      setOwnClaim((prev) => (prev?.at === claim.at ? prev : claim));
+      if (ownTimer.current) window.clearTimeout(ownTimer.current);
+      const deadline = claim.at + standShowEndMs(claim.mega) + RUN_STAND_SIT_MS + 250;
+      ownTimer.current = window.setTimeout(() => setOwnClaim(null), Math.max(0, deadline - performance.now()));
+    } else if (ownClaim) {
+      if (ownTimer.current) window.clearTimeout(ownTimer.current);
+      const now = performance.now();
+      const natural = ownClaim.at + standShowEndMs(ownClaim.mega) + RUN_STAND_SIT_MS + 250;
+      const until = now >= ownClaim.at + standShowEndMs(ownClaim.mega) ? natural : now + RUN_STAND_SKIP_SIT_MS + 250;
+      ownTimer.current = window.setTimeout(() => setOwnClaim(null), Math.max(0, until - now));
+    }
+    return () => { if (ownTimer.current) { window.clearTimeout(ownTimer.current); ownTimer.current = null; } };
+  }, [ownReady, runStand, ownSeatIdx, ownClaim]);
   return (
     <>
       {seats.map((id, seat) => {
@@ -1838,6 +1895,55 @@ export default function PersonaFigures({ seats, positions, n, handCounts, active
           </FigureBoundary>
         );
       })}
+      {ownClaim && ownFigureKey && (() => {
+        const baseReg = FIGURE_REGISTERS[ownFigureKey];
+        const url = FIGURE_URLS[ownFigureKey];
+        if (!baseReg || !url) return null;
+        const seat = ownSeatIdx;
+        const spot = geo.spots[SPOT_INDEX[positions[seat]!]]!;
+        const d = seatDir(positions[seat]!, n);
+        // His gaze list may name 'human' — for his own figure that
+        // target is himself; retarget those beats to the trick (the
+        // action he just ran) so his head never solves against his
+        // own head position.
+        const reg = baseReg.gaze.includes('human')
+          ? { ...baseReg, gaze: baseReg.gaze.map((g) => (g === 'human' ? 'trick' : g)) }
+          : baseReg;
+        return (
+          <>
+            <pointLight
+              position={[spot.x - d.x * FIGURE_FILL_DIST, FIGURE_FILL_Y, spot.z - d.z * FIGURE_FILL_DIST]}
+              color="#ffd9ae"
+              intensity={FIGURE_FILL_INTENSITY}
+              distance={FIGURE_FILL_RANGE}
+              decay={2}
+            />
+            <FigureBoundary id={ownFigureKey} url={url}>
+              <Suspense fallback={null}>
+                <Figure
+                  id={ownFigureKey}
+                  url={url}
+                  reg={reg}
+                  seatPos={positions[seat]!}
+                  n={n}
+                  count={handCounts[seat] ?? 0}
+                  active={activeSeat === seat}
+                  aspect={aspect}
+                  view={view}
+                  animate={animate}
+                  standAt={runStand && runStand.seat === seat ? runStand.at : null}
+                  standMega={!!runStand?.mega}
+                  slamGripRef={slamGripRef}
+                  anchors={anchors}
+                  spots={geo.spots}
+                  seatTop={geo.seatTop}
+                  floorY={geo.floorY}
+                />
+              </Suspense>
+            </FigureBoundary>
+          </>
+        );
+      })()}
     </>
   );
 }

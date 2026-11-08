@@ -64,7 +64,7 @@ describe('the pilot seam wiring', () => {
 
   it('Scene activates the figures on High + the prop + a seat config, and only there', () => {
     const scene = src('src/three/Scene.tsx');
-    expect(scene).toContain('const storyFiguresActive = hi && !!figureSeatConfig && !!(props.figureSeats?.some(Boolean))');
+    expect(scene).toContain('const storyFiguresActive = hi && !!figureSeatConfig && !!((props.figureSeats?.some(Boolean)) || (props.ownFigureKey && !props.spectator))');
     expect(scene).toContain('{showTable && textured && storyFiguresActive && (');
     expect(scene).toContain('<PorchFigures');
     // the King system is untouched by the pilot
@@ -157,7 +157,7 @@ describe('the people-framing camera (ratification candidate)', () => {
     const scene = src('src/three/Scene.tsx');
     expect(scene).toContain('export const PEOPLE_CAM = { raise: 0.37, lookDy: 0.48, lookDz: -0.38 } as const');
     expect(scene).toContain("people && view === 'sitting' ? peopleSpec(stockSpec) : stockSpec");
-    expect(scene).toContain('<CameraRig view={props.view} people={storyFiguresActive} />');
+    expect(scene).toContain('<CameraRig view={props.view} people={storyFiguresActive} ownShow={ownShow} />');
   });
 
   it('the hand refit rides the same matrix family (M = V * S^-1)', () => {

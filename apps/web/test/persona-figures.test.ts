@@ -130,7 +130,7 @@ describe('the seam wiring', () => {
 
   it('Scene activates the layer on non-story + High + the prop, and only there', () => {
     const scene = src('src/three/Scene.tsx');
-    expect(scene).toContain("const personaFiguresActive = !props.storyStopId && hi && !!(props.personaFigureSeats?.some(Boolean))");
+    expect(scene).toContain("const personaFiguresActive = !props.storyStopId && hi && !!((props.personaFigureSeats?.some(Boolean)) || (props.ownFigureKey && !props.spectator))");
     expect(scene).toContain('{showTable && textured && personaFiguresActive && (');
     expect(scene).toContain('<PersonaFigures');
     expect(scene).toContain('venue={def.id}');
