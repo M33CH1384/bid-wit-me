@@ -9,7 +9,7 @@
  * peel-out ITSELF on the live path, so here the show plays the same
  * cue directly — `sound.play('wheelsCar', { gain: 1 })`, untouched —
  * the same DOM banner (WheelsCelebration) pops over it, and at High
- * quality the roadster does its doughnuts on a small stage (the table
+ * quality the supercar does its doughnuts on a small stage (the table
  * canvas sits UNDER the results overlay, which is why the car was
  * heard and not seen). Low / Reduce effects / OS reduce-motion keep
  * today's calm path: banner + audio, no stage.

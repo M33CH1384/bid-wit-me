@@ -1,32 +1,36 @@
 /**
- * The Wheels car's body: a Forge (three.ws) TRELLIS generation in the new
- * EV roadster's shape — low wedge nose with no grille, full-width light
- * bars, flush glass canopy, turbine wheels, deep prototype red, no logos
- * or badges (shape homage only). Remodelled 2026-11-04 on the owner's
- * word; provenance (creation id, engine, date) is ledgered in CREDITS.md.
+ * The Wheels car's body: the original Forge (three.ws) TRELLIS supercar
+ * — glossy purple paint, gold stripe and rims, rear wing, no logos or
+ * badges. A roadster-bodied remodel replaced it on 2026-11-04; the
+ * owner sent that car away on 2026-11-08 ("let's just go back to the
+ * old one" — the roadster still read blurry to him) and this body was
+ * restored from git history, its bake carried at the native 2048² the
+ * 2026-10-28 build had squeezed to 1024². Provenance (engine, dates)
+ * is ledgered in CREDITS.md.
  *
- * One fused mesh, like the supercar before it — the wheels cannot steer
- * or spin independently, so the powerslide keeps reading from the body's
- * yaw, slip and lean. This module owns the asset URL and the ONE
- * normalization every mount applies (the table rig and the results-page
- * stage share it): clone → longest axis onto WHEELS_CAR_LEN → model yaw
- * → recentered with its floor on y = 0.
+ * One fused mesh — the wheels cannot steer or spin independently, so
+ * the powerslide keeps reading from the body's yaw, slip and lean.
+ * This module owns the asset URL and the ONE normalization every mount
+ * applies (the table rig and the results-page stage share it): clone →
+ * longest axis onto WHEELS_CAR_LEN → model yaw → recentered with its
+ * floor on y = 0.
  */
 import { Box3, Group, MeshStandardMaterial, Vector3 } from 'three';
 import { WHEELS_CAR_LEN } from './wheelsCar3d';
 
-export const WHEELS_CAR_URL = '/assets/cars/wheels-roadster.glb';
+export const WHEELS_CAR_URL = '/assets/cars/wheels-supercar.glb';
 /** Baked from look-at renders of the raw Forge mesh: where its nose
  *  points, turned onto this scene's forward (+X). */
 export const WHEELS_MODEL_YAW = Math.PI / 2;
 /** Car footprint after normalization (the raw mesh's bbox proportions:
- *  0.4616 wide over 0.9997 long) — the wheel points the smoke and arcs
- *  are keyed to. */
-export const WHEELS_CAR_DIMS = { len: WHEELS_CAR_LEN, wid: WHEELS_CAR_LEN * (0.4616 / 0.9997) };
+ *  0.487 wide over 0.999 long — the dims this body originally shipped
+ *  with, restored with it) — the wheel points the smoke and arcs are
+ *  keyed to. */
+export const WHEELS_CAR_DIMS = { len: WHEELS_CAR_LEN, wid: WHEELS_CAR_LEN * (0.487 / 0.999) };
 
 /** Display correction for the TRELLIS material. The GLB's one material
  *  declares ONLY its baseColorTexture — an appearance bake (paint,
- *  glass, wheels, light bars all painted in) — so the glTF defaults
+ *  glass, wheels, gold stripe, lamps all painted in) — so the glTF defaults
  *  would instantiate it at metallicFactor 1.0 / roughnessFactor 1.0.
  *  A metal has NO diffuse response: neither render home can light it
  *  (the results stage has no environment map at all; the table's venue

@@ -2471,7 +2471,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       timers.push(() => clearTimeout(ht));
     }
     const streak = calls.find((c) => c.kind === 'streak');
-    // Wheels made: a team that bid 10+ together and took 10+ books → the roadster peel-out
+    // Wheels made: a team that bid 10+ together and took 10+ books → the supercar peel-out
     const made = wheelsMade(r, rec);
     if (made.length) {
       const w = made[0]!;

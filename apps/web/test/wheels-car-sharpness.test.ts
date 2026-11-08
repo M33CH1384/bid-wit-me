@@ -3,23 +3,29 @@ import { describe, expect, it } from 'vitest';
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial, Texture } from 'three';
 import { normalizeWheelsCar, WHEELS_CAR_ANISOTROPY_CAP } from '../src/three/wheelsCarModel';
 
-// The roadster read SUPER BLURRY in its animation (owner, 2026-11-05)
-// even after the shadow fix (771e5156) lit it: two sampling layers the
-// car never got, both already convicted elsewhere in this app —
+// The Wheels car read SUPER BLURRY in its animation (owner,
+// 2026-11-05) even after the shadow fix (771e5156) lit it: two
+// sampling layers the car never got, both already convicted elsewhere
+// in this app —
 //  1. its texture was squeezed at build: the Forge source bake is
-//     2048², the shipped GLB carried 1024² in 99 KB (the exact
-//     "2048² photographic texture squeezed into 96–208 KB" pattern the
+//     2048², the shipped GLB carried 1024² (the exact "2048²
+//     photographic texture squeezed into 96–208 KB" pattern the
 //     figures program cured on 2026-10-29 by re-encoding at q95);
 //  2. its map kept three.js's default anisotropy of 1, while every
 //     other GLB in the app (the figures' prepareFigure) is raised to
 //     the device max capped at 8 BECAUSE aniso-1 GLB textures smear at
 //     grazing angles — and the car is always seen tilted or grazing,
 //     in motion.
-// These pins hold both cures at the shared points: the asset itself,
-// and normalizeWheelsCar, the ONE pass both mounts share.
+// Both cures were first applied to the roadster body (2026-11-05);
+// when the owner restored the original supercar on 2026-11-08, its
+// own 2026-10-28 build had been squeezed the same way (1024² in
+// 64 KB), so the restored GLB carries the same native-2048² bake and
+// these pins now guard this body. These pins hold both cures at the
+// shared points: the asset itself, and normalizeWheelsCar, the ONE
+// pass both mounts share.
 describe('wheels car sharpness — full-res bake, anisotropic sampling', () => {
   it('the shipped GLB carries the bake at its native 2048²', () => {
-    const buf = readFileSync(new URL('../public/assets/cars/wheels-roadster.glb', import.meta.url));
+    const buf = readFileSync(new URL('../public/assets/cars/wheels-supercar.glb', import.meta.url));
     const jsonLen = buf.readUInt32LE(12);
     const json = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8')) as {
       images: { bufferView: number }[];
