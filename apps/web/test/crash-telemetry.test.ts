@@ -173,6 +173,61 @@ describe('crash telemetry', () => {
     expect(d.consumeUncleanBoot(10 * 60_000)).toBeNull(); // stale: cleared, no heal
   });
 
+  it('persists the breadcrumb ring so a dead session leaves its road behind', async () => {
+    const t = await freshTelemetry();
+    t.noteCrumb('social', 'open');
+    t.noteCrumb('route', '/');
+    const saved = JSON.parse(b.store.get('bwm.crash.crumbs')!) as { label: string; detail: string }[];
+    expect(saved.map((c) => c.label)).toEqual(['social', 'route']);
+    expect(saved[0]!.detail).toBe('open');
+  });
+
+  it('witnesses a previous session whose road ends at an unmatched Social open (home death)', async () => {
+    b.store.set('bwm.crash.watch', JSON.stringify({ atTable: false, route: '/', build: 'oldsha', ts: Date.now(), suspendedClean: false }));
+    b.store.set('bwm.crash.crumbs', JSON.stringify([
+      { t: Date.now() - 60_000, label: 'boot', detail: '/' },
+      { t: Date.now() - 5_000, label: 'social', detail: 'open' },
+    ]));
+    const t = await freshTelemetry();
+    t.installCrashTelemetry();
+    const payloads = await beaconPayloads(b.beacon);
+    expect(payloads.length).toBe(1);
+    expect(payloads[0]!.kind).toBe('unclean-exit');
+    const extra = payloads[0]!.extra as Record<string, unknown>;
+    expect(extra.homeDeath).toBe(true);
+    expect(extra.prevRoute).toBe('/');
+    expect((extra.prevCrumbs as { label: string }[]).some((c) => c.label === 'social')).toBe(true);
+  });
+
+  it('stays silent when the previous session closed Social before it ended', async () => {
+    b.store.set('bwm.crash.watch', JSON.stringify({ atTable: false, route: '/', build: 'oldsha', ts: Date.now(), suspendedClean: false }));
+    b.store.set('bwm.crash.crumbs', JSON.stringify([
+      { t: Date.now() - 60_000, label: 'boot', detail: '/' },
+      { t: Date.now() - 9_000, label: 'social', detail: 'open' },
+      { t: Date.now() - 5_000, label: 'social', detail: 'close' },
+    ]));
+    const t = await freshTelemetry();
+    t.installCrashTelemetry();
+    expect(b.beacon).not.toHaveBeenCalled();
+  });
+
+  it('stays silent for a home session that left cleanly (pagehide), even with an unmatched open', async () => {
+    b.store.set('bwm.crash.watch', JSON.stringify({ atTable: false, route: '/', build: 'oldsha', ts: Date.now(), suspendedClean: true }));
+    b.store.set('bwm.crash.crumbs', JSON.stringify([
+      { t: Date.now() - 5_000, label: 'social', detail: 'open' },
+    ]));
+    const t = await freshTelemetry();
+    t.installCrashTelemetry();
+    expect(b.beacon).not.toHaveBeenCalled();
+  });
+
+  it('stays silent for a home session with no persisted crumbs', async () => {
+    b.store.set('bwm.crash.watch', JSON.stringify({ atTable: false, route: '/', build: 'oldsha', ts: Date.now(), suspendedClean: false }));
+    const t = await freshTelemetry();
+    t.installCrashTelemetry();
+    expect(b.beacon).not.toHaveBeenCalled();
+  });
+
   it('scene mount marks the session at-table for the witness', async () => {
     const t = await freshTelemetry();
     t.installCrashTelemetry();
