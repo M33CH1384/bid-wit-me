@@ -345,58 +345,7 @@ export function peopleSpec(spec: CamSpec): CamSpec {
   };
 }
 
-/** Run It — the viewer's own-show framing (owner 2026-11-08): when
- *  the viewer himself claims, his figure stands at the camera's own
- *  seat, dead ahead of the lens — at stock framing the upright body
- *  covers his own slam pile at the near (kit) spots in the low
- *  sitting cameras (measured: the screen-space silhouette clearance
- *  of the pile goes negative there; proof in figure-stand.test.ts).
- *  For his show only, the camera takes an over-the-shoulder line:
- *  it slides to his right and dollies back until his head is clear
- *  of the lens (the close sitting cameras sit almost inside his
- *  chair spot), while its aim follows part of the slide and settles
- *  a shade deeper — his body reads at the left of the frame,
- *  standing at his seat, while the pile and the tornado's column
- *  clear his silhouette in every view, and as he bends into the
- *  slam his hands meet the cards centre-frame. The raise is larger
- *  for the narrow phone cameras (they need the height to see over
- *  him) and smaller for the wide ones (the slide does the work
- *  there), ramped on the camera's horizontal field. The rig's
- *  existing 700 ms view tween glides into the framing as the show's
- *  zoom phase runs and glides home as he sits. The hand fan solver
- *  works against the STOCK camera, so Cards refits the human hand
- *  by the matching matrix (see the showM term in Cards) — the two
- *  halves move together or the fan drifts. Opponent and bot claims
- *  never take this framing: it keys on the viewer's own claim
- *  (ownShow in Scene) and nothing else. */
-export const OWN_SHOW_CAM = {
-  side: 0.85,        // the over-the-shoulder slide to his right
-  follow: 0.3,       // how much of the slide the aim follows
-  raiseNarrow: 1.2,  // camera raise at the narrow (phone) end
-  raiseWide: 0.5,    // camera raise at the wide (landscape/desktop) end
-  lookDyWide: 0.12,  // aim lift at the wide end (0 at the narrow end)
-  lookDz: -0.1,      // the aim settles a shade deeper, toward the felt
-  backTarget: 3.7,   // dolly back until the camera is this far out
-} as const;
-
-/** The own-show spec for a base spec (stock, or the people spec at
- *  a story table's sitting view — the offsets compose on top). The
- *  ramp parameter u runs on the camera's horizontal field
- *  (tanH): ~0 for the phone portrait cameras, ~1 for landscape. */
-export function ownShowSpec(spec: CamSpec, aspect: number): CamSpec {
-  const tanH = Math.tan((spec.fov * Math.PI / 180) / 2) * aspect;
-  const u = Math.min(1, Math.max(0, (tanH - 0.28) / 0.63));
-  const raise = OWN_SHOW_CAM.raiseNarrow + (OWN_SHOW_CAM.raiseWide - OWN_SHOW_CAM.raiseNarrow) * u;
-  const lookDy = OWN_SHOW_CAM.lookDyWide * u;
-  const back = Math.min(1, Math.max(0, OWN_SHOW_CAM.backTarget - spec.pos[2]));
-  return {
-    fov: spec.fov,
-    pos: [spec.pos[0] + OWN_SHOW_CAM.side, spec.pos[1] + raise, spec.pos[2] + back],
-    look: [spec.look[0] + OWN_SHOW_CAM.side * OWN_SHOW_CAM.follow, spec.look[1] + lookDy, spec.look[2] + OWN_SHOW_CAM.lookDz],
-  };
-}
-
-function CameraRig({ view = 'standing', people = false, ownShow = false }: { view?: 'standing' | 'sitting'; people?: boolean; ownShow?: boolean }) {
+function CameraRig({ view = 'standing', people = false }: { view?: 'standing' | 'sitting'; people?: boolean }) {
   const { camera, size, invalidate } = useThree();
   const short = isShortLandscape(size.width, size.height);
   const anim = useRef<{ from: number[]; to: number[]; fromLook: number[]; toLook: number[]; start: number; dur: number } | null>(null);
@@ -432,7 +381,7 @@ function CameraRig({ view = 'standing', people = false, ownShow = false }: { vie
     const a = size.width >= 32 && size.height >= 32 ? size.width / size.height : 9 / 16;
     const stockSpec = cameraFor(a, short, view);
     const base = people && view === 'sitting' ? peopleSpec(stockSpec) : stockSpec;
-    const spec = ownShow ? ownShowSpec(base, a) : base;
+    const spec = base;
     const cam = camera as import('three').PerspectiveCamera;
     if (!Number.isFinite(spec.fov)) return;
     cam.fov = spec.fov;
@@ -452,7 +401,7 @@ function CameraRig({ view = 'standing', people = false, ownShow = false }: { vie
     anim.current = { from: [...fromPos], to: [...spec.pos], fromLook: [...fromLook], toLook: [...spec.look], start: performance.now(), dur: reduced ? 0 : CAMERA_VIEW_TWEEN_MS };
     (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t: 0, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom, sway: swayRef.current };
     invalidate();
-  }, [camera, size, short, view, people, ownShow, invalidate]);
+  }, [camera, size, short, view, people, invalidate]);
   // Offset changed (a drag, a reset, a seed) or the sway moved: re-place
   // instantly on the current base pose. A running view tween reads the
   // stores live instead.
@@ -1201,13 +1150,6 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // nextSlots stores the refit targets.
   const peopleCam = view === 'sitting' && quality === 'high'
     && !!(props.figureSeats?.some(Boolean)) && !!(props.storyStopId && FIGURE_SEAT_CONFIGS[props.storyStopId]);
-  // Run It — the viewer's own show (owner 2026-11-08): while HE
-  // claims, CameraRig renders the over-the-shoulder show framing
-  // (ownShowSpec, composed over the people spec at a story table);
-  // the fan refit below composes the matching matrix so his hand
-  // keeps its solved screen layout through the move. Derived here
-  // from the same props the rig's flag is derived from in Scene.
-  const ownShowCam = !!props.ownFigureKey && !props.spectator && !!props.runStand && props.runStand.seat === human;
   // Adjustable view (owner, 2026-10-29): CameraRig renders the base spec
   // (stock, or the people spec at the pilot) with the player's tilt/zoom on
   // top; the fan refit generalizes the people refit to that rendered spec,
@@ -1217,7 +1159,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const vaState = useSyncExternalStore(subscribeViewAdjust, getViewAdjustState);
   const swayDeg = useSyncExternalStore(subscribeMotionSway, getMotionSwayDeg, getMotionSwayDeg);
   const refitM = useMemo(() => {
-    if (!peopleCam && !ownShowCam && isDefaultViewAdjust(vaState.adj) && swayDeg === 0) return null;
+    if (!peopleCam && isDefaultViewAdjust(vaState.adj) && swayDeg === 0) return null;
     const stock = cameraFor(aspect, short, view);
     const people = peopleSpec(stock);
     // The people refit, exactly as shipped: M = V * S^-1 against the stock
@@ -1227,37 +1169,18 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const peopleM = peopleCam
       ? camMatrixOf(people.pos, people.look).multiply(camMatrixOf(stock.pos, stock.look).invert())
       : null;
-    // Run It — the viewer's own show (owner 2026-11-08): the show
-    // framing composes ON TOP of whatever base CameraRig started
-    // from (the stock spec, or the people spec at a story table),
-    // with its own M = W * B^-1 multiplied onto peopleM where there
-    // is one. The product stays M(actual) * S^-1 either way, so the
-    // fan holds its solved screen layout through his show exactly
-    // as it does through the people framing.
-    const showBase = peopleCam ? people : stock;
-    const show = ownShowSpec(showBase, aspect);
-    const showM = ownShowCam
-      ? camMatrixOf(show.pos, show.look).multiply(camMatrixOf(showBase.pos, showBase.look).invert())
-      : null;
-    if (isDefaultViewAdjust(vaState.adj) && swayDeg === 0) {
-      if (showM) return peopleM ? showM.multiply(peopleM) : showM;
-      return peopleM;
-    }
+    if (isDefaultViewAdjust(vaState.adj) && swayDeg === 0) return peopleM;
     // The player's tilt/zoom composes ON TOP of the base framing (the stock
-    // spec, the people spec at the pilot, or the own-show spec over
-    // either): its own M = A * B^-1, multiplied onto the show and
-    // people matrices where they exist. The product is
+    // spec, or the people spec at the pilot): its own M = A * B^-1,
+    // multiplied onto peopleM where there is one. The product is
     // M(actual) * S^-1 either way, so the fan keeps its solved screen
     // layout at any offset. Motion sway composes after the adjust, in
     // the same seat, so the fan holds its layout while the room pans.
-    const base = ownShowCam ? show : showBase;
+    const base = peopleCam ? people : stock;
     const actual = applyMotionSwayToSpec(applyViewAdjustToSpec(base, vaState.adj), swayDeg);
     const adjM = camMatrixOf(actual.pos, actual.look).multiply(camMatrixOf(base.pos, base.look).invert());
-    let m = adjM;
-    if (showM) m = m.multiply(showM);
-    if (peopleM) m = m.multiply(peopleM);
-    return m;
-  }, [peopleCam, ownShowCam, aspect, short, view, vaState.adj, swayDeg]);
+    return peopleM ? adjM.multiply(peopleM) : adjM;
+  }, [peopleCam, aspect, short, view, vaState.adj, swayDeg]);
   const refitXf = (x: Xform): Xform => {
     if (!refitM) return x;
     const m = new Matrix4().compose(new Vector3(x.p[0], x.p[1], x.p[2]), new Quaternion(x.q[0], x.q[1], x.q[2], x.q[3]), new Vector3(x.s, x.s, x.s));
@@ -2453,13 +2376,6 @@ export default function Scene(props: SceneProps) {
      own slam path); the figure layers read it to keep the standing
      figure's hands on the cards through the slam. */
   const slamGripRef = useRef<SlamGripPlan | null>(null);
-  /* Run It — the viewer's own stand (owner 2026-11-08): true while
-     the local human is the claimer of the live show. Drives the
-     over-the-shoulder show framing (CameraRig below) for exactly
-     the show's duration; the figure layers hold their own
-     show-window latch for his figure. Never true for a spectator
-     or for anyone else's claim. */
-  const ownShow = !!props.ownFigureKey && !props.spectator && !!props.runStand && props.runStand.seat === props.human;
   const [layerReady, setLayerReady] = useState(false);
   const def = VENUE_DEFS[props.venue ?? 'classic'];
   const classic = def.id === 'classic';
@@ -2820,7 +2736,7 @@ export default function Scene(props: SceneProps) {
           session's games, but each game's Table still needs its own
           first-frame certification for the deal gate. */}
       <FirstFrameSignal key={props.gameSeed ?? ''} onFirstFrame={firstFrame} />
-      <CameraRig view={props.view} people={storyFiguresActive} ownShow={ownShow} />
+      <CameraRig view={props.view} people={storyFiguresActive} />
       <RoomYawEnv yaw={roomYaw} />
       <ViewAdjustControls />
       <MotionViewControls covered={!!props.covered} />

@@ -40,7 +40,8 @@ import {
 } from '../src/three/runSlamPose';
 import { cameraFor, opponentFan, trickSpot, type CamSpec, type Xform } from '../src/three/layout';
 import { PerspectiveCamera, Vector3 } from 'three';
-import { ownShowSpec, peopleSpec } from '../src/three/Scene';
+import * as SceneModule from '../src/three/Scene';
+import { peopleSpec } from '../src/three/Scene';
 import { CHAIR_SPOTS } from '../src/three/classicStudioLayout';
 import { playSeed, runScatter } from '../src/three/landing';
 import { RUN_MEGA_SHOW_EXTRA_MS, RUN_SHOW_MS, RUN_ZOOM_MS } from '../src/runIt';
@@ -409,17 +410,38 @@ describe('wiring — the viewer’s own player stands for his own run (owner 202
     expect(table).toContain('glb figure (own run-it ');
   });
 
-  it('Scene threads ownFigureKey + ownShow through the rig, the fan refit and both figure layers', () => {
+  it('Scene threads ownFigureKey through both figure layers — and no camera branch keys on his claim (owner correction 2026-11-08)', () => {
     const scene = src('src/three/Scene.tsx');
     expect(scene).toContain('ownFigureKey?: string | null;');
-    expect(scene).toContain('const ownShow = !!props.ownFigureKey && !props.spectator && !!props.runStand && props.runStand.seat === props.human;');
-    expect(scene).toContain('const spec = ownShow ? ownShowSpec(base, a) : base;');
-    expect(scene).toContain('ownShow={ownShow}');
     expect(scene).toContain('ownFigureKey={props.ownFigureKey ?? null}');
     expect(scene).toContain('ownSeat={props.human}');
-    // the fan refit composes the show matrix, so his hand keeps its
-    // solved screen layout while the world takes the show framing
-    expect(scene).toContain('const showM = ownShowCam');
+    // The owner simplified his ask — jump to standing, then slam —
+    // so the camera does for his run exactly what it does for a
+    // bot's: the rig renders the base spec unconditionally, and no
+    // own-show framing survives anywhere in the file, in code or
+    // in comment.
+    expect(scene).toContain('const spec = base;');
+    expect(scene).not.toContain('ownShow');
+    expect(scene).not.toContain('OWN_SHOW_CAM');
+    expect(scene).not.toContain('showM');
+  });
+
+  it('Scene exports no own-show camera helper at runtime', () => {
+    expect((SceneModule as Record<string, unknown>).ownShowSpec).toBeUndefined();
+    expect((SceneModule as Record<string, unknown>).OWN_SHOW_CAM).toBeUndefined();
+  });
+
+  it('the fan refit takes no input from the claim — his fan layout during his show equals the layout outside it', () => {
+    const scene = src('src/three/Scene.tsx');
+    // the pre-lane (a91a19e) refit, restored verbatim: its only
+    // inputs are the people framing, the player's saved tilt/zoom
+    // and the motion sway — the live claim (runStand /
+    // ownFigureKey) appears nowhere in it, so the hand cannot move
+    // when his show starts or ends
+    expect(scene).toContain('if (!peopleCam && isDefaultViewAdjust(vaState.adj) && swayDeg === 0) return null;');
+    expect(scene).toContain('const base = peopleCam ? people : stock;');
+    expect(scene).toContain('return peopleM ? adjM.multiply(peopleM) : adjM;');
+    expect(scene).toContain('}, [peopleCam, aspect, short, view, vaState.adj, swayDeg]);');
   });
 
   it('both figure layers hold a show-window latch for the viewer’s seat and nothing else changes', () => {
@@ -441,16 +463,18 @@ describe('wiring — the viewer’s own player stands for his own run (owner 202
     expect(src('src/three/PorchFigures.tsx')).toContain('PERSONA_FIGURE_REGISTERS');
   });
 });
-
-describe('own-show framing — his standing figure never covers his slam', () => {
-  // The proof projects the standing figure's silhouette (head /
-  // chest / pelvis / legs as screen discs at the most-occluding
-  // placement: pelvis over the ankles at standE = 1, head directly
-  // above it) against the slam pile point and the tornado centre
-  // through the SHIPPED camera math — every view, both bottom-spot
-  // geometries in the game (studio 2.8 / kit 1.98 — figureSeats.ts
-  // proves those are the only two), both floor heights, and the
-  // full stature band read out of the shipped registers.
+describe('own show under the standard camera — framing truth on record (owner correction 2026-11-08)', () => {
+  // The owner took the standard camera for his own show, knowing
+  // the standing figure at his own seat (bottom edge, dead ahead of
+  // the lens) may be partly cropped — the camera no longer moves
+  // for him. This block MEASURES that truth with the retired
+  // proof's disc model and leaves the numbers in the test log for
+  // his glance; it gates on nothing but the projection running.
+  // (The occlusion gate itself was retired with the show framing
+  // it justified.) Silhouette placement as in the retired proof:
+  // pelvis over the ankles at standE = 1, head directly above it,
+  // at both bottom-spot geometries in the game (studio 2.8 / kit
+  // 1.98), both floor heights, the shipped stature band.
   const poseSrc = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
   const statures = [...poseSrc('src/three/PersonaFigures.tsx').matchAll(/stature: ([\d.]+)/g),
     ...poseSrc('src/three/PorchFigures.tsx').matchAll(/stature: ([\d.]+)/g)].map((m) => Number(m[1]));
@@ -473,9 +497,6 @@ describe('own-show framing — his standing figure never covers his slam', () =>
     const p = ndc(cam, P);
     const discs: { c: [number, number, number]; r: number }[] = [
       { c: [0, headY - 0.13, headZ], r: 0.14 },
-      // the chest sits a step behind the head plane (the standing
-      // lean puts the face foremost) at the broadest shoulder
-      // half-breadth the cast carries
       { c: [0, headY - 0.45, headZ + 0.05], r: 0.26 },
       { c: [0, pelvisY + 0.1, headZ + 0.03], r: 0.24 },
       { c: [-0.11, (pelvisY - 0.9) / 2 + 0.2, headZ + 0.02], r: 0.095 },
@@ -503,54 +524,42 @@ describe('own-show framing — his standing figure never covers his slam', () =>
   ];
   const band = [Math.min(...statures), (Math.min(...statures) + Math.max(...statures)) / 2, Math.max(...statures)];
 
-  it('the register band the proof runs against is the shipped one (1.6–1.95 m)', () => {
+  it('the register band the measurement runs against is the shipped one (1.6–1.95 m)', () => {
     expect(Math.min(...statures)).toBeGreaterThanOrEqual(1.6);
     expect(Math.max(...statures)).toBeLessThanOrEqual(1.95);
   });
 
-  it('at stock framing the upright figure DOES cover the pile somewhere — the show framing is necessary', () => {
-    let minPile = Infinity;
+  it('records, per view, the head line, the in-frame body span and the pile/vortex clearance under the standard camera', () => {
+    const rows: string[] = [];
     for (const v of views) {
       let base = cameraFor(v.aspect, v.short, v.view);
       if (v.people) base = peopleSpec(base);
       const cam = camOf(base, v.aspect);
-      for (const sz of spots) for (const floorY of floors) for (const st of band) {
-        const headY = floorY + st * FIG_SCALE;
-        minPile = Math.min(minPile, clearance(cam, pileP, headY, sz - 0.2, floorY + st * FIG_SCALE * 0.52, v.aspect));
-      }
-    }
-    expect(minPile).toBeLessThan(0);
-  });
-
-  it('under the own-show framing the pile and the tornado centre clear his silhouette in every cell', () => {
-    for (const v of views) {
-      let base = cameraFor(v.aspect, v.short, v.view);
-      if (v.people) base = peopleSpec(base);
-      const cam = camOf(ownShowSpec(base, v.aspect), v.aspect);
+      let worstPile = Infinity;
+      let worstVortex = Infinity;
+      let headTopMin = Infinity;
+      let headTopMax = -Infinity;
+      let spanMin = Infinity;
       for (const sz of spots) for (const floorY of floors) for (const st of band) {
         const headY = floorY + st * FIG_SCALE;
         const headZ = sz - 0.2;
         const pelvisY = floorY + st * FIG_SCALE * 0.52;
-        expect(clearance(cam, pileP, headY, headZ, pelvisY, v.aspect), `${v.name} pile spot${sz} floor${floorY} st${st}`).toBeGreaterThan(0.02);
-        expect(clearance(cam, vortexC, headY, headZ, pelvisY, v.aspect), `${v.name} vortex spot${sz} floor${floorY} st${st}`).toBeGreaterThan(0.02);
+        worstPile = Math.min(worstPile, clearance(cam, pileP, headY, headZ, pelvisY, v.aspect));
+        worstVortex = Math.min(worstVortex, clearance(cam, vortexC, headY, headZ, pelvisY, v.aspect));
+        const top = ndc(cam, [0, headY, headZ]).y;
+        headTopMin = Math.min(headTopMin, top);
+        headTopMax = Math.max(headTopMax, top);
+        // the share of the body's vertical extent (floor to head
+        // top, in NDC) that lands inside the frame's [-1, 1]
+        const feet = ndc(cam, [0, floorY, headZ]).y;
+        const span = Math.max(0, Math.min(top, 1) - Math.max(feet, -1)) / Math.max(1e-6, top - feet);
+        spanMin = Math.min(spanMin, span);
       }
+      rows.push(`${v.name}: headTop NDC ${headTopMin.toFixed(2)}..${headTopMax.toFixed(2)} | body in frame ≥ ${(spanMin * 100).toFixed(0)}% | pile clearance ${worstPile.toFixed(3)} | vortex clearance ${worstVortex.toFixed(3)}`);
+      expect(Number.isFinite(worstPile)).toBe(true);
+      expect(Number.isFinite(worstVortex)).toBe(true);
     }
-  });
-
-  it('under the own-show framing he still reads: head in frame, settled left of the action', () => {
-    for (const v of views) {
-      let base = cameraFor(v.aspect, v.short, v.view);
-      if (v.people) base = peopleSpec(base);
-      const cam = camOf(ownShowSpec(base, v.aspect), v.aspect);
-      for (const sz of spots) for (const floorY of floors) for (const st of band) {
-        const headY = floorY + st * FIG_SCALE;
-        const head = ndc(cam, [0, headY, sz - 0.2]);
-        expect(head.y, `${v.name} headTop spot${sz} st${st}`).toBeLessThanOrEqual(0.98);
-        expect(head.y, `${v.name} headTop spot${sz} st${st}`).toBeGreaterThanOrEqual(-1.0);
-        const centre = ndc(cam, [0, headY - 0.13, sz - 0.2]);
-        expect(Math.abs(centre.x), `${v.name} headCentreX spot${sz} st${st}`).toBeLessThanOrEqual(0.92);
-        expect(centre.x, `${v.name} headCentreX spot${sz} st${st}`).toBeLessThan(-0.05);
-      }
-    }
+    // eslint-disable-next-line no-console
+    console.log('\n[framing truth — standard camera, viewer’s own show]\n' + rows.join('\n'));
   });
 });

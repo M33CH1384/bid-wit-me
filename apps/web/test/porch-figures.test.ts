@@ -157,7 +157,7 @@ describe('the people-framing camera (ratification candidate)', () => {
     const scene = src('src/three/Scene.tsx');
     expect(scene).toContain('export const PEOPLE_CAM = { raise: 0.37, lookDy: 0.48, lookDz: -0.38 } as const');
     expect(scene).toContain("people && view === 'sitting' ? peopleSpec(stockSpec) : stockSpec");
-    expect(scene).toContain('<CameraRig view={props.view} people={storyFiguresActive} ownShow={ownShow} />');
+    expect(scene).toContain('<CameraRig view={props.view} people={storyFiguresActive} />');
   });
 
   it('the hand refit rides the same matrix family (M = V * S^-1)', () => {
