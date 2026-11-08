@@ -310,3 +310,52 @@ describe('the recap: retired pair gone, earned/house animations in their place',
     expect(html).not.toContain('recap-setanim-');
   });
 });
+
+describe("legends stamp: SHELVED mid-game, RETIRED only when the game is over (owner, 2026-11-08)", () => {
+  const renderLegends = (tier: 'regular' | 'finale', reduced = false) =>
+    renderToStaticMarkup(createElement(SetCover, { animId: 'legends', tier, mode: 'fresh', reduced, side: 1 }));
+
+  it('regular tier: the stamp reads SHELVED — a set happened, the game goes on', () => {
+    const html = renderLegends('regular');
+    expect(html).toContain('sc-stamp');
+    expect(html).toContain('>SHELVED<');
+    expect(html).not.toContain('RETIRED');
+    // no finale furniture mid-game either
+    expect(html).not.toContain('sc-plaque');
+    expect(html).not.toContain('TABLE CLOSED');
+  });
+
+  it('finale tier: RETIRED still lands, roped off, TABLE CLOSED', () => {
+    const html = renderLegends('finale');
+    expect(html).toContain('>RETIRED<');
+    expect(html).not.toContain('SHELVED');
+    expect(html).toContain('sc-rope');
+    expect(html).toContain('sc-plaque');
+    expect(html).toContain('TABLE CLOSED');
+  });
+
+  it("the picker name is 'Shelved', the id stays 'legends', and the blurb tells both tiers truthfully", () => {
+    const def = setAnimForStop('legends')!;
+    expect(def.stopId).toBe('legends');
+    expect(def.name).toBe('Shelved');
+    expect(def.blurb).toContain('SHELVED');
+    expect(def.blurb).toContain('RETIRED');
+    expect(setAnimUnlockNotice('legends')).toBe('New set animation unlocked: Shelved');
+  });
+
+  it('the still / end-state name tag carries the new name at both tiers', () => {
+    expect(renderLegends('finale', true)).toContain('Shelved · Finale');
+    expect(renderLegends('regular', true)).toContain('>Shelved<');
+    expect(renderLegends('regular', true)).not.toContain('Retired');
+  });
+
+  it('the composed recap at the Legends stop shows SHELVED on a mid-game set', () => {
+    clearTeamHoles();
+    const names = ['You', 'Hana', 'Mei', 'Jamal'];
+    const html = recap(stamp(toHandOver('joker'), [[], [1]]), names, { storyStopId: 'legends', venueId: 'vegas', setting: 'auto' });
+    expect(html).toContain('data-anim="legends"');
+    expect(html).toContain('data-tier="regular"');
+    expect(html).toContain('>SHELVED<');
+    expect(html).not.toContain('RETIRED');
+  });
+});

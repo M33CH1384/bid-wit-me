@@ -44,7 +44,7 @@ const COPY: Record<string, { name: string; blurb: string }> = {
   rooftop: { name: 'The Flock', blurb: 'The pigeons burst off the ledge across the set side. Finale: the whole flock, one feather left behind.' },
   'high-rise': { name: 'Going Down', blurb: 'The elevator doors close on the set side. Finale: doors shut, car going down to the lobby.' },
   'the-pjs': { name: "Lights Out", blurb: 'The streetlight buzzes and cuts over the set side, chain-link rattling. Finale: it stays out.' },
-  legends: { name: 'Retired', blurb: 'A gold RETIRED stamp slams onto the score. Finale: stamped, roped off, table closed.' },
+  legends: { name: 'Shelved', blurb: 'A gold SHELVED stamp slams onto the score. Finale: RETIRED, roped off, table closed.' },
   king: { name: 'The Crown Settles', blurb: 'The lights narrow to one spotlight and the crown settles. Finale: the spotlight dies last.' },
 };
 

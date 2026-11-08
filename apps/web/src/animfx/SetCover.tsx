@@ -133,7 +133,7 @@ const ART: Record<string, (finale: boolean) => ReactNode> = {
       <svg className="sc-frame" viewBox="0 0 100 60" preserveAspectRatio="none" aria-hidden="true">
         <rect x="1.5" y="1.5" width="97" height="57" pathLength={100} />
       </svg>
-      <div className="sc-stamp">RETIRED</div>
+      <div className="sc-stamp">{finale ? 'RETIRED' : 'SHELVED'}</div>
       {finale && (
         <>
           <div className="sc-rope"><i className="sc-post l" /><i className="sc-sag" /><i className="sc-post r" /></div>
