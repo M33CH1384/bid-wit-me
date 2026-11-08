@@ -116,6 +116,12 @@ export interface RoomData {
   botTalk?: boolean;
   /** per side: custom team name (null/unset = partner names) */
   teamNames?: (string | null)[];
+  /** per side: the member who set that side's current team name (null/unset = no
+   * recorded namer — challenge-seeded, bot-filled, or set before this was tracked;
+   * such names stay glued to their side exactly as names always did). A recorded
+   * namer's name FOLLOWS them on lobby seat moves (owner ruling 2026-11-08:
+   * names belong to the people who set them, not to the side index). */
+  teamNameBy?: (string | null)[];
   /** trash-talk cooldown state (bot reveals etc.) */
   talk?: TalkState;
   /** rematch series (see @spades/rules series) */
@@ -548,7 +554,7 @@ export class Room {
     if (!m || !pid) return;
     if (this.kickedOut(undefined, uid)) { this.rejectKick(connId); return; }
     if (m.uid === uid) return;
-    this.claimAccount(pid, uid);
+    this.claimAccount(pid, uid, connId);
     const now = this.conns.get(connId) ?? pid;
     if (now !== pid) {
       const kept = this.data.members[now];
@@ -820,10 +826,41 @@ export class Room {
   }
 
   /**
+   * Team-name ownership (owner ruling 2026-11-08, M2): a side's name belongs to
+   * the member who set it (teamNameBy), not to the side index. Called after a
+   * member's seat changes outside a running game. If the member is now seated
+   * on the other side from a name they own, the name leaves the old side and
+   * applies to their new side — unless the new side already carries a name
+   * owned by a member still seated there, or a name with no recorded owner
+   * (challenge-seeded / bot-filled): that name stays, and the carried name is
+   * dropped (its owner can rename their new side explicitly). An unseated
+   * namer moves nothing: the name waits with its side until they sit again.
+   */
+  private followTeamName(pid: string): void {
+    const d = this.data;
+    if (!d.rules.partnerships || d.phase === 'playing' || !d.teamNames || !d.teamNameBy) return;
+    const me = d.members[pid];
+    if (!me || me.seat === null) return;
+    const mySide = me.seat % 2;
+    for (let side = 0; side < 2; side++) {
+      if (side === mySide || d.teamNameBy[side] !== pid) continue;
+      const carried = d.teamNames[side];
+      d.teamNames[side] = null;
+      d.teamNameBy[side] = null;
+      if (!carried) continue;
+      const holder = d.teamNameBy[mySide];
+      const holderSeatedHere = !!holder && holder !== pid && d.members[holder]?.seat != null && d.members[holder]!.seat! % 2 === mySide;
+      if (d.teamNames[mySide] && (holderSeatedHere || !holder)) continue; // their name stays; the carried name is dropped
+      d.teamNames[mySide] = carried;
+      d.teamNameBy[mySide] = pid;
+    }
+  }
+
+  /**
    * One account, one member. A second connection of the same account joins the member already here
    * (and a second seat, if one was taken, is given back).
    */
-  private claimAccount(pid: string, uid: string): void {
+  private claimAccount(pid: string, uid: string, connId?: string): void {
     const d = this.data;
     const m = d.members[pid];
     if (!m) return;
@@ -835,8 +872,19 @@ export class Room {
     const dropId = keepId === pid ? otherId : pid;
     const drop = d.members[dropId]!;
     const keep = d.members[keepId]!;
+    if (drop.seat !== null && drop.seat !== keep.seat && d.phase !== 'lobby') {
+      // Owner ruling 2026-11-08 (M3): once a game is on, an account link must
+      // never move a seated player — no seat handed to a bot, no connection
+      // re-pointed across seats. The fold is refused outright: both members
+      // keep their own seats and connections, and the linking connection is
+      // told plainly (the sit handler's own words for the same refusal).
+      if (connId) this.err(connId, 'ALREADY_SEATED', 'This account is already seated at this table');
+      return;
+    }
     if (drop.seat !== null && drop.seat !== keep.seat) {
-      d.seats[drop.seat] = d.phase === 'playing' ? this.botSeat(drop.name) : { kind: 'empty' };
+      // lobby only (the game-on case is refused above): the second seat is
+      // released as a plain vacancy — the fold never fills it with a bot
+      d.seats[drop.seat] = { kind: 'empty' };
     }
     for (const [cid, p] of this.conns) if (p === dropId) this.conns.set(cid, keepId);
     if (d.hostId === dropId) d.hostId = keepId;
@@ -844,6 +892,8 @@ export class Room {
     keep.gid ??= drop.gid;
     delete d.members[dropId];
     keep.uid = uid;
+    // team-name ownership follows the surviving member, never dangles
+    if (d.teamNameBy) d.teamNameBy = d.teamNameBy.map((x) => (x === dropId ? keepId : x));
     // The name already on the kept member stays. A second hello must not rename the seat.
     this.seatReserved(keepId);
   }
@@ -1004,7 +1054,7 @@ export class Room {
     }
     // token matched a different body than the account already seated here: fold them into one member
     if (uid && Object.keys(d.members).some((id) => id !== pid && d.members[id]!.uid === uid)) {
-      this.claimAccount(pid, uid);
+      this.claimAccount(pid, uid, connId);
       pid = this.conns.get(connId) ?? pid;
     }
     // A bot that took the seat during the disconnect grace gives it back. Never leave them watching.
@@ -1079,6 +1129,8 @@ export class Room {
         d.seats[msg.seat] = { kind: 'human', playerId: pid };
         me.seat = msg.seat;
         me.timeouts = 0;
+        // a team name the mover set follows them to their new side (M2)
+        this.followTeamName(pid);
         if (d.phase === 'playing') {
           // the new player takes over the seat's hand and score as is; on that seat's own turn their clock starts fresh
           const g = d.game;
@@ -1192,6 +1244,8 @@ export class Room {
       case 'teamName': {
         if (d.story) throw new RoomError('LOCKED', 'Story teams are billed by the players\u2019 names');
         if (!d.rules.partnerships) throw new RoomError('NO_TEAMS', 'No teams in Cutthroat');
+        // Renames lock once the game starts (owner ruling 2026-11-08), mirroring venue.
+        if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Team names are set before the game starts');
         if (me.seat === null || me.seat >= d.rules.playerCount) throw new RoomError('NOT_SEATED', 'Sit down to name your team');
         const name = cleanTeamName(msg.name);
         if (name === null) throw new RoomError('BAD_NAME', "That team name isn't allowed");
@@ -1200,6 +1254,11 @@ export class Room {
         if ((names[side] ?? '') === name) return;
         names[side] = name || null;
         d.teamNames = names;
+        // the name belongs to its namer: record who set it so it can follow
+        // them on lobby seat moves instead of stranding on the side index
+        const by = [...(d.teamNameBy ?? [null, null])];
+        by[side] = name ? pid : null;
+        d.teamNameBy = by;
         this.system(name ? `${me.name} named their team “${name}”` : `${me.name} reset their team name`);
         break;
       }

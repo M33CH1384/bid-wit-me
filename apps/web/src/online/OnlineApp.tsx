@@ -7,7 +7,7 @@ import { HostMusicBridge } from './HostMusic';
 import { type Settings, loadSettings, saveSettings, settingsToRules } from '../settings';
 import { serverUrl } from './config';
 import { TableConnection, createTable, tableInfo } from './connection';
-import { joinableSeats, spectatorsFull } from './joinable';
+import { joinableSeats, lobbyAutoSitSeat, spectatorsFull } from './joinable';
 import { canEnterTable, tableEntryName } from './entryGate';
 import { forgetToken, loadName, saveName } from './identity';
 import Lobby from './Lobby';
@@ -167,7 +167,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
     else mesh.setPeers(cs.spectator && cs.you && watchers.includes(cs.you) ? seated : []);
   }, [mesh, peerKey, watchKey, cs.seat, cs.spectator, cs.you]);
 
-  // first arrival: the creator configures + takes seat 1; guests auto-sit in the first open seat
+  // first arrival: the creator configures + takes seat 1; guests auto-sit in the partner seat across from the host when it is open (else the first open seat)
   const [autoDone, setAutoDone] = useState(false);
   useEffect(() => {
     if (autoDone || !cs.room || !cs.you) return;
@@ -200,7 +200,7 @@ function TableRoomInner({ conn, code }: { conn: TableConnection; code: string })
     } else if (watch) {
       // just watching
     } else if (cs.seat === null && room.phase === 'lobby') {
-      const free = room.seats.findIndex((s) => s.kind === 'empty');
+      const free = lobbyAutoSitSeat(room);
       if (free >= 0) conn.send({ t: 'sit', seat: free });
     } else if (cs.seat === null && Number.isInteger(want)) {
       const bot = open.find((i) => room.seats[i]?.kind === 'bot');
