@@ -5823,3 +5823,42 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    floor does not apply there (the panel budget cannot hold it — the
    landscape-fit pins read this rule's padding/font, kept identical) */
 .table-screen.short .bid-grid button { padding: 3px 0; font-size: 15px; min-height: 0; }
+
+/* ---------- Settings sheet declutter (owner, 2026-11-08) ----------
+   "Rework the settings menu — it's an eye sore, all the controls
+   looking to be jumbled together." Presentation only, layered on the
+   2026-10-20 grouped cards the same additive way they were built:
+   every rule below is scoped to the ONE sheet and overrides nothing
+   outside it; no setting, control, label, default or persistence
+   changes, and Classic/Neon share the structure (the theme paints).
+   What was jumbled, from the sheet's own CSS: three row systems with
+   three rhythms shared one scroll (ruled .row at 9px padding, unruled
+   .sf-row floating at gap 10, .vol-row at gap 2 with negative margins),
+   and the .sf-note descriptions ran INLINE after their labels, so the
+   long ones (the Deacon's 160 characters, Reduce effects, Motion view)
+   wrapped the label itself into a ragged block while the switch
+   floated beside it. The fixes: section cards and headers get real
+   air; ONE row anatomy (same min-height, same 12px padding, same
+   hairline, last row of a group drops it) for every row kind; notes
+   become quiet blocks UNDER their label so the label line is one
+   clean line again; sliders keep their full-width rows inside the
+   same rhythm; the bot-talk block gets its sub-header (.set-subh). */
+[data-testid="more-options"] .set-group { margin-top: 22px; padding: 10px 14px 16px; }
+[data-testid="more-options"] .sheet-body > .set-group:first-child { margin-top: 4px; }
+[data-testid="more-options"] .sheet-head { padding-bottom: 10px; }
+[data-testid="more-options"] .set-group > .sheet-h { margin: 0 0 2px; }
+[data-testid="more-options"] .set-group:has(.set-group-body.open) > .sheet-h { border-bottom: 1px solid rgba(var(--edge-rgb),.16); padding-bottom: 8px; margin-bottom: 6px; }
+[data-testid="more-options"] .set-group .row, [data-testid="more-options"] .set-group .sf-row { min-height: 56px; padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,.06); }
+[data-testid="more-options"] .set-group .vol-row { padding-top: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.06); }
+[data-testid="more-options"] .set-group-inner > :is(.row, .sf-row, .vol-row, .gold-tab-row):last-child { border-bottom: 0; }
+[data-testid="more-options"] .bot-talk-fields > :is(.sf-row, .vol-row):last-child { border-bottom: 0; }
+[data-testid="more-options"] .sound-fields { gap: 0; padding-top: 2px; }
+[data-testid="more-options"] .sound-fields .vol-row { margin: 0; }
+[data-testid="more-options"] .sf-note { display: block; margin-top: 3px; line-height: 1.45; }
+[data-testid="more-options"] .row-label small { margin-top: 3px; line-height: 1.45; }
+[data-testid="more-options"] .sheet-actions { margin-bottom: 8px; }
+[data-testid="more-options"] .sound-fields .hint { margin-top: 14px; line-height: 1.55; }
+[data-testid="more-options"] .about-row { padding: 10px 0 4px; }
+[data-testid="more-options"] .set-group .gold-tab-row { display: flex; align-items: center; width: 100%; min-height: 56px; margin: 0; padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,.06); text-align: left; }
+[data-testid="more-options"] .bot-talk-fields { margin-top: 4px; }
+.set-subh { font-family: var(--display); font-size: 12.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); margin: 0; padding-top: 16px; }

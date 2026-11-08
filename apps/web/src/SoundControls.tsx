@@ -304,6 +304,7 @@ export function BotTalkFields() {
   const voiceOk = typeof window !== 'undefined' && ('AudioContext' in window || 'webkitAudioContext' in window || 'speechSynthesis' in window);
   return (
     <div className="bot-talk-fields" data-testid="bot-talk-fields">
+      <h4 className="set-subh">Table talk</h4>
       <label className="sf-row">
         <span>Bot voices{!voiceOk && <small className="sf-note"> · not supported here</small>}</span>
         <button type="button" role="switch" aria-checked={t.voices} aria-label="Bot voices" data-testid="bot-voices" className={`switch ${t.voices ? 'on' : ''}`} disabled={!voiceOk} onClick={() => talkPrefs.set({ voices: !t.voices })}><i /></button>
