@@ -68,6 +68,10 @@ import { useFigureResidency } from './figureResidency';
 import { CHAIR_SPOTS } from './classicStudioLayout';
 import { opponentFan, seatDir, type SeatPos } from './layout';
 import { fanRestTarget } from './fanRest';
+import {
+  standAmount, standFinished, standPelvisTarget,
+  type RunStandInfo, type StandLatch,
+} from './figureStand';
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -846,6 +850,11 @@ interface FigureProps {
   aspect: number;
   view: 'standing' | 'sitting';
   animate: boolean;
+  /** Run It stand (owner 2026-11-08): the claim time (performance.now)
+   *  when THIS seat is the run's claimer, else null — the figure stands
+   *  for the show (three/figureStand.ts). */
+  standAt: number | null;
+  standMega: boolean;
   anchors: { trick: Vector3; human: Vector3; heads: Record<string, Vector3> };
   /** the venue's chair layout + seat top + floor (VENUE_SEAT_GEOMETRY) */
   spots: readonly { x: number; z: number; ry: number }[];
@@ -853,7 +862,7 @@ interface FigureProps {
   floorY: number;
 }
 
-function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate, anchors, spots, seatTop, floorY }: FigureProps) {
+function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate, standAt, standMega, anchors, spots, seatTop, floorY }: FigureProps) {
   const gltf = useLoader(GLTFLoader, url);
   /* Residency (crash hardening): same shared figure budget as the
      story cast — see figureResidency / PorchFigures. */
@@ -867,6 +876,18 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
   const headState = useRef({ yaw: 0, pitch: 0, next: 0, idx: 0 });
   const restCur = useRef<{ drop: number; pinch: number } | null>(null);
   const fanRef = useRef(new Vector3());
+  /* Run It stand: the anchors the standing solve is built from,
+     recorded at placement (the seated root position, the pelvis and
+     the planted ankles in seat-group space, and the standing root
+     position they imply). standRoot null = this rig's legs cannot
+     carry a stand and the figure stays seated — never a fake. */
+  const standAnchors = useRef<{
+    seatedRoot: Vector3; pelvisSeat: Vector3; pelvisStand: Vector3 | null;
+    standRoot: Vector3 | null; ankleL: Vector3; ankleR: Vector3;
+  } | null>(null);
+  const standLatch = useRef<StandLatch | null>(null);
+  const standApplied = useRef(false);
+  const standCur = useRef(0);
   const solvedFrames = useRef(0);
   /* Round-2 diagnosis: what the placement effect saw (the card
      count at mount) and the head clearance it ended with. */
@@ -1065,6 +1086,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       const scrNow = scr();
       (w.__bwmPersonaFigures as { gates?: Record<string, unknown> }).gates![id] = {
         hipY: y('Hips'), ankleYL: y('LeftFoot'), ankleYR: y('RightFoot'),
+        stand: Math.round(standCur.current * 1000) / 1000,
         toeYL: y('LeftToeBase'), toeYR: y('RightToeBase'),
         gripErrL: dist('LeftHand', gripFor('Left')), gripErrR: dist('RightHand', gripFor('Right')),
         fanGapL: tipGap('L'), fanGapR: tipGap('R'),
@@ -1301,6 +1323,27 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       }
       placedRef.current = { count, clear: Math.round(worst * 1000) / 1000 };
     }
+    /* Run It stand anchors: the pelvis and the planted ankles in
+       seat-group space, now that the seat solve has run — the
+       standing solve (frame loop) re-uses these exact ankle plants,
+       so the feet never move when the figure stands. */
+    {
+      group.updateMatrixWorld(true);
+      const toG = (nm: string) => group.worldToLocal(jp(nm).clone());
+      const pelvisSeat = toG('LeftUpLeg').add(toG('RightUpLeg')).multiplyScalar(0.5);
+      const ankleL = toG('LeftFoot');
+      const ankleR = toG('RightFoot');
+      const pelvisStandP = standPelvisTarget(pelvisSeat, ankleL, ankleR, prep.thigh + prep.shin);
+      const pelvisStand = pelvisStandP ? new Vector3(pelvisStandP.x, pelvisStandP.y, pelvisStandP.z) : null;
+      standAnchors.current = {
+        seatedRoot: root.position.clone(),
+        pelvisSeat,
+        pelvisStand,
+        standRoot: pelvisStand ? root.position.clone().add(pelvisStand.clone().sub(pelvisSeat)) : null,
+        ankleL,
+        ankleR,
+      };
+    }
   }, [prep, seatPos, n, reg, spots, seatTop, floorY]);
 
   const headWorld = useMemo(() => new Vector3(), []);
@@ -1309,6 +1352,49 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
     const { root, bones: b, base, fingers } = prep;
     const group = groupRef.current;
     if (!group) return;
+    /* Run It stand (owner 2026-11-08, three/figureStand.ts): latch
+       the show's claim when THIS seat is the claimer. The envelope is
+       wall-clock, so the schedule survives the show state clearing at
+       its end (the sit-down runs after it) and any covered or starved
+       stretch in between — a late frame computes the true amount from
+       the clock, never a stale pose. Presentation only: nothing in
+       the game waits on this. */
+    const standA = standAnchors.current;
+    const nowMs = performance.now();
+    const restoreSeated = () => {
+      if (!standApplied.current) return;
+      if (standA) root.position.copy(standA.seatedRoot);
+      for (const nm of ['LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot']) {
+        if (b[nm] && base[nm]) b[nm]!.quaternion.copy(base[nm]!);
+      }
+      standApplied.current = false;
+    };
+    if (animate && standAt !== null && standA?.standRoot) {
+      if (!standLatch.current || standLatch.current.at !== standAt) {
+        standLatch.current = { at: standAt, mega: standMega, skipAt: null };
+      }
+    } else if (standLatch.current && standLatch.current.skipAt === null && standAt === null) {
+      standLatch.current.skipAt = nowMs;
+    }
+    let standE = 0;
+    if (standLatch.current && standA?.standRoot) {
+      if (standFinished(nowMs, standLatch.current)) {
+        restoreSeated();
+        standLatch.current = null;
+        standCur.current = 0;
+      } else {
+        standE = standAmount(nowMs, standLatch.current);
+        standCur.current = standE;
+      }
+    }
+    if (!animate && standApplied.current) {
+      /* Reduced life switched on mid-stand: settle seated at once —
+         the static pose is the seated one, never a frozen stand. */
+      restoreSeated();
+      standLatch.current = null;
+      standCur.current = 0;
+      standE = 0;
+    }
     /* Under reduced life the pose still solves (the fan moves with
        the game), but only until the grips settle; breath/gaze/finger
        phase stay frozen — the King figures' animate contract. */
@@ -1335,6 +1421,14 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
     fanRef.current.copy(fanC);
     if (settle) return;
     solvedFrames.current++;
+    /* Run It stand: the pelvis rides the recorded root positions —
+       seated and standing share the figure's own placement solve, so
+       the rise is the seat solve travelling, not a new pose. */
+    if (standE > 0 && standA?.standRoot) {
+      root.position.lerpVectors(standA.seatedRoot, standA.standRoot, standE);
+      standApplied.current = true;
+      root.updateMatrixWorld(true);
+    }
     const t = clock.elapsedTime;
     /* Reset the animated bones to the seated base pose, then layer
        procedural life on top (the sandbox contract). */
@@ -1385,6 +1479,50 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
         b.Head.quaternion.multiply(new Quaternion().setFromEuler(new Euler(breath * 0.006, 0, 0)));
       }
     }
+    /* Run It stand, the body: the spine un-leans toward the bind
+       stance and the legs re-solve onto their planted ankles for the
+       raised pelvis, with the placement's own two-bone IK — but
+       WITHOUT the base write, so base[] stays the seated pose the
+       figure returns to exactly. */
+    if (standE > 0 && standA?.standRoot && standA.pelvisStand) {
+      for (const nm of ['Spine', 'Spine1', 'Spine2']) {
+        if (b[nm] && prep.bind[nm]) b[nm]!.quaternion.slerp(prep.bind[nm]!, standE);
+      }
+      root.updateMatrixWorld(true);
+      const aimLive = (boneName: string, childName: string, target: Vector3) => {
+        const bone = b[boneName]; const child = b[childName];
+        if (!bone || !child || !bone.parent) return;
+        root.updateMatrixWorld(true);
+        const pb = bone.getWorldPosition(new Vector3());
+        const pc = child.getWorldPosition(new Vector3());
+        const cur = pc.sub(pb).normalize();
+        const des = target.clone().sub(pb).normalize();
+        const R = new Quaternion().setFromUnitVectors(cur, des);
+        const qb = bone.getWorldQuaternion(new Quaternion());
+        const qp = bone.parent.getWorldQuaternion(new Quaternion());
+        bone.quaternion.copy(qp.invert().multiply(R).multiply(qb));
+        root.updateMatrixWorld(true);
+      };
+      const sideVec = new Vector3(1, 0, 0).applyQuaternion(group.getWorldQuaternion(new Quaternion()));
+      const faceW = seatDir(seatPos, n).negate();
+      for (const side of ['Left', 'Right'] as const) {
+        const upLeg = b[`${side}UpLeg`]; const footB = b[`${side}Foot`];
+        if (!upLeg || !footB) continue;
+        const hipW = upLeg.getWorldPosition(new Vector3());
+        const ankle = group.localToWorld((side === 'Left' ? standA.ankleL : standA.ankleR).clone());
+        const D = ankle.distanceTo(hipW);
+        const a = (prep.thigh * prep.thigh + D * D - prep.shin * prep.shin) / (2 * D);
+        const h = Math.sqrt(Math.max(0, prep.thigh * prep.thigh - a * a));
+        const axis = ankle.clone().sub(hipW).normalize();
+        const perp = new Vector3().crossVectors(axis, sideVec);
+        if (perp.dot(faceW) < 0) perp.negate();
+        const knee = hipW.clone().addScaledVector(axis, a).addScaledVector(perp, h);
+        aimLive(`${side}UpLeg`, `${side}Leg`, knee);
+        aimLive(`${side}Leg`, `${side}Foot`, ankle);
+        const foot = footB.getWorldPosition(new Vector3());
+        aimLive(`${side}Foot`, `${side}ToeBase`, foot.clone().add(new Vector3(faceW.x, -0.02, faceW.z)));
+      }
+    }
     /* Arms: BOTH hands are two-bone-IK'd onto their targets every
        frame — the fan's grip points while the seat holds cards
        (hands behind the fan's lower edge, backs of the cards to the
@@ -1397,6 +1535,19 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
       const targetPos = hasCards && fanQ
         ? fanGripPoint(fanC, fanQ, side, gripBackFor(prep, side))
         : group.localToWorld(new Vector3(side === 'Left' ? 0.18 : -0.18, seatTop + 0.12, 0.25));
+      /* Run It stand: as the figure rises, its hands leave the
+         fan/lap and come to rest beside its hips — the arm target
+         blends with the stand amount. */
+      if (standE > 0 && standA?.pelvisStand) {
+        const pelvisNow = standA.pelvisSeat.clone()
+          .addScaledVector(standA.pelvisStand.clone().sub(standA.pelvisSeat), standE);
+        const handG = new Vector3(
+          pelvisNow.x + (side === 'Left' ? 0.27 : -0.27),
+          pelvisNow.y - 0.42,
+          pelvisNow.z + 0.03,
+        );
+        targetPos.lerp(group.localToWorld(handG), standE);
+      }
       const S = arm.getWorldPosition(new Vector3());
       const E0 = fore.getWorldPosition(new Vector3());
       const H0 = hand.getWorldPosition(new Vector3());
@@ -1435,7 +1586,7 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
          the hand bone, so the curled fingers ride the rotation
          rigidly; their local drives are untouched. */
       const frame = prep.handFrames[side];
-      if (hasCards && fanQ && frame) {
+      if (hasCards && fanQ && frame && standE < 0.35) {
         root.updateMatrixWorld(true);
         const hw = hand.getWorldQuaternion(new Quaternion());
         const cur = new Matrix4().makeBasis(
@@ -1468,7 +1619,10 @@ function Figure({ id, url, reg, seatPos, n, count, active, aspect, view, animate
        loose on the lap; a breath of per-hand phase sway keeps it
        from looking machined. Rigs without grafts skip entirely. */
     if (fingers.Left.length || fingers.Right.length) {
-      const factor = !hasCards ? 0.45 : active ? 1.0 : 0.8;
+      const gripFactor = !hasCards ? 0.45 : active ? 1.0 : 0.8;
+      /* Run It stand: the grip loosens to a resting hand as the
+         figure rises (the fan is leaving its hands). */
+      const factor = standE > 0 ? gripFactor + (0.45 - gripFactor) * standE : gripFactor;
       const applyHand = (list: FingerJoint[], phase: number, curlF: number) => {
         const f = animate ? Math.min(1.05, Math.max(0, factor * (1 + 0.03 * Math.sin(t * 1.3 + phase)))) : factor;
         for (const j of list) j.bone.quaternion.setFromAxisAngle(j.axis, j.angle * f * (hasCards ? j.gripScale * curlF : 1)).multiply(j.rest);
@@ -1547,9 +1701,12 @@ export interface PersonaFiguresProps {
   animate: boolean;
   /** the table's venue id — selects the seat geometry. */
   venue: string;
+  /** Run It stand: the live show's claim (claimer seat, claim time,
+   *  mega), or null when no run is showing. */
+  runStand?: RunStandInfo | null;
 }
 
-export default function PersonaFigures({ seats, positions, n, handCounts, activeSeat, view, animate, venue }: PersonaFiguresProps) {
+export default function PersonaFigures({ seats, positions, n, handCounts, activeSeat, view, animate, venue, runStand }: PersonaFiguresProps) {
   const geo = seatGeometryFor(venue);
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
@@ -1618,6 +1775,8 @@ export default function PersonaFigures({ seats, positions, n, handCounts, active
                 aspect={aspect}
                 view={view}
                 animate={animate}
+                standAt={runStand && runStand.seat === seat ? runStand.at : null}
+                standMega={!!runStand?.mega}
                 anchors={anchors}
                 spots={geo.spots}
                 seatTop={geo.seatTop}

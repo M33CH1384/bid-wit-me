@@ -3418,6 +3418,11 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     shownTrick: display.trick,
     trickArmed: !!view.nukeArmed,
     slam: display.slam,
+    // 'Run it!' stand (owner 2026-11-08): the claimer's figure stands
+    // for the slam + tornado and re-seats by the next hand. Keyed off
+    // the same runFx the show itself uses, so every client that
+    // renders the show stands the same claimer (bots included).
+    runStand: runFx ? { seat: runFx.claimer, at: runFx.at, mega: runFx.mega } : null,
     reduceFx,
     venue,
     view: effView,

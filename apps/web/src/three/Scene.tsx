@@ -206,6 +206,10 @@ export interface SceneProps {
   /** 'Run it!': the claimer's remaining cards slam down face up in a row at the table centre ALL AT ONCE, then
    *  everyone else's remaining cards hit the table together in a quick cascade (then the tornado takes everything) */
   slam?: { seat: number; cards: Card[]; others?: { seat: number; card: Card }[] } | null;
+  /** 'Run it!' stand (owner 2026-11-08): the claimer's seated figure
+   *  stands for the slam + tornado, then re-seats (three/figureStand.ts).
+   *  Presentation only; the figure layers ignore it when unmounted. */
+  runStand?: { seat: number; at: number; mega: boolean } | null;
   /** the venue (3D arena) around the table; default classic */
   venue?: VenueId;
   /** Post-hand: books slide to the next dealer for collection (Demetrius 2026-10-19). */
@@ -2799,6 +2803,7 @@ export default function Scene(props: SceneProps) {
           view={props.view ?? 'standing'}
           animate={props.crowdAnimate ?? false}
           seatConfig={figureSeatConfig}
+          runStand={props.runStand ?? null}
         />
       )}
       {showTable && textured && personaFiguresActive && (
@@ -2811,6 +2816,7 @@ export default function Scene(props: SceneProps) {
           view={props.view ?? 'standing'}
           animate={props.crowdAnimate ?? false}
           venue={def.id}
+          runStand={props.runStand ?? null}
         />
       )}
       {showTable && (props.seatVideos?.some(Boolean) ?? false) && (
