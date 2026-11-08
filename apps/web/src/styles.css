@@ -797,6 +797,16 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   font-family:var(--display); font-weight:700; font-size:18px; letter-spacing:.06em; text-transform:uppercase; touch-action:manipulation;
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
 .value-chip { font-family:var(--display); font-weight:700; font-size:14.5px; letter-spacing:.06em; color:var(--gold); background:rgba(var(--gold-rgb),.12); padding:5px 10px; text-transform:none; }
+/* Story resume signpost (owner, 2026-11-08): as a shared quiet-row its
+   title shared one line with the pair chip, and wherever the two
+   outmeasured the row the title wrapped and its last word dangled
+   ("RESUME — THE KING OF THE / BLOCK"). The signpost stacks instead:
+   the title on its own single line, the chip as a sub-line beneath —
+   one button, the same read at every width. The title can never wrap;
+   on a screen narrower than the title itself, ellipsis is the valve.
+   Other quiet-rows keep the shared label-left / chip-right pattern. */
+.story-resume-row { flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; }
+.story-resume-row > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .corner-tab { position:absolute; right:0; bottom:0; width:20px; height:20px; background:var(--gold); clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 .deck-thumbs { display:flex; gap:10px; overflow-x:auto; padding:4px 2px 8px; width:100%; }
 .deck-thumbs .dt { flex:0 0 auto; width:86px; border:0; padding:6px 6px 8px; background:rgba(255,255,255,.05); color:var(--ink); display:flex; flex-direction:column; gap:6px; align-items:center; touch-action:manipulation;
@@ -4080,7 +4090,14 @@ html[data-theme="neon"] .table-screen :is(.glass, .panel, .modal, .sheet, .decis
    read, nothing to relearn). If the art can't sit as pure decoration,
    it doesn't sit at all. */
 html[data-theme="neon"] .wiz-home { position: relative; }
-html[data-theme="neon"] .wiz-home > *:not(.home-streak-fire):not(.home-blizzard) { position: relative; z-index: 1; }
+/* The content lift: real children (splash, actions) ride above the
+   emblem paintings. Every decoration layer is excluded BY NAME — the
+   fire band (fixed), the blizzard (absolute), the emblem smoke
+   (absolute) — because the blanket selector outranks their own rules
+   on specificity (:not() arguments count), and a decoration layer
+   that falls into the stage flow inflates it until the home scrolls
+   (fire 2026-11-01, smoke 2026-11-08). */
+html[data-theme="neon"] .wiz-home > *:not(.home-streak-fire):not(.home-blizzard):not(.emblem-smoke) { position: relative; z-index: 1; }
 /* Backdrop coverage (2026-10-26, owner screenshot): the emblem used to be
    boxed into a 252px medallion at the hero — when the stage grid (d3523e95)
    distributed the home's air, the distributed breath between the tagline
