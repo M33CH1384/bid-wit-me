@@ -436,9 +436,9 @@ function positions(n: number): SeatPos[] {
 
 /* -------------------------------------------------------------- chat feed */
 const talkOn = () => { try { return JSON.parse(localStorage.getItem('bwm.talk.v1') ?? '{}').botTalk !== false; } catch { return true; } };
-/** The Wheels results gate (TableGame owns the state): a 10th-book emit
- *  whose timer lands after the game has ended must not fire into the
- *  covered table — it stashes the feat for the results surface instead;
+/** The Wheels results gate (TableGame owns the state): a contract-crossing
+ *  car emit whose timer lands after the game has ended must not fire into
+ *  the covered table — it stashes the feat for the results surface instead;
  *  a live emit records its key so the results replay never doubles it. */
 interface WheelsGate {
   phaseRef: { current: GameState['phase'] };
@@ -497,41 +497,49 @@ function useChat(st: GameState, names: string[], initial: ChatMsg[] | undefined,
         window.setTimeout(() => fx.emit('wheels', { sub: `${who} · ${w.total} books` }), 250);
       }
     }
-    // Cutthroat wheels: your 10th book of the hand (once per hand per player)
+    // Cutthroat chat beat: a player's 10th book of the hand is announced
+    // (once per hand per player) — chat only since 2026-11-08: the CAR
+    // answers the make of a Wheels call, not a bare 10th book (below).
     const runWait = st.tricks.slice(p.tricks.length).some((t) => t.plays.some((q) => q.run)) ? runWaitMs(st) : 0;
     if (st.handNo === p.handNo) for (const s of wheelsTenth(r, p.tricksWon, st.tricksWon)) {
       push('System', `🏎 Wheels! ${names[s]} took a 10th book`, true);
-      const key = `${st.handNo}:tenth:${s}`;
-      const text = `${names[s]} · 10 books`;
-      window.setTimeout(() => {
-        // the game ended under this timer: the results surface owns the show
-        if (wheelsGate.phaseRef.current === 'gameOver') wheelsGate.stash(key, text);
-        else { wheelsGate.shownLive.add(key); fx.emit('wheelsCar', { text }); }
-      }, 900 + runWait);
     }
-    // first hand (books bid themselves, so no bids): a team's 10th book of the hand → the same celebration
+    // first hand (books bid themselves, so no bids): a team's 10th book of
+    // the hand is announced — chat only: no call was made on a books hand,
+    // so there is no make for the car to answer.
     if (st.handNo === p.handNo) for (const side of wheelsTenthBooks(r, st.bids, p.tricksWon, st.tricksWon)) {
       const who = sideName(r, side, names);
       push('System', `🏎 Wheels! ${who} took 10 books`, true);
-      const key = `${st.handNo}:tenthBooks:${side}`;
-      const text = `${who} · 10 books`;
-      window.setTimeout(() => {
-        if (wheelsGate.phaseRef.current === 'gameOver') wheelsGate.stash(key, text);
-        else { wheelsGate.shownLive.add(key); fx.emit('wheelsCar', { text }); }
-      }, 900 + runWait);
     }
-    // the confetti falls on the EARN, not the call (owner, 2026-11-05): the
-    // gold rain that used to ride the bid declaration now falls when a
-    // declaring side's books actually reach its contract — once per hand,
-    // on the same beat as the car's 10th-book blocks above. The declaration
-    // keeps its pop / sound / shake; a side that gets set never sees rain.
-    // Same game-over gate as the car: never fire into the results-covered
-    // table — the results surface replays the feat with the car show.
-    if (st.handNo === p.handNo && wheelsEarned(r, st.bids, p.tricksWon, st.tricksWon).length) {
+    // the confetti AND the car fall on the EARN, not the call (confetti:
+    // owner, 2026-11-05; the car moved here 2026-11-08 — "it should happen
+    // whenever you achieve 10"): ONE shared wheelsEarned computation — a
+    // declaring side's books crossing up to its contract on this transition
+    // — drives both, on the same beat. For a bid of exactly 10 the crossing
+    // IS the 10th book; a higher Wheels call celebrates at its contract
+    // book, with the rain. The declaration keeps its pop / sound / shake;
+    // a side that gets set sees neither rain nor car, and a bare 10th book
+    // on a lower bid (or on a books hand) earns neither — the chat beats
+    // above still announce those. Game-over gate: never fire into the
+    // results-covered table — the car stashes its feat for the results
+    // surface to replay; the rain has no stash and simply stands down.
+    const earnedWheels = st.handNo === p.handNo ? wheelsEarned(r, st.bids, p.tricksWon, st.tricksWon) : [];
+    if (earnedWheels.length) {
       window.setTimeout(() => {
         if (wheelsGate.phaseRef.current === 'gameOver') return;
         fx.emit('wheelsRain', { silent: true });
       }, 900 + runWait);
+      for (const e of earnedWheels) {
+        const key = 'side' in e ? `${st.handNo}:earned:${e.side}` : `${st.handNo}:earned:${e.seat}`;
+        const text = 'side' in e
+          ? `${sideName(r, e.side, names)} · ${wheelsFor(r, st.bids).find((w) => w.side === e.side)?.total ?? 10} books`
+          : `${names[e.seat]} · ${st.bids[e.seat]} books`;
+        window.setTimeout(() => {
+          // the game ended under this timer: the results surface owns the show
+          if (wheelsGate.phaseRef.current === 'gameOver') wheelsGate.stash(key, text);
+          else { wheelsGate.shownLive.add(key); fx.emit('wheelsCar', { text }); }
+        }, 900 + runWait);
+      }
     }
     // ☢ a nuke arming (second Joker down, trick still open — any trick) is announced once, on the way in
     if (st.handNo === p.handNo && nukeArmed(st) && !nukeArmed(p)) push('System', '☢ Nuke armed — ready to blow', true);
@@ -2462,7 +2470,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     const tm = setTimeout(() => setToasts([]), 3200);
     const toastHold = list.length ? fx.hold(3200, 'toasts') : () => {};
     // A set is the shotgun blast on that scorecard panel (the recap plays the boom). No full-screen banner.
-    // Streak / Wheels wait a beat so their pop-ups don't cover the muzzle flash.
+    // Streak waits a beat so its pop-up doesn't cover the muzzle flash.
     const timers: (() => void)[] = [];
     const calls = calloutsFor(st, mySide, names);
     const shot = calls.some((c) => c.kind === 'shot' || c.kind === 'gotShot');
@@ -2472,22 +2480,9 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       timers.push(() => clearTimeout(ht));
     }
     const streak = calls.find((c) => c.kind === 'streak');
-    // Wheels made: a team that bid 10+ together and took 10+ books → the supercar peel-out
-    const made = wheelsMade(r, rec);
-    if (made.length) {
-      const w = made[0]!;
-      const who = `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}`;
-      const key = `${rec.handNo}:made:${w.side}`;
-      if (st.phase === 'gameOver') {
-        // This record closed the game: firing into the bus now plays the
-        // show under the results overlay (the heard-but-not-seen bug).
-        // Stash it — the results surface replays it at presentation.
-        stashResultsWheels(key, who);
-      } else {
-        wheelsShownLive.current.add(key);
-        timers.push(fx.later('wheelsCar', shot ? 1500 : streak ? 2600 : 600, { text: who }));
-      }
-    }
+    // No Wheels car at hand end (owner, 2026-11-08): the car fired live at
+    // the contract-making book in useChat, or — when that book closed the
+    // game — was stashed for the results replay. Nothing to summon here.
     if (streak) timers.push(fx.later('streak', shot ? 1100 : 400, { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }));
     return () => { clearTimeout(tm); toastHold(); timers.forEach((c) => c()); };
   }, [st.history, histTick, r, names, mySide, !!pause]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2837,11 +2832,9 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     const feats = resultsWheelsFeats(r, st.history, st.tricksWon, wheelsShownLive.current);
     const f = feats[0];
     if (!f) return;
-    stashResultsWheels(f.key, f.kind === 'made'
-      ? `${sideName(r, f.side!, names)} made ${f.bid} · took ${f.books}`
-      : f.kind === 'tenth'
-        ? `${names[f.seat!]} · 10 books`
-        : `${sideName(r, f.side!, names)} · 10 books`);
+    stashResultsWheels(f.key, f.side !== undefined
+      ? `${sideName(r, f.side, names)} made ${f.bid} · took ${f.books}`
+      : `${names[f.seat!]} made ${f.bid} · took ${f.books}`);
   }, [showResults, resultsWheels]); // eslint-disable-line react-hooks/exhaustive-deps
   // A guest claim landing on the merged screen swaps the credited
   // breakdown in: mirror it into the stash so a later reload's recovery

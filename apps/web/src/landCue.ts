@@ -286,15 +286,18 @@ export function wheelsEarned(rules: { partnerships: boolean; playerCount: number
   });
 }
 
-/** A Wheels feat the RESULTS page replays: earned in the game's final
- *  hand, keyed the same way the live emit sites key it (`<handNo>:<kind>:
- *  <side|seat>`), minus any key the table already showed live. The final
- *  hand only — a feat from an earlier hand had its moment at the table.
- *  Books are per-hand, so a 10th-book crossing inside the final hand is
- *  measured from zero. */
+/** A Wheels feat the RESULTS page replays: EARNED in the game's final
+ *  hand — the contract crossing of a Wheels call, measured by the same
+ *  wheelsEarned the live emit site uses, from zero over the final hand
+ *  (books are per-hand) — keyed the same way the live site keys it
+ *  (`<handNo>:earned:<side|seat>`), minus any key the table already
+ *  showed live. The final hand only — a feat from an earlier hand had
+ *  its moment at the table. A set Wheels earns nothing (no crossing
+ *  ever happened), and the scored record's contractMade vetoes a side
+ *  feat when it says the contract failed. */
 export interface ResultsWheelsFeat {
   key: string;
-  kind: 'made' | 'tenth' | 'tenthBooks';
+  kind: 'earned';
   side?: number;
   seat?: number;
   bid?: number;
@@ -310,9 +313,18 @@ export function resultsWheelsFeats(
   if (!rec) return [];
   const out: ResultsWheelsFeat[] = [];
   const push = (f: ResultsWheelsFeat) => { if (!shownLive.has(f.key)) out.push(f); };
-  for (const m of wheelsMade(rules, rec)) push({ key: `${rec.handNo}:made:${m.side}`, kind: 'made', side: m.side, bid: m.bid, books: m.books });
   const zeros = finalTricksWon.map(() => 0);
-  for (const s of wheelsTenth(rules, zeros, finalTricksWon)) push({ key: `${rec.handNo}:tenth:${s}`, kind: 'tenth', seat: s });
-  for (const sd of wheelsTenthBooks(rules, rec.bids, zeros, finalTricksWon)) push({ key: `${rec.handNo}:tenthBooks:${sd}`, kind: 'tenthBooks', side: sd });
+  for (const e of wheelsEarned(rules, rec.bids, zeros, finalTricksWon)) {
+    if ('side' in e) {
+      const s = rec.sides.find((x) => x.side === e.side);
+      if (s?.contractMade === false) continue;
+      const bid = wheelsFor(rules, rec.bids).find((w) => w.side === e.side)?.total;
+      const books = s?.tricks ?? ((finalTricksWon[e.side] ?? 0) + (finalTricksWon[e.side + 2] ?? 0));
+      push({ key: `${rec.handNo}:earned:${e.side}`, kind: 'earned', side: e.side, bid, books });
+    } else {
+      const b = rec.bids[e.seat];
+      push({ key: `${rec.handNo}:earned:${e.seat}`, kind: 'earned', seat: e.seat, bid: typeof b === 'number' ? b : undefined, books: finalTricksWon[e.seat] ?? 0 });
+    }
+  }
   return out;
 }
