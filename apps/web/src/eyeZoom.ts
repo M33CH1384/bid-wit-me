@@ -54,6 +54,11 @@ export const EYE_EXTERNAL_COOLDOWN_MS = 5000;
 export const EYE_CAL_STEP_MS = 1000;
 /** A calibration look needs at least this many readable samples to count. */
 export const EYE_CAL_MIN_SAMPLES = 5;
+/** After a look is captured, the "Got it" confirm shows for this long before
+ *  the next step paints, ms. The beat advances only to a WAITING step —
+ *  since the 2026-11-08 ready gate, nothing is ever measured on time alone:
+ *  each step's sampling starts on the player's own tap. */
+export const EYE_CAL_GOT_IT_MS = 900;
 /** The two calibration looks must differ by at least this much gaze travel,
  *  or the pair is degenerate (the player barely moved their eyes). */
 export const EYE_CAL_MIN_SEPARATION = 0.08;

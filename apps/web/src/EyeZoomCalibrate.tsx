@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
-  EYE_CAL_MIN_SAMPLES, EYE_CAL_STEP_MS, computeCalibration, setEyeCalibrating,
+  EYE_CAL_GOT_IT_MS, EYE_CAL_MIN_SAMPLES, EYE_CAL_STEP_MS, computeCalibration, setEyeCalibrating,
   type EyeGazeCalibration, type EyeGazeSessionLike,
 } from './eyeZoom';
 import { importChunk } from './chunkLoad';
@@ -11,7 +11,12 @@ import { importChunk } from './chunkLoad';
  * screen is showing). "Look at your cards" samples the player's downward gaze
  * for a second; "Look at the table" samples the level gaze; the pair
  * becomes the player's personal zone threshold, saved in settings on this
- * device only. The screen itself draws a simulated table (owner,
+ * device only. Each step WAITS for the player's own tap before it measures
+ * a thing (owner, 2026-11-08: "Calibration happens faster than you can read
+ * the instructions") — the step paints its instruction and its lit target,
+ * and sampling starts only on "I'm looking — start"; a captured look shows
+ * a brief "Got it" before the next step paints, again waiting.
+ * The screen itself draws a simulated table (owner,
  * 2026-11-08) — felt mid-screen, fan low and centred, the step's target
  * lit — so each look lands where the real thing sits in a game, even when
  * calibrating from Settings where no table exists.
@@ -25,6 +30,9 @@ import { importChunk } from './chunkLoad';
  */
 type Phase = 'cards' | 'table' | 'done' | 'error';
 type ErrorKind = 'samples' | 'degenerate' | 'camera';
+/** Where a step stands: painted and waiting for his tap, measuring, or
+ *  showing the "Got it" confirm after a captured look. */
+type Stage = 'wait' | 'measure' | 'gotit';
 
 const TICK_MS = 100;
 
@@ -52,21 +60,25 @@ export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory, doneLa
   doneLabel?: string;
 }) {
   const [phase, setPhase] = useState<Phase>('cards');
+  const [stage, setStage] = useState<Stage>('wait');
   const [errorKind, setErrorKind] = useState<ErrorKind>('samples');
   const [progress, setProgress] = useState(0);
 
   const phaseRef = useRef<Phase>('cards');
+  const stageRef = useRef<Stage>('wait');
   const samplesRef = useRef<number[]>([]);
   const cardsRef = useRef<number[]>([]);
   const stepStartRef = useRef<number>(Date.now());
+  const gotItStartRef = useRef<number>(0);
   const sessionRef = useRef<EyeGazeSessionLike | null>(null);
   const sessionLiveRef = useRef(false);
-  const startingRef = useRef(false);
+  const startPromiseRef = useRef<Promise<void> | null>(null);
   const factoryRef = useRef(sessionFactory ?? defaultSessionFactory);
   const onCalibratedRef = useRef(onCalibrated);
   onCalibratedRef.current = onCalibrated;
 
   const setPhaseBoth = (p: Phase) => { phaseRef.current = p; setPhase(p); };
+  const setStageBoth = (s: Stage) => { stageRef.current = s; setStage(s); };
 
   const stopSession = () => {
     const s = sessionRef.current;
@@ -75,33 +87,62 @@ export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory, doneLa
     if (s) { try { s.stop(); } catch { /* ignore */ } }
   };
 
-  const startSession = async () => {
-    if (sessionLiveRef.current || startingRef.current) return;
-    startingRef.current = true;
-    try {
-      const s = await factoryRef.current();
-      sessionRef.current = s;
-      await s.start((gazeV) => {
-        if (gazeV === null) return;
-        const p = phaseRef.current;
-        if (p === 'cards' || p === 'table') samplesRef.current.push(gazeV);
-      });
-      sessionLiveRef.current = true;
-    } catch {
-      sessionRef.current = null;
-      sessionLiveRef.current = false;
-      setErrorKind('camera');
-      setPhaseBoth('error');
-    } finally {
-      startingRef.current = false;
-    }
+  const startSession = (): Promise<void> => {
+    if (sessionLiveRef.current) return Promise.resolve();
+    if (startPromiseRef.current) return startPromiseRef.current;
+    const run = (async () => {
+      try {
+        const s = await factoryRef.current();
+        sessionRef.current = s;
+        await s.start((gazeV) => {
+          if (gazeV === null) return;
+          // The ready gate: readings are banked ONLY while a step the
+          // player started is measuring. While a step waits (or shows its
+          // "Got it"), the camera may be live but nothing is collected.
+          if (stageRef.current !== 'measure') return;
+          const p = phaseRef.current;
+          if (p === 'cards' || p === 'table') samplesRef.current.push(gazeV);
+        });
+        sessionLiveRef.current = true;
+      } catch {
+        sessionRef.current = null;
+        sessionLiveRef.current = false;
+        setErrorKind('camera');
+        setPhaseBoth('error');
+      } finally {
+        startPromiseRef.current = null;
+      }
+    })();
+    startPromiseRef.current = run;
+    return run;
   };
 
-  const beginStep = (p: 'cards' | 'table') => {
+  /** Paint a step and WAIT: instruction + lit target, nothing measured
+   *  until the player taps the ready button. */
+  const showStep = (p: 'cards' | 'table') => {
+    samplesRef.current = [];
+    setProgress(0);
+    setStageBoth('wait');
+    setPhaseBoth(p);
+  };
+
+  /** The ready tap ("I'm looking — start"): start this step's clock and
+   *  its sampling window. If the camera is still starting, the clock waits
+   *  for it — a window never runs ahead of a live camera. */
+  const startSampling = async () => {
+    const p = phaseRef.current;
+    if (p !== 'cards' && p !== 'table') return;
+    if (stageRef.current !== 'wait') return;
+    if (!sessionLiveRef.current) {
+      await startSession();
+      if (phaseRef.current === 'error' || !sessionLiveRef.current) return;
+    }
+    // He may have moved on (cancelled, retried) while the camera started.
+    if (phaseRef.current !== p || stageRef.current !== 'wait') return;
     samplesRef.current = [];
     stepStartRef.current = Date.now();
     setProgress(0);
-    setPhaseBoth(p);
+    setStageBoth('measure');
   };
 
   const finalizeStep = () => {
@@ -115,7 +156,11 @@ export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory, doneLa
     }
     if (p === 'cards') {
       cardsRef.current = samples;
-      beginStep('table');
+      // The "Got it" beat: he sees the look registered before the next
+      // step paints — and that step paints WAITING, never measuring.
+      gotItStartRef.current = Date.now();
+      setProgress(1);
+      setStageBoth('gotit');
       return;
     }
     const cal = computeCalibration(cardsRef.current, samples);
@@ -131,14 +176,19 @@ export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory, doneLa
 
   useEffect(() => {
     setEyeCalibrating(true);
+    // The camera warms while he reads the first instruction; no step
+    // clock runs until his ready tap (see startSampling).
     void startSession();
-    stepStartRef.current = Date.now();
     const timer = setInterval(() => {
       const p = phaseRef.current;
       if (p !== 'cards' && p !== 'table') return;
-      const el = Date.now() - stepStartRef.current;
-      setProgress(Math.min(1, el / EYE_CAL_STEP_MS));
-      if (el >= EYE_CAL_STEP_MS) finalizeStep();
+      if (stageRef.current === 'measure') {
+        const el = Date.now() - stepStartRef.current;
+        setProgress(Math.min(1, el / EYE_CAL_STEP_MS));
+        if (el >= EYE_CAL_STEP_MS) finalizeStep();
+      } else if (stageRef.current === 'gotit') {
+        if (Date.now() - gotItStartRef.current >= EYE_CAL_GOT_IT_MS) showStep('table');
+      }
     }, TICK_MS);
     return () => {
       clearInterval(timer);
@@ -151,7 +201,7 @@ export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory, doneLa
 
   const retry = () => {
     cardsRef.current = [];
-    beginStep('cards');
+    showStep('cards');
     if (!sessionLiveRef.current) void startSession();
   };
 
@@ -205,11 +255,23 @@ export function EyeZoomCalibrate({ onCalibrated, onClose, sessionFactory, doneLa
             <button type="button" className="primary big" data-testid="eye-cal-retry" onClick={retry}>Try again</button>
             <button type="button" className="link" data-testid="eye-cal-cancel" onClick={cancel}>Cancel</button>
           </>
+        ) : stage === 'gotit' ? (
+          <>
+            <h3 data-testid="eye-cal-gotit">Got it ✓</h3>
+            <p>That&rsquo;s your cards look — one more to go.</p>
+            <button type="button" className="link" data-testid="eye-cal-cancel" onClick={cancel}>Cancel</button>
+          </>
         ) : (
           <>
             <h3 data-testid="eye-cal-step">{phase === 'cards' ? 'Look at your cards' : 'Look at the table'}</h3>
             <p>{phase === 'cards' ? 'Settle your eyes on your hand, like you’re studying what to play.' : 'Now settle your eyes on the middle of the table.'}</p>
-            <div className="eye-cal-bar"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
+            {stage === 'wait' ? (
+              /* The ready gate (owner, 2026-11-08): the step waits here —
+                 nothing is measured until he says he's looking. */
+              <button type="button" className="primary big" data-testid="eye-cal-ready" onClick={() => void startSampling()}>I&rsquo;m looking — start</button>
+            ) : (
+              <div className="eye-cal-bar"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
+            )}
             <button type="button" className="link" data-testid="eye-cal-cancel" onClick={cancel}>Cancel</button>
           </>
         )}

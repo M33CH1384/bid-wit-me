@@ -587,11 +587,17 @@ describe('EyeZoomRow calibration (runs in place — no table needed)', () => {
     return el;
   }
   const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
-  /** Run one full capture step: 1 s of readings at 10 Hz. */
+  /** Run one full capture step: tap "I'm looking — start", then 1 s of
+   *  readings at 10 Hz, then let the "Got it" confirm beat play out so the
+   *  next step's prompt is what's on screen. */
   const runStep = async (gazeV: number | null) => {
+    const ready = document.querySelector('[data-testid="eye-cal-ready"]') as HTMLButtonElement | null;
+    expect(ready).not.toBeNull();
+    await act(async () => { ready!.click(); });
     for (let i = 0; i < 11; i++) {
       await act(async () => { vi.advanceTimersByTime(100); session.emit(gazeV); });
     }
+    await act(async () => { vi.advanceTimersByTime(2000); });
   };
 
   beforeEach(() => { vi.useFakeTimers(); session = new FakeSession(); });
@@ -693,11 +699,17 @@ describe('EyeZoomCalibrate (two looks over the table)', () => {
     });
     return el;
   }
-  /** Run one full capture step: 1 s of readings at 10 Hz. */
+  /** Run one full capture step: tap "I'm looking — start", then 1 s of
+   *  readings at 10 Hz, then let the "Got it" confirm beat play out so the
+   *  next step's prompt is what's on screen. */
   const runStep = async (gazeV: number | null) => {
+    const ready = document.querySelector('[data-testid="eye-cal-ready"]') as HTMLButtonElement | null;
+    expect(ready).not.toBeNull();
+    await act(async () => { ready!.click(); });
     for (let i = 0; i < 11; i++) {
       await act(async () => { vi.advanceTimersByTime(100); session.emit(gazeV); });
     }
+    await act(async () => { vi.advanceTimersByTime(2000); });
   };
 
   beforeEach(() => { vi.useFakeTimers(); session = new FakeSession(); });
@@ -787,5 +799,115 @@ describe('EyeZoomCalibrate (two looks over the table)', () => {
     for (const sel of ['.eye-cal-sim', '.eye-cal-sim-table', '.eye-cal-sim-fan', '.eye-cal-sim-card', '.eye-cal-sim-table.lit', '.eye-cal-sim-fan.lit']) {
       expect(css).toContain(sel);
     }
+  });
+});
+
+/* ------------------------------------------- calibration ready gate */
+
+describe('EyeZoomCalibrate ready gate (nothing is measured until he says so)', () => {
+  let el: HTMLDivElement;
+  let root: Root;
+  let session: FakeSession;
+
+  async function renderCal(props: Record<string, unknown>) {
+    el = document.createElement('div');
+    document.body.appendChild(el);
+    root = createRoot(el);
+    await act(async () => {
+      root.render(createElement(EyeZoomCalibrate, {
+        onCalibrated: () => {},
+        onClose: () => {},
+        sessionFactory: () => session,
+        ...props,
+      }));
+    });
+    return el;
+  }
+  const readyBtn = () => document.querySelector('[data-testid="eye-cal-ready"]') as HTMLButtonElement | null;
+  const stepText = () => document.querySelector('[data-testid="eye-cal-step"]')?.textContent ?? null;
+  /** Emit one reading per 100 ms of fake time, for ms milliseconds. */
+  const emitFor = async (ms: number, gazeV: number | null) => {
+    for (let t = 0; t < ms; t += 100) {
+      await act(async () => { vi.advanceTimersByTime(100); session.emit(gazeV); });
+    }
+  };
+  const tapReady = async () => {
+    const b = readyBtn();
+    expect(b).not.toBeNull();
+    await act(async () => { b!.click(); });
+  };
+
+  beforeEach(() => { vi.useFakeTimers(); session = new FakeSession(); });
+  afterEach(async () => {
+    if (root) await act(async () => { root.unmount(); });
+    el?.remove();
+    vi.useRealTimers();
+  });
+
+  it('no tap, no sample: a minute of readings and passing time changes nothing, and banks nothing', async () => {
+    const onCalibrated = vi.fn();
+    await renderCal({ onCalibrated });
+    expect(stepText()).toContain('Look at your cards');
+    expect(readyBtn()).not.toBeNull();
+    await emitFor(60_000, 0.8); // he is still reading; the camera sees a steady look the whole time
+    expect(stepText()).toContain('Look at your cards');
+    expect(readyBtn()).not.toBeNull();
+    expect(document.querySelector('[data-testid="eye-cal-gotit"]')).toBeNull();
+    expect(document.querySelector('[data-testid="eye-cal-retry"]')).toBeNull();
+    expect(onCalibrated).not.toHaveBeenCalled();
+    // Now he taps — but the face is gone. If any of the minute of readings
+    // above had been banked, this step would complete instead of erroring.
+    await tapReady();
+    await emitFor(1100, null);
+    expect(document.querySelector('[data-testid="eye-cal-retry"]')).not.toBeNull();
+    expect(onCalibrated).not.toHaveBeenCalled();
+  });
+
+  it('the tap starts the window; the step advances only after the window and the "Got it" beat', async () => {
+    const onCalibrated = vi.fn();
+    await renderCal({ onCalibrated });
+    await tapReady();
+    expect(readyBtn()).toBeNull(); // measuring now — the ready button is gone, the bar runs
+    await emitFor(900, 0.8);
+    // 900 ms in: the window is a full second — still measuring, not done.
+    expect(document.querySelector('[data-testid="eye-cal-gotit"]')).toBeNull();
+    expect(stepText()).toContain('Look at your cards');
+    await emitFor(200, 0.8);
+    // The window has concluded: the confirm shows; step 2 has NOT started.
+    expect(document.querySelector('[data-testid="eye-cal-gotit"]')).not.toBeNull();
+    expect(stepText()).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(document.querySelector('[data-testid="eye-cal-gotit"]')).not.toBeNull(); // the beat is visible, not a flash
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    // Beat over: step 2 is painted and WAITING — it does not measure alone.
+    expect(stepText()).toContain('Look at the table');
+    expect(readyBtn()).not.toBeNull();
+    await emitFor(5000, 0.4);
+    expect(onCalibrated).not.toHaveBeenCalled();
+    await tapReady();
+    await emitFor(1100, 0.4);
+    expect(onCalibrated).toHaveBeenCalledWith({ cards: 0.8, table: 0.4 });
+    expect(document.querySelector('[data-testid="eye-cal-done"]')).not.toBeNull();
+  });
+
+  it('after an error, Try again also waits: the retry measures nothing until the tap', async () => {
+    const onCalibrated = vi.fn();
+    await renderCal({ onCalibrated });
+    await tapReady();
+    await emitFor(1100, null); // a started window with no readable face → the error card
+    expect(document.querySelector('[data-testid="eye-cal-retry"]')).not.toBeNull();
+    await act(async () => { (document.querySelector('[data-testid="eye-cal-retry"]') as HTMLButtonElement).click(); });
+    expect(stepText()).toContain('Look at your cards');
+    expect(readyBtn()).not.toBeNull();
+    await emitFor(10_000, 0.8); // time and readings pass; nothing is measured
+    expect(stepText()).toContain('Look at your cards');
+    expect(onCalibrated).not.toHaveBeenCalled();
+    await tapReady();
+    await emitFor(1100, 0.8);
+    await act(async () => { vi.advanceTimersByTime(5000); }); // the "Got it" beat
+    expect(stepText()).toContain('Look at the table');
+    await tapReady();
+    await emitFor(1100, 0.4);
+    expect(onCalibrated).toHaveBeenCalledWith({ cards: 0.8, table: 0.4 });
   });
 });
