@@ -32,6 +32,7 @@ import './styles.css';
 // the classic case) asks for a chunk that no longer exists. Plain lazy() then throws,
 // and with no boundary the whole app unmounts to a blank screen until a manual refresh.
 // importChunk retries cache-busted and reloads once onto the new build instead.
+const HandoffPage = lazy(() => importChunk(() => import('./account/HandoffPage')));
 const OnlineApp = lazy(() => importChunk(() => import('./online/OnlineApp')));
 const WatchApp = lazy(() => importChunk(() => import('./online/WatchApp')));
 const ProfilePage = lazy(() => importChunk(() => import('./profile/ProfilePage')));
@@ -211,6 +212,17 @@ initTheme();
 const rootEl = document.getElementById('root')!;
 if (new URLSearchParams(location.search).get('preview') === 'turn-ring') {
   void import('./turnRingPreview').then(({ mountTurnRingPreview }) => mountTurnRingPreview(rootEl));
+} else if (location.pathname === '/auth/handoff') {
+  // The browser half of the app sign-in handoff: a standalone page (no game
+  // chrome, no account-store boot) — sign in with a passkey here, get a
+  // one-time code, return to the app.
+  createRoot(rootEl).render(
+    <StrictMode>
+      <Suspense fallback={<RouteLoading />}>
+        <HandoffPage />
+      </Suspense>
+    </StrictMode>,
+  );
 } else {
   createRoot(rootEl).render(
     <StrictMode>

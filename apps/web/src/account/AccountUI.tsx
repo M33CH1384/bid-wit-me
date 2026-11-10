@@ -11,8 +11,9 @@ import ThemeToggle from '../ThemeToggle';
 import './account.css';
 import {
   type AccountUser, type ProviderId, PROVIDER_LABEL, PROVIDER_ORDER, account, checkUsername, deleteAccount, hasLocalProgress, loadAccount,
-  localProgress, passkeyRegister, passkeySignIn, saveProgress, setUsername, signOut, startOAuth, takePendingOpen, unlink, useAccount,
+  localProgress, openHandoffBrowser, passkeyRegister, passkeySignIn, redeemHandoffCode, saveProgress, setUsername, signOut, startOAuth, takePendingOpen, unlink, useAccount,
 } from './api';
+import { clearHandoffPending, handoffPending, inAppShell } from './handoff';
 import {
   NOTIF_TYPES, disablePush, enablePush, hasSubscription, loadPrefs, permissionState, pushSupported, savePref, sendTestPush,
   type NotifType, type PermState,
@@ -65,31 +66,75 @@ export function SignInSheet({ onClose, onPasskeyNew, returnTo }: { onClose: () =
     setBusy(false);
     if (e) setErr(e); else onClose();
   };
+  /* Inside the iPhone app shell the passkey buttons below can never work (iOS
+   * blocks WebAuthn in the WebView without the paid-team entitlement), so the
+   * sheet offers the handoff instead: out to the browser, back with a code.
+   * The provider + passkey block (create-account included) is not rendered in
+   * the shell at all — the trap that made a second, empty account is gone. */
+  const shell = inAppShell();
+  const [pending, setPending] = useState(() => handoffPending());
+  const [code, setCode] = useState('');
+  useEffect(() => {
+    if (!shell) return;
+    const onVis = () => { if (document.visibilityState === 'visible') setPending(handoffPending()); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [shell]);
+  useEffect(() => { if (a.user) clearHandoffPending(); }, [a.user]);
+  const handoff = () => { openHandoffBrowser(); setPending(true); };
+  const submitCode = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    const errMsg = await redeemHandoffCode(code.trim());
+    setBusy(false);
+    if (errMsg) setErr(errMsg); else { clearHandoffPending(); onClose(); }
+  };
   return (
     <SheetFrame title="SIGN IN" label="Sign in" onClose={onClose} testId="signin-sheet">
       <p className="acct-lede">Keep your badges, series and name on every device. Optional: guests can play everything.</p>
-      <div className="acct-providers">
-        {providers.map((p) => (
-          <button key={p} type="button" className={`brand-btn brand-${p}`} data-testid={`signin-${p}`} disabled={busy} onClick={() => startOAuth(p, 'login', returnTo)}>
-            <ProviderIcon p={p} /><span>Continue with {PROVIDER_LABEL[p]}</span>
-          </button>
-        ))}
-      </div>
-      {a.passkeys && (
+      {shell && (
         <>
-          {providers.length > 0 && <div className="acct-or"><span>or use a passkey</span></div>}
           <div className="acct-providers">
-            <button type="button" className="brand-btn brand-passkey" data-testid="signin-passkey" disabled={busy} onClick={passkey}>
+            <button type="button" className="brand-btn brand-passkey" data-testid="signin-handoff" disabled={busy} onClick={handoff}>
               <ProviderIcon p="passkey" /><span>Sign in with a passkey</span>
             </button>
-            <button type="button" className="brand-btn brand-passkey ghost" data-testid="create-passkey" disabled={busy} onClick={onPasskeyNew}>
-              <span className="pk-plus" aria-hidden>＋</span><span>Create an account with a passkey</span>
-            </button>
           </div>
-          <p className="acct-fine">Passkeys use Face ID, Touch ID, your fingerprint or your phone's screen lock. No password.</p>
+          <p className="acct-fine">Passkeys can't run inside the app, so this opens your browser to finish signing in — the app picks it up from there, on the same account.</p>
+          {pending && (
+            <form className="acct-handoff-code" onSubmit={(e) => void submitCode(e)}>
+              <label htmlFor="handoff-code">Came back with a code from the browser instead?</label>
+              <input id="handoff-code" data-testid="handoff-code-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="XXXX XXXX XXXX" autoCapitalize="characters" autoCorrect="off" spellCheck={false} aria-label="Sign-in code" />
+              <button type="submit" className="primary" disabled={busy || !code.trim()}>Use this code</button>
+            </form>
+          )}
         </>
       )}
-      {!providers.length && !a.passkeys && <p className="acct-fine">Sign-in isn't available right now.</p>}
+      {!shell && (
+        <>
+          <div className="acct-providers">
+            {providers.map((p) => (
+              <button key={p} type="button" className={`brand-btn brand-${p}`} data-testid={`signin-${p}`} disabled={busy} onClick={() => startOAuth(p, 'login', returnTo)}>
+                <ProviderIcon p={p} /><span>Continue with {PROVIDER_LABEL[p]}</span>
+              </button>
+            ))}
+          </div>
+          {a.passkeys && (
+            <>
+              {providers.length > 0 && <div className="acct-or"><span>or use a passkey</span></div>}
+              <div className="acct-providers">
+                <button type="button" className="brand-btn brand-passkey" data-testid="signin-passkey" disabled={busy} onClick={passkey}>
+                  <ProviderIcon p="passkey" /><span>Sign in with a passkey</span>
+                </button>
+                <button type="button" className="brand-btn brand-passkey ghost" data-testid="create-passkey" disabled={busy} onClick={onPasskeyNew}>
+                  <span className="pk-plus" aria-hidden>＋</span><span>Create an account with a passkey</span>
+                </button>
+              </div>
+              <p className="acct-fine">Passkeys use Face ID, Touch ID, your fingerprint or your phone's screen lock. No password.</p>
+            </>
+          )}
+        </>
+      )}
+      {!shell && !providers.length && !a.passkeys && <p className="acct-fine">Sign-in isn't available right now.</p>}
       {err && <p className="err acct-err" role="alert">{err}</p>}
       <button type="button" className="acct-guest" data-testid="keep-guest" onClick={onClose}>Keep playing as guest</button>
       <p className="acct-fine">By signing in you agree to the <a href="/terms" target="_blank" rel="noreferrer">Terms</a> and <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.</p>
