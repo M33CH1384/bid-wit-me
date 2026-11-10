@@ -339,7 +339,7 @@ describe('first-sign-in preferences step (component)', () => {
   });
 
   it('completing through the real Settings sheet marks it done; guest-era settings are the starting point', async () => {
-    saveSettings({ ...DEFAULT_SETTINGS, quality: 'low' }); // changed as a guest, before signing in
+    saveSettings({ ...DEFAULT_SETTINGS, quality: 'low', qualityPicked: true }); // changed as a guest in the Settings sheet, before signing in — the sheet marks the pick (qualityPicked), which is what makes it the guest's choice rather than a default the load-time heal may rewrite
     const done = vi.fn();
     meUser = USER;
     history.replaceState(null, '', '/?signin=new&via=google');

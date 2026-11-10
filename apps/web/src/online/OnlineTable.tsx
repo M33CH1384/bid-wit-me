@@ -218,7 +218,7 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
         onExit={onLobby}
         onMainMenu={onMainMenu}
         onRematch={() => conn.send({ t: 'rematch' })}
-        onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
+        onQuality={(quality) => { const s = { ...settings, quality, qualityPicked: true }; setSettings(s); saveSettings({ ...loadSettings(), quality, qualityPicked: true }); }}
         onView={(view) => { const s = { ...settings, view }; setSettings(s); saveSettings({ ...loadSettings(), view }); }}
         onViewAdjust={(viewAdjust) => { const s = { ...settings, viewAdjust }; setSettings(s); saveSettings({ ...loadSettings(), viewAdjust }); }}
         onTurnUp={(turnUp) => { const s = { ...settings, turnUp }; setSettings(s); saveSettings({ ...loadSettings(), turnUp }); }}

@@ -48,6 +48,12 @@ export interface Settings {
   speed: 'slow' | 'relaxed' | 'normal' | 'fast' | 'turbo';
   /** 3D quality: low disables shadows, HDRI and MSAA and uses smaller textures. */
   quality: 'high' | 'low';
+  /** True once the player themselves picked the graphics quality (the table
+   *  menu's Graphics toggle). Lets load-time healing tell an explicit Low
+   *  pick apart from a value the load-time default merely produced — on
+   *  iOS the old default answered 'low' for every fresh store, so an
+   *  unmarked stored 'low' there is the default's word, not the player's. */
+  qualityPicked?: boolean;
   /** Venue (3D arena) for offline games: classic (default), one of the venues, or random (rolled per game) */
   venue: VenueChoice;
   /** Camera view: sitting = lower/closer (DEFAULT for new players, V-gesture slams); standing = higher/farther. A saved choice always wins. */
@@ -81,15 +87,25 @@ export interface Settings {
  * The load-time graphics-quality heuristic. Exported for the ink layer
  * (src/ink/mode.ts `inkLowQuality`), which compares a stored quality
  * against a fresh heuristic read to tell an explicit user pick apart from
- * this default. NOTE: its signals are weak on WebKit — Safari has no
- * `deviceMemory`, and iOS clamps `hardwareConcurrency` to 2 — so it answers
- * 'low' on every iPhone; consumers that can adapt at runtime (the ink
- * governor) should not take its word for low-end hardware.
+ * this default.
+ *
+ * POSITIVE EVIDENCE ONLY (the ink doctrine, applied to the scene at last):
+ * the old rule `(deviceMemory <= 3) || (cores <= 3)` trusted signals that
+ * lie on WebKit — Safari/WKWebView have no `deviceMemory`, and iOS clamps
+ * `hardwareConcurrency` to 2 regardless of the chip — so it answered
+ * 'low' on EVERY iPhone, the answer was persisted into settings, and a
+ * fresh store (a new install, the app shell's empty WebView store, a
+ * cleared browser profile) started on Low while a long-lived profile
+ * kept its stored High. Core counts are therefore ignored entirely; a
+ * memory figure the browser ACTUALLY reports at <= 3 GB (Chrome/Android
+ * expose `deviceMemory` truthfully) is the only load-time evidence of a
+ * weak device. Absent signals are "unknown", never "weak" — and a weak
+ * device that slips through is still protected by the runtime governor.
  */
 export function defaultQuality(): 'high' | 'low' {
   if (typeof navigator === 'undefined') return 'high';
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-  return (mem !== undefined && mem <= 3) || (navigator.hardwareConcurrency ?? 8) <= 3 ? 'low' : 'high';
+  return mem !== undefined && mem <= 3 ? 'low' : 'high';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -231,6 +247,13 @@ export function loadSettings(): Settings {
 export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { botLevel?: string }): Settings {
   const s = { ...DEFAULT_SETTINGS, ...j } as Settings;
   s.botLevel = j.botLevel === 'normal' || j.botLevel === undefined ? 'mixed' : skillSettingOf(j.botLevel);
+  if (s.quality !== 'high' && s.quality !== 'low') s.quality = defaultQuality();
+  // Heal a defaulted 'low' the player never picked: under the old
+  // heuristic every fresh iOS store persisted 'low' (see defaultQuality).
+  // An explicit pick (qualityPicked) always stands, and a device that
+  // still reports <= 3 GB memory keeps its 'low' on the heuristic's own
+  // word. Everything else was the old default talking, not the player.
+  if (s.quality === 'low' && s.qualityPicked !== true && defaultQuality() === 'high') s.quality = 'high';
   if (!['family', 'cookout', 'nomercy'].includes(s.talkIntensity)) s.talkIntensity = 'cookout';
   if (!isVenueChoice(s.venue)) s.venue = 'classic';
   if (s.view !== 'sitting' && s.view !== 'standing') s.view = 'sitting'; // no saved preference (or junk) -> Sitting

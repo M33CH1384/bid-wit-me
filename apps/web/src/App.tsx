@@ -108,7 +108,7 @@ export default function App() {
       onSuspend={() => coverThen(() => { clearTableChatOpen(); history.replaceState({ wiz: 'home', d: 0 }, '', '/'); setGame(null); }, 'table-exit')}
       onRematch={(dealer) => setGame({ seed: secureSeed(), settings: game.settings, dealer, continueSeries: true })}
       startDealer={game.dealer}
-      onQuality={(quality) => { const s = { ...game.settings, quality }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
+      onQuality={(quality) => { const s = { ...game.settings, quality, qualityPicked: true }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
       onView={(view) => { const s = { ...game.settings, view }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
       onViewAdjust={(viewAdjust) => { const s = { ...game.settings, viewAdjust }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
       onTurnUp={(turnUp) => { const s = { ...game.settings, turnUp }; setGame({ ...game, settings: s }); setSettings(s); saveSettings(s); }}
