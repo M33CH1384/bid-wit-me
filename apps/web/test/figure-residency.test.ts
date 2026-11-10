@@ -92,11 +92,19 @@ describe('figure residency policy', () => {
     expect(disposed).toEqual(['/f/b.glb']);
   });
 
-  it('the shipped budget holds two full tables of audit-measured figures', () => {
-    // 3 figures/table ≈ 71 MB; current + previous table must coexist.
-    expect(FIGURE_RESIDENCY_BUDGET_BYTES).toBeGreaterThanOrEqual(2 * 3 * 23 * MB);
-    // ...and must be a real cap vs the ~350 MB unbounded cast total.
-    expect(FIGURE_RESIDENCY_BUDGET_BYTES).toBeLessThan(15 * 23 * MB);
+  it('the shipped budget holds two full tables of full-detail figures', () => {
+    // 3 figures/table at the measured full-detail cost — 32 MiB
+    // in-engine (2048² body + 1024² hand diffuse + 1024² normal, by
+    // estimateGltfTextureBytes' own formula on the pilot GLB);
+    // current + previous table must coexist. (The 2026-10-30 version
+    // of this pin used the then-measured 23 MB body-only figure; the
+    // protection is unchanged, the per-figure cost was re-measured
+    // for the 2026-11-10 D3 cap raise.)
+    expect(FIGURE_RESIDENCY_BUDGET_BYTES).toBeGreaterThanOrEqual(2 * 3 * 32 * MB);
+    // ...and must be a real cap vs the unbounded cast total at that
+    // cost (15 shipped figures × 32 MiB ≈ 480 MiB — the accumulation
+    // class that killed the process when it ran uncapped).
+    expect(FIGURE_RESIDENCY_BUDGET_BYTES).toBeLessThan(15 * 32 * MB);
   });
 });
 

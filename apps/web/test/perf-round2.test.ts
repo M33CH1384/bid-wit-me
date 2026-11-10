@@ -6,7 +6,7 @@
  * counts not timings):
  *  - The persistent context survives a rematch (round 1 holds), every
  *    census category is flat WITHIN a game, and the capped systems
- *    (chat 100, voice LRU, figure 160 MB LRU) stay capped.
+ *    (chat 100, voice LRU, figure 216 MB LRU) stay capped.
  *  - But every game mount re-uploads the table's streamed maps: the
  *    decoded IMAGES were shared (loadTableImage), while the three
  *    Texture objects were rebuilt per TableModel mount (~20 MB at 1k)
