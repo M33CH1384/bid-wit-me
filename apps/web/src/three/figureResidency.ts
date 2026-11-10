@@ -34,12 +34,24 @@
  *    short grace so back-to-back table changes don't thrash: hopping
  *    away and straight back re-seats from cache.
  *
- * Budget: a full table seats 3 figures ≈ 71 MB. 160 MB keeps the
+ * Budget: a full table seats 3 figures ≈ 71 MB. 160 MB kept the
  * current table AND the previous table's whole cast resident (the
  * realistic hop pattern — story stop to story stop shares Dee and
  * re-seats neighbours; regular tables rotate personas) while capping
  * the session's figure footprint at under half the unbounded worst
  * case the audit measured.
+ *
+ * Raised 2026-11-10 (owner decision D3: full-detail hands for the
+ * cast): a figure wearing the 1024² diffuse + normal hand set
+ * measures 32.0 MiB decoded in-engine (body 21.33 + hands 5.33 +
+ * normal 5.33, by this module's own estimator) vs 22.67 MiB for a
+ * body-only figure — so a full table of full-detail figures is
+ * ≈ 96 MiB and the two-table guarantee costs 192 MiB. The budget is
+ * 216 MiB: that guarantee plus the same ~24 MiB of headroom the
+ * 160 MiB cap held over its own two-table guarantee (136 MiB), and
+ * still under half the unbounded total of a 15-figure full-detail
+ * cast (480 MiB). The per-figure planning size (fallback below)
+ * rose 24 → 28 MiB in the same step.
  *
  * The probe mirrors the codebase's __bwm* discipline:
  * window.__bwmFigureResidency publishes { budget, totalBytes,
@@ -51,13 +63,15 @@ import { useLoader } from '@react-three/fiber';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { BufferGeometry, Material, Object3D, Texture } from 'three';
 
-export const FIGURE_RESIDENCY_BUDGET_BYTES = 160 * 1024 * 1024;
+export const FIGURE_RESIDENCY_BUDGET_BYTES = 216 * 1024 * 1024;
 
 /** Fallback decoded size for a figure whose textures can't be
- *  measured (the audit's measured typical: one 2048² texture with
- *  mips ≈ 22.4 MB, plus the occasional 512² ≈ 1.4 MB). The budget
- *  still binds if measurement ever comes back empty. */
-export const FIGURE_FALLBACK_BYTES = 24 * 1024 * 1024;
+ *  measured — the planning size between the two measured classes:
+ *  a body-only figure ≈ 22.7 MiB (2048² body + 512² hands) and a
+ *  full-detail-hands figure ≈ 32.0 MiB (2048² body + 1024² diffuse
+ *  + 1024² normal). The budget still binds if measurement ever
+ *  comes back empty. */
+export const FIGURE_FALLBACK_BYTES = 28 * 1024 * 1024;
 
 /** A just-released entry is eviction-proof for this long, so leaving
  *  a table and coming straight back is a cache hit, not a re-decode. */
