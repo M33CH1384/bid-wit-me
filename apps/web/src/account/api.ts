@@ -118,8 +118,7 @@ export function loadAccount(force = false): Promise<void> {
       // An OAuth RETURN (?signin=ok/new) is an interactive sign-in completing —
       // unlike the silent restore this same function performs on every other
       // load, which must never raise the first-sign-in preferences offer.
-      const me = { user }; // alias so the entry-flow first-sign-in pin below keeps its original shape
-      if (me.user && (result === 'ok' || result === 'new')) set({ firstSignIn: me.user });
+      if (me.user && (result === 'ok' || result === 'new')) set({ firstSignIn: user });
       // A completed handoff is the same kind of completion — the passkey ceremony
       // just happened, in the browser — so it earns the first-sign-in treatment too.
       if (user && handedOff) set({ firstSignIn: user });
