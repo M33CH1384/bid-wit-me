@@ -1202,6 +1202,47 @@ function trimLoopBuffer(ctx: AudioContext, buf: AudioBuffer, leadS: number, seco
   return out;
 }
 
+/**
+ * Can this decoded bed buffer be trusted to sound like its recording?
+ * A real recording — even surf, even a bright cookout crowd — is heavily
+ * correlated sample to sample: its mean absolute step sits far below its RMS
+ * (measured on all twelve production beds: medians 0.03–0.44). Uncorrelated
+ * garbage — undecoded bytes or a decode gone wrong, i.e. literal static —
+ * steps at ~1.13× RMS. Windows are judged by their median ratio so one
+ * bright transient can never convict a bed, and near-silent windows abstain.
+ * A buffer too quiet to judge can only ever play silence, so it passes.
+ */
+export const BED_NOISE_RATIO_LIMIT = 0.75;
+
+export function bedBufferSane(buf: AudioBuffer): boolean {
+  const WINDOW = 1024;
+  const WINDOWS = 48;
+  const ratios: number[] = [];
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const data = buf.getChannelData(ch);
+    if (data.length < WINDOW) continue;
+    const stride = Math.max(WINDOW, Math.floor((data.length - WINDOW) / WINDOWS));
+    for (let off = 0; off + WINDOW <= data.length; off += stride) {
+      let sumSq = 0;
+      let sumStep = 0;
+      let finite = true;
+      for (let i = 0; i < WINDOW; i++) {
+        const v = data[off + i]!;
+        if (!Number.isFinite(v)) { finite = false; break; }
+        sumSq += v * v;
+        if (i > 0) sumStep += Math.abs(v - data[off + i - 1]!);
+      }
+      if (!finite) return false;
+      const rms = Math.sqrt(sumSq / WINDOW);
+      if (rms < 0.004) continue;
+      ratios.push(sumStep / (WINDOW - 1) / rms);
+    }
+  }
+  if (!ratios.length) return true;
+  ratios.sort((a, b) => a - b);
+  return ratios[Math.floor(ratios.length / 2)]! <= BED_NOISE_RATIO_LIMIT;
+}
+
 class Engine {
   settings: SoundSettings = load();
   private listeners = new Set<() => void>();
@@ -4370,6 +4411,60 @@ class Engine {
     return entry.p;
   }
 
+  /** Start ONE recorded venue bed loop from its decoded buffer — the single
+   *  doorway every recorded bed goes through, so the witness and stop
+   *  semantics the 2026-11-08 watchdog heals against are identical for all of
+   *  them: a started loop increments bedLoopsAlive exactly once and its sink
+   *  stop decrements it exactly once. Callers have already re-checked that
+   *  their captured sink/bed are still the live ones.
+   *
+   *  SHELL WHITE-NOISE GUARD (2026-11-10): in the iOS app shell the Classic
+   *  bed reached the speaker as raw static while the music decks — routed
+   *  through <audio> elements, never decodeAudioData — played perfectly in
+   *  the same shell, and the bed file itself is a verified-normal recording.
+   *  A decode/render fault on the buffer path can hand back uncorrelated
+   *  samples, and a buffer source would play them as literal noise. So the
+   *  decoded buffer is validated BEFORE it can sound (bedBufferSane):
+   *  untrusted content falls back to the decks' proven element path for the
+   *  same file, and if the element cannot play either, the bed stays SILENT —
+   *  the watchdog's bed-heal keeps retrying, exactly as for a failed decode.
+   *  Silence beats static, always. */
+  private startRecordedBedLoop(args: { raw: AudioBuffer; url: string; leadS: number; seconds: number; dest: AudioNode; sink: { stop: () => void }[]; bed: VenueBed }): void {
+    const c = this.ctx;
+    if (!c) return;
+    if (bedBufferSane(args.raw)) {
+      const src = c.createBufferSource();
+      src.buffer = trimLoopBuffer(c, args.raw, args.leadS, args.seconds);
+      src.loop = true;
+      src.connect(args.dest);
+      src.start();
+      this.bedLoopsAlive++;
+      args.sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      return;
+    }
+    const el = document.createElement('audio');
+    el.loop = true;
+    el.preload = 'auto';
+    el.setAttribute('playsinline', '');
+    el.src = args.url;
+    let source: MediaElementAudioSourceNode;
+    try { source = c.createMediaElementSource(el); } catch { return; }
+    source.connect(args.dest);
+    let counted = false;
+    const stop = () => {
+      if (counted) { counted = false; this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); }
+      try { el.pause(); } catch { /* already gone */ }
+      try { source.disconnect(); } catch { /* already gone */ }
+      el.removeAttribute('src');
+    };
+    args.sink.push({ stop });
+    void el.play().then(() => {
+      if (this.venueNodes !== args.sink || this.venuePlaying !== args.bed) { stop(); return; }
+      counted = true;
+      this.bedLoopsAlive++;
+    }).catch(() => { /* cannot play: silence; the bed-heal retries as for a failed decode */ });
+  }
+
   /** Start the recorded street bed for THIS bed build: decode (cached), trim the
    *  MP3's encoder delay so the 64 s loop is sample-exact, and loop it through the
    *  venue bus. The decode is async; if the bed was stopped or rebuilt meanwhile,
@@ -4381,13 +4476,7 @@ class Engine {
     const bed = this.venuePlaying;
     void this.loadAmbience('pjs-bed', PJS_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, PJS_BED_LEAD_S, PJS_BED_SECONDS);
-      src.loop = true;
-      src.connect(this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: PJS_BED_URL, leadS: PJS_BED_LEAD_S, seconds: PJS_BED_SECONDS, dest: this.venueBus, sink, bed });
     });
     for (const url of [...PJS_EVENT_URLS.voice, ...PJS_EVENT_URLS.car]) void this.loadAmbience(url, url);
     this.scheduleStreetEvents();
@@ -4475,13 +4564,7 @@ class Engine {
     }
     void this.loadAmbience('spk-bed', SPK_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, SPK_BED_LEAD_S, SPK_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: SPK_BED_URL, leadS: SPK_BED_LEAD_S, seconds: SPK_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...SPK_EVENT_URLS.glass, ...SPK_EVENT_URLS.laugh, ...SPK_EVENT_URLS.door]) void this.loadAmbience(url, url);
     this.scheduleSpeakeasyEvents();
@@ -4539,13 +4622,7 @@ class Engine {
     }
     void this.loadAmbience('brb-bed', BRB_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, BRB_BED_LEAD_S, BRB_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: BRB_BED_URL, leadS: BRB_BED_LEAD_S, seconds: BRB_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...BRB_EVENT_URLS.trimmer, ...BRB_EVENT_URLS.clippersOff, ...BRB_EVENT_URLS.scissors, ...BRB_EVENT_URLS.laugh, ...BRB_EVENT_URLS.doorBell, ...BRB_EVENT_URLS.broom, ...BRB_EVENT_URLS.register]) void this.loadAmbience(url, url);
     this.scheduleBarbershopEvents();
@@ -4608,13 +4685,7 @@ class Engine {
     }
     void this.loadAmbience('gma-bed', GMA_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, GMA_BED_LEAD_S, GMA_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: GMA_BED_URL, leadS: GMA_BED_LEAD_S, seconds: GMA_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...GMA_EVENT_URLS.dishes, ...GMA_EVENT_URLS.screenDoor, ...GMA_EVENT_URLS.rockingChair, ...GMA_EVENT_URLS.potLid, ...GMA_EVENT_URLS.chairScrape]) void this.loadAmbience(url, url);
     this.scheduleGrandmasEvents();
@@ -4675,13 +4746,7 @@ class Engine {
     }
     void this.loadAmbience('ctt-bed', CTT_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, CTT_BED_LEAD_S, CTT_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: CTT_BED_URL, leadS: CTT_BED_LEAD_S, seconds: CTT_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...CTT_EVENT_URLS.ice, ...CTT_EVENT_URLS.screenDoor, ...CTT_EVENT_URLS.kids, ...CTT_EVENT_URLS.grillFlare]) void this.loadAmbience(url, url);
     this.scheduleCookoutEvents();
@@ -4741,13 +4806,7 @@ class Engine {
     }
     void this.loadAmbience('chu-bed', CHU_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, CHU_BED_LEAD_S, CHU_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: CHU_BED_URL, leadS: CHU_BED_LEAD_S, seconds: CHU_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...CHU_EVENT_URLS.percolator, ...CHU_EVENT_URLS.door, ...CHU_EVENT_URLS.cupPour, ...CHU_EVENT_URLS.chairScrape, ...CHU_EVENT_URLS.foldChair, ...CHU_EVENT_URLS.spoonCup]) void this.loadAmbience(url, url);
     this.scheduleChurchEvents();
@@ -4813,13 +4872,7 @@ class Engine {
     }
     void this.loadAmbience('roo-bed', ROO_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, ROO_BED_LEAD_S, ROO_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: ROO_BED_URL, leadS: ROO_BED_LEAD_S, seconds: ROO_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...ROO_EVENT_URLS.gustFront, ...ROO_EVENT_URLS.roofDoor, ...ROO_EVENT_URLS.footsteps, ...ROO_EVENT_URLS.looseMetal]) void this.loadAmbience(url, url);
     this.scheduleRooftopEvents();
@@ -4882,13 +4935,7 @@ class Engine {
     }
     void this.loadAmbience('yct-bed', YACHT_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, YACHT_BED_LEAD_S, YACHT_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: YACHT_BED_URL, leadS: YACHT_BED_LEAD_S, seconds: YACHT_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...YACHT_EVENT_URLS.waveSwell, ...YACHT_EVENT_URLS.hullCreak, ...YACHT_EVENT_URLS.flagSnap, ...YACHT_EVENT_URLS.gullCalls, ...YACHT_EVENT_URLS.farHorn]) void this.loadAmbience(url, url);
     this.scheduleYachtEvents();
@@ -4953,13 +5000,7 @@ class Engine {
     }
     void this.loadAmbience('bch-bed', BEACH_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, BEACH_BED_LEAD_S, BEACH_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: BEACH_BED_URL, leadS: BEACH_BED_LEAD_S, seconds: BEACH_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...BEACH_EVENT_URLS.waveSet, ...BEACH_EVENT_URLS.gullCalls, ...BEACH_EVENT_URLS.clothFlap, ...BEACH_EVENT_URLS.torchFlare]) void this.loadAmbience(url, url);
     this.scheduleBeachEvents();
@@ -5024,13 +5065,7 @@ class Engine {
     }
     void this.loadAmbience('man-bed', MAN_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, MAN_BED_LEAD_S, MAN_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: MAN_BED_URL, leadS: MAN_BED_LEAD_S, seconds: MAN_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...MAN_EVENT_URLS.iceInGlass, ...MAN_EVENT_URLS.glassClink, ...MAN_EVENT_URLS.pour, ...MAN_EVENT_URLS.elevatorDoors, ...MAN_EVENT_URLS.footsteps]) void this.loadAmbience(url, url);
     this.scheduleMansionEvents();
@@ -5096,13 +5131,7 @@ class Engine {
     }
     void this.loadAmbience('veg-bed', VEG_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, VEG_BED_LEAD_S, VEG_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: VEG_BED_URL, leadS: VEG_BED_LEAD_S, seconds: VEG_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...VEG_EVENT_URLS.chipStack, ...VEG_EVENT_URLS.cardShuffle, ...VEG_EVENT_URLS.iceInGlass, ...VEG_EVENT_URLS.slotPayout]) void this.loadAmbience(url, url);
     this.scheduleVegasEvents();
@@ -5167,13 +5196,7 @@ class Engine {
     }
     void this.loadAmbience('cls-bed', CLS_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, CLS_BED_LEAD_S, CLS_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      this.bedLoopsAlive++;
-      sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: CLS_BED_URL, leadS: CLS_BED_LEAD_S, seconds: CLS_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...CLS_EVENT_URLS.cardShuffle, ...CLS_EVENT_URLS.cardDeal, ...CLS_EVENT_URLS.glassSetDown, ...CLS_EVENT_URLS.chairShift]) void this.loadAmbience(url, url);
     this.scheduleClassicEvents();
