@@ -2,7 +2,7 @@ import { RUN_SLAM_MS } from '../runIt';
 import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
+import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Color, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial, createRestCardMaterial } from './Card3D';
 import { enterFigureLeanMode } from './figureResidency';
@@ -83,7 +83,9 @@ import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
 import MansionRoom, { preloadMansionRoom } from './MansionRoom';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
-import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
+import { bodyGeometry, cardGeometry, cushionGeometry, feltGeometry, railGeometry } from './geometry';
+import { RAIL_SHADOW_SIZE, feltNapTexture, railShadowTexture } from './tableLook';
+import { loadTableModel, withWhite } from './tableModel';
 import {
   CH, CW, MIN_STRIP_PX, TRICK_SCALE, type CamSpec, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
@@ -775,31 +777,55 @@ function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: b
   return { maps, settled };
 }
 
-type TableGeos = { felt: BufferGeometry; rail: BufferGeometry; body: BufferGeometry };
-let geosCache: TableGeos | null = null;
+type TableGeos = { felt: BufferGeometry; rail: BufferGeometry; body: BufferGeometry; cushion: BufferGeometry | null; inlay: BufferGeometry | null; base: BufferGeometry | null };
+const geosCache = new Map<string, TableGeos>();
 
-/** Felt, rail, then apron, each in its own frame. The first paint uses a flat disc so extrude work is not on it. */
-function useTableGeos(): TableGeos | null {
-  const [geos, setGeos] = useState<TableGeos | null>(geosCache);
+/**
+ * Felt, rail, then apron, each in its own frame. The first paint uses a flat disc so extrude work is not on it.
+ * A venue with a Blender table (tools/blender/build_table.py) swaps the rail, armrest, apron and base for the
+ * modelled ones; if that file cannot be fetched the built-in shapes stand in.
+ */
+function useTableGeos(model: string | undefined): TableGeos | null {
+  const key = model ?? '';
+  const [geos, setGeos] = useState<TableGeos | null>(geosCache.get(key) ?? null);
   useEffect(() => {
-    if (geosCache) { setGeos(geosCache); return; }
+    const hit = geosCache.get(key);
+    if (hit) { setGeos(hit); return; }
     let alive = true;
+    setGeos(null);
     void (async () => {
       await nextFrame();
       if (!alive) return;
       const felt = feltGeometry();
-      await nextFrame();
-      if (!alive) return;
-      const rail = railGeometry();
-      await nextFrame();
-      if (!alive) return;
-      geosCache = { felt, rail, body: bodyGeometry() };
-      if (alive) setGeos(geosCache);
+      let built: TableGeos | null = null;
+      if (model) {
+        const parts = await loadTableModel(model).catch(() => null);
+        if (!alive) return;
+        if (parts?.rail && parts.apron) built = { felt, rail: parts.rail, body: parts.apron, cushion: parts.cushion ?? null, inlay: parts.inlay ?? null, base: parts.base ?? null };
+      }
+      if (!built) {
+        await nextFrame();
+        if (!alive) return;
+        const rail = railGeometry();
+        await nextFrame();
+        if (!alive) return;
+        const body = bodyGeometry();
+        await nextFrame();
+        if (!alive) return;
+        const cushion = cushionGeometry();
+        built = { felt, rail, body, cushion, inlay: null, base: null };
+        if (model) for (const g of [rail, body, cushion]) withWhite(g);
+      }
+      geosCache.set(key, built);
+      if (alive) setGeos(built);
     })();
     return () => { alive = false; };
-  }, []);
+  }, [key, model]);
   return geos;
 }
+
+/** Repeats of the suede weave per world unit: fine enough that the cloth reads as fibre, not as a pattern. */
+const FELT_WEAVE = 6.5;
 
 function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
   const hi = quality === 'high';
@@ -811,8 +837,12 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
     felt = new MeshStandardMaterial({ map: feltPatternTexture(def.feltPattern, def.felt), roughness: def.feltPattern === 'gingham' ? 0.45 : 0.6, envMapIntensity: 0.25 });
     if (def.feltPattern === 'gingham') { felt.normalMap = flatN; felt.normalScale.set(0.15, 0.15); }
   } else {
-    felt = new MeshStandardMaterial({ color: def.felt, roughness: 1, roughnessMap: flatR, normalMap: flatN, envMapIntensity: 0.35 });
-    felt.normalScale.set(0.9, 0.9);
+    // Cloth: a brushed nap in the colour, and on High a sheen lobe so the pile catches light at grazing angles.
+    const cloth = { color: def.felt, map: feltNapTexture(), roughness: 1, roughnessMap: flatR, normalMap: flatN, envMapIntensity: 0.35 };
+    felt = hi
+      ? new MeshPhysicalMaterial({ ...cloth, sheen: 0.3, sheenRoughness: 0.7, sheenColor: new Color(def.felt).lerp(new Color('#ffffff'), 0.15) })
+      : new MeshStandardMaterial(cloth);
+    felt.normalScale.set(1.25, 1.25);
   }
   let wood: MeshStandardMaterial;
   switch (def.rail) {
@@ -848,7 +878,13 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
       ? new MeshStandardMaterial({ color: def.apron, metalness: 0.7, roughness: 0.3 })
       : new MeshStandardMaterial({ map: white, roughness: 0.6, color: def.apron });
   const floor = new MeshStandardMaterial({ color: '#120b18', roughness: 0.95 });
-  return { felt, wood, apron, floor };
+  // Padded armrest inside the rail (the rail stays as the outer trim), on tables that have one.
+  const cushion = def.cushionTint ? new MeshStandardMaterial({ color: def.cushionTint, roughness: 0.5, normalMap: flatN, normalScale: new Vector2(0.55, 0.55), envMapIntensity: 0.9 }) : null;
+  // Metal strip let into the rail or apron of a modelled table.
+  const inlay = def.tableModel && def.inlayTint ? new MeshStandardMaterial({ color: def.inlayTint, metalness: 1, roughness: 0.28, envMapIntensity: 1.3 }) : null;
+  // A modelled table carries baked ambient occlusion in its vertex colours.
+  if (def.tableModel) for (const m of [wood, apron, cushion, inlay]) if (m) m.vertexColors = true;
+  return { felt, wood, apron, floor, cushion, inlay };
 }
 
 function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { quality: 'high' | 'low'; lit: boolean; onReady?: () => void; onTextured?: () => void; def: VenueDef; /** A story seam room provides this table's floor — suppress the classic ground plane (it sits at the same FLOOR_Y and z-fights the room's own floor; owner device report 2026-10-28: Rec Center floor rendering as dark streaks). */ roomFloor?: boolean }) {
@@ -856,7 +892,7 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
   const urls = useMemo(() => (railUrl ? [...tableTextureUrls(quality), railUrl] : tableTextureUrls(quality)), [quality, railUrl]);
   const { maps, settled } = useStreamedMaps(urls);
   const invalidate = useThree((s) => s.invalidate);
-  const geos = useTableGeos();
+  const geos = useTableGeos(def.tableModel);
   const basic = useMemo(() => ({
     felt: new MeshBasicMaterial({ color: def.felt }),
     wood: new MeshBasicMaterial({ color: def.railTint }),
@@ -867,6 +903,7 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
   const full = useMemo(() => buildTableMaterials(def, quality), [def, quality]);
   const logo = useMemo(() => logoTexture(invalidate), [invalidate]);
   const logoMat = useMemo(() => new MeshBasicMaterial({ map: logo, transparent: true, opacity: 0.13, depthWrite: false }), [logo]);
+  const railShadowMat = useMemo(() => new MeshBasicMaterial({ map: railShadowTexture(), transparent: true, opacity: 0.42, depthWrite: false }), []);
   const textured = useRef(false);
   /* Maps are session-shared Textures now (streamedTexCache), so the
    * "already applied" mark cannot live on the texture — it belongs to
@@ -888,8 +925,8 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
       });
     };
     if (!def.feltPattern) {
-      take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(0.9, 0.9); full.felt.needsUpdate = true; }, 2.2);
-      take(feltR ?? null, (t) => { full.felt.roughnessMap = t; full.felt.needsUpdate = true; }, 2.2);
+      take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(1.25, 1.25); full.felt.needsUpdate = true; }, FELT_WEAVE);
+      take(feltR ?? null, (t) => { full.felt.roughnessMap = t; full.felt.needsUpdate = true; }, FELT_WEAVE);
     } else if (def.feltPattern === 'gingham') {
       take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(0.15, 0.15); full.felt.needsUpdate = true; }, 2.2);
     }
@@ -902,6 +939,11 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
       take(feltN ?? null, (t) => { full.wood.normalMap = t; full.wood.normalScale.set(0.3, 0.3); full.wood.needsUpdate = true; }, 2.2);
     } else if (def.rail !== 'crystal' && def.rail !== 'chrome' && def.rail !== 'metal') {
       take(railMap ?? null, (t) => { full.wood.map = t; full.wood.needsUpdate = true; full.apron.map = t; full.apron.needsUpdate = true; }, 1.4);
+    }
+    // The armrest's leather grain reuses the suede image already on the table (a clone shares the upload).
+    if (full.cushion && feltN && !full.cushion.userData.grain) {
+      const cushion = full.cushion;
+      jobs.push(() => { const g = feltN.clone(); g.repeat.set(3.2, 3.2); g.needsUpdate = true; cushion.normalMap = g; cushion.userData.grain = 1; cushion.needsUpdate = true; invalidate(); });
     }
     let i = 0;
     let raf = 0;
@@ -944,6 +986,15 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
           <mesh geometry={geos.felt} material={feltMat} receiveShadow />
           <mesh geometry={geos.rail} material={woodMat} castShadow receiveShadow />
           <mesh geometry={geos.body} material={apronMat} receiveShadow />
+          {lit && full.cushion && geos.cushion && <mesh geometry={geos.cushion} material={full.cushion} castShadow receiveShadow />}
+          {lit && full.inlay && geos.inlay && <mesh geometry={geos.inlay} material={full.inlay} />}
+          {geos.base && <mesh geometry={geos.base} material={apronMat} castShadow receiveShadow />}
+          {lit && (
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0006, 0]} renderOrder={-1}>
+              <planeGeometry args={RAIL_SHADOW_SIZE} />
+              <primitive object={railShadowMat} attach="material" />
+            </mesh>
+          )}
         </>
       ) : (
         <mesh rotation={[-Math.PI / 2, 0, 0]} material={feltMat} receiveShadow>
@@ -2125,7 +2176,9 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
     cardDim.name = 'card-dim';
     cardBack.name = 'card-back';
     cardRest.name = 'card-rest';
-    const litMats = [table.felt, table.wood, table.apron, table.floor, card, cardDim, cardBack, cardRest];
+    const litMats: Material[] = [table.felt, table.wood, table.apron, table.floor, card, cardDim, cardBack, cardRest];
+    if (table.cushion) { table.cushion.name = 'cushion'; litMats.push(table.cushion); }
+    if (table.inlay) { table.inlay.name = 'inlay'; litMats.push(table.inlay); }
     void (async () => {
       await nextFrame();
       if (!alive) return;

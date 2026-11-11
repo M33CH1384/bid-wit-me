@@ -7,6 +7,7 @@ from the original sources and re-encoded/resized (1k + 512px JPEG) for the web; 
 |---|---|---|---|
 | `textures/scuba_suede_nor_gl_{1k,512}.jpg`, `textures/scuba_suede_rough_512.jpg` | "Scuba Suede" fabric (felt normal + roughness) | Poly Haven — https://polyhaven.com/a/scuba_suede | CC0 1.0 |
 | `textures/dark_wood_{diff,nor_gl}_{1k,512}.jpg`, `textures/dark_wood_rough_512.jpg` | "Dark Wood" (table rail) | Poly Haven — https://polyhaven.com/a/dark_wood | CC0 1.0 |
+| `models/table_*.glb` | Venue tables (rail, padded armrest, apron, inlay, base), modelled and ambient-occlusion baked in Blender by `tools/blender/build_table.py` | Own work | n/a |
 | `hdri/billiard_hall_512.hdr` | "Billiard Hall" HDRI (environment lighting; downsized from the 1k file) | Poly Haven — https://polyhaven.com/a/billiard_hall | CC0 1.0 |
 | `venues/backyard/bg.jpg`, `venues/backyard/env.hdr` | "Qwantani Dusk 2" HDRI (backyard venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/qwantani_dusk_2 | CC0 1.0 |
 | `venues/barbershop/bg.jpg`, `venues/barbershop/env.hdr` | "Phone Shop" HDRI (barbershop venue backdrop + lighting; baked down to a 1024×512 jpg and a 256×128 .hdr) | Poly Haven — https://polyhaven.com/a/phone_shop | CC0 1.0 |

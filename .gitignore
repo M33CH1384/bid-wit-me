@@ -16,3 +16,6 @@ apps/web/dist-prod
 # voice bake scratch
 voice/bake-plan.json
 .voice-models/
+
+# CC0 source assets downloaded for Blender (rendered results are committed)
+tools/blender/cache/

@@ -133,3 +133,14 @@ export function bodyGeometry(): BufferGeometry {
   g.translate(0, -0.035, 0); // keep the bevelled top cap below the felt
   return g;
 }
+
+/** Padded armrest on the inside of a wooden rail: a rounded leather roll that sits a little proud of the wood. */
+export function cushionGeometry(): BufferGeometry {
+  const w = 0.1;
+  const outer = roundedShape(FELT.hx + w, FELT.hz + w, FELT.r + w);
+  outer.holes.push(new Path(roundedShape(FELT.hx + 0.012, FELT.hz + 0.012, FELT.r + 0.012).getPoints(48).reverse()));
+  const g = new ExtrudeGeometry(outer, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.036, bevelSegments: 6, curveSegments: 32 });
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, 0.062, 0);
+  return g;
+}
