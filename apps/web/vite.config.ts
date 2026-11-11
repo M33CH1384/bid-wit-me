@@ -6,6 +6,9 @@ import { type Plugin, defineConfig } from 'vite';
 const APP_VERSION = '0.3.0';
 const sha = (() => { try { return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'dev'; } })();
 
+/** Story 3D character assets (glb + portraits + characters.json) — a separate Pages project, not in git. Must match
+ *  CHARACTER_ASSETS_BASE in src/three/characters/manifest.ts (same env var, same default). Origin only. */
+const CHARACTERS_ORIGIN = new URL((process.env.VITE_CHARACTERS_ORIGIN || 'https://bwm-characters.pages.dev').trim()).origin;
 /**
  * Content-Security-Policy: only this site's own scripts can run, so a stray/injected script can't read the seat tokens
  * kept in localStorage. connect-src lists the game server (HTTP + websocket). Shipped to Pages as `_headers`
@@ -17,10 +20,10 @@ function csp(server: string): string {
     "default-src 'self'",
     "script-src 'self' 'wasm-unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob: ${CHARACTERS_ORIGIN}`,
     "media-src 'self' data: blob: mediastream:",
     "font-src 'self' data:",
-    `connect-src 'self' data: blob: ${server} ${ws}`,
+    `connect-src 'self' data: blob: ${server} ${ws} ${CHARACTERS_ORIGIN}`,
     "worker-src 'self' blob:",
     "frame-src 'none'",
     "object-src 'none'",
