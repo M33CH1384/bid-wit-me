@@ -20,12 +20,18 @@ export function roomEnvUrl(id: string): string {
  * and the seat-vantage turn all stand down while it is up, and they sit in different branches of the scene.
  */
 let shownNow = false;
+let failedNow = false;
 const listeners = new Set<() => void>();
 function setShown(v: boolean): void { if (shownNow !== v) { shownNow = v; listeners.forEach((fn) => fn()); } }
 const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
 export function useRoomShown(): boolean {
   return useSyncExternalStore(subscribe, () => shownNow, () => false);
 }
+/** The room's files could not be fetched: the venue's built-in room should show instead. */
+export function useRoomFailed(): boolean {
+  return useSyncExternalStore(subscribe, () => failedNow, () => false);
+}
+function setFailed(v: boolean): void { if (failedNow !== v) { failedNow = v; listeners.forEach((fn) => fn()); } }
 
 export default function RoomBackdrop({ id, active, onShown }: { id: string; active: boolean; onShown?: () => void }) {
   const scene = useThree((s) => s.scene);
@@ -46,10 +52,11 @@ export default function RoomBackdrop({ id, active, onShown }: { id: string; acti
       (window as unknown as { __bwmRoomAt?: number }).__bwmRoomAt ??= performance.now();
       onShown?.();
       invalidate();
-    });
+    }, undefined, () => { if (alive) setFailed(true); });
     return () => {
       alive = false;
       setShown(false);
+      setFailed(false);
       if (shown && scene.background === tex) { scene.background = prev.bg; scene.backgroundBlurriness = prev.blur; scene.backgroundIntensity = prev.k; }
       tex.dispose();
       invalidate();

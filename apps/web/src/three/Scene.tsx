@@ -86,7 +86,8 @@ import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venu
 import { bodyGeometry, cardGeometry, cushionGeometry, feltGeometry, railGeometry } from './geometry';
 import { RAIL_SHADOW_SIZE, feltNapTexture, railShadowTexture } from './tableLook';
 import { loadTableModel, withWhite } from './tableModel';
-import RoomBackdrop, { roomEnvUrl, useRoomShown } from './RoomBackdrop';
+import RoomBackdrop, { roomEnvUrl, useRoomFailed, useRoomShown } from './RoomBackdrop';
+import CubeVenueRoom, { BARE_ROOM } from './cubeVenue';
 import {
   CH, CW, MIN_STRIP_PX, TRICK_SCALE, type CamSpec, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
@@ -2458,6 +2459,10 @@ export default function Scene(props: SceneProps) {
   // A room rendered in Blender (tools/blender/build_room.py) replaces the box shell. Story stops keep their own rooms.
   const renderedRoom = !!def.room && !props.storyStopId;
   const roomUp = useRoomShown();
+  const roomFailed = useRoomFailed();
+  // A venue with a rendered room skips its built-in room, unless the render could not be fetched. Classic keeps its
+  // studio mounted (it stands its own shell down) so its chairs are there from the first frame.
+  const shellOn = classic || !renderedRoom || roomFailed;
   const ownSeatView = useMemo(
     () => ({ hidden: !props.spectator, dir: ownSeatDirForYaw(roomYaw) }),
     [props.spectator, roomYaw],
@@ -2825,7 +2830,7 @@ export default function Scene(props: SceneProps) {
       {/* The hall is filtered one mip per frame, and only after the cloth maps are on the table.
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
-      {hi && classic && <HallAttach active={hallGo && textured} room={renderedRoom ? def.id : undefined} />}
+      {hi && (classic || renderedRoom) && <HallAttach active={hallGo && textured} room={renderedRoom ? def.id : undefined} />}
       {renderedRoom && <RoomBackdrop id={def.id} active={textured} />}
       {/* Perf fix A (2026-11-03): everything below owns per-game GPU
           resources (room, table, cards, figures, effects, badges) and
@@ -2844,6 +2849,7 @@ export default function Scene(props: SceneProps) {
           cards, figures and effects after this group are view space and
           never move; neither does the camera. */}
       <group rotation={[0, roomYaw, 0]}>
+      {shellOn && (<>
       {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} handKey={props.handNo} storyStopId={props.storyStopId ?? null} />}
       {classic && textured && (props.storyStopId === 'rec-center' && props.quality === 'high'
         ? <RecCenterGymRoom fxOn={!props.reduceFx} />
@@ -2886,6 +2892,8 @@ export default function Scene(props: SceneProps) {
       {mansion && textured && (props.quality === 'high'
         ? <HighRisePenthouseRoom fxOn={!props.reduceFx} />
         : <MansionRoom quality={props.quality} handNo={props.handNo} />)}
+      </>)}
+      {!shellOn && roomUp && <CubeVenueRoom cfg={BARE_ROOM} quality={props.quality} handNo={props.handNo} />}
       </group>
       {showTable && (
         <group
