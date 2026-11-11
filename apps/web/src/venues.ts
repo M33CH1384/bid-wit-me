@@ -51,6 +51,8 @@ export interface VenueDef {
   bed: BedId;
   /** a table modelled in Blender (public/assets/models/table_<id>.glb); without one the table is the built-in shape */
   tableModel?: string;
+  /** the room is rendered in Blender (public/assets/rooms/<id>/): a cube-map backdrop plus the lighting panorama */
+  room?: boolean;
   /** leather colour of the padded armrest, on tables that have one */
   cushionTint?: string;
   /** metal strip let into the rail or apron, on tables that have one */
@@ -65,7 +67,7 @@ const V = (d: Omit<VenueDef, 'floorRough' | 'keyK'> & Partial<Pick<VenueDef, 'fl
 const bedOf = (id: VenueId): BedId => (styleForVenue(id)?.bed ?? 'none') as BedId;
 
 export const VENUE_DEFS: Record<VenueId, VenueDef> = {
-  classic: V({ id: 'classic', name: 'Classic Studio', emoji: '🎙️', blurb: 'The original: green felt, dark wood, purple glow.', felt: '#0d6a45', rail: 'wood', railTint: '#c98a5a', apron: '#7a4a2a', floorTex: null, floorTint: '#120b18', floorRepeat: 1, floorRadius: null, bgBlur: 0.55, bgIntensity: 0.22, envIntensity: 0.55, key: '#fff1dc', sky: '#fff3e0', ground: '#1a0f24', rim: '#9b5cff', clear: '#0c0712', bed: bedOf('classic'), tableModel: 'classic', cushionTint: '#33231b', inlayTint: '#d2a24c' }),
+  classic: V({ id: 'classic', name: 'Classic Studio', emoji: '🎙️', blurb: 'The original: green felt, dark wood, purple glow.', felt: '#0d6a45', rail: 'wood', railTint: '#c98a5a', apron: '#7a4a2a', floorTex: null, floorTint: '#120b18', floorRepeat: 1, floorRadius: null, bgBlur: 0.55, bgIntensity: 0.22, envIntensity: 0.55, key: '#fff1dc', sky: '#fff3e0', ground: '#1a0f24', rim: '#9b5cff', clear: '#0c0712', bed: bedOf('classic'), tableModel: 'classic', room: true, cushionTint: '#33231b', inlayTint: '#d2a24c' }),
   backyard: V({ id: 'backyard', name: 'Backyard Cookout', emoji: '🍖', blurb: 'Folding table with the picnic cloth on the lawn, string lights, smoke off the grill.', felt: '#2a5bd7', feltPattern: 'gingham', rail: 'metal', railTint: '#9aa0a6', apron: '#5d6168', floorTex: 'leafy_grass', floorTint: '#8fa070', floorRepeat: 7, floorRadius: 9, bgBlur: 0.12, bgIntensity: 0.7, envIntensity: 0.45, key: '#ffd9a8', sky: '#ffcf9e', ground: '#24301a', rim: '#ffb35c', clear: '#2a2233', bed: bedOf('backyard'), tableModel: 'backyard' }),
   mansion: V({ id: 'mansion', name: 'Mansion', emoji: '🏛️', blurb: 'Marble floors, a crystal table, chandelier light.', felt: '#0a1036', rail: 'crystal', railTint: '#e8f3ff', apron: '#d8e4f0', floorTex: 'marble_tiles', floorTint: '#cfc8bb', floorRepeat: 5, floorRadius: 10, floorRough: 0.25, bgBlur: 0.15, bgIntensity: 0.5, envIntensity: 0.3, key: '#fff6e8', sky: '#e8e4f0', ground: '#3a3028', rim: '#ffd27a', clear: '#2a2420', keyK: 0.75, bed: bedOf('mansion'), tableModel: 'mansion' }),
   barbershop: V({ id: 'barbershop', name: 'Barbershop', emoji: '💈', blurb: 'Checker floor, mirrors and stations, glass storefront onto the street.', felt: '#14532d', rail: 'leather', railTint: '#2b211c', apron: '#1c1a1a', floorTex: 'checkered_pavement_tiles', floorTint: '#e6e6e6', floorRepeat: 6, floorRadius: 8, floorRough: 0.5, bgBlur: 0.18, bgIntensity: 0.45, envIntensity: 0.6, key: '#f4f7ff', sky: '#eef2ff', ground: '#222', rim: '#ff2e55', clear: '#14121a', bed: bedOf('barbershop'), tableModel: 'barbershop', inlayTint: '#dfe3e8' }),

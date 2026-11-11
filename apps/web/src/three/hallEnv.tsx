@@ -52,14 +52,14 @@ type Steps = PMREMGenerator & {
  * too the bake is rejected outright, leaving the pre-bake default environment (the room lit by
  * its lights alone) instead of white light. White is the only outcome this guard can remove.
  */
-export function ClassicHall({ active, onMap }: { active: boolean; onMap: (texture: Texture) => void }) {
+export function ClassicHall({ active, onMap, url = HDRI_URL }: { active: boolean; onMap: (texture: Texture) => void; url?: string }) {
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
     if (!active) return;
     let alive = true;
     const loader = new RGBELoader();
-    loader.load(HDRI_URL, (tex) => {
+    loader.load(url, (tex) => {
       tex.mapping = EquirectangularReflectionMapping;
       void filterHall(gl, tex, () => alive).then((map) => {
         if (!alive || !map) { tex.dispose(); return; }
@@ -68,7 +68,7 @@ export function ClassicHall({ active, onMap }: { active: boolean; onMap: (textur
       });
     });
     return () => { alive = false; };
-  }, [active, gl, invalidate, onMap]);
+  }, [active, gl, invalidate, onMap, url]);
   return null;
 }
 

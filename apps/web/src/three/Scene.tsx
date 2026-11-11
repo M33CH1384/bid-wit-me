@@ -86,6 +86,7 @@ import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venu
 import { bodyGeometry, cardGeometry, cushionGeometry, feltGeometry, railGeometry } from './geometry';
 import { RAIL_SHADOW_SIZE, feltNapTexture, railShadowTexture } from './tableLook';
 import { loadTableModel, withWhite } from './tableModel';
+import RoomBackdrop, { roomEnvUrl, useRoomShown } from './RoomBackdrop';
 import {
   CH, CW, MIN_STRIP_PX, TRICK_SCALE, type CamSpec, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
@@ -893,6 +894,8 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
   const { maps, settled } = useStreamedMaps(urls);
   const invalidate = useThree((s) => s.invalidate);
   const geos = useTableGeos(def.tableModel);
+  // A rendered room brings its own floor (RoomBackdrop), so the classic ground plane stands down while it is up.
+  const roomShown = useRoomShown();
   const basic = useMemo(() => ({
     felt: new MeshBasicMaterial({ color: def.felt }),
     wood: new MeshBasicMaterial({ color: def.railTint }),
@@ -1010,7 +1013,7 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
         <primitive object={basic.stripe} attach="material" />
       </mesh>
       {def.id === 'classic' && !roomFloor && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow visible={!roomShown}>
           <planeGeometry args={[30, 30]} />
           <primitive object={lit ? full.floor : basic.floor} attach="material" />
         </mesh>
@@ -2240,7 +2243,7 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
   return null;
 }
 
-function HallAttach({ active }: { active: boolean }) {
+function HallAttach({ active, room }: { active: boolean; room?: string }) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
   const scene = useThree((s) => s.scene);
@@ -2265,14 +2268,19 @@ function HallAttach({ active }: { active: boolean }) {
         await forceProgram(gl, camera, m, dummy);
       }
       scene.environment = tex;
-      scene.background = tex;
-      scene.backgroundBlurriness = 0.55;
-      scene.backgroundIntensity = 0.22;
-      scene.environmentIntensity = 0.55;
+      if (room) {
+        // The room's own render lights the table; its cube map (RoomBackdrop) is the picture behind it.
+        scene.environmentIntensity = 1.0;
+      } else {
+        scene.background = tex;
+        scene.backgroundBlurriness = 0.55;
+        scene.backgroundIntensity = 0.22;
+        scene.environmentIntensity = 0.55;
+      }
       invalidate();
     })();
-  }, [gl, camera, scene, invalidate]);
-  return <ClassicHall active={active} onMap={onMap} />;
+  }, [gl, camera, scene, invalidate, room]);
+  return <ClassicHall active={active} onMap={onMap} url={room ? roomEnvUrl(room) : undefined} />;
 }
 
 /** Hand taps resolve against the quads Cards published this render, before the raycaster. */
@@ -2447,6 +2455,9 @@ export default function Scene(props: SceneProps) {
   // own-chair context follows it — the suppressed chair is the one at
   // the viewer's canonical seat direction, not always the south one.
   const roomYaw = props.roomYaw ?? 0;
+  // A room rendered in Blender (tools/blender/build_room.py) replaces the box shell. Story stops keep their own rooms.
+  const renderedRoom = !!def.room && !props.storyStopId;
+  const roomUp = useRoomShown();
   const ownSeatView = useMemo(
     () => ({ hidden: !props.spectator, dir: ownSeatDirForYaw(roomYaw) }),
     [props.spectator, roomYaw],
@@ -2807,13 +2818,15 @@ export default function Scene(props: SceneProps) {
           follows the room vantage (roomYaw, 2026-11-03). */}
       <OwnChairHiddenContext.Provider value={ownSeatView}>
       <color attach="background" args={[def.clear]} />
-      {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
+      {/* With a rendered room the fog is pushed out of range rather than removed: removing it would relink every program. */}
+      {classic && <fog attach="fog" args={['#0c0712', roomUp ? 400 : 7, roomUp ? 900 : 16]} />}
       <Lights quality={props.quality} def={def} shadowSize={govCaps.shadow} />
       <RestGate resting={resting} />
       {/* The hall is filtered one mip per frame, and only after the cloth maps are on the table.
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
-      {hi && classic && <HallAttach active={hallGo && textured} />}
+      {hi && classic && <HallAttach active={hallGo && textured} room={renderedRoom ? def.id : undefined} />}
+      {renderedRoom && <RoomBackdrop id={def.id} active={textured} />}
       {/* Perf fix A (2026-11-03): everything below owns per-game GPU
           resources (room, table, cards, figures, effects, badges) and
           remounts per gameSeed — a fresh game's subtree against the
@@ -2963,12 +2976,15 @@ export default function Scene(props: SceneProps) {
  *  reflections would stay in the canonical orientation while the room
  *  turns under them. Resets to the canonical orientation on unmount. */
 function RoomYawEnv({ yaw }: { yaw: number }) {
+  // A rendered room is drawn from one eye point, so its picture cannot turn with the seat: every seat sees it from the same side.
+  const fixedBackdrop = useRoomShown();
   const scene = useThree((s) => s.scene);
   useEffect(() => {
     scene.backgroundRotation.set(0, yaw, 0);
+    if (fixedBackdrop) scene.backgroundRotation.set(0, 0, 0);
     scene.environmentRotation.set(0, yaw, 0);
     return () => { scene.backgroundRotation.set(0, 0, 0); scene.environmentRotation.set(0, 0, 0); };
-  }, [scene, yaw]);
+  }, [scene, yaw, fixedBackdrop]);
   return null;
 }
 
