@@ -198,11 +198,40 @@ def top_of(root):
     return max(zs) if zs else root.location.z
 
 
+def bounds(root):
+    """World-space bounding box of an imported prop: (min, max) corners."""
+    bpy.context.view_layer.update()
+    pts = [o.matrix_world @ Vector(c) for o in root.children_recursive if o.type == 'MESH' for c in o.bound_box]
+    if not pts:
+        return Vector(root.location), Vector(root.location)
+    return (Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts))),
+            Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts))))
+
+
 def on(base, asset, dx=0.0, dy=0.0, rot=0.0, scale=SCALE):
-    """Stand a prop on top of another prop (a cake on the table, bottles on the bar)."""
+    """
+    Stand a prop on top of another prop (a cake on the table, bottles on the bar), by measurement: its footprint is
+    centred on the base's footprint (plus dx, dy) and its underside sits on the base's top. Model origins are not
+    reliable for this: a bottle set's origin can be at one end, which left a bottle hanging past the table edge.
+    """
     if base is None:
         return None
-    return prop(asset, (base.location.x + dx, base.location.y + dy, top_of(base)), rot, scale)
+    b_lo, b_hi = bounds(base)
+    item = prop(asset, ((b_lo.x + b_hi.x) / 2, (b_lo.y + b_hi.y) / 2, b_hi.z), rot, scale)
+    if item is None:
+        return None
+    lo, hi = bounds(item)
+    item.location.x += (b_lo.x + b_hi.x) / 2 + dx - (lo.x + hi.x) / 2
+    item.location.y += (b_lo.y + b_hi.y) / 2 + dy - (lo.y + hi.y) / 2
+    item.location.z += b_hi.z - lo.z
+    # keep it on the surface: pull it back in if it would overhang the base's edge
+    lo, hi = bounds(item)
+    for axis in (0, 1):
+        over_hi, over_lo = hi[axis] - b_hi[axis], b_lo[axis] - lo[axis]
+        if hi[axis] - lo[axis] <= b_hi[axis] - b_lo[axis]:
+            if over_hi > 0: item.location[axis] -= over_hi
+            if over_lo > 0: item.location[axis] += over_lo
+    return item
 
 
 def shell(X, Y0, Y1, TOP, floor, back, left, right, ceiling, skirt=None, front=None):
@@ -309,7 +338,7 @@ def classic():
     ceiling = plain('ceiling', (0.035, 0.03, 0.045), 0.9)
     trim = plain('trim', (0.03, 0.025, 0.03), 0.4)
     brass = plain('brass', (0.8, 0.56, 0.24), 0.3, 1.0)
-    rug = tex_material('rug', 'velour_velvet', tile=2.0, tint=(0.055, 0.01, 0.018), dye=True)
+    rug = plain('rug', (0.045, 0.008, 0.014), 0.95)
 
     box('floor', (-X, Y0, FLOOR - 0.2), (X, Y1, FLOOR), floor)
     box('ceiling', (-X, Y0, TOP), (X, Y1, TOP + 0.2), ceiling)
@@ -338,18 +367,18 @@ def classic():
 
     # lounge just behind the table, close enough to sit in the top of the player's view
     prop('Sofa_01', (0, 7.6), 180)
-    prop('modern_coffee_table_01', (0, 5.5), 90)
-    prop('wine_bottles_01', (0.3, 5.5, FLOOR + 0.42 * SCALE), 20)
+    coffee = prop('modern_coffee_table_01', (0, 5.5), 90)
+    on(coffee, 'wine_bottles_01', rot=0, scale=SCALE * 0.9)
     prop('ArmChair_01', (-4.9, 5.6), 125)
     prop('mid_century_lounge_chair', (5.0, 5.4), -125)
-    prop('side_table_01', (-3.5, 8.0), 0)
-    prop('boombox', (-3.5, 8.0, FLOOR + 0.56 * SCALE), 20)  # speakers toward the table
+    radio_table = prop('side_table_01', (-3.5, 8.0), 0)
+    on(radio_table, 'boombox', rot=20)  # speakers toward the table
     prop('potted_plant_01', (-8.4, 8.6), 30, SCALE * 1.5)
     prop('potted_plant_02', (8.6, 8.4), 200, SCALE * 1.5)
 
     # either side of the table: bar stools and a cabinet on the left, a reading corner on the right
-    prop('modern_wooden_cabinet', (-X + 0.9, 2.6), 90)
-    prop('wine_bottles_01', (-X + 0.9, 2.4, FLOOR + 0.8 * SCALE), 90)
+    cabinet = prop('modern_wooden_cabinet', (-X + 0.9, 2.6), 90)
+    on(cabinet, 'wine_bottles_01', rot=90, scale=SCALE * 0.9)
     prop('bar_chair_round_01', (-6.4, 1.8), 70)
     prop('bar_chair_round_01', (-6.9, -0.4), 110)
     prop('mid_century_lounge_chair', (6.6, 0.6), -80)
