@@ -2831,7 +2831,8 @@ export default function Scene(props: SceneProps) {
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
       {hi && (classic || renderedRoom) && <HallAttach active={hallGo && textured} room={renderedRoom ? def.id : undefined} />}
-      {renderedRoom && <RoomBackdrop id={def.id} active={textured} />}
+      {/* Starts fetching at once, alongside the table: waiting for the cloth left the table on a blank backdrop for many seconds. */}
+      {renderedRoom && <RoomBackdrop id={def.id} active />}
       {/* Perf fix A (2026-11-03): everything below owns per-game GPU
           resources (room, table, cards, figures, effects, badges) and
           remounts per gameSeed — a fresh game's subtree against the
