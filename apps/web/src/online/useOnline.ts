@@ -150,6 +150,8 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
       case 'misdeal': return conn.act({ type: 'misdeal' }, seq);
       // a toss never rides the act channel: the room poll (tossCall/tossVote) carries it — see OnlineBinding.toss
       case 'toss': return false;
+      // a renege call rides its own room message (renegeCall) in REAL seats — see OnlineBinding.renege
+      case 'callRenege': return false;
       case 'nextHand': conn.send({ t: 'next' }); return true;
     }
   }, [conn, seq]);

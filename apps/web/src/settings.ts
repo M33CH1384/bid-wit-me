@@ -41,6 +41,8 @@ export interface Settings {
   cutBlindNil: boolean;
   /** "Bags and penalties" (default on). Off: overtricks are worth nothing and there is no bag penalty. */
   bagsOn: boolean;
+  /** "Renege calls" (default off). On: any card may be thrown on a led suit, and players call each other's reneges for 3 books. */
+  renege?: boolean;
   /** Bot trash-talk intensity (table setting): family / cookout (default) / nomercy. */
   talkIntensity: 'family' | 'cookout' | 'nomercy';
   /** Voice Phase 3 host flag (default off, no menu yet): bots may use pre-voiced catalog lines at Getting set / Wheels / match win. */
@@ -153,6 +155,7 @@ export function settingsToRules(s: Settings): TableRules {
     losingFloor: s.losingFloor === 'on' ? -200 : null,
     shotOut: s.shotOut !== false,
     bagsOn: s.bagsOn !== false,
+    ...(s.renege === true ? { renege: true } : {}),
   };
   if ((s.mode === 'joker' || s.mode === 'aceDown') && s.firstHandMin !== undefined && s.firstHandMin !== 'default') o.firstHandMin = s.firstHandMin === 'off' ? null : s.firstHandMin;
   if (s.targetScore !== 'default') o.targetScore = s.targetScore;
@@ -232,6 +235,7 @@ export function houseRulesDiff(s: Settings): string[] {
   if ((a.bagsOn !== false) !== (b.bagsOn !== false)) diff.push(`Bags ${a.bagsOn !== false ? 'on' : 'off'}`);
   else if (a.bagsOn !== false && (a.bagsPerPenalty !== b.bagsPerPenalty || a.bagPenalty !== b.bagPenalty)) diff.push(`Bags ${a.bagsPerPenalty}/${a.bagPenalty}`);
   if (a.tenForTwoHundred !== b.tenForTwoHundred) diff.push(`10 for 200 ${a.tenForTwoHundred ? 'on' : 'off'}`);
+  if ((a.renege === true) !== (b.renege === true)) diff.push(`Renege calls ${a.renege === true ? 'on' : 'off'}`);
   return diff;
 }
 
@@ -282,6 +286,7 @@ export function rulesSummary(r: TableRules): string {
   const floor = hostMinimum(r);
   parts.push(minimumChip(floor, r.partnerships));
   parts.push(`Nil ${r.nil.allowed ? 'on' : 'off'}`, `Blind Nil ${r.blindNil.allowed ? 'on' : 'off'}`, `Bags ${r.bagsOn !== false ? 'on' : 'off'}`);
+  if (r.renege === true) parts.push('Renege calls on');
   return parts.join(' • ');
 }
 

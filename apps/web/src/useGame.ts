@@ -4,8 +4,8 @@ import { holdIfGuest } from './pendingClaim';
 import { HAPTIC, haptic } from './haptics';
 import { offlineTalk } from './offlineTalk';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Action, type GameHandLog, type GameState, type TableRules, HandLogBuilder, applyAction, botPaceDelayMs, canRunIt, isJoker, isNukeTrick, lastCardDropOpen, newGame, pendingTurn, secureSeed, viewFor } from '@spades/rules';
-import { type BotLevel, type PartnerHint, chooseBotAction, parseHint } from '@spades/bots';
+import { type Action, type GameHandLog, type GameState, type TableRules, HandLogBuilder, applyAction, botPaceDelayMs, canRunIt, isJoker, isNukeTrick, lastCardDropOpen, newGame, pendingTurn, renegeOn, secureSeed, sideOf, viewFor } from '@spades/rules';
+import { type BotLevel, type PartnerHint, chooseBotAction, chooseRenege, chooseRenegeCall, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
 import { misdealSequenceMs } from './misdeal';
 import { dealClockArmed } from './three/dealFlight';
@@ -213,6 +213,19 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
         return () => clearTimeout(td);
       }
     }
+    // Renege tables: a bot that caught an opponent says so — only a renege the table has
+    // seen proved (see chooseRenegeCall), after a beat so the proof card has landed.
+    if (renegeOn(st.rules) && (st.phase === 'playing' || st.phase === 'handOver')) {
+      const lvOf = (seat: number) => { const lv = levelRef.current; return typeof lv === 'function' ? lv(seat) : lv; };
+      const caller = Array.from({ length: st.rules.playerCount }, (_, i) => i).find((i) => i !== HUMAN && chooseRenegeCall(viewFor(st, i), lvOf(i)));
+      if (caller !== undefined) {
+        const tr = setTimeout(() => {
+          const call = chooseRenegeCall(viewFor(stRef.current, caller), lvOf(caller));
+          if (call) apply({ type: 'callRenege', seat: caller, ...call });
+        }, 1500 * Math.max(0.4, k));
+        return () => clearTimeout(tr);
+      }
+    }
     const turn = pendingTurn(st);
     if (!turn || turn.seat === HUMAN) return;
     // ~0.6s more per bot card than before: a 3-bot trick used to resolve in 1.5s, too fast to follow.
@@ -245,6 +258,12 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       // persona lean (kept only if legal)
       const leaned = offlineTalk.lean(action);
       if (leaned !== action) { try { applyAction(st, leaned); action = leaned; } catch { /* keep the original */ } }
+      // Renege tables: a bot on the OTHER side may cut a suit it still holds, rarely (see
+      // chooseRenege). The human's own bot partner never does — nobody pays for a bot's cheat.
+      if (action.type === 'play' && renegeOn(st.rules) && sideOf(turn.seat, st.rules) !== sideOf(HUMAN, st.rules)) {
+        const cut = chooseRenege(viewFor(st, turn.seat), typeof lv === 'function' ? lv(turn.seat) : lv);
+        if (cut) action = { type: 'play', seat: turn.seat, card: cut };
+      }
       // sometimes a bot talks before it plays, then a short beat before the card lands
       if (action.type === 'play' && offlineTalk.prePlay(turn.seat)) { const a = action; t2 = window.setTimeout(() => apply(a), 900 * Math.max(0.6, k)); }
       else apply(action);

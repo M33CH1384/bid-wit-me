@@ -301,6 +301,9 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
                 <Row label="2♠ ranks under the jokers"><Toggle value={s.deuceOfSpadesHigh} onChange={(v) => set('deuceOfSpadesHigh', v)} /></Row>
               )}
               <Row label="Spades must be broken"><Toggle value={s.spadesMustBeBroken} onChange={(v) => set('spadesMustBeBroken', v)} /></Row>
+              <Row label="Renege calls" hint="Play any card. Get caught and it costs 3 books.">
+                <Toggle label="Renege calls" value={s.renege === true} onChange={(v) => set('renege', v)} />
+              </Row>
               <Row label="2♣ leads first trick" hint={rules.firstLead !== s.firstLead ? 'not available: 2♣ removed' : undefined}>
                 <Toggle value={s.firstLead === 'twoOfClubs'} onChange={(v) => set('firstLead', v ? 'twoOfClubs' : 'leftOfDealer')} />
               </Row>
