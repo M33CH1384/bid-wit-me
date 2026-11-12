@@ -300,3 +300,43 @@ aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
 .pad-hand-head .pad-last + .pad-review { margin-left: 10px; }
 .pad-review-panel { margin: 8px 0 4px; display: flex; justify-content: center; }
 .pad-review-panel > .trick-browser { flex: 0 1 520px; max-width: 100%; }
+
+/* ---- Results screens carry the full score pad ----
+   Owner, 2026-11-12: game over "should have full score pad not just the last
+   hand played". The pad's hand list (PadHands) sits in the results' scroll
+   area; the short box score and the last-hand-only review it replaces are
+   hidden there, and so is the now-redundant Score pad link. */
+.go-pad { width: 100%; text-align: left; }
+.go-scroll:has(.go-pad) .box-score, .vic-scroll:has(.go-pad) .box-score,
+.go-scroll:has(.go-pad) > .tt-tricks-show, .vic-scroll:has(.go-pad) .tt-tricks-show,
+.go-scroll:has(.go-pad) > .tt-tricks, .vic-scroll:has(.go-pad) .tt-tricks { display: none; }
+.gameover:has(.go-pad) .confirm-actions > .quiet-row-btn { display: none; }
+.go-pad .pad-hand { margin-bottom: 8px; }
+
+/* ---- Player of the game ----
+   The beat: a full-screen broadcast card over the arriving results (MvpBeat).
+   The line: what stays on the results afterwards. */
+.mvp-beat { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 24px; cursor: pointer;
+  background: radial-gradient(ellipse at 50% 40%, rgba(40,22,78,.985) 0%, rgba(8,4,16,.995) 70%); animation: mvp-in .35s ease-out both, mvp-out .4s ease-in 3.4s both; }
+.mvp-card { position: relative; width: min(620px, 100%); padding: 30px 34px 26px; text-align: center; color: #fff;
+  background: linear-gradient(160deg, rgba(255,255,255,.07), rgba(255,255,255,.02)); border: 1px solid rgba(255,211,90,.45); border-radius: 18px;
+  box-shadow: 0 30px 90px rgba(0,0,0,.6), inset 0 3px 0 var(--side, #ffd35a); animation: mvp-rise .5s cubic-bezier(.16,1,.3,1) .08s both; }
+.mvp-kicker { display: block; font: 800 14px/1 var(--display); letter-spacing: .34em; text-transform: uppercase; color: #ffd35a; }
+.mvp-name { display: block; margin-top: 12px; font: 800 clamp(40px, 9vw, 76px)/.95 var(--display); letter-spacing: .01em; text-transform: uppercase; }
+.mvp-team { display: block; margin-top: 8px; font: 700 15px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--side, #ffd35a); }
+.mvp-stats { display: flex; justify-content: center; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
+.mvp-stat { flex: 1 1 130px; max-width: 190px; padding: 12px 10px 10px; border-radius: 12px; background: rgba(255,255,255,.06); animation: mvp-rise .45s cubic-bezier(.16,1,.3,1) both; }
+.mvp-stat:nth-child(1) { animation-delay: .35s; } .mvp-stat:nth-child(2) { animation-delay: .5s; } .mvp-stat:nth-child(3) { animation-delay: .65s; }
+.mvp-stat b { display: block; font: 800 30px/1 var(--display); color: #ffd35a; font-variant-numeric: tabular-nums; }
+.mvp-stat small { display: block; margin-top: 6px; font: 700 11px/1.2 var(--display); letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.7); }
+.mvp-skip { display: block; margin-top: 18px; font-size: 12px; color: rgba(255,255,255,.4); }
+.mvp-beat.still, .mvp-beat.still .mvp-card, .mvp-beat.still .mvp-stat { animation: none; }
+@keyframes mvp-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mvp-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes mvp-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mvp-beat, .mvp-card, .mvp-stat { animation: none; } }
+.mvp-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; width: 100%; padding: 8px 12px; border-radius: 10px; text-align: left;
+  background: rgba(255,211,90,.08); box-shadow: inset 3px 0 0 var(--side, #ffd35a); }
+.mvp-line .mvp-tag { font: 800 11px/1 var(--display); letter-spacing: .16em; color: #1d1204; background: #ffd35a; padding: 3px 7px; border-radius: 5px; }
+.mvp-line b { font: 800 17px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; color: #fff; }
+.mvp-line small { font-size: 12.5px; color: rgba(255,255,255,.65); }
