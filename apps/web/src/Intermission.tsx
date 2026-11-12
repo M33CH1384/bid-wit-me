@@ -436,6 +436,16 @@ export function Intermission({
                       ))}
                     </div>
                   )}
+                  {/* A thin wisp of smoke off every hole (owner, 2026-11-12). Its own layer, above the
+                      card's text, so the holes keep their place under it; one <i> per hole at the hole's
+                      slot. Decorative — CSS only; off under Reduce effects and OS reduce-motion (uiPass.css). */}
+                  {showHoles && !reduceFx && (
+                    <div className="shot-smoke" data-testid={`recap-smoke-${s.side}`} aria-hidden="true">
+                      {holeSlots(!!cover.sheet).slice(0, info.visible).map((h, i) => (
+                        <i key={i} className={anim.current!.punch.has(`${s.side}:${i}`) ? 'fresh' : undefined} style={{ left: h.x, top: h.y, ['--i' as string]: i }} />
+                      ))}
+                    </div>
+                  )}
                   {cover.sheet && (
                     <p className="tod" data-testid="time-of-death" data-hand={rec.handNo}>{tod}</p>
                   )}
