@@ -261,3 +261,33 @@ aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
   .tt-backdrop:has(.tt-ticker .ranks-ticker) { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
   .tt-backdrop > .tt { box-shadow: 0 30px 90px rgba(0,0,0,.6); }
 }
+
+/* ---- Caution tape runs on the plate whose turn it is ----
+   Owner, 2026-11-12: "when a players plate has caution tape it should spin
+   when its the players on that teams turn to play". The hazard stripes on a
+   taped plate (styles.css .plate.caution::before) travel round the frame
+   while that player is on the clock, and sit still otherwise. The stripe
+   pattern repeats every 22px along its 45° axis, which is 31.11px across,
+   so one cycle of that shift loops seamlessly. */
+.plate.caution.turn::before { animation: caution-run .75s linear infinite; }
+@keyframes caution-run { from { background-position: 0 0; } to { background-position: 31.11px 0; } }
+@media (prefers-reduced-motion: reduce) { .plate.caution.turn::before { animation: none; } }
+
+/* ---- Recap fixes (owner, 2026-11-12) ----
+   The RUN IT! chip is stacked above modals (z 1120), so under the recap it
+   showed as a dimmed, blurred smudge over the second team's bags count. While
+   any table modal is open it drops back under it. */
+.table-screen.modal-open .last-trick.run-chip, .table-screen.modal-open .last-trick.run-chip.glass.slant { z-index: 9; }
+/* The table behind a modal is already dimmed to 55% (styles.css modal-open), so
+   the recap's own veil is kept light or the room never reads through it. */
+@media (min-width: 900px) and (min-height: 561px) {
+  .tt-backdrop { background: radial-gradient(ellipse at 50% 45%, rgba(7,3,14,.1) 0%, rgba(7,3,14,.42) 100%); -webkit-backdrop-filter: blur(6px) saturate(1.2); backdrop-filter: blur(6px) saturate(1.2); }
+  html[data-theme="neon"] .tt-backdrop { background: radial-gradient(ellipse at 50% 45%, rgba(4,5,12,.1) 0%, rgba(4,5,12,.45) 100%); }
+  /* …and the table behind the recap is dimmed less than behind other modals. */
+  .table-screen.modal-open:has(> .tt-backdrop) > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.animfx-layer):not(.toasts):not(.badge-unlock):not(.victory-screen):not(.recap-chat) { filter: blur(2px) brightness(.8) saturate(.95); }
+}
+
+/* The hole picture is cut out in the middle so the recap can show the room through it
+   (Intermission masks the sheet there). The score pad's small holes are not masked, so
+   they get a dark centre of their own. */
+.pad-board-holes img { background: radial-gradient(circle closest-side, #050308 0 36%, rgba(5,3,8,0) 42%); }

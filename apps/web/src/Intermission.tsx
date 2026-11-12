@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type GameState, bidLabel, isNilBid, isShot, shotCovers, sideOf } from '@spades/rules';
 import { resultChips, sideColor, signed } from './ScorePad';
 import { wheelsMade } from './landCue';
@@ -17,7 +17,7 @@ import { photoFinish, winMargin } from './animfx/detect';
 import { finaleHeadlineFor, isThirdSetEnd, resolveSetAnim, setTierForCover } from './setAnims';
 import { shotOutPathFor } from './shotOut';
 import { useClearedStoryStops } from './storyDecks';
-import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
+import { HOLE_CAP, claimHoleBuzz, holeMarks, holeSlots, holeSmoking, markHolePunched, markSheetPlayed, punchedLabel, rememberHoles } from './shotMarks';
 
 /**
  * The ending showcase beat (Option C, owner 2026-11-05): when a game ends
@@ -182,6 +182,7 @@ export function Intermission({
   // Hole count is the team's shot count. A new hole buzzes [30] once.
   // The sheet is the engine's elimination. It waits ~400ms after a new punch.
   const streaks = holeMarks(r, st.history);
+  const smoking = holeSmoking(r, st.history);
   const handKey = `${st.seed}:${rec.handNo}`;
   const anim = useRef<{ key: string; punch: Set<string>; waitSheet: Set<number> } | null>(null);
   if (!anim.current || anim.current.key !== handKey) {
@@ -287,6 +288,44 @@ export function Intermission({
     const el = bodyRef.current;
     if (el) el.scrollTop = 0;
   }, [handKey]);
+  // See-through bullet holes (owner, 2026-11-12: "the hole for the bullet should show the
+  // back ground no?"). The hole picture is cut out in the middle; here the recap sheet itself is
+  // masked at each hole's centre, so the room behind the recap shows through the card AND the
+  // sheet under it. Measured from the rendered holes (they sit in % / px slots that move with the
+  // layout), and re-measured when the sheet resizes or its body scrolls.
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    const sheet = body?.closest<HTMLElement>('.tt');
+    if (!body || !sheet) return;
+    const apply = () => {
+      const sr = sheet.getBoundingClientRect();
+      const cuts: string[] = [];
+      sheet.querySelectorAll<HTMLImageElement>('.shot-holes img').forEach((img) => {
+        const b = img.getBoundingClientRect();
+        const w = img.offsetWidth;
+        if (!w || !b.width) return;
+        const cx = b.left + b.width / 2 - sr.left, cy = b.top + b.height / 2 - sr.top;
+        cuts.push(`radial-gradient(circle ${(w * 0.185).toFixed(1)}px at ${cx.toFixed(1)}px ${cy.toFixed(1)}px, transparent 0, transparent 86%, #000 100%)`);
+      });
+      const mask = cuts.join(', ');
+      sheet.style.setProperty('-webkit-mask-image', mask);
+      sheet.style.setProperty('mask-image', mask);
+      sheet.style.setProperty('-webkit-mask-composite', cuts.length > 1 ? 'source-in' : '');
+      sheet.style.setProperty('mask-composite', cuts.length > 1 ? 'intersect' : '');
+    };
+    apply();
+    const late = window.setTimeout(apply, 220); // after a fresh hole's punch-in has settled
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(apply) : null;
+    ro?.observe(sheet);
+    body.addEventListener('scroll', apply, { passive: true });
+    window.addEventListener('resize', apply);
+    return () => {
+      window.clearTimeout(late);
+      ro?.disconnect();
+      body.removeEventListener('scroll', apply);
+      window.removeEventListener('resize', apply);
+    };
+  });
   return (
     <div className={`tt-backdrop${presented ? ' presented' : ''}`} data-testid="table-talk" data-decided={decided ? 'yes' : 'no'} data-presented={presented ? 'yes' : 'no'} data-showcase={showcase ? 'yes' : 'no'} role="dialog" aria-label={showcase ? 'Game over' : 'Hand recap'} onPointerDown={() => { setFxOff(true); if (showcase) advanceBeat(); }}>
       {/* 3 THE HARD WAY — the third-set ending's title card (the rule's own
@@ -439,10 +478,11 @@ export function Intermission({
                   )}
                   {/* A thin wisp of smoke off every hole (owner, 2026-11-12). Its own layer, above the
                       card's text, so the holes keep their place under it; one <i> per hole at the hole's
-                      slot. Decorative — CSS only; off under Reduce effects and OS reduce-motion (uiPass.css). */}
+                      slot. The first hole goes cold once the side comes through a hand unshot; later holes never do
+                      (holeSmoking). Decorative — CSS only; off under Reduce effects and OS reduce-motion. */}
                   {showHoles && !reduceFx && (
                     <div className="shot-smoke" data-testid={`recap-smoke-${s.side}`} aria-hidden="true">
-                      {holeSlots(!!cover.sheet).slice(0, info.visible).map((h, i) => (
+                      {holeSlots(!!cover.sheet).slice(0, info.visible).map((h, i) => !smoking[s.side]?.[i] ? null : (
                         <i key={i} className={anim.current!.punch.has(`${s.side}:${i}`) ? 'fresh' : undefined} style={{ left: h.x, top: h.y, ['--i' as string]: i }} />
                       ))}
                     </div>
