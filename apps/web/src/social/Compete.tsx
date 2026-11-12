@@ -454,6 +454,9 @@ export function Leaderboards() {
       onPointerEnter={() => { hoverRef.current = true; }} onPointerLeave={() => { hoverRef.current = false; }}>
       <div className="ranks-scroll" ref={setScrollEl}>
         <FeaturedTable />
+        {/* Two wrappers the phone never sees (display: contents): on a wide panel the standings take the
+            left column and these extras the right (uiPass.css). */}
+        <div className="ranks-main">
         {signedIn && mine && <YouCard mine={mine} kind={kind} rank={onBoard ? mineRow!.rank : null} onMore={() => setStatsOpen(true)} />}
         {signedIn && !ready && <p className="soc-empty">Loading your stats…</p>}
         <div className="ranks-controls">
@@ -475,7 +478,7 @@ export function Leaderboards() {
           ))}
         </div>
         <p className="ranks-summary" data-testid="ranks-summary">{ranksFilterSummary(board, scope, period)}</p>
-        {note && <p className="ranks-note" data-testid="lb-note">{note}</p>}
+        {note && <p className="ranks-note" data-testid="lb-note">{/^Error \d+$/.test(note) ? "Rankings can't load right now. Try again in a moment." : note}</p>}
         {ownAcc && <p className="ranks-note" data-testid="lb-own-accuracy">Your bid accuracy shows after {accMin} bids.</p>}
         {rows === null ? <p className="soc-empty">Loading…</p> : !rows.length ? (
           unknownRegion ? null : (
@@ -505,12 +508,18 @@ export function Leaderboards() {
             </div>
           </>
         )}
-        <p className="soc-note">Ratings and Best duos count signed-in opponents. Wins split into vs players and vs bots. Fastest Climbers counts Rep XP earned in games; its arrow tracks the previous period.</p>
-        <p className="soc-note" data-testid="ranks-explainer">How placement works: rating starts at 1,200. “This week” and “This month” are rolling 7-day and 30-day windows, not calendar periods — season ratings live on player profiles, under Stats. Boards show up to 50 players; tied players are listed in the order the board returns them. Some boards open only after a minimum: Win % at 10 games, Bid accuracy at 20 bids (8 inside a window), Fastest Climbers at 5 games.</p>
+        <details className="ranks-how" data-testid="ranks-how">
+          <summary>How rankings work</summary>
+          <p className="soc-note">Ratings and Best duos count signed-in opponents. Wins split into vs players and vs bots. Fastest Climbers counts Rep XP earned in games; its arrow tracks the previous period.</p>
+          <p className="soc-note" data-testid="ranks-explainer">How placement works: rating starts at 1,200. “This week” and “This month” are rolling 7-day and 30-day windows, not calendar periods — season ratings live on player profiles, under Stats. Boards show up to 50 players; tied players are listed in the order the board returns them. Some boards open only after a minimum: Win % at 10 games, Bid accuracy at 20 bids (8 inside a window), Fastest Climbers at 5 games.</p>
+        </details>
+        </div>
+        <div className="ranks-side">
         <DuoStandings />
         <PowerRankings kind={board === 'duos' ? 'team' : kind} onOpen={(name) => social.showProfile(name)} />
         <RecordBook onOpen={(name) => social.showProfile(name)} />
         <LeagueAwards onOpen={(name) => social.showProfile(name)} />
+        </div>
       </div>
       {offscreen && mineRow && (
         <div className="ranks-pin" data-testid="ranks-pin">

@@ -492,17 +492,13 @@ describe('the Deal + the Book Sweep (stage 3)', () => {
     expect(read('story/StoryRoom.tsx')).not.toContain('coverTableEntry');
   });
 
-  it('construction: eight dealt cards, a scoop panel, compositor-only', () => {
+  it('construction: the table pair IS the Card Fan (one look per purpose)', () => {
     const layer = read('TableTransitionLayer.tsx');
-    expect(layer).toContain('DEAL_SLOTS');
-    expect(layer).toContain('sweep-panel');
+    expect(layer).toContain("import FanLayer from './FanLayer'");
+    expect(layer).toContain("['deal', 'sweep']");
     expect(layer).not.toContain('<canvas');
     expect(layer).not.toContain('requestAnimationFrame');
     expect(layer).not.toContain('getContext');
-    const css = read('transitions.css');
-    expect(css).toContain('.tt-layer');
-    expect(css).toContain('.tt-felt');
-    expect(css).toContain('.tt-scoop');
   });
 
   it('renders the deal over an entry and the sweep over an exit', async () => {
@@ -522,7 +518,7 @@ describe('the Deal + the Book Sweep (stage 3)', () => {
     const dealEl = host.querySelector<HTMLElement>('[data-testid="table-transition-layer"]');
     expect(dealEl!.dataset.program).toBe('deal');
     expect(dealEl!.style.pointerEvents).toBe('auto');
-    expect(host.querySelectorAll('[data-anim="deal-card"]')).toHaveLength(8);
+    expect(host.querySelectorAll('[data-anim="fan-card"]')).toHaveLength(9);
     act(() => signalTableReady());
     act(() => vi.advanceTimersByTime(PROGRAM_SPECS.deal.coverMs));
     expect(host.querySelector<HTMLElement>('[data-testid="table-transition-layer"]')!.dataset.phase).toBe('reveal');

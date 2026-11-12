@@ -2,7 +2,7 @@ import { RUN_SLAM_MS } from '../runIt';
 import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
+import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Color, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial, createRestCardMaterial } from './Card3D';
 import { enterFigureLeanMode } from './figureResidency';
@@ -83,7 +83,11 @@ import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
 import MansionRoom, { preloadMansionRoom } from './MansionRoom';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
-import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
+import { bodyGeometry, cardGeometry, cushionGeometry, feltGeometry, railGeometry } from './geometry';
+import { RAIL_SHADOW_SIZE, feltNapTexture, railShadowTexture } from './tableLook';
+import { loadTableModel, withWhite } from './tableModel';
+import RoomBackdrop, { roomEnvUrl, useRoomFailed, useRoomShown } from './RoomBackdrop';
+import CubeVenueRoom, { bareRoomFor } from './cubeVenue';
 import {
   CH, CW, MIN_STRIP_PX, TRICK_SCALE, type CamSpec, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
@@ -775,31 +779,55 @@ function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: b
   return { maps, settled };
 }
 
-type TableGeos = { felt: BufferGeometry; rail: BufferGeometry; body: BufferGeometry };
-let geosCache: TableGeos | null = null;
+type TableGeos = { felt: BufferGeometry; rail: BufferGeometry; body: BufferGeometry; cushion: BufferGeometry | null; inlay: BufferGeometry | null; base: BufferGeometry | null };
+const geosCache = new Map<string, TableGeos>();
 
-/** Felt, rail, then apron, each in its own frame. The first paint uses a flat disc so extrude work is not on it. */
-function useTableGeos(): TableGeos | null {
-  const [geos, setGeos] = useState<TableGeos | null>(geosCache);
+/**
+ * Felt, rail, then apron, each in its own frame. The first paint uses a flat disc so extrude work is not on it.
+ * A venue with a Blender table (tools/blender/build_table.py) swaps the rail, armrest, apron and base for the
+ * modelled ones; if that file cannot be fetched the built-in shapes stand in.
+ */
+function useTableGeos(model: string | undefined): TableGeos | null {
+  const key = model ?? '';
+  const [geos, setGeos] = useState<TableGeos | null>(geosCache.get(key) ?? null);
   useEffect(() => {
-    if (geosCache) { setGeos(geosCache); return; }
+    const hit = geosCache.get(key);
+    if (hit) { setGeos(hit); return; }
     let alive = true;
+    setGeos(null);
     void (async () => {
       await nextFrame();
       if (!alive) return;
       const felt = feltGeometry();
-      await nextFrame();
-      if (!alive) return;
-      const rail = railGeometry();
-      await nextFrame();
-      if (!alive) return;
-      geosCache = { felt, rail, body: bodyGeometry() };
-      if (alive) setGeos(geosCache);
+      let built: TableGeos | null = null;
+      if (model) {
+        const parts = await loadTableModel(model).catch(() => null);
+        if (!alive) return;
+        if (parts?.rail && parts.apron) built = { felt, rail: parts.rail, body: parts.apron, cushion: parts.cushion ?? null, inlay: parts.inlay ?? null, base: parts.base ?? null };
+      }
+      if (!built) {
+        await nextFrame();
+        if (!alive) return;
+        const rail = railGeometry();
+        await nextFrame();
+        if (!alive) return;
+        const body = bodyGeometry();
+        await nextFrame();
+        if (!alive) return;
+        const cushion = cushionGeometry();
+        built = { felt, rail, body, cushion, inlay: null, base: null };
+        if (model) for (const g of [rail, body, cushion]) withWhite(g);
+      }
+      geosCache.set(key, built);
+      if (alive) setGeos(built);
     })();
     return () => { alive = false; };
-  }, []);
+  }, [key, model]);
   return geos;
 }
+
+/** Repeats of the suede weave per world unit: fine enough that the cloth reads as fibre, not as a pattern. */
+const FELT_WEAVE = 6.5;
 
 function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
   const hi = quality === 'high';
@@ -811,8 +839,12 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
     felt = new MeshStandardMaterial({ map: feltPatternTexture(def.feltPattern, def.felt), roughness: def.feltPattern === 'gingham' ? 0.45 : 0.6, envMapIntensity: 0.25 });
     if (def.feltPattern === 'gingham') { felt.normalMap = flatN; felt.normalScale.set(0.15, 0.15); }
   } else {
-    felt = new MeshStandardMaterial({ color: def.felt, roughness: 1, roughnessMap: flatR, normalMap: flatN, envMapIntensity: 0.35 });
-    felt.normalScale.set(0.9, 0.9);
+    // Cloth: a brushed nap in the colour, and on High a sheen lobe so the pile catches light at grazing angles.
+    const cloth = { color: def.felt, map: feltNapTexture(), roughness: 1, roughnessMap: flatR, normalMap: flatN, envMapIntensity: 0.35 };
+    felt = hi
+      ? new MeshPhysicalMaterial({ ...cloth, sheen: 0.3, sheenRoughness: 0.7, sheenColor: new Color(def.felt).lerp(new Color('#ffffff'), 0.15) })
+      : new MeshStandardMaterial(cloth);
+    felt.normalScale.set(1.25, 1.25);
   }
   let wood: MeshStandardMaterial;
   switch (def.rail) {
@@ -848,7 +880,13 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
       ? new MeshStandardMaterial({ color: def.apron, metalness: 0.7, roughness: 0.3 })
       : new MeshStandardMaterial({ map: white, roughness: 0.6, color: def.apron });
   const floor = new MeshStandardMaterial({ color: '#120b18', roughness: 0.95 });
-  return { felt, wood, apron, floor };
+  // Padded armrest inside the rail (the rail stays as the outer trim), on tables that have one.
+  const cushion = def.cushionTint ? new MeshStandardMaterial({ color: def.cushionTint, roughness: 0.5, normalMap: flatN, normalScale: new Vector2(0.55, 0.55), envMapIntensity: 0.9 }) : null;
+  // Metal strip let into the rail or apron of a modelled table.
+  const inlay = def.tableModel && def.inlayTint ? new MeshStandardMaterial({ color: def.inlayTint, metalness: 1, roughness: 0.28, envMapIntensity: 1.3 }) : null;
+  // A modelled table carries baked ambient occlusion in its vertex colours.
+  if (def.tableModel) for (const m of [wood, apron, cushion, inlay]) if (m) m.vertexColors = true;
+  return { felt, wood, apron, floor, cushion, inlay };
 }
 
 function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { quality: 'high' | 'low'; lit: boolean; onReady?: () => void; onTextured?: () => void; def: VenueDef; /** A story seam room provides this table's floor — suppress the classic ground plane (it sits at the same FLOOR_Y and z-fights the room's own floor; owner device report 2026-10-28: Rec Center floor rendering as dark streaks). */ roomFloor?: boolean }) {
@@ -856,7 +894,9 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
   const urls = useMemo(() => (railUrl ? [...tableTextureUrls(quality), railUrl] : tableTextureUrls(quality)), [quality, railUrl]);
   const { maps, settled } = useStreamedMaps(urls);
   const invalidate = useThree((s) => s.invalidate);
-  const geos = useTableGeos();
+  const geos = useTableGeos(def.tableModel);
+  // A rendered room brings its own floor (RoomBackdrop), so the classic ground plane stands down while it is up.
+  const roomShown = useRoomShown();
   const basic = useMemo(() => ({
     felt: new MeshBasicMaterial({ color: def.felt }),
     wood: new MeshBasicMaterial({ color: def.railTint }),
@@ -867,6 +907,7 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
   const full = useMemo(() => buildTableMaterials(def, quality), [def, quality]);
   const logo = useMemo(() => logoTexture(invalidate), [invalidate]);
   const logoMat = useMemo(() => new MeshBasicMaterial({ map: logo, transparent: true, opacity: 0.13, depthWrite: false }), [logo]);
+  const railShadowMat = useMemo(() => new MeshBasicMaterial({ map: railShadowTexture(), transparent: true, opacity: 0.42, depthWrite: false }), []);
   const textured = useRef(false);
   /* Maps are session-shared Textures now (streamedTexCache), so the
    * "already applied" mark cannot live on the texture — it belongs to
@@ -888,8 +929,8 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
       });
     };
     if (!def.feltPattern) {
-      take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(0.9, 0.9); full.felt.needsUpdate = true; }, 2.2);
-      take(feltR ?? null, (t) => { full.felt.roughnessMap = t; full.felt.needsUpdate = true; }, 2.2);
+      take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(1.25, 1.25); full.felt.needsUpdate = true; }, FELT_WEAVE);
+      take(feltR ?? null, (t) => { full.felt.roughnessMap = t; full.felt.needsUpdate = true; }, FELT_WEAVE);
     } else if (def.feltPattern === 'gingham') {
       take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(0.15, 0.15); full.felt.needsUpdate = true; }, 2.2);
     }
@@ -902,6 +943,11 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
       take(feltN ?? null, (t) => { full.wood.normalMap = t; full.wood.normalScale.set(0.3, 0.3); full.wood.needsUpdate = true; }, 2.2);
     } else if (def.rail !== 'crystal' && def.rail !== 'chrome' && def.rail !== 'metal') {
       take(railMap ?? null, (t) => { full.wood.map = t; full.wood.needsUpdate = true; full.apron.map = t; full.apron.needsUpdate = true; }, 1.4);
+    }
+    // The armrest's leather grain reuses the suede image already on the table (a clone shares the upload).
+    if (full.cushion && feltN && !full.cushion.userData.grain) {
+      const cushion = full.cushion;
+      jobs.push(() => { const g = feltN.clone(); g.repeat.set(3.2, 3.2); g.needsUpdate = true; cushion.normalMap = g; cushion.userData.grain = 1; cushion.needsUpdate = true; invalidate(); });
     }
     let i = 0;
     let raf = 0;
@@ -944,6 +990,15 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
           <mesh geometry={geos.felt} material={feltMat} receiveShadow />
           <mesh geometry={geos.rail} material={woodMat} castShadow receiveShadow />
           <mesh geometry={geos.body} material={apronMat} receiveShadow />
+          {lit && full.cushion && geos.cushion && <mesh geometry={geos.cushion} material={full.cushion} castShadow receiveShadow />}
+          {lit && full.inlay && geos.inlay && <mesh geometry={geos.inlay} material={full.inlay} />}
+          {geos.base && <mesh geometry={geos.base} material={apronMat} castShadow receiveShadow />}
+          {lit && (
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0006, 0]} renderOrder={-1}>
+              <planeGeometry args={RAIL_SHADOW_SIZE} />
+              <primitive object={railShadowMat} attach="material" />
+            </mesh>
+          )}
         </>
       ) : (
         <mesh rotation={[-Math.PI / 2, 0, 0]} material={feltMat} receiveShadow>
@@ -959,7 +1014,7 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
         <primitive object={basic.stripe} attach="material" />
       </mesh>
       {def.id === 'classic' && !roomFloor && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow visible={!roomShown}>
           <planeGeometry args={[30, 30]} />
           <primitive object={lit ? full.floor : basic.floor} attach="material" />
         </mesh>
@@ -1938,7 +1993,7 @@ function trickRects(camera: Camera, size: { width: number; height: number }, pos
   });
 }
 
-function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number } }) {
+function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe, seated }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number }; /** per seat: a 3D figure sits there (the partner's plate then anchors above the head) */ seated?: readonly boolean[] }) {
   const invalidate = useThree((st) => st.invalidate);
 
   // Joint plate layout (three/plateLayout.ts): all three upper plates are
@@ -1962,7 +2017,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
       .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0)
       .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
     const proj = (p: (typeof positions)[number]) => {
-      const v = new Vector3(...badgeSpot(p, n)).project(camera);
+      const v = new Vector3(...badgeSpot(p, n, !!seated?.[positions.indexOf(p)])).project(camera);
       return { x: (v.x + 1) * size.width / 2, y: (1 - v.y) * size.height / 2 };
     };
     // a measured rect shifted by a delta — used to re-derive a child's
@@ -2051,7 +2106,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
           const calcShort = (el: Object3D, camera: Camera, size: { width: number; height: number }) =>
             side === 'top' ? [(size.width / 2) - 170, 68 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 58 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
           return (
-            <Html key={seat} position={badgeSpot(p, n)} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
+            <Html key={seat} position={badgeSpot(p, n, !!seated?.[seat])} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
               {renderSeat(seat)}
             </Html>
           );
@@ -2080,7 +2135,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
           }
           : undefined;
         return (
-          <Html key={seat} position={badgeSpot(p, n)} center={!side} calculatePosition={calc} zIndexRange={[5, 0]} className={`seat-anchor${side ? ` side-${side}` : ''}`} portal={portal}>
+          <Html key={seat} position={badgeSpot(p, n, !!seated?.[seat])} center={!side} calculatePosition={calc} zIndexRange={[5, 0]} className={`seat-anchor${side ? ` side-${side}` : ''}`} portal={portal}>
             {renderSeat(seat)}
           </Html>
         );
@@ -2125,7 +2180,9 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
     cardDim.name = 'card-dim';
     cardBack.name = 'card-back';
     cardRest.name = 'card-rest';
-    const litMats = [table.felt, table.wood, table.apron, table.floor, card, cardDim, cardBack, cardRest];
+    const litMats: Material[] = [table.felt, table.wood, table.apron, table.floor, card, cardDim, cardBack, cardRest];
+    if (table.cushion) { table.cushion.name = 'cushion'; litMats.push(table.cushion); }
+    if (table.inlay) { table.inlay.name = 'inlay'; litMats.push(table.inlay); }
     void (async () => {
       await nextFrame();
       if (!alive) return;
@@ -2187,7 +2244,7 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
   return null;
 }
 
-function HallAttach({ active }: { active: boolean }) {
+function HallAttach({ active, room }: { active: boolean; room?: string }) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
   const scene = useThree((s) => s.scene);
@@ -2212,14 +2269,19 @@ function HallAttach({ active }: { active: boolean }) {
         await forceProgram(gl, camera, m, dummy);
       }
       scene.environment = tex;
-      scene.background = tex;
-      scene.backgroundBlurriness = 0.55;
-      scene.backgroundIntensity = 0.22;
-      scene.environmentIntensity = 0.55;
+      if (room) {
+        // The room's own render lights the table; its cube map (RoomBackdrop) is the picture behind it.
+        scene.environmentIntensity = 1.0;
+      } else {
+        scene.background = tex;
+        scene.backgroundBlurriness = 0.55;
+        scene.backgroundIntensity = 0.22;
+        scene.environmentIntensity = 0.55;
+      }
       invalidate();
     })();
-  }, [gl, camera, scene, invalidate]);
-  return <ClassicHall active={active} onMap={onMap} />;
+  }, [gl, camera, scene, invalidate, room]);
+  return <ClassicHall active={active} onMap={onMap} url={room ? roomEnvUrl(room) : undefined} />;
 }
 
 /** Hand taps resolve against the quads Cards published this render, before the raycaster. */
@@ -2394,6 +2456,13 @@ export default function Scene(props: SceneProps) {
   // own-chair context follows it — the suppressed chair is the one at
   // the viewer's canonical seat direction, not always the south one.
   const roomYaw = props.roomYaw ?? 0;
+  // A room rendered in Blender (tools/blender/build_room.py) replaces the box shell. Story stops keep their own rooms.
+  const renderedRoom = !!def.room && !props.storyStopId;
+  const roomUp = useRoomShown();
+  const roomFailed = useRoomFailed();
+  // A venue with a rendered room skips its built-in room, unless the render could not be fetched. Classic keeps its
+  // studio mounted (it stands its own shell down) so its chairs are there from the first frame.
+  const shellOn = classic || !renderedRoom || roomFailed;
   const ownSeatView = useMemo(
     () => ({ hidden: !props.spectator, dir: ownSeatDirForYaw(roomYaw) }),
     [props.spectator, roomYaw],
@@ -2435,6 +2504,8 @@ export default function Scene(props: SceneProps) {
   // High only. Story tables never mount them (their cast system owns
   // the seats), whatever the prop carries.
   const personaFiguresActive = !props.storyStopId && hi && !!((props.personaFigureSeats?.some(Boolean)) || (props.ownFigureKey && !props.spectator));
+  // which seats have a figure in the chair, for plate placement (Badges)
+  const seatedSeats = useMemo(() => (personaFiguresActive ? (props.personaFigureSeats ?? []).map(Boolean) : []), [personaFiguresActive, props.personaFigureSeats]);
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -2754,13 +2825,16 @@ export default function Scene(props: SceneProps) {
           follows the room vantage (roomYaw, 2026-11-03). */}
       <OwnChairHiddenContext.Provider value={ownSeatView}>
       <color attach="background" args={[def.clear]} />
-      {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
+      {/* With a rendered room the fog is pushed out of range rather than removed: removing it would relink every program. */}
+      {classic && <fog attach="fog" args={['#0c0712', roomUp ? 400 : 7, roomUp ? 900 : 16]} />}
       <Lights quality={props.quality} def={def} shadowSize={govCaps.shadow} />
       <RestGate resting={resting} />
       {/* The hall is filtered one mip per frame, and only after the cloth maps are on the table.
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
-      {hi && classic && <HallAttach active={hallGo && textured} />}
+      {hi && (classic || renderedRoom) && <HallAttach active={hallGo && textured} room={renderedRoom ? def.id : undefined} />}
+      {/* Starts fetching at once, alongside the table: waiting for the cloth left the table on a blank backdrop for many seconds. */}
+      {renderedRoom && <RoomBackdrop id={def.id} active />}
       {/* Perf fix A (2026-11-03): everything below owns per-game GPU
           resources (room, table, cards, figures, effects, badges) and
           remounts per gameSeed — a fresh game's subtree against the
@@ -2778,6 +2852,7 @@ export default function Scene(props: SceneProps) {
           cards, figures and effects after this group are view space and
           never move; neither does the camera. */}
       <group rotation={[0, roomYaw, 0]}>
+      {shellOn && (<>
       {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} handKey={props.handNo} storyStopId={props.storyStopId ?? null} />}
       {classic && textured && (props.storyStopId === 'rec-center' && props.quality === 'high'
         ? <RecCenterGymRoom fxOn={!props.reduceFx} />
@@ -2820,6 +2895,8 @@ export default function Scene(props: SceneProps) {
       {mansion && textured && (props.quality === 'high'
         ? <HighRisePenthouseRoom fxOn={!props.reduceFx} />
         : <MansionRoom quality={props.quality} handNo={props.handNo} />)}
+      </>)}
+      {!shellOn && roomUp && <CubeVenueRoom cfg={bareRoomFor(def.id)} quality={props.quality} handNo={props.handNo} />}
       </group>
       {showTable && (
         <group
@@ -2892,7 +2969,7 @@ export default function Scene(props: SceneProps) {
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
       <DeuceFxLayer reducedProp={!!props.reduceFx} />
       <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} onWheelsShow={onWheelsShow} />
-      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
+      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} seated={seatedSeats} />}
       </Fragment>
       </OwnChairHiddenContext.Provider>
       </Fragment>
@@ -2910,12 +2987,15 @@ export default function Scene(props: SceneProps) {
  *  reflections would stay in the canonical orientation while the room
  *  turns under them. Resets to the canonical orientation on unmount. */
 function RoomYawEnv({ yaw }: { yaw: number }) {
+  // A rendered room is drawn from one eye point, so its picture cannot turn with the seat: every seat sees it from the same side.
+  const fixedBackdrop = useRoomShown();
   const scene = useThree((s) => s.scene);
   useEffect(() => {
     scene.backgroundRotation.set(0, yaw, 0);
+    if (fixedBackdrop) scene.backgroundRotation.set(0, 0, 0);
     scene.environmentRotation.set(0, yaw, 0);
     return () => { scene.backgroundRotation.set(0, 0, 0); scene.environmentRotation.set(0, 0, 0); };
-  }, [scene, yaw]);
+  }, [scene, yaw, fixedBackdrop]);
   return null;
 }
 

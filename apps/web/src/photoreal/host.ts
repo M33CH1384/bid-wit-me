@@ -166,7 +166,11 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
     c.className = `photoreal-fx photoreal-${name}`;
     c.dataset.testid = `photoreal-${name}`;
     c.width = Math.round(W * pr); c.height = Math.round(H * pr);
-    Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: `${W}px`, height: `${H}px`, pointerEvents: 'none', zIndex: '4', ...(p.scale !== 1 ? { transformOrigin: `${p.gx}px ${p.gy}px`, transform: `scale(${p.scale})` } : {}) });
+    // Sized as a share of the mount, never in fixed px: if the window is resized or rotated while the effect
+    // plays, the canvas keeps covering the whole mount (stretching its picture with it) instead of staying a
+    // box of the old size with the screen showing round its dark wash (owner, 2026-11-12: the screen crack
+    // "doesnt cover the screen" after a resize). The nuke's zoom origin is a share of the box for the same reason.
+    Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', pointerEvents: 'none', zIndex: '4', ...(p.scale !== 1 ? { transformOrigin: `${(p.gx / W) * 100}% ${(p.gy / H) * 100}%`, transform: `scale(${p.scale})` } : {}) });
     mount.appendChild(c);
     // the quake's degree of fracture (Big Joker crack tier, 2026-11-06);
     // other modules ignore the opt. Absent = STANDARD, today's quake.

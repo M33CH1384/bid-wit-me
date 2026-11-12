@@ -1,4 +1,5 @@
 import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { CODE_LENGTH, isRoomCode, normalizeRoomCode } from '@spades/protocol';
 import { Seg, Toggle } from './MoreOptions';
 import { requestSettingsSheet } from './settingsSheet';
@@ -78,6 +79,31 @@ const ONE_LINERS: Record<ModeKey, string> = {
   aceDown: 'Partners · classic deck, aces high',
 };
 const MODE_TAG: Record<ModeKey, string> = { joker: '2 v 2', cutthroat4: '4 players', cutthroat3: '3 players', aceDown: '2 v 2' };
+
+/** One setup screen (owner, 2026-11-12): PLAY opens the table step directly, with the three former one-question
+ *  steps (format, team kind, opponent) as rows of a Game card at its top, preset to the last choices. The last
+ *  opponent choice and "a bots table was dealt" are remembered so Home can offer PLAY AGAIN. */
+const LAST_PATH_KEY = 'bwm.setup.lastPath';
+const LAST_BOTS_KEY = 'bwm.setup.dealtBots';
+function lastPath(): Path { try { return localStorage.getItem(LAST_PATH_KEY) === 'online' ? 'online' : 'bots'; } catch { return 'bots'; } }
+function rememberPath(p: Path): void { try { localStorage.setItem(LAST_PATH_KEY, p); } catch { /* storage off: defaults apply */ } }
+function dealtBotsBefore(): boolean { try { return localStorage.getItem(LAST_BOTS_KEY) === '1'; } catch { return false; } }
+function rememberDealtBots(): void { try { localStorage.setItem(LAST_BOTS_KEY, '1'); } catch { /* storage off */ } }
+
+function GamePick<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: [T, string, string, string][]; onPick: (v: T) => void }) {
+  return (
+    <div className="game-pick-row">
+      <span className="game-pick-label">{label}</span>
+      <div className="game-pick-opts" role="radiogroup" aria-label={label}>
+        {options.map(([v, testid, title, sub]) => (
+          <button key={v} type="button" role="radio" aria-label={title} aria-checked={value === v} className={`game-pick${value === v ? ' on' : ''}`} data-testid={testid} onClick={() => onPick(v)}>
+            <b>{title}</b><small>{sub}</small>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function readWiz(): { step: Step; path: Path; kind: Kind; view: TableView } {
   const w = (history.state ?? {}) as { wiz?: string; path?: Path; kind?: Kind; view?: TableView };
@@ -334,6 +360,9 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   const fireBandOpacity = calmHome && entranceAt != null ? Math.min(1, calmFireElapsed / FIRE_CALM_FADE_MS) : 1;
   const offlineTeamName = useTeamNameFor(OFFLINE_PAIR_KEY);
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
+  // One setup screen, kept light (owner, 2026-11-12: "this is ALOT for one screen"): the table options stay
+  // folded behind one Customize row until asked for. They remain mounted, so their state and tests are unchanged.
+  const [custom, setCustom] = useState(false);
   const [ask, setAsk] = useState(isFirstVisit);
   const onlineSeat = useOnlineSeat();
   const touchAt = useRef(0);
@@ -358,7 +387,18 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
   const stepRef = useRef(step);
   stepRef.current = step;
   const crossesHome = (to: Step) => (stepRef.current === 'home') !== (to === 'home');
-  const swapWiz = (apply: () => void, to: Step) => { if (crossesHome(to)) coverThen(apply); else apply(); };
+  // In-wizard step changes ride the View Transitions API where it exists (outgoing and incoming steps both animate;
+  // styles.css "Setup step changes"). No API, or reduced motion: the swap is instant, exactly as before.
+  const viewSwap = (apply: () => void, back: boolean) => {
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => { finished: Promise<void> } };
+    if (!doc.startViewTransition || reduceFx || fx.osReducedMotion) { apply(); return; }
+    const root = document.documentElement;
+    root.classList.add('vt-wiz');
+    root.classList.toggle('vt-back', back);
+    const done = () => root.classList.remove('vt-wiz', 'vt-back');
+    try { doc.startViewTransition(() => flushSync(apply)).finished.then(done, done); } catch { done(); apply(); }
+  };
+  const swapWiz = (apply: () => void, to: Step) => { if (crossesHome(to)) coverThen(apply); else viewSwap(apply, ORDER.indexOf(to) < ORDER.indexOf(stepRef.current)); };
 
   useEffect(() => {
     if (!(history.state as { wiz?: Step } | null)?.wiz) history.replaceState({ ...(history.state ?? {}), wiz: 'home' }, '');
@@ -367,7 +407,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
       const w = readWiz();
       const apply = () => setWiz((cur) => { setDir(ORDER.indexOf(w.step) < ORDER.indexOf(cur.step) || (w.step === cur.step && cur.view === 'create' && w.view === 'lobby') ? 'back' : 'fwd'); return w; });
       if (crossesHome(w.step)) coverThen(apply);
-      else apply();
+      else viewSwap(apply, ORDER.indexOf(w.step) < ORDER.indexOf(stepRef.current));
     };
     window.addEventListener('popstate', on);
     return () => window.removeEventListener('popstate', on);
@@ -397,7 +437,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
       return;
     }
     // Cutthroat has no branch step (Door 1 goes straight to Opponent): skip it on the in-place fallback.
-    const prev = step === 'opponent' && kind === 'cut' ? 'door' : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]!;
+    const prev = step === 'table' ? 'home' : step === 'opponent' && kind === 'cut' ? 'door' : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]!;
     const apply = () => {
       history.replaceState({ wiz: prev, path, kind, view: 'lobby', d: 0 }, '', '/');
       setDir('back');
@@ -440,10 +480,13 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
         {onResume ? (
           <>
             <button type="button" className="hero-btn gold" data-testid="resume" onClick={onResume}><b>RESUME GAME</b><small>{resumeLabel ?? 'your game in progress'}</small></button>
-            <button type="button" className="hero-btn purple" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>start a new game</small></button>
+            <button type="button" className="hero-btn purple" data-testid="play" {...choose(() => go('table', lastPath(), s.mode.startsWith('cutthroat') ? 'cut' : 'team'))}><b>PLAY</b><small>start a new game</small></button>
           </>
         ) : (
-          <button type="button" className="hero-btn gold" data-testid="play" {...choose(() => go('door'))}><b>PLAY</b><small>Team Game or Cutthroat</small></button>
+          <>
+            {dealtBotsBefore() && <button type="button" className="hero-btn gold" data-testid="play-again" {...choose(onStart)}><b>PLAY AGAIN</b><small>{MODE_CRUMB[s.mode]} · vs bots · same table</small></button>}
+            <button type="button" className={`hero-btn ${dealtBotsBefore() ? 'purple' : 'gold'}`} data-testid="play" {...choose(() => go('table', lastPath(), s.mode.startsWith('cutthroat') ? 'cut' : 'team'))}><b>PLAY</b><small>{dealtBotsBefore() ? 'set up a new game' : 'Team Game or Cutthroat'}</small></button>
+          </>
         )}
         {onlineSeat && <button type="button" className="quiet-row" data-testid="resume-online" onClick={() => navigate(`/t/${onlineSeat}`)}><span>Rejoin your online table</span><span className="value-chip">{onlineSeat}</span></button>}
         {STORY_OWNER_ONLY && storyLockedFor(storyAccess === undefined ? null : storyAccess) ? (
@@ -555,14 +598,37 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
         <Toggle label="Show me how to play (tips as you play)" value={tips.on} onChange={setTipsPref} />
       </div>
     );
+    const setTablePath = (p: Path) => {
+      rememberPath(p);
+      history.replaceState({ ...(history.state ?? {}), wiz: 'table', path: p, kind, view: 'lobby' }, '');
+      setWiz({ step: 'table', path: p, kind, view: 'lobby' });
+    };
+    const setTableKind = (k: Kind) => {
+      if (k === 'cut') { if (!cut) set('mode', 'cutthroat4'); } else if (cut) set('mode', 'joker');
+      history.replaceState({ ...(history.state ?? {}), wiz: 'table', path, kind: k, view }, '');
+      setWiz({ step: 'table', path, kind: k, view });
+    };
+    const gameCard = view !== 'create' && (
+      <section className="game-card" aria-label="Game" data-testid="game-card">
+        <GamePick label="Game" value={cut ? 'cut' : 'team'} onPick={setTableKind} options={[['team', 'door-team', 'Team Game', '2v2, partners across'], ['cut', 'door-cutthroat', 'Cutthroat', 'every player for themselves']]} />
+        {!cut && <GamePick label="Kind" value={s.mode === 'aceDown' ? 'aceDown' : 'joker'} onPick={(v) => set('mode', v)} options={[['joker', 'mode-joker', 'Jokers', 'jokers beat every spade'], ['aceDown', 'mode-aceDown', 'Ace Down', 'classic deck, aces high']]} />}
+        <GamePick label="Against" value={path} onPick={setTablePath} options={[['bots', 'play-bots', 'Bots', 'deal right now'], ['online', 'play-online', 'Online', 'open tables or a code']]} />
+      </section>
+    );
     body = (
       <>
         <div className="wiz-head">
           <p className="wiz-crumb">{MODE_CRUMB[s.mode]} · {path === 'online' ? 'Play Online' : 'Vs Bots'}</p>
           <h2 className="wiz-title">{path === 'online' ? (view === 'create' ? 'Create a table' : 'Find a table') : 'Your Table'}<small>{mode.title}</small></h2>
         </div>
+        {gameCard}
         {path === 'bots' ? (
-          <div className="ess ess-barred">
+          <>
+          <button type="button" className="customize-row" data-testid="customize-table" aria-expanded={custom} onClick={() => setCustom((c) => !c)}>
+              <span className="customize-row-main"><b>{custom ? 'Hide table options' : 'Customize table'}</b><small>team name · bots · deck · venue · rules</small></span>
+              <span className={`customize-row-chev${custom ? ' open' : ''}`} aria-hidden="true" />
+            </button>
+          <div className={`ess ess-barred${custom ? '' : ' ess-simple'}`}>
             {!cut && (
               <SetupCard title="Your team">
                 <div className="ess-row stack">
@@ -572,7 +638,7 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
                 </div>
               </SetupCard>
             )}
-            <SetupCard title="Bots & score">
+            <SetupCard title="Bots">
               <div className="ess-row stack" data-testid="bots-row">
                 <span className="ess-label">Bots</span>
                 <Seg label="Bot skill" value={s.botLevel} options={[['mixed', 'Mixed'], ['novice', 'Novice'], ['regular', 'Regular'], ['pro', 'Pro'], ['shark', 'Shark']]} onChange={(v) => set('botLevel', v)} />
@@ -595,8 +661,9 @@ export default function Setup({ settings: s, onChange, tips, onTips, onStart, on
               {tipsRow}
             </SetupCard>
             <SetupPreview deck={s.deck} venue={s.venue ?? 'classic'} />
-            <SetupBar summary={setupBarSummary(s, true)}><button type="button" className="primary big go" data-testid="start-bots" onClick={onStart}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></SetupBar>
+            <SetupBar summary={setupBarSummary(s, true)}><button type="button" className="primary big go" data-testid="start-bots" onClick={() => { rememberDealtBots(); rememberPath('bots'); onStart(); }}>DEAL ME IN</button><p className="sticky-note">No seating step vs bots — bots fill the table</p></SetupBar>
           </div>
+          </>
         ) : (
           <OnlineStep settings={s} venue={s.venue ?? 'classic'} onVenue={(v) => set('venue', v)} deck={deck} deckId={s.deck} deckGallery={<DeckGallery value={s.deck} onChange={(v) => set('deck', v)} />} barSummary={setupBarSummary(s, true)} onHouseRules={() => requestSettingsSheet()} onTargetScore={(v) => set('targetScore', v)} summary={summary} tipsRow={tipsRow} view={view} onOpenCreate={() => go('table', 'online', kind, 'create')} />
         )}

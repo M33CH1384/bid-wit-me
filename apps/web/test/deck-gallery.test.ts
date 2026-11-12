@@ -241,7 +241,7 @@ describe('collapsible section cards', () => {
     const card = (label: string) => qs(`.setup-card[aria-label="${label}"]`);
     const toggle = (label: string) => card(label)?.querySelector('.setup-card-toggle') as HTMLButtonElement | null;
     // every card starts open, header text is exactly the card title
-    for (const label of ['Your team', 'Bots & score', 'Deck & venue', 'Rules']) {
+    for (const label of ['Your team', 'Bots', 'Deck & venue', 'Rules']) {
       expect(card(label)?.classList.contains('is-closed')).toBe(false);
       expect(toggle(label)?.getAttribute('aria-expanded')).toBe('true');
       expect(card(label)?.querySelector('.setup-card-h')?.textContent).toBe(label);

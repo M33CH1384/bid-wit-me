@@ -1,0 +1,176 @@
+/* UI pass (2026-11-12): menu buttons, setup cards and step transitions. Loaded after styles.css. */
+/* ======================================================================
+   Home menu, button pass (owner, 2026-11-12: keep the home art — the glowing
+   wordmark on purple — and improve the buttons and the flow). Classic theme
+   only for now. Same DOM, same buttons, same testids, same layout tiers; only
+   the controls change: one gold primary action, everything else quiet, no
+   slanted corners, clear hover and focus states.
+   ====================================================================== */
+html:not([data-theme="neon"]) .wizard.step-home .wiz-actions { gap: 10px; }
+html:not([data-theme="neon"]) .wizard.step-home .hero-btn { position: relative; min-height: 0; padding: 14px 18px 14px 20px; border-radius: 14px; clip-path: none; gap: 3px; transition: transform .18s ease, background .18s ease, box-shadow .18s ease; }
+html:not([data-theme="neon"]) .wizard.step-home .hero-btn b { font-size: 34px; letter-spacing: .05em; }
+html:not([data-theme="neon"]) .wizard.step-home .hero-btn small { font-size: 14px; opacity: .78; }
+html:not([data-theme="neon"]) .wizard.step-home .hero-btn.gold { background: linear-gradient(180deg, #ffd96a, #e9a92c); color: #1a1003; box-shadow: 0 10px 34px rgba(233,169,44,.28), inset 0 1px 0 rgba(255,255,255,.6); }
+html:not([data-theme="neon"]) .wizard.step-home .hero-btn.purple { background: rgba(20,14,28,.62); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+html:not([data-theme="neon"]) .wizard.step-home .quiet-row { min-height: 52px; padding: 12px 18px 12px 20px; border-radius: 14px; clip-path: none; background: rgba(20,14,28,.5); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-family: var(--display); font-size: 19px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+html:not([data-theme="neon"]) .wizard.step-home .quiet-row .value-chip { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,.7); background: rgba(255,255,255,.08); box-shadow: none; border: 0; border-radius: 999px; padding: 4px 10px; clip-path: none; }
+html:not([data-theme="neon"]) .wizard.step-home .quiet-row:disabled { opacity: .62; }
+html:not([data-theme="neon"]) .wizard.step-home .hero-btn:focus-visible,
+html:not([data-theme="neon"]) .wizard.step-home .quiet-row:focus-visible { outline: 2px solid #ffd96a; outline-offset: 3px; }
+@media (hover: hover) {
+  html:not([data-theme="neon"]) .wizard.step-home .hero-btn:hover { filter: none; transform: translateY(-2px); }
+  html:not([data-theme="neon"]) .wizard.step-home .hero-btn.gold:hover { box-shadow: 0 16px 44px rgba(233,169,44,.4), inset 0 1px 0 rgba(255,255,255,.6); }
+  html:not([data-theme="neon"]) .wizard.step-home .hero-btn.purple:hover, html:not([data-theme="neon"]) .wizard.step-home .quiet-row:not(:disabled):hover { background: rgba(40,28,58,.72); box-shadow: inset 0 0 0 1px rgba(255,211,90,.55); }
+}
+@media (min-width: 900px) and (min-height: 541px) and (orientation: landscape) {
+  html:not([data-theme="neon"]) .wizard.step-home .hero-btn.gold { min-height: 0; padding: 16px 22px; clip-path: none; background: linear-gradient(180deg, #ffd96a, #e9a92c); color: #1a1003; }
+  html:not([data-theme="neon"]) .wizard.step-home .hero-btn b, html:not([data-theme="neon"]) .wizard.step-home .hero-btn.gold b { font-size: 38px; }
+}
+
+/* story-row corner flag and setup cards, same direction: calm glass on the room */
+html:not([data-theme="neon"]) .wizard.step-home .quiet-row::after { content: none; }
+html:not([data-theme="neon"]) .decision-card { clip-path: none; border-radius: 18px; background: linear-gradient(160deg, rgba(34,24,48,.72), rgba(14,10,20,.72)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 24px 60px rgba(0,0,0,.35); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); color: #fff; transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease, background .22s ease; }
+html:not([data-theme="neon"]) .decision-card .dc-emblem { clip-path: none !important; border-radius: 999px; }
+@media (hover: hover) {
+  html:not([data-theme="neon"]) .wiz-step > .decision-cards > .decision-card:hover { filter: none; transform: translateY(-6px); box-shadow: inset 0 0 0 1.5px rgba(255,211,90,.85), 0 30px 70px rgba(0,0,0,.45), 0 0 60px rgba(255,200,70,.12); }
+  html:not([data-theme="neon"]) .wiz-step > .decision-cards > .decision-card:hover .dc-main b { color: #ffd35a; }
+}
+
+/* Setup step changes: the outgoing step now leaves as the new one arrives
+ * (it used to vanish while the new step flew in from half a screen away).
+ * Driven by the View Transitions API from Setup.tsx; browsers without it,
+ * and reduced motion, keep an instant swap. The header bar holds still. */
+html.vt-wiz .slide-fwd, html.vt-wiz .slide-back { animation: none; }
+html.vt-wiz .setup-bar { view-transition-name: wiz-bar; }
+html.vt-wiz::view-transition-old(root) { animation: vt-out-fwd .2s cubic-bezier(.4,0,1,1) both; }
+html.vt-wiz::view-transition-new(root) { animation: vt-in-fwd .42s cubic-bezier(.16,.84,.24,1) both; }
+html.vt-wiz.vt-back::view-transition-old(root) { animation-name: vt-out-back; }
+html.vt-wiz.vt-back::view-transition-new(root) { animation-name: vt-in-back; }
+@keyframes vt-out-fwd { to { opacity: 0; transform: translateX(-3%) scale(.985); } }
+@keyframes vt-in-fwd { from { opacity: 0; transform: translateX(4%) scale(1.01); } }
+@keyframes vt-out-back { to { opacity: 0; transform: translateX(3%) scale(.985); } }
+@keyframes vt-in-back { from { opacity: 0; transform: translateX(-4%) scale(1.01); } }
+
+/* One setup screen: the Game card at the top of the table step (format, kind,
+ * opponent as three rows of two choices, preset to the last game). */
+.game-card { width: 100%; max-width: 1040px; margin: 0 auto 14px; padding: 16px 18px; display: grid; gap: 12px; border-radius: 18px; background: linear-gradient(160deg, rgba(34,24,48,.72), rgba(14,10,20,.72)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+.game-pick-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 12px; }
+.game-pick-label { font-family: var(--display); font-weight: 800; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); }
+.game-pick-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.game-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 56px; padding: 9px 14px; border: 0; border-radius: 12px; text-align: left; cursor: pointer; color: rgba(255,255,255,.82); background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); transition: background .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease; touch-action: manipulation; }
+.game-pick b { font-family: var(--display); font-weight: 800; font-size: 21px; letter-spacing: .04em; text-transform: uppercase; line-height: 1.05; }
+.game-pick small { font-size: 12.5px; color: rgba(255,255,255,.58); }
+.game-pick.on { color: #ffd96a; background: rgba(255,211,90,.1); box-shadow: inset 0 0 0 1.5px #ffd35a, 0 0 24px rgba(255,200,70,.12); }
+.game-pick.on small { color: rgba(255,255,255,.78); }
+.game-pick:active { transform: scale(.98); }
+.game-pick:focus-visible { outline: 2px solid #ffd96a; outline-offset: 2px; }
+@media (hover: hover) { .game-pick:not(.on):hover { background: rgba(255,255,255,.09); box-shadow: inset 0 0 0 1px rgba(255,211,90,.5); } }
+@media (max-width: 480px) {
+  .game-card { padding: 12px; gap: 10px; }
+  .game-pick-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .game-pick small { font-size: 11.5px; }
+}
+
+/* Setup kept light: until "Customize table" is opened, the bots table step
+ * shows only the Game card, this row, the table preview and the Deal bar. */
+.ess-barred.ess-simple > .setup-card { display: none; }
+.customize-row { max-width: 1040px; margin: 0 auto 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 56px; padding: 10px 16px; border: 0; border-radius: 14px; text-align: left; cursor: pointer; color: rgba(255,255,255,.9); background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); transition: background .16s ease, box-shadow .16s ease; touch-action: manipulation; }
+.customize-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.customize-row b { font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; }
+.customize-row small { font-size: 12.5px; color: rgba(255,255,255,.58); }
+.customize-row-chev { flex: none; width: 10px; height: 10px; border-right: 2px solid #ffd35a; border-bottom: 2px solid #ffd35a; transform: rotate(45deg); transition: transform .2s ease; margin-right: 4px; }
+.customize-row-chev.open { transform: rotate(-135deg); }
+.customize-row:focus-visible { outline: 2px solid #ffd96a; outline-offset: 2px; }
+@media (hover: hover) { .customize-row:hover { background: rgba(255,255,255,.09); box-shadow: inset 0 0 0 1px rgba(255,211,90,.5); } }
+/* closed state on large screens: the preview and Deal bar sit centered under the choices */
+@media (min-width: 900px) {
+  .wizard.step-table .ess-barred.ess-simple { display: flex; flex-direction: column; align-items: center; }
+  .wizard.step-table .ess-barred.ess-simple > * { width: min(560px, 100%); margin-left: auto !important; margin-right: auto !important; align-self: center; position: static; }
+}
+
+/* ======================================================================
+   Social panel ("BWM Central") clean-up (owner, 2026-11-12: "these sub menus
+   should also be revised to be less of an eye sore"). Visual only: same
+   controls, same testids. Fewer boxes and borders, one accent, readable tabs,
+   the nine ranking categories as one swipeable chip row, fine print quiet.
+   ====================================================================== */
+aside.soc-panel { background: linear-gradient(180deg, #17101f 0%, #0e0a14 100%); border-left: 1px solid rgba(255,255,255,.08); box-shadow: -30px 0 80px rgba(0,0,0,.55); }
+aside.soc-panel .soc-head { padding: 14px 16px 8px; gap: 8px; }
+aside.soc-panel .soc-head .icon-btn, aside.soc-panel .soc-head .sheet-close { clip-path: none; border-radius: 12px; border: 0; background: rgba(255,255,255,.06); box-shadow: none; color: rgba(255,255,255,.86); }
+aside.soc-panel .soc-head .icon-btn:hover, aside.soc-panel .soc-head .sheet-close:hover { background: rgba(255,255,255,.12); }
+aside.soc-panel .soc-conn { font-size: 12px; color: rgba(255,255,255,.45); }
+
+/* tabs: words, not emoji; the active one is white on a gold underline */
+aside.soc-panel .soc-tabs.central-nav.tabs { padding: 0 10px; gap: 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+aside.soc-panel .central-nav.tabs .central-nav-ico { display: none; }
+aside.soc-panel .central-nav.tabs button { min-height: 46px; padding: 10px 4px; color: rgba(255,255,255,.55); border-bottom: 2px solid transparent; transition: color .16s ease, border-color .16s ease; }
+aside.soc-panel .central-nav.tabs .central-nav-lbl { font-size: 15px; letter-spacing: .05em; text-transform: uppercase; }
+aside.soc-panel .central-nav.tabs button.on { color: #fff; border-bottom-color: #ffd35a; }
+aside.soc-panel .central-nav.tabs button:not(.on):hover { color: rgba(255,255,255,.85); }
+
+aside.soc-panel .soc-body { padding-left: 16px; padding-right: 16px; }
+aside.soc-panel h3 { font-family: var(--display); font-size: 17px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+aside.soc-panel .soc-muted { color: rgba(255,255,255,.58); line-height: 1.45; }
+
+/* cards: a soft fill, no outlines */
+aside.soc-panel .featured, aside.soc-panel .headline-card { border: 0; border-radius: 14px; background: rgba(255,255,255,.045); padding: 14px 16px; margin-bottom: 12px; box-shadow: none; }
+aside.soc-panel .featured .featured, aside.soc-panel .headline-card .featured { background: none; padding: 0; margin: 0; }
+aside.soc-panel .soc-note { border: 0; background: none; padding: 0; margin: 10px 2px; font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,.48); }
+
+/* rankings controls */
+aside.soc-panel .ranks-controls { margin: 4px 0 10px; }
+aside.soc-panel .ranks-kind { border-radius: 12px; background: rgba(255,255,255,.06); }
+aside.soc-panel .ranks-kind button { border-radius: 9px; }
+aside.soc-panel .ranks-kind button.on { background: #fff; color: #14101c; }
+aside.soc-panel .ranks-filters-btn { border: 0; border-radius: 12px; background: rgba(255,255,255,.06); color: rgba(255,255,255,.86); }
+aside.soc-panel .ranks-cat { flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin: 0 -16px 8px; padding: 2px 16px; scroll-snap-type: x proximity; -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 28px), transparent 100%); mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 28px), transparent 100%); }
+aside.soc-panel .ranks-cat button { flex: 0 0 auto; width: auto; min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: rgba(255,255,255,.06); color: rgba(255,255,255,.78); font-size: 13.5px; white-space: nowrap; scroll-snap-align: start; }
+aside.soc-panel .ranks-cat button.on { background: #ffd35a; color: #1a1003; }
+aside.soc-panel .ranks-summary { font-size: 12.5px; color: rgba(255,255,255,.5); margin: 2px 2px 4px; }
+aside.soc-panel .ranks-note { color: rgba(255,255,255,.4); font-size: 12px; }
+aside.soc-panel .ranks-empty { padding: 36px 12px 20px; }
+aside.soc-panel .ranks-empty p { color: rgba(255,255,255,.8); }
+
+/* inputs and segmented controls */
+aside.soc-panel input[type="text"], aside.soc-panel input[type="search"], aside.soc-panel input:not([type]), aside.soc-panel .soc-search { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: rgba(255,255,255,.07); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); font-size: 15px; }
+aside.soc-panel input::placeholder { color: rgba(255,255,255,.4); }
+aside.soc-panel input:focus-visible { outline: 2px solid #ffd35a; outline-offset: 1px; }
+aside.soc-panel .matchup-search { gap: 8px; }
+aside.soc-panel .matchup-search .primary { clip-path: none; border-radius: 12px; min-height: 44px; }
+aside.soc-panel .matchup-section, aside.soc-panel .matchup-picker { margin-bottom: 22px; }
+aside.soc-panel .soc-seg { border-radius: 12px; background: rgba(255,255,255,.06); padding: 3px; border: 0; }
+aside.soc-panel .soc-seg button { border: 0; border-radius: 9px; background: none; color: rgba(255,255,255,.7); }
+aside.soc-panel .soc-seg button.on { background: #fff; color: #14101c; }
+aside.soc-panel .soc-empty { color: rgba(255,255,255,.5); }
+
+/* explanations: one closed line, opened only on request */
+aside.soc-panel .ranks-how { margin: 14px 2px 6px; }
+aside.soc-panel .ranks-how > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 12.5px; color: rgba(255,255,255,.5); }
+aside.soc-panel .ranks-how > summary::-webkit-details-marker { display: none; }
+aside.soc-panel .ranks-how > summary::after { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-2px); transition: transform .18s ease; }
+aside.soc-panel .ranks-how[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
+aside.soc-panel .ranks-how > summary:hover { color: rgba(255,255,255,.8); }
+aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
+
+/* ---- BWM Central on tablets and desktops ----
+   The phone drawer (a 460px strip pinned to the right edge) left most of a
+   big screen empty and squeezed everything into one narrow column (owner,
+   2026-11-12: "why is this screen so cramped when there is so much space").
+   From tablet width up it is a centred window that uses the screen, and on
+   wide screens Rankings splits in two: standings left, extras right. */
+.ranks-main, .ranks-side { display: contents; }
+@media (min-width: 721px) and (min-height: 561px) {
+  .modal-backdrop.soc-backdrop:not(.sheet-backdrop) { justify-content: center; align-items: center; padding: 24px; }
+  aside.soc-panel { width: min(1180px, 100%); height: min(900px, 100%); max-height: none; border: 1px solid rgba(255,255,255,.1); border-radius: 18px; overflow: hidden; box-shadow: 0 30px 90px rgba(0,0,0,.6); }
+  aside.soc-panel .soc-head { padding: 18px 24px 10px; }
+  aside.soc-panel .soc-body { padding-left: 24px; padding-right: 24px; }
+  aside.soc-panel .soc-body:has(.soc-lb.ranks) { padding: 0; }
+  aside.soc-panel .ranks-scroll { padding: 18px 24px 16px; }
+  aside.soc-panel .ranks-cat { flex-wrap: wrap; -webkit-mask-image: none; mask-image: none; }
+}
+@media (min-width: 1000px) and (min-height: 561px) {
+  aside.soc-panel .ranks-scroll { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); grid-template-rows: auto 1fr; column-gap: 28px; align-content: start; }
+  aside.soc-panel .ranks-scroll > .featured { grid-column: 2; grid-row: 1; }
+  aside.soc-panel .ranks-main { display: block; grid-column: 1; grid-row: 1 / span 2; min-width: 0; }
+  aside.soc-panel .ranks-side { display: block; grid-column: 2; grid-row: 2; min-width: 0; }
+}
