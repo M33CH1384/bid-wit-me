@@ -340,3 +340,26 @@ aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
 .mvp-line .mvp-tag { font: 800 11px/1 var(--display); letter-spacing: .16em; color: #1d1204; background: #ffd35a; padding: 3px 7px; border-radius: 5px; }
 .mvp-line b { font: 800 17px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; color: #fff; }
 .mvp-line small { font-size: 12.5px; color: rgba(255,255,255,.65); }
+
+/* ---- Recap footer on a phone held sideways ----
+   Owner, 2026-11-12 (iPhone, landscape): the Review the tricks label spilled out
+   of its button, and "the continue button should be furthest to the right for
+   easy access". In this tier the footer is one row; the two secondary buttons
+   now take the width their labels need (they were squeezed to a zero basis),
+   and Continue takes the space that is left, beside Leave at the right edge. */
+@media (max-height: 560px) and (min-width: 560px) {
+  /* Order, left to right: Score pad, Review, Continue, Leave (owner: Leave furthest right,
+     Continue next to it). Review and Leave share a wrapper, so it is flattened here to let
+     Continue sit between them. */
+  .tt-foot.stack > .tt-foot-toprow { order: 1; }
+  .tt-foot.stack > .tt-foot-row { display: contents; }
+  .tt-foot.stack > .tt-foot-row > .tt-tricks-show, .tt-foot.stack > .tt-foot-row > .tt-tricks { order: 2; }
+  .tt-foot.stack > [data-testid="talk-ready-count"] { order: 3; }
+  .tt-foot.stack > .primary { order: 4; }
+  .tt-foot.stack > .tt-foot-row > .leave-red { order: 5; }
+  .tt .tt-foot .tt-foot-row > .tt-tricks-show, .tt .tt-foot .tt-foot-row > .leave-red { flex: 0 0 auto; padding: 0 14px; }
+}
+@media (max-height: 560px) and (min-width: 560px) and (max-width: 760px) {
+  .tt .tt-foot .quiet-row-btn, .tt .tt-foot .tt-foot-row > .tt-tricks-show, .tt .tt-foot .tt-foot-row > .leave-red { padding: 0 9px; font-size: 13px; letter-spacing: .03em; }
+  .tt-foot.stack { gap: 7px; }
+}
