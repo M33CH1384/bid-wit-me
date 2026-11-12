@@ -91,6 +91,31 @@ describe('the MVP stamp on a finished game', () => {
     expect(rec.mvpUid).toBeNull();
   });
 
+  it('credits a losing-side player who out-played every winner by a mile', async () => {
+    // seat 1 takes 8 of 13 books every hand and still loses the game
+    let scores = [0, 0];
+    let bags = [0, 0];
+    const history: HandRecord[] = [];
+    for (let i = 0; i < 3; i++) {
+      const bids: Bid[] = [2, 7, 2, 2];
+      const tricks = [2, 8, 2, 1];
+      const sides = scoreHand(rules, bids, tricks, scores, bags);
+      history.push({ handNo: i + 1, dealer: 0, bids, tricksWon: tricks, sides });
+      scores = sides.map((s) => s.totalScore);
+      bags = sides.map((s) => s.bags);
+    }
+    const g = { ...game(0), history, scores, result: { winners: [0], finalScores: scores, reason: 'target' } } as unknown as GameState;
+    const rec = buildRecord({ id: 'lose', room: 'r', game: g, seats: [user('ann', 0), user('bo', 1), bot(0), bot(1)], names: ['A', 'B'], endedAt: 9 });
+    await saveRecord(db, rec, false);
+    expect(rec.mvpSeat).toBe(1);
+    expect(rec.mvpUid).toBe('bo');
+    const bo = rec.players.find((p) => p.uid === 'bo')!;
+    expect([bo.won, bo.stats.mvp]).toEqual([false, 1]);
+    expect(rec.players.find((p) => p.uid === 'ann')!.stats.mvp).toBe(0);
+    const s = await personalStats(db, 'bo');
+    expect([s.wins, s.mvps, s.mvpPct]).toEqual([0, 1, 100]);
+  });
+
   it('names no MVP on an abandoned game', async () => {
     const seats = [user('ann', 0), bot(1), bot(0), bot(1)];
     const rec = abandonedRecord({ id: 'ab', room: 'r', game: { ...game(0), result: null } as GameState, seats, names: ['A', 'B'], endedAt: 5 });

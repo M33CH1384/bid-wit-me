@@ -5,7 +5,8 @@
  * Picked from the scored hands alone (HandRecord keeps counts, not plays), so
  * every client and the server name the same player: the web shows the pick at
  * game over, the server stamps it on the stored game for the career stat. The
- * MVP comes from the winning side, as a broadcast would name it; the score
+ * MVP comes from the winning side, as a broadcast would name it — unless a
+ * player on the losing side out-played every winner by a mile; the score
  * rewards what a spades player is actually judged on — books taken, making
  * your OWN bid, nils, and runs. Pure.
  */
@@ -29,6 +30,11 @@ export interface MvpTally {
   score: number;
 }
 
+/** A losing-side player needs this multiple of the best winner's score… */
+export const LOSER_MVP_RATIO = 1.5;
+/** …and at least this many points clear of it. */
+export const LOSER_MVP_MARGIN = 10;
+
 function tally(r: TableRules, history: readonly HandRecord[], seat: number): MvpTally {
   const t: MvpTally = { seat, side: sideOf(seat, r), books: 0, bidHands: 0, hitBid: 0, nilsMade: 0, nilsBusted: 0, bestRun: 0, nukes: 0, score: 0 };
   for (const h of history) {
@@ -51,13 +57,20 @@ function tally(r: TableRules, history: readonly HandRecord[], seat: number): Mvp
   return t;
 }
 
-/** The game's MVP, or null when no hand was scored. Ties: more books, then the lower seat. */
+/** The game's MVP, or null when no hand was scored. Ties: more books, then the lower seat. Not always on the winning side. */
 export function pickMvpTally(r: TableRules, history: readonly HandRecord[], winners: readonly number[]): MvpTally | null {
   if (!history.length) return null;
   const seats = (history[0]!.tricksWon ?? []).map((_, i) => i);
   if (!seats.length) return null;
-  const onWinner = seats.filter((s) => winners.includes(sideOf(s, r)));
-  const pool = (onWinner.length ? onWinner : seats).map((s) => tally(r, history, s));
-  pool.sort((a, b) => b.score - a.score || b.books - a.books || a.seat - b.seat);
-  return pool[0]!;
+  const rank = (a: MvpTally, b: MvpTally) => b.score - a.score || b.books - a.books || a.seat - b.seat;
+  const all = seats.map((s) => tally(r, history, s));
+  const won = all.filter((t) => winners.includes(t.side)).sort(rank);
+  const lost = all.filter((t) => !winners.includes(t.side)).sort(rank);
+  let best = (won[0] ?? lost[0])!;
+  // A player on the LOSING side takes it only when they out-played the best winner by a
+  // mile (owner, 2026-11-12): half again the winner's score AND a clear gap in absolute
+  // terms, so a short game's noise or a one-book edge never hands it across the table.
+  const top = won[0], rival = lost[0];
+  if (top && rival && rival.score >= top.score * LOSER_MVP_RATIO && rival.score - top.score >= LOSER_MVP_MARGIN) best = rival;
+  return best;
 }

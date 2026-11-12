@@ -8,6 +8,8 @@
  */
 import { type HandRecord, type MvpTally, type TableRules, pickMvpTally } from '@spades/rules';
 
+export { LOSER_MVP_MARGIN, LOSER_MVP_RATIO } from '@spades/rules';
+
 export interface MvpStat { label: string; value: string }
 export interface Mvp extends MvpTally {
   /** Up to three facts, strongest first. */
