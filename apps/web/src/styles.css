@@ -5879,3 +5879,49 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 [data-testid="more-options"] .set-group .gold-tab-row { display: flex; align-items: center; width: 100%; min-height: 56px; margin: 0; padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,.06); text-align: left; }
 [data-testid="more-options"] .bot-talk-fields { margin-top: 4px; }
 .set-subh { font-family: var(--display); font-size: 12.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); margin: 0; padding-top: 16px; }
+
+/* Hand recap on tablets and desktops (owner, 2026-11-12: "looks fine for a
+ * phone screen but not for larger screens" — his 948×750 window showed the
+ * recap as a 452px phone column parked against the left edge with the rest
+ * of the screen black). Two causes: (1) between 900 and 1023px wide the
+ * wizard's tablet-rail pin (.tt at 452px, backdrop flex-start) still
+ * governed any screen taller than the landscape tier's 560px, and (2) at
+ * every large size the sheet stretched the full window height with a
+ * phone-style stacked footer, so a short recap floated in an empty slab
+ * over a window-wide Continue bar. This layer, for ≥900px wide and taller
+ * than the landscape tier: the sheet is a centered dialog sized to its
+ * content (scrolling only when the content needs it), the two-region body
+ * the ≥1024px layer introduced now starts at 900px with a narrower rail,
+ * and the footer is one action row — secondary actions left, Continue
+ * right at a button's width. Below 900px wide and at ≤560px tall nothing
+ * here applies. Theme-agnostic (parity law). */
+@media (min-width: 900px) and (min-height: 561px) {
+  .tt-backdrop { justify-content: center; align-items: center; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
+  .tt { width: min(1040px, 100%); flex: none; align-self: center; max-height: 100%; }
+  .tt-body { padding: 24px 24px 28px; }
+  .tt-foot.stack { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 12px; padding: 14px 24px 16px; }
+  .tt-foot.stack .tt-foot-toprow { order: 1; flex: none; width: auto; }
+  .tt-foot.stack .tt-foot-row { order: 2; flex: none; width: auto; flex-wrap: nowrap; }
+  .tt-foot.stack .tt-foot-row > .tt-tricks-show,
+  .tt-foot.stack .tt-foot-row > .leave-red { flex: none; padding-left: 20px; padding-right: 20px; }
+  .tt-foot.stack .primary { order: 3; width: auto; flex: 0 1 340px; min-width: 240px; margin-left: auto; }
+  .tt-foot.stack .exit-divider { display: none; }
+  /* the trick browser, once opened, takes its own full row under the actions */
+  .tt-foot.stack .tt-foot-row:has(> .tt-tricks) { order: 4; flex: 1 1 100%; flex-wrap: wrap; }
+}
+@media (min-width: 900px) and (max-width: 1023px) and (min-height: 561px) {
+  .tt-body {
+    display: grid;
+    grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+    grid-template-areas: "scores recap" "strip recap" "callouts recap";
+    grid-template-rows: auto auto 1fr;
+    align-content: start;
+    align-items: start;
+    justify-items: stretch;
+    column-gap: 20px;
+  }
+  .tt-top-scores { grid-area: scores; width: 100%; }
+  .tt-strip { grid-area: strip; width: 100%; }
+  .tt-callouts { grid-area: callouts; }
+  .tt-recap { grid-area: recap; width: 100%; }
+}
