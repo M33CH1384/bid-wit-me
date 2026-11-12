@@ -77,7 +77,9 @@ import { fireCue, fx, useReduceEffects } from './fx';
 import { PhotoFinishTape, VictoryConfetti } from './RecapFx';
 import { CONFETTI_GOLDS } from './recapfx';
 import { photoFinish, winMargin } from './animfx/detect';
-import { sideColor } from './ScorePad';
+import { PadHands, sideColor } from './ScorePad';
+import { pickMvp } from './mvp';
+import { MvpBeat } from './MvpBeat';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { handClearPx, layoutPublishStale } from './bidPanelFit';
@@ -2791,6 +2793,12 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // action is the onward one and replay lives on the map card. A story
   // LOSS keeps its rematch (same stop, story-scoped via the host).
   const storyGame = !!story;
+  // Player of the game (mvp.ts): named once the game is over, shown as a short beat over the
+  // arriving results and then as a line on them. Story games carry their own outro instead.
+  const mvp = !storyGame && st.phase === 'gameOver' && st.result ? pickMvp(r, st.history, st.result.winners) : null;
+  const mvpNode = mvp ? (
+    <MvpBeat mvp={mvp} name={face(mvp.seat)} team={r.partnerships ? sideName(r, mvp.side, names) : undefined} color={sideColor(r, mvp.side)} gameKey={`${st.seed ?? ''}:${st.history.length}`} reduced={reduceFx} />
+  ) : null;
   // MERGED VICTORY SCREEN (owner, 2026-11-01: "we basically have 2 victory
   // screens we should reevaluate and reduce to one" — the in-table screen
   // survives and absorbs the Postgame Report). The breakdown is computed
@@ -3977,6 +3985,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
               {/* the middle of the foot scrolls inside the panel (long games run
                   tall); the action buttons stay pinned below it, always reachable */}
               <div className="vic-scroll" data-testid="victory-scroll">
+                {mvpNode}
                 {/* the XP slider leads the scroll (owner, 2026-11-01: it
                     sat behind the box score + Postgame Report, so far down
                     "people will never see it") — directly under the fixed
@@ -4000,6 +4009,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                     the box score it belongs with */}
                 <RecapTrickReview key={st.handNo} tricks={piles} face={face} />
                 <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} roll reduced={reduceFx} />
+                {/* The full score pad, hand by hand, each with its own trick review (owner, 2026-11-12). */}
+                <div className="go-pad pad2" data-testid="results-pad"><PadHands st={st} names={names} sideName={(i) => sideName(r, i, names)} dealerName={dealerLabel} /></div>
                 {seriesChip()}
                 <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
                 {/* the merged report (2026-11-01): Postgame Report + reward
@@ -4048,6 +4059,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                 ))}
             </ol>
             <div className="scroll go-scroll" data-testid="gameover-scroll">
+              {mvpNode}
               {/* the XP slider leads the scroll (owner, 2026-11-01: it sat
                   behind the box score + Postgame Report, so far down
                   "people will never see it") — directly under the fixed
@@ -4059,6 +4071,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                   after a set ending's showcase beat */}
               <RecapTrickReview key={st.handNo} tricks={piles} face={face} />
               <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} roll reduced={reduceFx} />
+              {/* The full score pad, hand by hand, each with its own trick review (owner, 2026-11-12). */}
+              <div className="go-pad pad2" data-testid="results-pad"><PadHands st={st} names={names} sideName={(i) => sideName(r, i, names)} dealerName={dealerLabel} /></div>
               {/* the merged report (2026-11-01): Postgame Report + reward
                   rows join the box score in the scroll region — standings
                   stay fixed above, actions pinned below, as before. Story

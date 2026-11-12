@@ -2,7 +2,7 @@
  * Release 9: online game records → per-player stats + Elo. Pure (no Cloudflare imports) so it's unit-tested.
  * Only seats linked to an account (signed-in players) get stats rows; guests and bots appear in the game's seat list.
  */
-import { type GameState, sideCount, sideOf, tkoOutSides } from '@spades/rules';
+import { type GameState, pickMvpTally, sideCount, sideOf, tkoOutSides } from '@spades/rules';
 import { processGameCred } from '../cred/hooks';
 import type { CredPushEvent } from '../push/notify';
 import { joinRoster } from './rosters';
@@ -60,6 +60,13 @@ export interface PlayerGameStats {
    *  the stamp existed carry no tossed hands — the stat starts at ship. */
   tossesForced: number; tossesConceded: number;
   wheels: number;
+  /** Player of the game (owner, 2026-11-12): 1 when this player was the
+   *  game's MVP, 0 when someone else was — the rules package's pickMvpTally
+   *  over the scored hands, the same pick the game-over screen shows.
+   *  Games recorded before the stamp carry no key: they are neither an
+   *  award nor a game in the MVP percentage — the stat starts at ship.
+   *  Abandoned games name no MVP and carry no key either. */
+  mvp?: number;
   bidMs: number; bidN: number; playMs: number; playN: number;
 }
 
@@ -87,6 +94,11 @@ export interface GameRecord {
    * a reconstructed timeline. Abandoned records carry none either.
    */
   timeline?: HandTimelineRow[];
+  /** Player of the game: the MVP's seat (a bot or guest can be it), and the
+   *  account id when that seat is a signed-in player. Null when no hand was
+   *  scored; absent on hand-constructed and abandoned records. */
+  mvpSeat?: number | null;
+  mvpUid?: string | null;
   tournamentId?: string;
 }
 
@@ -98,12 +110,16 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
   const winners = g.result?.winners ?? [];
   // 1st Round TKO outs for this game (empty unless a side went out on hand 1)
   const tkoOuts = tkoOutSides(r, g.history, g.result);
+  // Player of the game, from the scored hands alone (never a client's word)
+  const mvpSeat = pickMvpTally(r, g.history, winners)?.seat ?? null;
+  const mvpRef = mvpSeat === null ? undefined : o.seats[mvpSeat];
+  const mvpUid = mvpRef?.kind === 'user' && mvpRef.uid ? mvpRef.uid : null;
   const players: GameRecord['players'] = [];
   for (let seat = 0; seat < n; seat++) {
     const ref = o.seats[seat];
     if (!ref || ref.kind !== 'user' || !ref.uid) continue;
     const side = sideOf(seat, r);
-    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0, books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0, shotsTaken: 0, shotsGiven: 0, tkoDealt: tkoOuts.filter((o2) => o2 !== side).length, tkoSuffered: tkoOuts.includes(side) ? 1 : 0, tossesForced: 0, tossesConceded: 0, wheels: 0, bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
+    const st: PlayerGameStats = { won: winners.includes(side), hands: g.history.length, bids: 0, bidSum: 0, made: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindNilMade: 0, books: 0, maxBooksHand: 0, bestRun: 0, tableRuns: 0, maxDeficit: 0, foeEliminated: false, runItClaims: 0, shotsTaken: 0, shotsGiven: 0, tkoDealt: tkoOuts.filter((o2) => o2 !== side).length, tkoSuffered: tkoOuts.includes(side) ? 1 : 0, tossesForced: 0, tossesConceded: 0, wheels: 0, ...(mvpSeat === null ? {} : { mvp: mvpSeat === seat ? 1 : 0 }), bidMs: o.live?.bidMs[seat] ?? 0, bidN: o.live?.bidN[seat] ?? 0, playMs: o.live?.playMs[seat] ?? 0, playN: o.live?.playN[seat] ?? 0 };
     for (const h of g.history) {
       const b = h.bids[seat];
       const tw = h.tricksWon[seat] ?? 0;
@@ -154,7 +170,7 @@ export function buildRecord(o: { id: string; room: string; game: GameState; seat
   for (const h of g.history) for (const s of h.sides) timeline.push({ hand: h.handNo, side: s.side, scoreAfter: s.totalScore, books: s.tricks });
   return {
     id: o.id, room: o.room, mode: r.mode ?? 'joker', kind, endedAt: o.endedAt, hands: g.history.length,
-    final: [...(g.result?.finalScores ?? g.scores)], winners: [...winners], names: [...o.names], seats: o.seats, players, timeline, ...(o.tournamentId ? { tournamentId: o.tournamentId } : {}),
+    final: [...(g.result?.finalScores ?? g.scores)], winners: [...winners], names: [...o.names], seats: o.seats, players, timeline, mvpSeat, mvpUid, ...(o.tournamentId ? { tournamentId: o.tournamentId } : {}),
   };
 }
 
@@ -276,8 +292,8 @@ export async function saveRecord(db: D1Database, rec: GameRecord, rated: boolean
   const abandoned = meta.endReason === 'abandoned';
   const elo = !rated ? {} : abandoned ? leaverLoss({ ...rec, players }, cur, meta.leaverId ?? null) : eloUpdate({ ...rec, players }, placementsOf(rec.final, rec.winners), cur);
   const stmts = [
-    db.prepare('INSERT OR IGNORE INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, tournament_id, source, client_game_id, partial, end_reason, leaver_id, family) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(rec.id, rec.room, rec.mode, rec.kind, rec.endedAt, rec.hands, JSON.stringify(rec.final), JSON.stringify(rec.winners), JSON.stringify(rec.names), JSON.stringify(rec.seats), rated ? 1 : 0, rec.tournamentId ?? null, meta.source ?? 'online', meta.clientGameId ?? null, meta.partial ? 1 : 0, abandoned ? 'abandoned' : 'finished', meta.leaverId ?? null, meta.family ?? null),
+    db.prepare('INSERT OR IGNORE INTO games (id, room, mode, kind, ended_at, hands, final, winners, names, seats, rated, tournament_id, source, client_game_id, partial, end_reason, leaver_id, family, mvp_seat, mvp_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(rec.id, rec.room, rec.mode, rec.kind, rec.endedAt, rec.hands, JSON.stringify(rec.final), JSON.stringify(rec.winners), JSON.stringify(rec.names), JSON.stringify(rec.seats), rated ? 1 : 0, rec.tournamentId ?? null, meta.source ?? 'online', meta.clientGameId ?? null, meta.partial ? 1 : 0, abandoned ? 'abandoned' : 'finished', meta.leaverId ?? null, meta.family ?? null, abandoned ? null : (rec.mvpSeat ?? null), abandoned || !rec.mvpUid || !exist.has(rec.mvpUid) ? null : rec.mvpUid),
   ];
   for (const p of players) {
     const e = elo[p.uid];
