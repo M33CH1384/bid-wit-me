@@ -5,7 +5,9 @@
  * labels inside every cell, team names in the team colour. The last scored hand is highlighted; the hand being
  * played shows as "in progress" with the bids so far.
  */
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { handTricksFor } from './handTricks';
+import { TrickBrowserPanel } from './TrickBrowser';
 import { useEscapeClose } from './useEscapeClose';
 import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotCounts, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
@@ -117,6 +119,8 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
   const seatName = (s: number) => hudSeatName(s, names);
   const currentDealer = dealerName?.trim() || seatName(st.dealer);
   const lastRef = useRef<HTMLElement>(null);
+  // Trick review, one hand open at a time (handTricks.ts keeps each finished hand's plays).
+  const [reviewHand, setReviewHand] = useState<number | null>(null);
   useEffect(() => { lastRef.current?.scrollIntoView({ block: 'end' }); }, []);
   const showLocked = locked && st.phase !== 'gameOver';
   const esc = useEscapeClose(onClose);
@@ -176,12 +180,20 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
                   ...(h.nuke ? [<em key="n" className="rchip nuke">☢ NUKE</em>] : []),
                 ];
                 return moments.length ? <span className="pad-moments" data-testid={`pad-moment-${h.handNo}`}>{moments}</span> : null;
-              })()}{h.handNo === lastNo && <span className="pad-last">{st.phase === 'gameOver' ? 'FINAL' : 'LAST HAND'}</span>}</header>
+              })()}{h.handNo === lastNo && <span className="pad-last">{st.phase === 'gameOver' ? 'FINAL' : 'LAST HAND'}</span>}
+                {handTricksFor(st.seed, h.handNo) && (
+                  <button type="button" className={`pad-review${reviewHand === h.handNo ? ' on' : ''}`} data-testid={`pad-review-${h.handNo}`} aria-expanded={reviewHand === h.handNo}
+                    onClick={() => setReviewHand(reviewHand === h.handNo ? null : h.handNo)}>{reviewHand === h.handNo ? 'Hide tricks' : 'Review tricks'}</button>
+                )}</header>
               {h.sides.map((s) => (
                 <Row key={s.side} color={sideColor(r, s.side)} name={sideName(s.side)} bid={bidText(h, s)} took={s.tricks}
                   points={signed(s.points)} details={breakdown(r, s)} chips={resultChips(r, h, s, st).filter((c) => c.kind !== 'books' && c.kind !== 'made')}
                   total={s.totalScore} bags={s.totalBags} bagsAdded={s.bagsAdded} />
               ))}
+              {reviewHand === h.handNo && (() => {
+                const tricks = handTricksFor(st.seed, h.handNo);
+                return tricks ? <div className="pad-review-panel" data-testid={`pad-review-panel-${h.handNo}`}><TrickBrowserPanel key={h.handNo} tricks={tricks} face={seatName} onClose={() => setReviewHand(null)} /></div> : null;
+              })()}
             </section>
           ))}
           {inProgress && (
