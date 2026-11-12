@@ -71,7 +71,11 @@ export function RecapTrickReview({ tricks, face }: { tricks: readonly Trick[]; f
   if (!open) {
     return (
       <button type="button" className="tt-tricks-show" data-testid="recap-tricks-show" onClick={() => setOpen(true)}>
-        Review the tricks ‹ ›
+        Review the tricks
+        {/* Drawn, not typed: the ‹ › text glyphs sat below the caps and off-centre. */}
+        <svg className="tt-tricks-chev" viewBox="0 0 26 12" width="26" height="12" aria-hidden="true" focusable="false">
+          <path d="M8 1 3 6l5 5M18 1l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
     );
   }
