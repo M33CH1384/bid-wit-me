@@ -3,6 +3,7 @@ import { musicTension } from './musicTension';
 import { clearTableChatOpen, loadTableChatOpen, saveTableChatOpen } from './chatView';
 import { browsedTrick, stepTrickIndex, trickPositionLabel } from './lastTrickBrowse';
 import { RecapTrickReview } from './TrickBrowser';
+import { rememberHandTricks } from './handTricks';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { getViewAdjustState, isDefaultViewAdjust, onViewAdjustCommit, seedViewAdjust, subscribeViewAdjust, viewAdjustLabel, type ViewAdjust } from './viewAdjust';
 import { seedMotionViewEnabled } from './motionView';
@@ -1384,6 +1385,13 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
 
   const shownTrick = pause ? st.tricks[st.tricks.length - 1]! : st.trick;
   const piles = pause ? st.tricks.slice(0, -1) : st.tricks;
+  // File the finished hand's play-by-play so the score pad can review it later (handTricks.ts):
+  // once the next hand is dealt the engine no longer has it.
+  useEffect(() => {
+    if (st.phase !== 'handOver' && st.phase !== 'gameOver') return;
+    const last = st.history[st.history.length - 1];
+    if (last && st.tricks.length) rememberHandTricks(st.seed, last.handNo, st.tricks);
+  }, [st.phase, st.handNo, st.tricks.length]); // eslint-disable-line react-hooks/exhaustive-deps
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
   const spectating = !!online?.spectator;
   const face = (seat: number) => seatFacingName(names, seat, spectating);

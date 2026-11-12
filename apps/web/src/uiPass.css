@@ -291,3 +291,12 @@ aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
    (Intermission masks the sheet there). The score pad's small holes are not masked, so
    they get a dark centre of their own. */
 .pad-board-holes img { background: radial-gradient(circle closest-side, #050308 0 36%, rgba(5,3,8,0) 42%); }
+
+/* ---- Score pad: review any hand's tricks ----
+   A quiet button in each hand's header opens the trick browser under that
+   hand (owner, 2026-11-12). One hand open at a time. */
+.pad-hand-head .pad-review { margin-left: auto; min-height: 30px; padding: 0 12px; border: 1px solid rgba(255,255,255,.24); border-radius: 9px; background: rgba(255,255,255,.07); color: #f6f2ff; font: 800 12px/1 var(--display); letter-spacing: .07em; text-transform: uppercase; cursor: pointer; }
+.pad-hand-head .pad-review:hover, .pad-hand-head .pad-review:focus-visible, .pad-hand-head .pad-review.on { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.45); }
+.pad-hand-head .pad-last + .pad-review { margin-left: 10px; }
+.pad-review-panel { margin: 8px 0 4px; display: flex; justify-content: center; }
+.pad-review-panel > .trick-browser { flex: 0 1 520px; max-width: 100%; }
