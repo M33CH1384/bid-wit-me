@@ -2510,6 +2510,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // The pass waits out the finished-trick hold (pause): every card must have landed and the final
   // trick must have had its on-table beat before anything slides to the dealer (Demetrius 2026-10-19).
   const [collecting, setCollecting] = useState(false);
+  /** The hand just ended by a toss (the engine stamps the record): the cards still in every hand get thrown in. */
+  const tossedHandOver = st.phase === 'handOver' && !!st.history[st.history.length - 1]?.tossed;
   const collectTimer = useRef<number | null>(null);
   useEffect(() => {
     if (st.phase === 'handOver' && !st.result && !online && !pause) {
@@ -3469,7 +3471,11 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     dealing: dealing || redeal?.phase === 'deal',
     dealReady,
     animK: redeal?.phase === 'deal' ? k * MISDEAL_DEAL_SPEED : k,
-    gatherHands: redeal?.phase === 'gather' && !fx.osReducedMotion,
+    // A tossed hand (owner, 2026-11-12: "everyone should toss their cards to the next dealer… my cards
+    // stayed in my hand"): the engine ends the hand with cards still held, so every hand — mine and the
+    // other seats' — is thrown onto a heap in the middle of the felt (Scene tossItem).
+    gatherHands: (redeal?.phase === 'gather' && !fx.osReducedMotion) || tossedHandOver,
+    gatherToNext: tossedHandOver,
     dealEpoch,
     dealFlight: redeal?.phase === 'deal',
     kingGunSeat: kingGunSeatFor(story) ?? online?.kingGunSeat ?? null,

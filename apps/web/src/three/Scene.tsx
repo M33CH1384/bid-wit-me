@@ -248,6 +248,9 @@ export interface SceneProps {
    *  front of the CURRENT dealer — and a misdeal passes the deal, so on the redealt state this
    *  is the incoming dealer's spot: the pile travels to them. */
   gatherHands?: boolean;
+  /** With gatherHands: a TOSSED hand — every hand is thrown onto a loose heap in the middle of the felt,
+   *  toward the next dealer, instead of gliding back to the current dealer's deck (a misdeal). */
+  gatherToNext?: boolean;
   /** Misdeal redeal, beat 2: bumped when the redeal should deal out — remounts the card layer
    *  so this hand's normal shuffle + deal flight replays under the same hand number. */
   dealEpoch?: number;
@@ -1332,6 +1335,33 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const collecting = !!props.collecting;
   const nextDealer = (dealer + 1) % n;
   const collectTarget = deckSpot(positions[nextDealer]!, n);
+  // A TOSSED hand is thrown in, not collected (owner, 2026-11-12: "the animation of players throwing
+  // their hands to the dealer or the table when the toss hand is agreed upon"). Seat by seat, starting
+  // with the viewer, each hand leaves as a quick burst of cards on high arcs and lands as one loose,
+  // overlapping heap in the middle of the felt, pulled a little toward the next dealer who will pick it
+  // up — every card at its own angle, face down. Same seed on every client: the heap matches online.
+  const tossThrow = !!props.gatherToNext;
+  const tossHash = (a: number) => { const x = Math.sin(a * 12.9898 + handNo * 78.233) * 43758.5453; return x - Math.floor(x); };
+  const tossSpot = (seat: number, i: number): Xform => {
+    const a = tossHash(seat * 131 + i * 17 + 1) * Math.PI * 2;
+    const rad = 0.08 + tossHash(seat * 71 + i * 29 + 2) * 0.44;
+    const yaw = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), (tossHash(seat * 37 + i * 53 + 3) - 0.5) * Math.PI * 1.7);
+    const q = yaw.multiply(new Quaternion(...collectTarget.q));
+    return {
+      p: [collectTarget.p[0] * 0.3 + Math.cos(a) * rad, collectTarget.p[1] + 0.0012 * (seat * 13 + i), collectTarget.p[2] * 0.3 + Math.sin(a) * rad * 0.78],
+      q: [q.x, q.y, q.z, q.w],
+      s: collectTarget.s,
+    };
+  };
+  const tossItem = (seat: number, i: number) => ({
+    target: tossSpot(seat, i),
+    duration: 0.52 + tossHash(seat * 11 + i * 7 + 4) * 0.22,
+    arc: 0.5 + tossHash(seat * 5 + i * 3 + 5) * 0.45,
+    motion: 'flight' as const,
+    delay: ((seat - human + n) % n) * 0.24 + i * 0.03,
+    ...(i === 0 ? { sfxStart: 'sweep' as const } : {}),
+    ...(i % 3 === 0 ? { sfxLand: 'play' } : {}),
+  });
   // Review anchoring + sweep serialization (sweepGate.ts): when a trick newly
   // flips into the piles, a plain trick's (no Run It, no nuke — those shows
   // own their own clocks) gather is delayed so the sweep starts at the last
@@ -1623,7 +1653,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     if (seat === human) continue;
     const c = handCounts[seat]!;
     for (let i = 0; i < c; i++) {
-      if (gather) {
+      if (gather && tossThrow) {
+        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, ...tossItem(seat, i), spatialSeat: positions[seat]!, spatialN: n });
+      } else if (gather) {
         items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: deck, duration: 0.7, arc: 0.25, motion: 'glide', delay: seat * 0.07 + i * 0.015, sfxStart: 'sweep', spatialSeat: positions[seat]!, spatialN: n });
       } else {
         const rest = restFor(seat);
@@ -1737,6 +1769,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       order,
       // Misdeal gather: my fan rides the same collection glide into the deck as every other hand.
       ...(gather ? { target: deck, from: undefined, delay: i * 0.02, holdUntilMove: false, sfxStart: 'sweep' as const, dim: false, tap: null, duration: 0.7, motion: 'glide' as const, arc: 0.25, raise: 0 } : {}),
+      // A tossed hand: my cards are thrown onto the heap with everyone else's (tossItem), first out.
+      ...(gather && tossThrow ? { sfxStart: undefined, ...tossItem(human, i) } : {}),
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
