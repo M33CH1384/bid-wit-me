@@ -1993,7 +1993,7 @@ function trickRects(camera: Camera, size: { width: number; height: number }, pos
   });
 }
 
-function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number } }) {
+function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe, seated }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number }; /** per seat: a 3D figure sits there (the partner's plate then anchors above the head) */ seated?: readonly boolean[] }) {
   const invalidate = useThree((st) => st.invalidate);
 
   // Joint plate layout (three/plateLayout.ts): all three upper plates are
@@ -2017,7 +2017,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
       .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0)
       .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
     const proj = (p: (typeof positions)[number]) => {
-      const v = new Vector3(...badgeSpot(p, n)).project(camera);
+      const v = new Vector3(...badgeSpot(p, n, !!seated?.[positions.indexOf(p)])).project(camera);
       return { x: (v.x + 1) * size.width / 2, y: (1 - v.y) * size.height / 2 };
     };
     // a measured rect shifted by a delta — used to re-derive a child's
@@ -2106,7 +2106,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
           const calcShort = (el: Object3D, camera: Camera, size: { width: number; height: number }) =>
             side === 'top' ? [(size.width / 2) - 170, 68 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 58 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
           return (
-            <Html key={seat} position={badgeSpot(p, n)} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
+            <Html key={seat} position={badgeSpot(p, n, !!seated?.[seat])} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
               {renderSeat(seat)}
             </Html>
           );
@@ -2135,7 +2135,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
           }
           : undefined;
         return (
-          <Html key={seat} position={badgeSpot(p, n)} center={!side} calculatePosition={calc} zIndexRange={[5, 0]} className={`seat-anchor${side ? ` side-${side}` : ''}`} portal={portal}>
+          <Html key={seat} position={badgeSpot(p, n, !!seated?.[seat])} center={!side} calculatePosition={calc} zIndexRange={[5, 0]} className={`seat-anchor${side ? ` side-${side}` : ''}`} portal={portal}>
             {renderSeat(seat)}
           </Html>
         );
@@ -2504,6 +2504,8 @@ export default function Scene(props: SceneProps) {
   // High only. Story tables never mount them (their cast system owns
   // the seats), whatever the prop carries.
   const personaFiguresActive = !props.storyStopId && hi && !!((props.personaFigureSeats?.some(Boolean)) || (props.ownFigureKey && !props.spectator));
+  // which seats have a figure in the chair, for plate placement (Badges)
+  const seatedSeats = useMemo(() => (personaFiguresActive ? (props.personaFigureSeats ?? []).map(Boolean) : []), [personaFiguresActive, props.personaFigureSeats]);
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -2967,7 +2969,7 @@ export default function Scene(props: SceneProps) {
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
       <DeuceFxLayer reducedProp={!!props.reduceFx} />
       <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} onWheelsShow={onWheelsShow} />
-      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
+      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} seated={seatedSeats} />}
       </Fragment>
       </OwnChairHiddenContext.Provider>
       </Fragment>

@@ -309,7 +309,7 @@ def classic():
     ceiling = plain('ceiling', (0.035, 0.03, 0.045), 0.9)
     trim = plain('trim', (0.03, 0.025, 0.03), 0.4)
     brass = plain('brass', (0.8, 0.56, 0.24), 0.3, 1.0)
-    rug = tex_material('rug', 'velour_velvet', tile=2.0, tint=(0.11, 0.02, 0.035), dye=True)
+    rug = tex_material('rug', 'velour_velvet', tile=2.0, tint=(0.055, 0.01, 0.018), dye=True)
 
     box('floor', (-X, Y0, FLOOR - 0.2), (X, Y1, FLOOR), floor)
     box('ceiling', (-X, Y0, TOP), (X, Y1, TOP + 0.2), ceiling)
@@ -343,7 +343,7 @@ def classic():
     prop('ArmChair_01', (-4.9, 5.6), 125)
     prop('mid_century_lounge_chair', (5.0, 5.4), -125)
     prop('side_table_01', (-3.5, 8.0), 0)
-    prop('boombox', (-3.5, 8.0, FLOOR + 0.56 * SCALE), 200)
+    prop('boombox', (-3.5, 8.0, FLOOR + 0.56 * SCALE), 20)  # speakers toward the table
     prop('potted_plant_01', (-8.4, 8.6), 30, SCALE * 1.5)
     prop('potted_plant_02', (8.6, 8.4), 200, SCALE * 1.5)
 
