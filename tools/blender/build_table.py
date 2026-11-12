@@ -19,13 +19,13 @@ FLOOR = -0.9
 OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'apps', 'web', 'public', 'assets', 'models')
 
 
-def half_round(d0, d1, h0, top, n=14, tuck=0.0):
-    """Padded roll: a squashed half ellipse from d0 to d1, rising to `top`."""
+def half_round(d0, d1, h0, top, n=14, tuck=0.0, power=0.75):
+    """Padded roll: a squashed half ellipse from d0 to d1, rising to `top`. A lower `power` flattens the crown."""
     c, rx = (d0 + d1) / 2, (d1 - d0) / 2
     pts = []
     for i in range(n + 1):
         a = math.pi - math.pi * i / n
-        pts.append((c + rx * math.cos(a), h0 + (top - h0) * (math.sin(a) ** 0.75)))
+        pts.append((c + rx * math.cos(a), h0 + (top - h0) * (max(0.0, math.sin(a)) ** power)))
     if tuck:
         pts.append((d1, h0 - tuck))
     return pts
@@ -62,19 +62,69 @@ def corners(x, y, top, foot_x, foot_y, r):
 
 PEDESTAL = [(0, -0.35), (0.34, -0.35), (0.3, -0.4), (0.16, -0.44), (0.12, -0.52), (0.2, -0.6), (0.2, -0.64), (0.11, -0.7), (0.14, -0.78), (0.4, -0.86), (0.42, -0.9), (0, -0.9)]
 
+# ---------------------------------------------------------------- the card contract
+# The game's card layout (apps/web/src/three/layout.ts, tableTopY / RAIL_TOP_Y) knows ONE table surface: felt at 0,
+# an inner bevel from 0.05 inside the felt outline, a cap at CAP across the 0.2 rail band, an outer bevel, and nothing
+# past 0.24. Won books rest on that cap, opponents' fans settle onto it, and the figures' hands follow the fans. So
+# every table here must sit inside that envelope and present a top at (about) CAP across the band, or books float
+# and cards cut through the rail. check_envelope() fails the build on any profile that breaks it.
+CAP = 0.098        # a hair under the game's 0.10 so resting cards never z-fight the rail
+EDGE = 0.24        # no table material past this distance from the felt outline
+_IN = [(-0.05, 0.0), (-0.04, 0.08), (-0.03, 0.09), (-0.02, 0.095), (-0.01, 0.098), (0.0, 0.1)]
+_OUT = [(0.2, 0.1), (0.21, 0.098), (0.22, 0.095), (0.23, 0.09), (0.24, 0.08)]
+
+
+def envelope(d):
+    """Highest the table may stand at outward distance d from the felt outline (None = no table allowed)."""
+    if d <= -0.05:
+        return 0.0
+    for prof in (_IN, _OUT):
+        for (d0, h0), (d1, h1) in zip(prof, prof[1:]):
+            if d0 <= d <= d1:
+                return h0 + (h1 - h0) * (d - d0) / (d1 - d0)
+    if 0.0 <= d <= 0.2:
+        return 0.1
+    return None if d > EDGE else 0.08
+
+
+def check_envelope(style_id, st):
+    for part in ('cushion', 'rail', 'inlay', 'apron'):
+        pts = st.get(part) or []
+        # sample along each segment, not just the listed points
+        for (d0, h0), (d1, h1) in zip(pts, pts[1:]):
+            for k in range(9):
+                d, h = d0 + (d1 - d0) * k / 8, h0 + (h1 - h0) * k / 8
+                top = envelope(d)
+                if d > EDGE + 1e-6:
+                    raise SystemExit(f'{style_id}.{part}: material at d={d:.3f}, past the table edge {EDGE}')
+                if top is not None and h > top + 0.0015:
+                    raise SystemExit(f'{style_id}.{part}: height {h:.3f} at d={d:.3f} is above the card surface {top:.3f}')
+
+
+def ribbed(d0, d1, hi, lo, pitch=0.02):
+    """A slatted or reeded top: alternating crests and shallow grooves across the band."""
+    pts, d, up = [], d0, True
+    while d < d1 - 1e-6:
+        pts.append((round(d, 4), hi if up else lo))
+        d += pitch / 2
+        up = not up
+    pts.append((d1, hi))
+    return pts
+
+
 STYLES = {
-    # Studio poker table: padded leather roll, a wide lacquered racetrack with a brass inlay, deep apron, drum base.
+    # Studio poker table: padded leather roll, a lacquered racetrack with a brass inlay, deep apron, drum base.
     'classic': dict(
-        cushion=half_round(-0.028, 0.125, 0.004, 0.118, tuck=0.03),
-        rail=fillet([(0.112, 0.03), (0.122, 0.084), (0.262, 0.084), (0.275, 0.05), (0.275, -0.045)], 0.016),
-        inlay=[(0.186, 0.0846), (0.188, 0.0868), (0.198, 0.0868), (0.2, 0.0846)],
-        apron=fillet([(0.262, -0.035), (0.262, -0.30), (0.235, -0.335), (0.0, -0.335)], 0.02),
+        cushion=half_round(-0.045, 0.10, 0.004, CAP, tuck=0.03),
+        rail=fillet([(0.09, 0.03), (0.098, CAP), (0.204, CAP), (0.226, 0.088), (0.24, 0.066), (0.24, -0.045)], 0.008),
+        inlay=[(0.152, CAP + 0.0004), (0.154, CAP + 0.0016), (0.166, CAP + 0.0016), (0.168, CAP + 0.0004)],
+        apron=fillet([(0.232, -0.035), (0.232, -0.30), (0.205, -0.335), (0.0, -0.335)], 0.02),
         base=dict(kind='drum', profile=[(0.0, -0.33), (0.62, -0.33), (0.62, -0.37), (0.5, -0.4), (0.44, -0.62), (0.47, -0.74), (0.74, -0.83), (0.78, -0.9), (0.0, -0.9)]),
     ),
-    # Folding table under the picnic cloth: thin aluminium edge band, two tube leg frames with braces.
+    # Banquet folding table: a wide brushed-aluminium frame round the picnic cloth, tube leg frames with braces.
     'backyard': dict(
-        rail=fillet([(-0.01, 0.0), (-0.004, 0.014), (0.05, 0.014), (0.06, 0.0), (0.06, -0.035)], 0.006),
-        apron=fillet([(0.058, -0.03), (0.058, -0.052), (0.04, -0.062), (0.0, -0.062)], 0.006),
+        rail=fillet([(-0.045, 0.0), (-0.039, 0.068), (-0.024, 0.088), (-0.006, CAP), (0.204, CAP), (0.226, 0.088), (0.24, 0.07), (0.24, 0.0), (0.24, -0.04)], 0.005),
+        apron=fillet([(0.236, -0.03), (0.236, -0.055), (0.21, -0.066), (0.0, -0.066)], 0.006),
         base=dict(kind='tubes', tubes=[seg for y in (-1.2, 1.2) for seg in (
             ((-1.0, y, -0.06), (-1.08, y, FLOOR), 0.03), ((1.0, y, -0.06), (1.08, y, FLOOR), 0.03),
             ((-1.07, y, -0.74), (1.07, y, -0.74), 0.024), ((0.0, y, -0.74), (0.0, y * 0.45, -0.07), 0.018))]),
@@ -82,64 +132,64 @@ STYLES = {
     # Cut crystal: a thick faceted glass rail and apron on a faceted pedestal. Flat shaded so every facet catches light.
     'mansion': dict(
         flat=True,
-        rail=[(-0.02, 0.0), (0.0, 0.05), (0.03, 0.075), (0.2, 0.075), (0.25, 0.04), (0.25, -0.02), (0.22, -0.06)],
-        apron=[(0.22, -0.06), (0.16, -0.2), (0.0, -0.2)],
+        rail=[(-0.045, 0.0), (-0.036, 0.07), (-0.004, CAP), (0.2, CAP), (0.24, 0.06), (0.24, -0.02), (0.21, -0.06)],
+        apron=[(0.21, -0.06), (0.15, -0.2), (0.0, -0.2)],
         base=dict(kind='drum', segs=12, profile=[(0, -0.2), (0.5, -0.2), (0.3, -0.3), (0.22, -0.6), (0.3, -0.75), (0.6, -0.85), (0.62, -0.9), (0, -0.9)]),
     ),
-    # Back-room card table: one fat tufted-leather roll, a chrome band on the apron, barber-chair pedestal.
+    # Back-room card table: one broad leather roll, a chrome band on the apron, barber-chair pedestal.
     'barbershop': dict(
-        rail=half_round(-0.03, 0.24, 0.004, 0.13, n=18, tuck=0.06),
-        inlay=[(0.2365, -0.1), (0.2405, -0.105), (0.2405, -0.135), (0.2365, -0.14)],
-        apron=fillet([(0.235, -0.05), (0.235, -0.22), (0.2, -0.25), (0.0, -0.25)], 0.02),
+        rail=half_round(-0.045, 0.24, 0.004, CAP, n=22, tuck=0.06, power=0.36),
+        inlay=[(0.2325, -0.1), (0.2365, -0.105), (0.2365, -0.135), (0.2325, -0.14)],
+        apron=fillet([(0.231, -0.05), (0.231, -0.22), (0.2, -0.25), (0.0, -0.25)], 0.02),
         base=dict(kind='drum', squash=1.0, profile=[(0, -0.25), (0.3, -0.25), (0.16, -0.3), (0.14, -0.7), (0.2, -0.76), (0.7, -0.86), (0.72, -0.9), (0, -0.9)]),
     ),
-    # Fellowship-hall folding table: laminate top with a T-moulding edge, steel skirt, four straight legs with braces.
+    # Fellowship-hall table: laminate top with a rounded T-moulding edge, steel skirt, four straight legs with braces.
     'church': dict(
-        rail=fillet([(-0.008, 0.0), (0.0, 0.01), (0.03, 0.012), (0.045, 0.0), (0.045, -0.07)], 0.008),
-        apron=fillet([(0.043, -0.065), (0.043, -0.088), (-0.12, -0.088), (-0.12, -0.15), (-0.14, -0.15), (-0.14, -0.088), (-0.3, -0.088)], 0.004),
+        rail=fillet([(-0.045, 0.0), (-0.039, 0.068), (-0.024, 0.088), (-0.006, CAP), (0.204, CAP), (0.226, 0.088), (0.24, 0.066), (0.24, -0.07)], 0.005),
+        apron=fillet([(0.236, -0.065), (0.236, -0.088), (0.06, -0.088), (0.06, -0.15), (0.04, -0.15), (0.04, -0.088), (-0.2, -0.088)], 0.004),
         base=dict(kind='tubes', tubes=corners(1.05, 1.3, -0.09, 1.05, 1.3, 0.034) + [((-1.05, y, -0.6), (1.05, y, -0.6), 0.02) for y in (-1.3, 1.3)]),
     ),
     # Modern terrace table: a slim cushion, a wide flat hardwood deck, two slab legs.
     'rooftop': dict(
-        cushion=half_round(-0.02, 0.07, 0.004, 0.06, n=10, tuck=0.02),
-        rail=fillet([(0.06, 0.01), (0.065, 0.05), (0.27, 0.05), (0.275, 0.04), (0.275, -0.06)], 0.006),
-        apron=fillet([(0.27, -0.05), (0.27, -0.12), (0.2, -0.14), (0.0, -0.14)], 0.01),
+        cushion=half_round(-0.045, 0.05, 0.004, CAP, n=10, tuck=0.02),
+        rail=fillet([(0.043, 0.03), (0.049, CAP), (0.204, CAP), (0.226, 0.088), (0.24, 0.07), (0.24, -0.06)], 0.005),
+        apron=fillet([(0.236, -0.05), (0.236, -0.12), (0.18, -0.14), (0.0, -0.14)], 0.01),
         base=dict(kind='slabs', slabs=[((0.0, y), (1.7, 0.16), -0.14) for y in (-1.15, 1.15)]),
     ),
-    # Prohibition-era table: tall padded roll, a beaded rail with a brass line in the groove, moulded apron, twin turned pedestals.
+    # Prohibition-era table: padded roll, a beaded rail with a brass line in the groove, moulded apron, twin turned pedestals.
     'speakeasy': dict(
-        cushion=half_round(-0.028, 0.11, 0.004, 0.13, tuck=0.03),
-        rail=fillet([(0.1, 0.03), (0.108, 0.09), (0.15, 0.09), (0.158, 0.075), (0.175, 0.075), (0.183, 0.09), (0.25, 0.09), (0.27, 0.06), (0.28, 0.02), (0.262, -0.01), (0.262, -0.05)], 0.008),
-        inlay=[(0.16, 0.0755), (0.162, 0.078), (0.171, 0.078), (0.173, 0.0755)],
-        apron=fillet([(0.26, -0.04), (0.26, -0.2), (0.275, -0.215), (0.275, -0.245), (0.255, -0.26), (0.255, -0.33), (0.22, -0.36), (0.0, -0.36)], 0.008),
+        cushion=half_round(-0.045, 0.09, 0.004, CAP, tuck=0.03),
+        rail=fillet([(0.08, 0.03), (0.088, CAP), (0.13, CAP), (0.137, 0.086), (0.152, 0.086), (0.159, CAP), (0.204, CAP), (0.226, 0.088), (0.24, 0.066), (0.24, 0.03), (0.232, -0.01), (0.232, -0.05)], 0.005),
+        inlay=[(0.139, 0.0864), (0.141, 0.0884), (0.148, 0.0884), (0.15, 0.0864)],
+        apron=fillet([(0.23, -0.04), (0.23, -0.2), (0.24, -0.215), (0.24, -0.245), (0.226, -0.26), (0.226, -0.33), (0.2, -0.36), (0.0, -0.36)], 0.008),
         base=dict(kind='lathes', at=[(0.0, -0.85), (0.0, 0.85)], profile=PEDESTAL),
     ),
-    # Casino table: a wide padded armrest over a leather ledge, a gold band, deep apron, twin drums.
+    # Casino table: a wide padded armrest, a slim leather ledge, a gold band, deep apron, twin drums.
     'vegas': dict(
-        cushion=half_round(-0.03, 0.185, 0.004, 0.125, n=18, tuck=0.02),
-        rail=fillet([(0.175, 0.02), (0.185, 0.052), (0.278, 0.052), (0.29, 0.02), (0.29, -0.05)], 0.01),
-        inlay=[(0.2915, -0.07), (0.296, -0.075), (0.296, -0.11), (0.2915, -0.115)],
-        apron=fillet([(0.29, -0.04), (0.29, -0.36), (0.26, -0.39), (0.0, -0.39)], 0.02),
+        cushion=half_round(-0.045, 0.165, 0.004, CAP, n=20, tuck=0.02, power=0.45),
+        rail=fillet([(0.155, 0.03), (0.162, 0.094), (0.226, 0.094), (0.24, 0.07), (0.24, -0.05)], 0.008),
+        inlay=[(0.2325, -0.07), (0.2365, -0.075), (0.2365, -0.11), (0.2325, -0.115)],
+        apron=fillet([(0.231, -0.04), (0.231, -0.36), (0.2, -0.39), (0.0, -0.39)], 0.02),
         base=dict(kind='lathes', at=[(0.0, -0.8), (0.0, 0.8)], profile=[(0, -0.38), (0.5, -0.38), (0.46, -0.44), (0.4, -0.8), (0.5, -0.86), (0.52, -0.9), (0, -0.9)]),
     ),
-    # Tiki table: two lashed bamboo poles for the rail, splayed bamboo legs.
+    # Tiki table: a deck of split-bamboo slats round the felt over a bamboo pole frame, splayed bamboo legs.
     'beach': dict(
-        rail=circle(0.07, 0.055, 0.075),
-        apron=circle(0.085, -0.075, 0.062) + [(0.0, -0.075)],
+        rail=[(-0.045, 0.0), (-0.039, 0.066), (-0.024, 0.086)] + ribbed(-0.006, 0.2, CAP, 0.089, 0.0294) + [(0.226, 0.086), (0.24, 0.068), (0.24, -0.02)],
+        apron=circle(0.176, -0.075, 0.062) + [(0.0, -0.075)],
         base=dict(kind='tubes', tubes=corners(0.9, 1.1, -0.1, 1.2, 1.5, 0.06) + [((-1.05, y, -0.5), (1.05, y, -0.5), 0.04) for y in (-1.3, 1.3)]),
     ),
-    # 1950s dinette: a ribbed chrome band round a thin top, four splayed chrome legs.
+    # 1950s dinette: a broad chrome band round the cloth with a reeded edge, four splayed chrome legs.
     'grandma': dict(
-        rail=[(-0.012, 0.0), (0.0, 0.016), (0.03, 0.02), (0.045, 0.012), (0.05, 0.006), (0.044, -0.002), (0.05, -0.012), (0.044, -0.022), (0.05, -0.032),
-              (0.044, -0.042), (0.05, -0.052), (0.044, -0.062), (0.05, -0.07)],
-        apron=[(0.04, -0.07), (0.04, -0.09), (0.0, -0.09)],
+        rail=fillet([(-0.045, 0.0), (-0.039, 0.068), (-0.024, 0.088), (-0.006, CAP), (0.2, CAP), (0.226, 0.088), (0.24, 0.07)], 0.004)
+             + [(0.234, 0.058), (0.24, 0.046), (0.234, 0.034), (0.24, 0.022), (0.234, 0.01), (0.24, -0.002), (0.234, -0.014), (0.24, -0.026), (0.24, -0.07)],
+        apron=[(0.232, -0.07), (0.232, -0.09), (0.0, -0.09)],
         base=dict(kind='tubes', tubes=corners(0.85, 1.05, -0.09, 1.15, 1.4, 0.04)),
     ),
-    # Deck table: a teak fiddle rail (the raised lip that keeps things aboard), a holly stripe, single pedestal.
+    # Deck table: a broad teak cap rail with a steel stripe, single pedestal.
     'yacht': dict(
-        rail=fillet([(-0.015, 0.0), (-0.005, 0.045), (0.035, 0.05), (0.05, 0.03), (0.06, 0.022), (0.24, 0.022), (0.262, 0.005), (0.262, -0.05)], 0.01),
-        inlay=[(0.14, 0.0225), (0.141, 0.0245), (0.153, 0.0245), (0.154, 0.0225)],
-        apron=fillet([(0.255, -0.04), (0.255, -0.13), (0.23, -0.15), (0.0, -0.15)], 0.012),
+        rail=fillet([(-0.045, 0.0), (-0.039, 0.068), (-0.024, 0.088), (-0.006, CAP), (0.204, CAP), (0.226, 0.088), (0.24, 0.07), (0.24, -0.05)], 0.005),
+        inlay=[(0.1, CAP + 0.0004), (0.101, CAP + 0.0016), (0.113, CAP + 0.0016), (0.114, CAP + 0.0004)],
+        apron=fillet([(0.236, -0.04), (0.236, -0.13), (0.21, -0.15), (0.0, -0.15)], 0.012),
         base=dict(kind='drum', squash=1.0, profile=[(0, -0.15), (0.35, -0.15), (0.33, -0.19), (0.13, -0.22), (0.12, -0.8), (0.5, -0.86), (0.52, -0.9), (0, -0.9)]),
     ),
 }
@@ -334,6 +384,7 @@ def bake_ao(objects, samples=96):
 def main(style_id):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     st = STYLES[style_id]
+    check_envelope(style_id, st)
     flat = bool(st.get('flat'))
     parts = [loft(name, st[name], flat=flat) for name in ('cushion', 'rail', 'apron', 'inlay') if st.get(name)]
     if st.get('base'):

@@ -5,7 +5,7 @@ import { cardFaceFragment } from './cardSat';
 import { createBackCardMaterial } from './cardBack';
 import { cardFaceOutlinePoints, cardGeometry, cardOutlineGeometry } from './geometry';
 import { raiseSeconds, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
-import { CH, CT, CW, FACE_CAP_GAP, type Xform } from './layout';
+import { CH, CT, CW, FACE_CAP_GAP, type Xform, tableClearLift } from './layout';
 import { type Sfx, sound } from '../audio';
 import { blastClaimsCard, blastPose } from './blastSweep';
 import { releaseTornadoCard, sweepParamsFor, sweepPoseAt, type SweepCardParams } from './tornadoSweep';
@@ -624,6 +624,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     return true;
   };
 
+  // Table collision (layout.tableClearLift), registered AFTER the pose frame below so it corrects that frame's pose:
+  // a table card whose corner would be inside the felt or the rail is raised just clear of it. The viewer's own
+  // hand never comes near the table, and a card at rest already sits clear, so this only acts on a tilted card in
+  // flight — the corner-through-the-rail case.
+  const clearTable = blast === 'table' && onTap === undefined;
   useFrame((_, rawDt) => {
     const g = ref.current;
     if (!g) return;
@@ -1128,6 +1133,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const up = new Vector3(0, 1, 0).applyQuaternion(g.quaternion);
       (rw.__bwmRest ??= {})[cardId] = { s: g.scale.x, y: g.position.y, tilt: (Math.acos(Math.min(1, Math.abs(nrm.y))) * 180) / Math.PI, spin: (Math.atan2(-up.x, -up.z) * 180) / Math.PI };
     }
+  });
+  useFrame(() => {
+    const g = ref.current;
+    if (!clearTable || !g || !g.visible || g.position.y > 0.9) return;
+    const lift = tableClearLift(g.position.x, g.position.y, g.position.z, g.quaternion.x, g.quaternion.y, g.quaternion.z, g.quaternion.w, g.scale.x);
+    if (lift > 1e-5) g.position.y += lift;
   });
 
   return (
