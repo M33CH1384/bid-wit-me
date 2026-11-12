@@ -88,6 +88,8 @@ const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
   jokerBig: 1100, jokerLittle: 500, nuke: 3700, mega: 4400, wheelsCar: 3000,
 };
 
+/** How long a hero blast's boom waits for its first presented frame before playing anyway. */
+export const HERO_BOOM_FALLBACK_MS = 3500;
 export type FxKind = 'jokerLittle' | 'jokerBig' | 'jokerWhip' | 'nuke' | 'mega' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'wheelsRain' | 'overcut' | 'hustled' | 'ranIt';
 export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
 
@@ -295,7 +297,12 @@ class FxBus {
     if (!opts.silent) {
       if (heroDeferred) {
         if (this.heroWait) clearTimeout(this.heroWait.timer);
-        const timer = window.setTimeout(() => { const w = this.heroWait; if (w) { this.heroWait = null; this.playHero(w.kind); } }, 1500);
+        // The fallback only exists so the boom is never lost when no frame lands at all.
+        // At 1.5 s it also fired on a merely SLOW first blast (a cold chunk, shader
+        // compile) and the boom led the picture (owner, 2026-11-12: "the sound came
+        // before the explosion"). 3.5 s keeps the safety net and lets a slow start
+        // still land its boom on the first frame.
+        const timer = window.setTimeout(() => { const w = this.heroWait; if (w) { this.heroWait = null; this.playHero(w.kind); } }, HERO_BOOM_FALLBACK_MS);
         this.heroWait = { kind, timer };
       } else sound.play(sfxFor(e), { gain: 1 });
     }
