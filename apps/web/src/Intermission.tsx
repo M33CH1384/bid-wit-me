@@ -7,6 +7,7 @@ import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf, useReduceEffects } from './fx';
 import { sound } from './audio';
 import GearIcon from './GearIcon';
+import { LeagueTicker } from './social/LeagueTicker';
 import { requestSettingsSheet } from './settingsSheet';
 import { haptic } from './haptics';
 import { SetCover } from './animfx/SetCover';
@@ -551,6 +552,13 @@ export function Intermission({
       {!showcase && iWon && presented && !fxOff && (
         <VictoryConfetti seed={st.seed ?? null} still={reduceFx} colors={[sideColor(r, mySide), CONFETTI_GOLDS[0]!, sideColor(r, mySide), CONFETTI_GOLDS[1]!]} />
       )}
+      {/* The league ticker along the bottom of the recap (owner, 2026-11-12: the
+          space behind the card is "dead space… this is supposed to be like a
+          professional spades league with an espn presentation feel. the ticker
+          should be present at the bottom of this screen"). Large screens only
+          (uiPass.css) — a phone's recap fills the screen. Never on a story
+          table (story surfaces carry no broadcast chrome) or the showcase beat. */}
+      {!showcase && !setAnimCtx?.storyStopId && <div className="tt-ticker"><LeagueTicker variant="bar" /></div>}
     </div>
   );
 }

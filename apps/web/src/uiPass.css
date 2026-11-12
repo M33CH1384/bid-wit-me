@@ -245,3 +245,19 @@ aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
 .bug-team .bug-score.tick.up, .bug-team .bug-score.tick.down { transform: none; }
 .bug-team .bug-score.tick.up { text-shadow: 0 0 7px rgba(92,255,176,.75); }
 .bug-team .bug-score.tick.down { text-shadow: 0 0 7px rgba(255,77,109,.75); }
+
+/* ---- Hand recap as a broadcast graphic over the live table ----
+   On large screens the recap card sits in the middle of the screen with the
+   room behind it blacked out (owner, 2026-11-12: "the black screen behind
+   this recap card is dead space… an espn presentation feel"). The backdrop
+   now lets the live table and room show through, dimmed and blurred like a
+   studio shot behind a graphic, and the league ticker runs along the bottom.
+   Phones are unchanged: there the card fills the screen. */
+.tt-ticker { display: none; }
+@media (min-width: 900px) and (min-height: 561px) {
+  .tt-backdrop { background: radial-gradient(ellipse at 50% 45%, rgba(7,3,14,.5) 0%, rgba(7,3,14,.82) 100%); -webkit-backdrop-filter: blur(14px) saturate(1.15); backdrop-filter: blur(14px) saturate(1.15); }
+  html[data-theme="neon"] .tt-backdrop { background: radial-gradient(ellipse at 50% 45%, rgba(4,5,12,.5) 0%, rgba(4,5,12,.84) 100%); }
+  .tt-ticker { display: contents; }
+  .tt-backdrop:has(.tt-ticker .ranks-ticker) { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+  .tt-backdrop > .tt { box-shadow: 0 30px 90px rgba(0,0,0,.6); }
+}
