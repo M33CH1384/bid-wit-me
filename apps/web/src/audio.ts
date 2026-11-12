@@ -541,6 +541,17 @@ const XFADE = 4; // seconds of crossfade between tracks
 /** Dropout watchdog cadence: how often the engine verifies its stems are
  *  actually sounding (see watchdogTick). */
 const WATCHDOG_MS = 2000;
+/** Minimum wall time between two looks at the context clock (clockFrozen). */
+const CLOCK_SAMPLE_MS = 600;
+/** A running context advances its clock in real time; under this much (s) across a sample, it has stopped. */
+const CLOCK_FROZEN_EPS_S = 0.02;
+/** A stay in the background at least this long arms the iOS return heal (healReturnedAudio). */
+const RETURN_HEAL_AWAY_MS = 4000;
+/** iPhone / iPad WebKit (Safari, the installed app's web view). iPadOS reports itself as a Mac with touch. */
+function iosAudioHost(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints ?? 0) > 1);
+}
 /** How long a recorded bed gets to land its async start before the
  *  watchdog calls it dead, and the minimum gap between bed heals —
  *  a 64 s loop's fetch + decode on a pressured phone is slow, but it
@@ -1329,6 +1340,29 @@ class Engine {
   private deckStallTicks = 0;
   private lastDeckPos = -1;
   private lastSfxRetryAt = 0;
+  /* ---- the three recoveries added 2026-11-12 (owner: after swiping the
+   * app away, and sometimes at random, "the sound goes out and i can't
+   * get it to restart"). Every earlier heal reads ctx.state or the
+   * in-graph meters, and iOS has two failures neither can see:
+   *   - a FROZEN context: state stays 'running' but the render clock
+   *     stops. Nothing flows, and the meters go on returning the last
+   *     block they saw, so they read as sound (clockFrozen);
+   *   - a DEAD OUTPUT after the app was backgrounded: samples flow, the
+   *     clock runs, every witness is healthy, and the phone plays none
+   *     of it. Only a new context rebinds the audio session — the same
+   *     cure the crash-resume heal uses (healReturnedAudio).
+   * And because no detector can promise to catch everything, turning
+   * the sound switch back ON is itself a rebuild: the player always has
+   * a way to bring sound back by hand (set). */
+  /** The context clock as last sampled: ctx.currentTime at a performance.now() instant. */
+  private clockSample: { c: AudioContext; t: number; at: number } | null = null;
+  /** Latched once this context's clock has been seen to advance — a clock that never moved proves nothing. */
+  private clockMoved: AudioContext | null = null;
+  private frozenTicks = 0;
+  /** When the page was last hidden (performance.now ms), or null while visible. */
+  private hiddenAt: number | null = null;
+  /** Back from a real stay in the background on iOS: the next gesture rebuilds the context once. */
+  private returnHealPending = false;
   private lastErrorRetryAt = 0;
   private loadGen = 0;
   /** cue counter (exposed for automated checks) */
@@ -1374,6 +1408,7 @@ class Engine {
   get loaded(): number { return this.buffers.size; }
   set(patch: Partial<SoundSettings>) {
     const clamp = (v: number) => Math.min(1, Math.max(0, v));
+    const prev = this.settings;
     const next: SoundSettings = { ...this.settings, ...patch, volume: clamp(patch.volume ?? this.settings.volume), musicVolume: clamp(patch.musicVolume ?? this.settings.musicVolume) };
     // Music and ambience are independent (Demetrius 2026-10-19): each switch only
     // controls its own source, so no reconciliation is needed here.
@@ -1386,6 +1421,13 @@ class Engine {
       this.settings = next;
     }
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
+    // The guaranteed manual recovery: switching SOUND back on rebuilds
+    // the context (rate-limited like every rebuild), so a player whose
+    // sound died in a way no detector saw can always bring it back from
+    // the sound controls — off, then on. The rebuild re-syncs every stem
+    // itself. The music switch is left alone: music back on resumes the
+    // track in place, and a rebuild would restart it.
+    if (this.unlocked && this.ctx && !prev.on && next.on) this.escalateGraph();
     this.applyGain();
     this.syncAmbient();
     this.syncVenue();
@@ -2031,7 +2073,17 @@ class Engine {
     // backgrounding suspends the context; pageshow also fires when iOS restores the page from bfcache.
     // The menu fire bed fades out as the app backgrounds (its want survives — the
     // wake on return resyncs it, plain fade, no ignite replay: same arrival).
-    document.addEventListener('visibilitychange', () => { if (document.hidden) this.stopMenuFireNodes(); else show(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { this.hiddenAt = performance.now(); this.clockSample = null; this.stopMenuFireNodes(); return; }
+      // Back from the background. The clock sample taken before the
+      // trip is meaningless now; and after a real stay away on iOS the
+      // next gesture rebuilds the context once (healReturnedAudio).
+      const away = this.hiddenAt === null ? 0 : performance.now() - this.hiddenAt;
+      this.hiddenAt = null;
+      this.clockSample = null;
+      if (away >= RETURN_HEAL_AWAY_MS && iosAudioHost()) this.returnHealPending = true;
+      show();
+    });
     window.addEventListener('pageshow', show);
   }
 
@@ -2062,7 +2114,11 @@ class Engine {
     this.startWatchdog();
     this.armVerify();
     if (kind === 'gesture') this.healCrashResumedAudio();
+    if (kind === 'gesture') this.healReturnedAudio();
     if (kind === 'show' && !this.unlocked) return;
+    // A tap on a context whose clock has stopped: rebuild now, inside
+    // the gesture, where iOS will let the new context start.
+    if (kind === 'gesture' && this.unlocked && this.clockFrozen(performance.now())) this.escalateGraph();
     if (kind === 'gesture' && this.unlocked && this.liveState(this.ctx) === 'running') {
       if (this.needsRestore) this.publishRestore();
       // Still re-run the syncs: on cold start the first gesture may not have
@@ -2337,6 +2393,33 @@ class Engine {
     this.escalateGraph();
   }
 
+  /** Back from the background on iOS (see the field notes above): the
+   *  first gesture after the return rebuilds the context once, the way
+   *  the crash-resume heal does. Held until a graph exists and the
+   *  engine is unlocked; the rebuild's own rate limit still applies. */
+  private healReturnedAudio() {
+    if (!this.returnHealPending || !this.unlocked || !this.ctx) return;
+    this.returnHealPending = false;
+    this.escalateGraph();
+  }
+
+  /** Has a 'running' context's clock stopped? Compares ctx.currentTime
+   *  against wall time across at least CLOCK_SAMPLE_MS. Only a clock
+   *  that has been SEEN to run can be called frozen, so a context that
+   *  has not started rendering yet is never mistaken for a dead one.
+   *  Each call that has enough wall time behind it re-samples. */
+  private clockFrozen(now: number): boolean {
+    const c = this.ctx;
+    if (!c || this.testState != null || c.state !== 'running' || (typeof document !== 'undefined' && document.hidden)) { this.clockSample = null; return false; }
+    const s = this.clockSample;
+    if (!s || s.c !== c) { this.clockSample = { c, t: c.currentTime, at: now }; return false; }
+    if (now - s.at < CLOCK_SAMPLE_MS) return false;
+    const advanced = c.currentTime - s.t;
+    this.clockSample = { c, t: c.currentTime, at: now };
+    if (advanced > CLOCK_FROZEN_EPS_S) { this.clockMoved = c; return false; }
+    return this.clockMoved === c;
+  }
+
   /** Rebuild the context through the same rate limit as the interruption
    *  paths, then re-publish restore state (a rebuild that lands suspended
    *  hands over to the needs-tap + heal-timer machinery, honestly). */
@@ -2365,6 +2448,11 @@ class Engine {
     if (!this.unlocked || !this.ctx) return;
     if (this.liveState(this.ctx) !== 'running') { this.silenceTicks = 0; this.stemMissTicks = 0; this.deckStallTicks = 0; return; }
     const now = performance.now();
+    // The render clock: 'running' with a stopped clock is a dead context
+    // that every meter still reads as sound. Two ticks, then rebuild.
+    if (this.clockFrozen(now)) {
+      if (++this.frozenTicks >= 2) { this.frozenTicks = 0; this.escalateGraph(); return; }
+    } else if (this.clockSample?.at === now) this.frozenTicks = 0;
     // SFX readiness: a load that finished with holes gets a spaced retry.
     if (this.buffers.size < SFX_COUNT && !this.loading && now - this.lastSfxRetryAt > 15000) {
       this.lastSfxRetryAt = now;
