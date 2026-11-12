@@ -55,6 +55,7 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
 import { SPADE_PATH_D } from './SprayLayer';
 import {
   PROGRAM_SPECS,
+  type TransitionProgramId,
   getTransitionSnapshot,
   registerTransitionRenderer,
   subscribeTransitions,
@@ -169,10 +170,30 @@ const liftedState = (tilt: number) => ({
   opacity: '0',
 });
 
-export default function FanLayer() {
+const FAN_ONLY: readonly TransitionProgramId[] = ['fan'];
+
+/**
+ * `programs` / `testId`: the same fan also plays for getting into and
+ * out of a game (owner, 2026-11-12: "spray for menus and fan to start
+ * a game" — one transition per purpose, never two looks mixed).
+ * TableTransitionLayer mounts this component for the table-entry and
+ * table-exit programs; the fan opens at its own pace under any of
+ * them, and lifts over the active program's reveal window.
+ *
+ * `reversed`: programs under which the fan plays BACKWARDS — it comes
+ * down from the top the way it normally leaves, and closes down into
+ * the hand point the way it normally opens (owner, 2026-11-12:
+ * "whichever way the fan goes to start a game it goes the opposite
+ * way when leaving"). Same cards, same states, same timings; only
+ * the direction of travel flips.
+ */
+const NONE: readonly TransitionProgramId[] = [];
+export default function FanLayer({ programs = FAN_ONLY, testId = 'fan-layer', reversed = NONE }: { programs?: readonly TransitionProgramId[]; testId?: string; reversed?: readonly TransitionProgramId[] } = {}) {
   const snap = useSyncExternalStore(subscribeTransitions, getTransitionSnapshot, getTransitionSnapshot);
   const theme = useTheme();
-  const active = snap.phase !== 'idle' && snap.program === 'fan';
+  const active = snap.phase !== 'idle' && programs.includes(snap.program);
+  const revealMs = PROGRAM_SPECS[snap.program]?.revealMs ?? SPEC.revealMs;
+  const backwards = reversed.includes(snap.program);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => registerTransitionRenderer(true), []);
@@ -219,9 +240,12 @@ export default function FanLayer() {
       });
       qa('fan-card').forEach((el, i) => {
         const tilt = layout.tilts[i] ?? 0;
-        run(el, [fromState(tilt), coveredState(tilt)], {
-          duration: Math.max(1, SPEC.coverMs - i * FAN_STAGGER_MS),
-          delay: i * FAN_STAGGER_MS - resumeMs,
+        // Backwards: the cards come down from where the fan normally
+        // lifts to, last card first.
+        const k = backwards ? FAN_COUNT - 1 - i : i;
+        run(el, [backwards ? liftedState(tilt) : fromState(tilt), coveredState(tilt)], {
+          duration: Math.max(1, SPEC.coverMs - k * FAN_STAGGER_MS),
+          delay: k * FAN_STAGGER_MS - resumeMs,
           easing: 'cubic-bezier(0.22, 0.9, 0.3, 1)',
         });
       });
@@ -246,14 +270,17 @@ export default function FanLayer() {
       // the top; the shade lets go first so the new screen breathes
       // in under the rising cards.
       run(q('fan-shade'), [{ opacity: '1' }, { opacity: '0' }], {
-        duration: SPEC.revealMs * 0.55,
+        duration: revealMs * 0.55,
         easing: 'ease-out',
       });
       qa('fan-card').forEach((el, i) => {
         const tilt = layout.tilts[i] ?? 0;
-        run(el, [coveredState(tilt), liftedState(tilt)], {
-          duration: Math.max(1, SPEC.revealMs - i * FAN_REVEAL_STAGGER_MS),
-          delay: i * FAN_REVEAL_STAGGER_MS,
+        // Backwards: the fan closes down into the hand point it
+        // normally opens from, last card first.
+        const k = backwards ? FAN_COUNT - 1 - i : i;
+        run(el, [coveredState(tilt), backwards ? fromState(tilt) : liftedState(tilt)], {
+          duration: Math.max(1, revealMs - k * FAN_REVEAL_STAGGER_MS),
+          delay: k * FAN_REVEAL_STAGGER_MS,
           easing: 'cubic-bezier(0.5, 0, 0.75, 0.4)',
         });
       });
@@ -272,7 +299,7 @@ export default function FanLayer() {
         }
       }
     };
-  }, [active, phase, episodeId, fromCoverage]);
+  }, [active, phase, episodeId, fromCoverage, revealMs, backwards]);
 
   if (!active) return null;
   const layout = fanLayout(window.innerWidth, window.innerHeight);
@@ -282,7 +309,9 @@ export default function FanLayer() {
     <div
       ref={ref}
       className={`tfan-layer${neon ? ' tfan-neon' : ''}`}
-      data-testid="fan-layer"
+      data-testid={testId}
+      data-program={snap.program}
+      data-direction={backwards ? 'backwards' : 'forwards'}
       data-phase={phase}
       style={{ pointerEvents: phase === 'cover' ? 'auto' : 'none' }}
       aria-hidden="true"
@@ -299,7 +328,7 @@ export default function FanLayer() {
             width: layout.w,
             height: layout.h,
             transformOrigin: '50% 100%',
-            ...(phase === 'cover' ? fromState(tilt) : coveredState(tilt)),
+            ...(phase === 'cover' ? (backwards ? liftedState(tilt) : fromState(tilt)) : coveredState(tilt)),
           }}
         >
           <div
