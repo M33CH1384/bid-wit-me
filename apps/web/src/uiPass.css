@@ -174,3 +174,33 @@ aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
   aside.soc-panel .ranks-main { display: block; grid-column: 1; grid-row: 1 / span 2; min-width: 0; }
   aside.soc-panel .ranks-side { display: block; grid-column: 2; grid-row: 2; min-width: 0; }
 }
+
+/* ---- Hand recap: Settings in the header, one secondary-button style ----
+   Owner, 2026-11-12: "settings should still be present on this screen" and
+   "too many button types down there at the bottom. score pad doesnt even look
+   selectable". The footer had four looks (plain text, a pill, a red chevron,
+   the gold primary). Now: one gold primary, and every other action is the
+   same quiet rounded button — Leave keeps its red as a colour, not a shape. */
+.tt-head > .tt-gear-btn { flex: none; margin-left: auto; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 12px; color: #fff; background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); cursor: pointer; }
+.tt-head > .tt-gear-btn:hover, .tt-head > .tt-gear-btn:focus-visible { background: rgba(255,255,255,.16); }
+.tt-head > .tt-gear-btn svg { width: 22px; height: 22px; }
+.tt-head > .tt-gear-btn + .tt-chat-btn { margin-left: 8px; }
+.tt .tt-foot .quiet-row-btn,
+.tt .tt-foot .tt-tricks-show,
+.tt .tt-foot .leave-red {
+  min-height: 44px; padding: 0 18px; border: 1px solid rgba(255,255,255,.24); border-radius: 12px; clip-path: none;
+  background: rgba(255,255,255,.07); color: #f6f2ff; box-shadow: none; text-decoration: none; opacity: 1;
+  font: 800 15px/1 var(--display); letter-spacing: .07em; text-transform: uppercase; cursor: pointer;
+  transition: background .14s ease, border-color .14s ease;
+}
+.tt .tt-foot .quiet-row-btn:hover, .tt .tt-foot .tt-tricks-show:hover,
+.tt .tt-foot .quiet-row-btn:focus-visible, .tt .tt-foot .tt-tricks-show:focus-visible { background: rgba(255,255,255,.15); border-color: rgba(255,255,255,.45); filter: none; }
+.tt .tt-foot .leave-red { color: #ff8f9c; border-color: rgba(255,110,128,.55); background: rgba(255,80,104,.08); }
+.tt .tt-foot .leave-red::before { display: none; }
+.tt .tt-foot .leave-red:hover, .tt .tt-foot .leave-red:focus-visible { background: rgba(255,80,104,.18); filter: none; }
+.tt .tt-foot .tt-tricks-show, .tt .tt-foot .leave-red, .tt .tt-foot .quiet-row-btn { white-space: nowrap; }
+@media (max-width: 430px) {
+  .tt .tt-foot .tt-tricks-show, .tt .tt-foot .leave-red { padding: 0 8px; font-size: 14px; letter-spacing: .03em; }
+}
+.tt-tricks-show { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.tt-tricks-show > .tt-tricks-chev { flex: none; opacity: .85; }

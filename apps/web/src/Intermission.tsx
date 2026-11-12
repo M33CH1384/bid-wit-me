@@ -6,6 +6,8 @@ import { HandsStrip, bostonSides } from './BoxScore';
 import { sideName } from './Modals';
 import { handWinner, streakLabel, streakOf, useReduceEffects } from './fx';
 import { sound } from './audio';
+import GearIcon from './GearIcon';
+import { requestSettingsSheet } from './settingsSheet';
 import { haptic } from './haptics';
 import { SetCover } from './animfx/SetCover';
 import { PhotoFinishTape, VictoryConfetti } from './RecapFx';
@@ -316,6 +318,13 @@ export function Intermission({
               footer copy shows instead (owner, 2026-11-07: the chat
               button moves to the bottom with the rest of the actions).
               Same behaviour, badge and aria either way. */}
+          {/* Settings stays reachable from the recap (owner, 2026-11-12:
+              "settings should still be present on this screen") — the
+              recap covers the table's own menu. Opens the one Settings
+              sheet (settingsSheet.ts); shown in both orientations. */}
+          <button type="button" className="tt-gear-btn" data-testid="recap-settings" aria-label="Settings" onClick={() => requestSettingsSheet()}>
+            <GearIcon />
+          </button>
           <button
             type="button"
             className={`tt-chat-btn ${chatOpen ? 'on' : ''}`}
