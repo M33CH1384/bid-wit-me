@@ -69,3 +69,16 @@ describe('pickMvp', () => {
     expect(pickMvp(r, [hand([3, 3, 3, 3], [3, 4, 3, 3])], [0])!.seat).toBe(0);
   });
 });
+
+describe('career MVPs on the stat sheet', () => {
+  it('shows the total and the percentage', async () => {
+    const { mvpText } = await import('../src/mvp');
+    expect(mvpText(12, 18.2)).toBe('12 · 18%');
+    expect(mvpText(1, 100)).toBe('1 · 100%');
+  });
+  it('shows the total alone when no game has named an MVP yet', async () => {
+    const { mvpText } = await import('../src/mvp');
+    expect(mvpText(0, null)).toBe('0');
+    expect(mvpText(undefined, undefined)).toBe('0');
+  });
+});

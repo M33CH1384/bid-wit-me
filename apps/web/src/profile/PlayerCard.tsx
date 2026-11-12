@@ -85,6 +85,7 @@ import { faceOf } from '../avatar';
 import { ACHIEVEMENT_ART } from '../achievementArt';
 import { BADGES } from '../badges';
 import { TaglineText } from '../tagline';
+import { mvpText } from '../mvp';
 import './playercard.css';
 
 export type CardBadgeKind = 'achievement' | 'story' | 'badge';
@@ -168,6 +169,9 @@ export interface PlayerCardData {
      *  instead of breaking the card */
     tkos?: { dealt: number; suffered: number };
     tosses?: { forced: number; conceded: number };
+    /** Player of the game awards and their share of games (optional so a
+     *  stale cached payload shows no row) */
+    mvps?: { total: number; games: number; pct: number | null };
   };
   vsViewer?: { games: number; wins: number; losses: number };
 }
@@ -497,6 +501,12 @@ export function PlayerCard({ data, pic, variant = 'header', champion, self, onEd
                         <th scope="row">Streak</th>
                         <td colSpan={4}>{s.streak > 0 ? `W${s.streak}` : '—'}{s.bestStreak > 1 ? ` · best W${s.bestStreak}` : ''}</td>
                       </tr>
+                      {s.mvps && (
+                        <tr className="mvprow" data-testid="pcard-row-mvp">
+                          <th scope="row">MVPs</th>
+                          <td colSpan={4}>{mvpText(s.mvps.total, s.mvps.pct)}</td>
+                        </tr>
+                      )}
                       {s.tkos && (
                         <tr className="tkorow" data-testid="pcard-row-tko">
                           <th scope="row">1st Round TKOs</th>

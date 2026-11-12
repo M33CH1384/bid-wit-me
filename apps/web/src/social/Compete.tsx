@@ -8,6 +8,7 @@ import { useAccount } from '../account/api';
 import { navigate } from '../online/nav';
 import { social, useSocial } from './store';
 import { duoCardFromRow, type DuoRow } from './duos';
+import { mvpText } from '../mvp';
 import { useRankPromotion } from './CelebrationHost';
 
 const get = (u: string) => fetch(u, { credentials: 'same-origin' }).then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error ?? `Error ${r.status}`); return j; });
@@ -46,6 +47,7 @@ interface ModeStats {
   winPctPlayers: number | null; winPctBots: number | null;
   accuracy: number | null; bags: number; booksPerHand: number | null; nil: string;
   shotsGiven: number; shotsTaken: number; bids: number;
+  mvps?: number; mvpPct?: number | null;
   elo: number | null; unrated: string | null;
 }
 interface MyStats { team: ModeStats; cutthroat: ModeStats }
@@ -245,6 +247,7 @@ function StatsSheet({ mine, kind, onClose }: { mine: MyStats; kind: Kind; onClos
           <div><b>{num(primary.booksPerHand)}</b><small>books / hand</small></div>
           <div><b>{primary.nil}</b><small>nils</small></div>
           <div><b>{primary.shotsGiven}/{primary.shotsTaken}</b><small>shots</small></div>
+          <div data-testid="your-stats-mvps"><b>{mvpText(primary.mvps, primary.mvpPct)}</b><small>MVPs</small></div>
         </div>
         <div className="ranks-split" data-testid="your-stats-other">
           {side('team', '2v2')}

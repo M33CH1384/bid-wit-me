@@ -6,3 +6,4 @@ export * from './game';
 export * from './handlog';
 export * from './pacing';
 export * from './series';
+export * from './mvp';
