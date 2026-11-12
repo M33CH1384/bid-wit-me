@@ -2,59 +2,19 @@
  * Player of the game (owner, 2026-11-12: "there should be a mvp for each game
  * with stats showing why they are the MVP").
  *
- * Picked from the scored hands alone (HandRecord keeps counts, not plays), so
- * every client, offline or online, names the same player. The MVP comes from
- * the winning side, as a broadcast would name it; the score rewards what a
- * spades player is actually judged on — books taken, making your OWN bid,
- * nils, and runs — and the stat lines shown are the facts behind the pick.
- * Pure.
+ * The pick itself lives in @spades/rules (pickMvpTally) so the server stamps
+ * the same player on the stored game. This file adds the stat lines shown
+ * with the pick: the facts behind it. Pure.
  */
-import { type HandRecord, type TableRules, sideOf } from '@spades/rules';
+import { type HandRecord, type MvpTally, type TableRules, pickMvpTally } from '@spades/rules';
 
 export interface MvpStat { label: string; value: string }
-export interface Mvp {
-  seat: number;
-  side: number;
-  /** Books taken across the game. */
-  books: number;
-  /** Hands with a numeric bid, and how many of them the player's own books covered. */
-  bidHands: number;
-  hitBid: number;
-  nilsMade: number;
-  nilsBusted: number;
-  /** Longest run of consecutive books in any one hand. */
-  bestRun: number;
-  nukes: number;
-  score: number;
+export interface Mvp extends MvpTally {
   /** Up to three facts, strongest first. */
   lines: MvpStat[];
 }
 
-type Tally = Omit<Mvp, 'lines'>;
-
-function tally(r: TableRules, history: readonly HandRecord[], seat: number): Tally {
-  const t: Tally = { seat, side: sideOf(seat, r), books: 0, bidHands: 0, hitBid: 0, nilsMade: 0, nilsBusted: 0, bestRun: 0, nukes: 0, score: 0 };
-  for (const h of history) {
-    const took = h.tricksWon[seat] ?? 0;
-    const bid = h.bids[seat];
-    t.books += took;
-    t.score += took;
-    if (typeof bid === 'number') {
-      t.bidHands++;
-      if (took >= bid) { t.hitBid++; t.score += took === bid ? 3 : 2; } else t.score -= 1;
-    } else if (bid === 'nil' || bid === 'blindNil') {
-      const nil = h.sides.flatMap((s) => s.nils).find((n) => n.seat === seat);
-      if (nil?.made) { t.nilsMade++; t.score += bid === 'blindNil' ? 10 : 6; } else { t.nilsBusted++; t.score -= 4; }
-    }
-    const run = h.bestRuns?.[seat] ?? 0;
-    if (run > t.bestRun) t.bestRun = run;
-    if (h.nuke?.seat === seat) { t.nukes++; t.score += 3; }
-  }
-  if (t.bestRun > 2) t.score += (t.bestRun - 2) * 0.5;
-  return t;
-}
-
-function linesFor(t: Tally): MvpStat[] {
+function linesFor(t: MvpTally): MvpStat[] {
   const out: MvpStat[] = [{ label: 'Books taken', value: String(t.books) }];
   if (t.nilsMade > 0) out.push({ label: t.nilsMade === 1 ? 'Nil made' : 'Nils made', value: String(t.nilsMade) });
   if (t.bidHands > 0) out.push({ label: 'Made own bid', value: `${t.hitBid} of ${t.bidHands}` });
@@ -65,12 +25,12 @@ function linesFor(t: Tally): MvpStat[] {
 
 /** The game's MVP, or null when no hand was scored. Ties: more books, then the lower seat. */
 export function pickMvp(r: TableRules, history: readonly HandRecord[], winners: readonly number[]): Mvp | null {
-  if (!history.length) return null;
-  const seats = (history[0]!.tricksWon ?? []).map((_, i) => i);
-  if (!seats.length) return null;
-  const onWinner = seats.filter((s) => winners.includes(sideOf(s, r)));
-  const pool = (onWinner.length ? onWinner : seats).map((s) => tally(r, history, s));
-  pool.sort((a, b) => b.score - a.score || b.books - a.books || a.seat - b.seat);
-  const best = pool[0]!;
-  return { ...best, lines: linesFor(best) };
+  const best = pickMvpTally(r, history, winners);
+  return best ? { ...best, lines: linesFor(best) } : null;
+}
+
+/** Career MVPs on a stat sheet: the total, and the share of games an MVP was named in ("12 · 18%"). */
+export function mvpText(total: number | null | undefined, pct: number | null | undefined): string {
+  const n = total ?? 0;
+  return pct === null || pct === undefined ? String(n) : `${n} · ${Math.round(pct)}%`;
 }

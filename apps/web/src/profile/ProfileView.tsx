@@ -94,6 +94,7 @@ import { fetchStoryProgress, type StoryProgress } from '../story/storyApi';
  *  and win moment); every selector there is .story-* scoped, so importing
  *  it here styles the badges on this surface — in both themes, the sheet's
  *  own neon overrides included — and nothing else on the profile. */
+import { mvpText } from '../mvp';
 import '../story/story.css';
 
 const modeName = (m: string) => MODE_NAME[m] ?? m;
@@ -171,7 +172,7 @@ interface SocialProfileData {
   teams?: TeamStatData[];
   ratings: { team?: number; cutthroat?: number }; totals: { games: number; wins: number };
   h2h: { id: string; name: string; games: number; wins: number; losses: number }[]; vsYou?: { games: number; wins: number; losses: number }; champion: number;
-  stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; tkoDealt: number; tkoSuffered: number; tossesForced: number; tossesConceded: number; wheels: number; bidSec: number | null; playSec: number | null };
+  stats?: { games: number; wins: number; streak: number; bestStreak: number; accuracy: number | null; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; tkoDealt: number; tkoSuffered: number; tossesForced: number; tossesConceded: number; wheels: number; mvps?: number; mvpPct?: number | null; bidSec: number | null; playSec: number | null };
   awards?: { label: string; ref: string; at: number }[];
 }
 
@@ -427,7 +428,7 @@ function SeasonSection({ season, onClaim, claimingIds, justClaimedIds }: {
 
 const STAT_LABELS: Record<string, string> = {
   games: 'Games', wins: 'Wins', streak: 'Win streak', bestStreak: 'Best streak',
-  accuracy: 'Bid accuracy', bags: 'Bags', booksPerHand: 'Books/hand', nil: 'Nil made',
+  mvps: 'MVPs', accuracy: 'Bid accuracy', bags: 'Bags', booksPerHand: 'Books/hand', nil: 'Nil made',
   shotsGiven: 'Shots given', shotsTaken: 'Shots taken', tkoDealt: '1st Round TKOs', tkoSuffered: 'TKOs taken', tossesForced: 'Tosses forced', tossesConceded: 'Tosses conceded', wheels: 'Wheels',
   winsVsPlayers: 'Wins vs players', winsVsBots: 'Wins vs bots',
 };
@@ -440,7 +441,7 @@ function StatsGrid({ stats }: { stats: Record<string, number | string | null> })
   return (
     <div className="stat-table">
       {rows.map(([k, label]) => (
-        <div key={k} className="stat-row"><span>{label}</span><b>{String(stats[k])}</b></div>
+        <div key={k} className="stat-row"><span>{label}</span><b>{k === 'mvps' ? mvpText(Number(stats.mvps), stats.mvpPct as number | null | undefined) : String(stats[k])}</b></div>
       ))}
     </div>
   );
@@ -1213,6 +1214,7 @@ export function ProfileView({ host, name, id, noBack }: {
                 <div data-testid="profile-stats">
                   <StatRows rows={[
                     ['Win streak', `${socialP.stats.streak} (best ${socialP.stats.bestStreak})`],
+                    ['MVPs', mvpText(socialP.stats.mvps, socialP.stats.mvpPct)],
                     ['Bid accuracy', `${socialP.stats.accuracy ?? '—'}${socialP.stats.accuracy !== null ? '%' : ''}`],
                     ['Books / hand', String(socialP.stats.booksPerHand ?? '—')],
                     ['Nils made', socialP.stats.nil],
