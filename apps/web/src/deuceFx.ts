@@ -141,6 +141,15 @@ export function deuceLandCue(st: GameState, card: Card): string {
   const info = classifyDeuceFx(st, card);
   if (!info.drop && !info.cut) return landCueFor(st, card);
   let cue = landCueFor(st, card);
+  // The lightning survives a marquee steal (owner, 2026-11-12: his partner's
+  // 2♠ was the THIRD spade to cut a trick "but the lightning didn't happen").
+  // The bolt belongs to the third cut of a trick, whoever throws it: when a
+  // trump deuce makes that cut, the level-3 over-cut segment (callout,
+  // lightning, thunder) is carried over and rides after the clash's own
+  // cues. A plain level-2 over-cut still yields to the clash, and Jokers
+  // keep their own effects — they never carry an over-cut segment.
+  let bolt = '';
+  if (info.cut && !isJoker(card)) bolt = cue.match(/,overcut3\|[^,]*$/)?.[0] ?? '';
   if (info.cut) {
     // The generic cut vocabulary goes quiet for a marquee steal: the
     // over-cut segment (popup + slam + hold) and the plain ',cut' hit
@@ -151,5 +160,5 @@ export function deuceLandCue(st: GameState, card: Card): string {
   if (info.drop || info.cut) cue += ',deuceThump';
   if (info.duel) cue += ',deuceDuel';
   else if (info.cut) cue += ',trumpCut';
-  return cue;
+  return cue + bolt;
 }

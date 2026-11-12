@@ -92,7 +92,11 @@ describe('hero boom + shake wait for the first presented frame', () => {
       const fx = await freshFx();
       fx.emit('nuke');
       expect(playSpy).not.toHaveBeenCalled();
+      // A merely slow first frame (cold chunk, shader compile) must not trip it:
+      // at the old 1.5 s the boom led the picture.
       vi.advanceTimersByTime(1600);
+      expect(playSpy).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(2000);
       expect(playSpy).toHaveBeenCalledTimes(1);
       expect(playSpy).toHaveBeenCalledWith('nuke', { gain: 1 });
     } finally {

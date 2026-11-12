@@ -87,6 +87,35 @@ export function holeMarks(
   }));
 }
 
+/**
+ * Which of a side's holes are still smoking (owner, 2026-11-12: "when a team
+ * gets shot one time and they make books the next hand the smoke should stop
+ * on the first bullet hole but if they get shot again the second one should
+ * never stop smoking").
+ *
+ * The FIRST hole is a warning: it smokes from the shot until the side next
+ * comes through a hand without being shot, and then it is cold for good. The
+ * second and third holes never go out. Index = hole slot; a slot that has no
+ * hole is false. Same hands and the same shot test as holeMarks.
+ */
+export function holeSmoking(
+  r: TableRules,
+  history: readonly { bids: readonly Bid[]; sides: readonly SideHandResult[] }[],
+): boolean[][] {
+  const n = sideCount(r);
+  const count = Array.from({ length: n }, () => 0);
+  const firstCold = Array.from({ length: n }, () => false);
+  for (const hand of history) {
+    for (const side of hand.sides) {
+      const i = side.side;
+      const shot = isShot(r, hand.bids, side) || side.shot === true;
+      if (shot) count[i] = (count[i] ?? 0) + 1;
+      else if ((count[i] ?? 0) >= 1) firstCold[i] = true;
+    }
+  }
+  return count.map((c, i) => Array.from({ length: HOLE_CAP }, (_, k) => k < Math.min(HOLE_CAP, c) && (k > 0 || !firstCold[i])));
+}
+
 /** Stable team record. Older slots stay punched; the fresh slot keeps whatever the punch already set. */
 export function rememberHoles(seed: string, side: number, count: number, fresh: number): TeamHoles {
   const k = keyOf(seed, side);

@@ -253,3 +253,23 @@ describe('the Deuce Duel: 2♦ over 2♠ gets its OWN moment (owner 2026-11-04)'
     expect(existsSync(new URL('../public/assets/sfx/deuce-duel.mp3', import.meta.url))).toBe(true);
   });
 });
+
+/* Owner, 2026-11-12: his partner's 2♠ was the third spade to cut a trick
+ * "but the lightning didn't happen" — the Cut had stripped the level-3
+ * over-cut along with the level-2 one. The bolt belongs to the third cut. */
+describe('the third cut keeps its lightning when a trump deuce makes it', () => {
+  it('a 2♠ that is the THIRD spade to cut carries overcut3 after the clash cues', () => {
+    const st = state(joker, ['AH', '5S', '9S', '2S']);
+    expect(landCueFor(st, '2S')).toMatch(/^play,overcut3\|.+/);
+    expect(classifyDeuceFx(st, '2S').cut).toEqual({ victim: '9S', victimSeat: 2 });
+    expect(deuceLandCue(st, '2S')).toMatch(/^play,deuceThump,trumpCut,overcut3\|[^,]+$/);
+  });
+  it('a second-cut steal still yields to the clash: no over-cut segment', () => {
+    const st = state(joker, ['AH', '5S', '2S']);
+    expect(deuceLandCue(st, '2S')).toBe('play,deuceThump,trumpCut');
+  });
+  it('Jokers never carry one', () => {
+    const st = state(joker, ['AH', '5S', '9S', 'BJ']);
+    expect(deuceLandCue(st, 'BJ')).not.toContain('overcut');
+  });
+});
