@@ -40,6 +40,8 @@ export interface CubeVenueConfig {
   windows?: CubeWindow[]; sky?: boolean; pendants?: boolean;
   boxes?: CubeBox[]; cyls?: CubeCyl[]; planes?: CubePlane[]; tori?: CubeTorus[];
   points?: { p: [number, number, number]; c: string; i: number; d: number }[];
+  /** where the four chairs stand; defaults to the Classic Studio spots */
+  chairSpots?: readonly { x: number; z: number; ry: number }[];
 }
 
 export function cubeTris(withProps: boolean, cfg: CubeVenueConfig): number {
@@ -101,6 +103,7 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
   // The room around the table is a Blender render (RoomBackdrop): the shell and pendants stand down, the chairs
   // stay, and an invisible floor keeps catching the live shadows of the table, chairs and figures.
   const rendered = useRoomShown();
+  const studioSpots = CHAIR_SPOTS;
   const lock = useLocalTod(handNo);
   const light = todLighting(lock.tod);
   const [skyTex, setSkyTex] = useState<import('three').Texture | null>(null);
@@ -135,6 +138,8 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
     const load = (url: string) => new Promise<import('three').Group>((res, rej) => loader.load(url, (g) => res(g.scene as Group), undefined, rej));
     void (async () => {
       try {
+        // This room's chair spots (a rendered room at a kit-chair venue brings its own); same loop, same own-chair guard.
+        const CHAIR_SPOTS = cfg.chairSpots ?? studioSpots;
         const chair = await load(`${CLASSIC}/chair.glb`);
         const lamp = cfg.pendants === false || rendered ? null : await load(`${CLASSIC}/lamp.glb`);
         if (dead || !propsRef.current) return; const host = propsRef.current;
@@ -188,7 +193,24 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
 }
 
 /** The dressing for a rendered room: no shell of its own, just the chairs and the shadow-catching floor. */
+/**
+ * The seated figures at every bespoke-room venue sit at the shared "kit" chair spots, not the Classic Studio ones
+ * (PersonaFigures' VENUE_SEAT_GEOMETRY; the two must agree or a figure sits beside its chair).
+ */
+const KIT_CHAIR_SPOTS: readonly { x: number; z: number; ry: number }[] = [
+  { x: 0, z: -1.98, ry: 0 },
+  { x: 0, z: 1.98, ry: Math.PI },
+  { x: -2.14, z: 0, ry: Math.PI / 2 },
+  { x: 2.14, z: 0, ry: -Math.PI / 2 },
+];
+const CLASSIC_SPOT_VENUES = new Set(['classic', 'blockAfterDark', 'mansion']);
+/** The dressing for one venue's rendered room, with its chairs where that venue's figures sit. */
+export function bareRoomFor(venue: string): CubeVenueConfig {
+  return CLASSIC_SPOT_VENUES.has(venue) ? BARE_ROOM : BARE_KIT_ROOM;
+}
+
 export const BARE_ROOM: CubeVenueConfig = { id: 'rendered', slug: 'rendered', floorUrl: null, floorRepeat: [1, 1], floorTint: '#000000', wall: '#000000', wallDark: '#000000', ceiling: null, open: true, pendants: false };
+const BARE_KIT_ROOM: CubeVenueConfig = { ...BARE_ROOM, chairSpots: KIT_CHAIR_SPOTS };
 
 export function preloadCubeVenue(cfg: CubeVenueConfig, quality: 'high' | 'low' = 'high'): void {
   // The GLB props load at High only (the props effect above stands down

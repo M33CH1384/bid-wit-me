@@ -87,7 +87,7 @@ import { bodyGeometry, cardGeometry, cushionGeometry, feltGeometry, railGeometry
 import { RAIL_SHADOW_SIZE, feltNapTexture, railShadowTexture } from './tableLook';
 import { loadTableModel, withWhite } from './tableModel';
 import RoomBackdrop, { roomEnvUrl, useRoomFailed, useRoomShown } from './RoomBackdrop';
-import CubeVenueRoom, { BARE_ROOM } from './cubeVenue';
+import CubeVenueRoom, { bareRoomFor } from './cubeVenue';
 import {
   CH, CW, MIN_STRIP_PX, TRICK_SCALE, type CamSpec, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
@@ -2894,7 +2894,7 @@ export default function Scene(props: SceneProps) {
         ? <HighRisePenthouseRoom fxOn={!props.reduceFx} />
         : <MansionRoom quality={props.quality} handNo={props.handNo} />)}
       </>)}
-      {!shellOn && roomUp && <CubeVenueRoom cfg={BARE_ROOM} quality={props.quality} handNo={props.handNo} />}
+      {!shellOn && roomUp && <CubeVenueRoom cfg={bareRoomFor(def.id)} quality={props.quality} handNo={props.handNo} />}
       </group>
       {showTable && (
         <group
