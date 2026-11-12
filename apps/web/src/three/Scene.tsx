@@ -248,6 +248,9 @@ export interface SceneProps {
    *  front of the CURRENT dealer — and a misdeal passes the deal, so on the redealt state this
    *  is the incoming dealer's spot: the pile travels to them. */
   gatherHands?: boolean;
+  /** With gatherHands: the hands go to the NEXT dealer's deck spot instead of the current dealer's
+   *  (a tossed hand — the cards are thrown in for the next deal; a misdeal gathers back to the same dealer). */
+  gatherToNext?: boolean;
   /** Misdeal redeal, beat 2: bumped when the redeal should deal out — remounts the card layer
    *  so this hand's normal shuffle + deal flight replays under the same hand number. */
   dealEpoch?: number;
@@ -1332,6 +1335,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const collecting = !!props.collecting;
   const nextDealer = (dealer + 1) % n;
   const collectTarget = deckSpot(positions[nextDealer]!, n);
+  const gatherTarget = props.gatherToNext ? collectTarget : deck;
   // Review anchoring + sweep serialization (sweepGate.ts): when a trick newly
   // flips into the piles, a plain trick's (no Run It, no nuke — those shows
   // own their own clocks) gather is delayed so the sweep starts at the last
@@ -1624,7 +1628,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const c = handCounts[seat]!;
     for (let i = 0; i < c; i++) {
       if (gather) {
-        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: deck, duration: 0.7, arc: 0.25, motion: 'glide', delay: seat * 0.07 + i * 0.015, sfxStart: 'sweep', spatialSeat: positions[seat]!, spatialN: n });
+        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: gatherTarget, duration: 0.7, arc: 0.25, motion: 'glide', delay: seat * 0.07 + i * 0.015, sfxStart: 'sweep', spatialSeat: positions[seat]!, spatialN: n });
       } else {
         const rest = restFor(seat);
         items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: opponentFan(positions[seat]!, n, i, c, rest.drop, rest.pinch), from: flight ? deck : undefined, delay: flight ? dealDelay(i, seat) : 0, holdUntilMove: flight, duration: !flight && rest.moving ? rest.durSec : tl.fly, arc: 0.3, sfxStart: 'deal', spatialSeat: positions[seat]!, spatialN: n });
@@ -1736,7 +1740,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       roll: plane.roll,
       order,
       // Misdeal gather: my fan rides the same collection glide into the deck as every other hand.
-      ...(gather ? { target: deck, from: undefined, delay: i * 0.02, holdUntilMove: false, sfxStart: 'sweep' as const, dim: false, tap: null, duration: 0.7, motion: 'glide' as const, arc: 0.25, raise: 0 } : {}),
+      ...(gather ? { target: gatherTarget, from: undefined, delay: i * 0.02, holdUntilMove: false, sfxStart: 'sweep' as const, dim: false, tap: null, duration: 0.7, motion: 'glide' as const, arc: 0.25, raise: 0 } : {}),
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };

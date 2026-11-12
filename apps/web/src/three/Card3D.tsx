@@ -25,6 +25,11 @@ import { DISTURBANCE_MS, disturbanceFor, disturbanceOffsetAt, lastSlamDisturbanc
 import { cutColorFor } from '../deuceFx';
 import type { Card } from '@spades/rules';
 
+/** Landing settle: how long a played card keeps sliding after touchdown (ms)… */
+const SETTLE_MS = 420;
+/** …and how far, in world units, per flight family (a card is 0.35 long, so roughly a third of a card). */
+const SETTLE_LEN: Record<'flight' | 'glide' | 'flick', number> = { flight: 0.12, glide: 0.14, flick: 0.09 };
+
 interface Props {
   face: Texture | null; // null = we only ever see the back
   back: Texture;
@@ -402,6 +407,16 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     // composed on the inner group beside the knock by composeDeuceInner.
     distSeen: lastSlamDisturbanceId(), distAt: 0, distParams: null as DisturbanceParams | null,
     distOff: null as { x: number; y: number; z: number; tilt: number } | null, dq: new Quaternion(),
+    // Landing settle (owner, 2026-11-12: played cards "hit the table and abruptly
+    // stop"): a played card arrives a little short of its spot and SLIDES the rest
+    // of the way on the felt, turning a few degrees as friction takes it, for
+    // SETTLE_MS after touchdown — past the end of the flight tween, which is the
+    // room the in-tween skid (flightPose.ts) never had. It rides the inner group
+    // like the knock and the slam disturbance, so the card's own transform, the
+    // tween's timing, the landing cues and every layout probe are untouched.
+    // slideK is the share of the slide still to cover: it ramps 0 → 1 across the
+    // flight (the card simply flies short) and runs 1 → 0 after touchdown.
+    slideK: 0, slideAt: 0, slideAmp: 0, slideYaw: 0, slideDir: { x: 0, z: 0 }, slideKey: '', slideDoneKey: '',
   });
   const raiseNow = useRef(raise);
   raiseNow.current = raise;
@@ -485,10 +500,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const owned = bl.current.on || bl.current.flung || tn.current.on || tn.current.gone;
     if (owned) return;
     const distOff = dkS.distOff;
-    if (dipEnv > 0 || knockEnv > 0 || heroEnv > 0 || distOff) {
+    const sk = fx.reduced || fx.osReducedMotion ? 0 : dkS.slideK;
+    const sliding = sk > 0.0005;
+    if (dipEnv > 0 || knockEnv > 0 || heroEnv > 0 || distOff || sliding) {
       const calm = fx.reduced;
-      const kx = calm ? 0 : dkS.knockDir.x * 0.055 * knockEnv + (distOff ? distOff.x : 0);
-      const kz = calm ? 0 : dkS.knockDir.z * 0.055 * knockEnv + (distOff ? distOff.z : 0);
+      const kx = calm ? 0 : dkS.knockDir.x * 0.055 * knockEnv + (distOff ? distOff.x : 0) - (sliding ? dkS.slideDir.x * dkS.slideAmp * sk : 0);
+      const kz = calm ? 0 : dkS.knockDir.z * 0.055 * knockEnv + (distOff ? distOff.z : 0) - (sliding ? dkS.slideDir.z * dkS.slideAmp * sk : 0);
       const heroLift = calm ? 0 : 0.085 * heroEnv;
       const w = dkS.w.set(kx, -dkS.dipDepth * dipEnv + heroLift + (calm || !distOff ? 0 : distOff.y), kz);
       dkS.q.copy(g.quaternion).invert();
@@ -505,6 +522,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       if (!calm && distOff && distOff.tilt > 0.0005 && dkS.distParams) {
         dkS.axis.set(dkS.distParams.dirZ, 0, -dkS.distParams.dirX).normalize().applyQuaternion(dkS.q);
         dkS.dq.setFromAxisAngle(dkS.axis, distOff.tilt);
+        ig.quaternion.multiply(dkS.dq);
+      }
+      // The landing settle's turn: about the table's up axis, unwinding as the slide runs out.
+      if (sliding) {
+        dkS.axis.set(0, 1, 0).applyQuaternion(dkS.q);
+        dkS.dq.setFromAxisAngle(dkS.axis, dkS.slideYaw * sk);
         ig.quaternion.multiply(dkS.dq);
       }
       ig.scale.setScalar(calm ? 1 : 1 + 0.15 * heroEnv);
@@ -772,6 +795,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (heroEnv > 0) invalidate();
     // Early compose: a resting card returns before the frame-end block
     // below, so its knock/hero must be applied here as well.
+    // The landing settle runs out here too: it outlives the flight tween.
+    if (dkS.slideAt) {
+      const u = (performance.now() - dkS.slideAt) / SETTLE_MS;
+      if (u >= 1) { dkS.slideAt = 0; dkS.slideK = 0; }
+      else { dkS.slideK = Math.pow(1 - u, 3); }
+      invalidate();
+    }
     {
       const dipUE = dkS.dipAt ? deuceFxElapsed(performance.now() - dkS.dipAt) / 300 : 1;
       const dipEnvE = dipUE < 1 ? Math.sin(Math.PI * Math.pow(Math.min(1, Math.max(0, dipUE)), 0.8)) : 0;
@@ -1050,6 +1080,24 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         if (s.t > RUN_SLAM_IMPACT_T) { const u = (s.t - RUN_SLAM_IMPACT_T) / (1 - RUN_SLAM_IMPACT_T); g.position.y += sl.bounce * 2.5 * Math.sin(Math.PI * Math.pow(u, 0.7)) * Math.pow(1 - u, 2); }
       } else if (s.t > 0.75) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
     }
+    }
+    // Landing settle (see the dk notes): a played trick card flies a little short,
+    // then slides the rest once it has touched down. Any other motion clears it.
+    {
+      const fam = s.motionSnap === 'flight' || s.motionSnap === 'glide' || s.motionSnap === 'flick';
+      if (fam && slamNow.current && dist > 0.25 && !fx.reduced && !fx.osReducedMotion) {
+        const iT = impactFraction(s.motionSnap);
+        if (dkS.slideKey !== s.key) {
+          dkS.slideKey = s.key; dkS.slideAt = 0; dkS.slideK = 0;
+          const dx = s.tp.x - s.sp.x, dz = s.tp.z - s.sp.z, len = Math.hypot(dx, dz) || 1;
+          dkS.slideDir.x = dx / len; dkS.slideDir.z = dz / len;
+          dkS.slideAmp = SETTLE_LEN[s.motionSnap as 'flight' | 'glide' | 'flick'] * Math.min(1, len / 1.2);
+          const h = deuceSeed(`${cardId ?? ''}|${s.key}|settle`);
+          dkS.slideYaw = ((h & 1) ? 1 : -1) * (0.05 + ((h >>> 3) % 100) / 100 * 0.07);
+        }
+        if (s.t < iT) { const v = s.t / iT; dkS.slideK = v * v * (3 - 2 * v); }
+        else if (dkS.slideDoneKey !== s.key) { dkS.slideDoneKey = s.key; dkS.slideK = 1; dkS.slideAt = performance.now(); }
+      } else if (dkS.slideKey !== s.key && (dkS.slideK || dkS.slideAt)) { dkS.slideK = 0; dkS.slideAt = 0; }
     }
     // Landing sound + thump fire here, on the frame the card visually hits the felt (after its pose is applied):
     // glide cards touch down at t=0.35 and then flop flat, so waiting for t=1 played the sound ~0.3s late.
