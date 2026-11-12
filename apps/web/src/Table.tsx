@@ -3473,7 +3473,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     animK: redeal?.phase === 'deal' ? k * MISDEAL_DEAL_SPEED : k,
     // A tossed hand (owner, 2026-11-12: "everyone should toss their cards to the next dealer… my cards
     // stayed in my hand"): the engine ends the hand with cards still held, so every hand — mine and the
-    // other seats' — is thrown in to the next dealer, on the misdeal's own gather glide.
+    // other seats' — is thrown onto a heap in the middle of the felt (Scene tossItem).
     gatherHands: (redeal?.phase === 'gather' && !fx.osReducedMotion) || tossedHandOver,
     gatherToNext: tossedHandOver,
     dealEpoch,
