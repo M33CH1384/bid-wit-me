@@ -151,3 +151,26 @@ aside.soc-panel .ranks-how > summary::after { content: ''; width: 6px; height: 6
 aside.soc-panel .ranks-how[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
 aside.soc-panel .ranks-how > summary:hover { color: rgba(255,255,255,.8); }
 aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
+
+/* ---- BWM Central on tablets and desktops ----
+   The phone drawer (a 460px strip pinned to the right edge) left most of a
+   big screen empty and squeezed everything into one narrow column (owner,
+   2026-11-12: "why is this screen so cramped when there is so much space").
+   From tablet width up it is a centred window that uses the screen, and on
+   wide screens Rankings splits in two: standings left, extras right. */
+.ranks-main, .ranks-side { display: contents; }
+@media (min-width: 721px) and (min-height: 561px) {
+  .modal-backdrop.soc-backdrop:not(.sheet-backdrop) { justify-content: center; align-items: center; padding: 24px; }
+  aside.soc-panel { width: min(1180px, 100%); height: min(900px, 100%); max-height: none; border: 1px solid rgba(255,255,255,.1); border-radius: 18px; overflow: hidden; box-shadow: 0 30px 90px rgba(0,0,0,.6); }
+  aside.soc-panel .soc-head { padding: 18px 24px 10px; }
+  aside.soc-panel .soc-body { padding-left: 24px; padding-right: 24px; }
+  aside.soc-panel .soc-body:has(.soc-lb.ranks) { padding: 0; }
+  aside.soc-panel .ranks-scroll { padding: 18px 24px 16px; }
+  aside.soc-panel .ranks-cat { flex-wrap: wrap; -webkit-mask-image: none; mask-image: none; }
+}
+@media (min-width: 1000px) and (min-height: 561px) {
+  aside.soc-panel .ranks-scroll { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); grid-template-rows: auto 1fr; column-gap: 28px; align-content: start; }
+  aside.soc-panel .ranks-scroll > .featured { grid-column: 2; grid-row: 1; }
+  aside.soc-panel .ranks-main { display: block; grid-column: 1; grid-row: 1 / span 2; min-width: 0; }
+  aside.soc-panel .ranks-side { display: block; grid-column: 2; grid-row: 2; min-width: 0; }
+}
