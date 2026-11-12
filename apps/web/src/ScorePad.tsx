@@ -107,64 +107,23 @@ function Row({ color, name, bid, took, points, chips, total, bags, bagsAdded, de
   );
 }
 
-export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dealerName, onLeave }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string; /** current hand's dealer, from the engine seat's occupant; past hands keep their own dealer seat */ dealerName?: string; /** Hand Recap only: open the Leave choice (Save & go to menu / Quit game) */ onLeave?: () => void }) {
+/**
+ * The pad's hand-by-hand list: the hands strip, then one block per hand with
+ * each side's bid, books, points and running total, and a Review tricks door
+ * on every hand whose plays were kept (handTricks.ts). Shared by the score pad
+ * and the game-over screen (owner, 2026-11-12: the results "should have full
+ * score pad not just the last hand played").
+ */
+export function PadHands({ st, names, sideName, dealerName, lastRef }: { st: GameState; names: string[]; sideName: (side: number) => string; dealerName?: string; lastRef?: React.RefObject<HTMLElement | null> }) {
   const r = st.rules;
   const sides = Array.from({ length: st.scores.length }, (_, i) => i);
-  const streaks = holeMarks(r, st.history);
-  // the running set tally (shotCounts — the same count the third-set rule reads), shown as a
-  // number next to the bullet holes so a side at two can see the third one coming
-  const sets = shotCounts(r, st.history);
   const lastNo = st.history[st.history.length - 1]?.handNo;
   const inProgress = st.phase !== 'gameOver' && st.phase !== 'handOver' && !st.history.some((h) => h.handNo === st.handNo);
-  const seatName = (s: number) => hudSeatName(s, names);
+  const seatName = (x: number) => hudSeatName(x, names);
   const currentDealer = dealerName?.trim() || seatName(st.dealer);
-  const lastRef = useRef<HTMLElement>(null);
-  // Trick review, one hand open at a time (handTricks.ts keeps each finished hand's plays).
+  // Trick review, one hand open at a time.
   const [reviewHand, setReviewHand] = useState<number | null>(null);
-  useEffect(() => { lastRef.current?.scrollIntoView({ block: 'end' }); }, []);
-  const showLocked = locked && st.phase !== 'gameOver';
-  const esc = useEscapeClose(onClose);
   return (
-    <div className="modal-backdrop pad-backdrop" ref={esc} onClick={onClose}>
-      <div className="modal glass slant score-pad v2 espn" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
-        <div className="scroll pad2">
-          <header className="pad-sticky">
-            <button type="button" className="sheet-close pad-close-btn" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>✕</button>
-            <div className="panel-title big">SCORE PAD</div>
-            <p className="pad-playing" data-testid="pad-target">Playing to {r.targetScore}</p>
-            <div className="pad-board" style={{ ['--sides' as string]: sides.length }} data-testid="pad-board">
-              {sides.map((side) => {
-                const info = streaks[side] ?? { count: 0, visible: 0, fresh: -1 };
-                const marks = rememberHoles(st.seed, side, info.count, info.fresh);
-                return (
-                <div key={side} className="pad-board-side" style={{ ['--side' as string]: sideColor(r, side) }} data-testid="pad-board-side" data-holes={info.count} data-punched={punchedLabel(marks)} data-sets={sets[side] ?? 0}>
-                  <i className="pad-bar" aria-hidden />
-                  <span className="pad-board-name">{sideName(side)}</span>
-                  <b className="pad-board-total">{st.scores[side]}</b>
-                  <small className="pad-board-bags">{st.bags[side]} bag{st.bags[side] === 1 ? '' : 's'}</small>
-                  <small className="pad-board-sets">{sets[side] ?? 0} set{sets[side] === 1 ? '' : 's'}{sets[side] === 2 ? (r.partnerships ? ' · one more ends it' : ' · one more and out') : ''}</small>
-                  {/* Persistent bullet holes (owner, 2026-10-29): one hole per shot this game,
-                      derived from holeMarks(history) ALONE — never from the rememberHoles store
-                      or the recap's punch — so the pad shows them on any open: mid-game, after a
-                      rotation, after a save/resume or a full relaunch. The fresh slot may punch
-                      in when the pad opens in the hand's immediate aftermath (handOver, punch not
-                      already marked); every other hole is simply there. Same raster art and slot
-                      rotations as the recap's .shot-holes. */}
-                  {info.visible > 0 && (
-                    <span className="pad-board-holes" data-testid={`pad-holes-${side}`} aria-hidden="true">
-                      {Array.from({ length: info.visible }, (_, i) => (
-                        <img key={i} src="/shot/hole.png" alt=""
-                          className={i === info.fresh && !marks.punched[i] && st.phase === 'handOver' ? 'hole-in' : undefined}
-                          style={{ ['--rot' as string]: `${HOLE_SLOTS[i]?.rot ?? 0}deg` }} />
-                      ))}
-                    </span>
-                  )}
-                </div>
-                );
-              })}
-            </div>
-          </header>
-          {/* S2: the by-hand column (its own scroller in landscape; display:contents in portrait) */}
           <div className="pad-hands">
           <HandsStrip history={st.history} sides={sides} label={sideName} color={(s) => sideColor(r, s)} testId="pad-strip" />
           <div className="pad-cols v2" aria-hidden>
@@ -209,6 +168,66 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
             </section>
           )}
           </div>
+  );
+}
+
+export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dealerName, onLeave }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string; /** current hand's dealer, from the engine seat's occupant; past hands keep their own dealer seat */ dealerName?: string; /** Hand Recap only: open the Leave choice (Save & go to menu / Quit game) */ onLeave?: () => void }) {
+  const r = st.rules;
+  const sides = Array.from({ length: st.scores.length }, (_, i) => i);
+  const streaks = holeMarks(r, st.history);
+  // the running set tally (shotCounts — the same count the third-set rule reads), shown as a
+  // number next to the bullet holes so a side at two can see the third one coming
+  const sets = shotCounts(r, st.history);
+  const lastNo = st.history[st.history.length - 1]?.handNo;
+  const inProgress = st.phase !== 'gameOver' && st.phase !== 'handOver' && !st.history.some((h) => h.handNo === st.handNo);
+  const seatName = (s: number) => hudSeatName(s, names);
+  const currentDealer = dealerName?.trim() || seatName(st.dealer);
+  const lastRef = useRef<HTMLElement>(null);
+  useEffect(() => { lastRef.current?.scrollIntoView({ block: 'end' }); }, []);
+  const showLocked = locked && st.phase !== 'gameOver';
+  const esc = useEscapeClose(onClose);
+  return (
+    <div className="modal-backdrop pad-backdrop" ref={esc} onClick={onClose}>
+      <div className="modal glass slant score-pad v2 espn" onClick={(e) => e.stopPropagation()} data-testid="score-pad" role="dialog" aria-label="Score pad">
+        <div className="scroll pad2">
+          <header className="pad-sticky">
+            <button type="button" className="sheet-close pad-close-btn" aria-label="Close score pad" data-testid="pad-close" onClick={onClose}>✕</button>
+            <div className="panel-title big">SCORE PAD</div>
+            <p className="pad-playing" data-testid="pad-target">Playing to {r.targetScore}</p>
+            <div className="pad-board" style={{ ['--sides' as string]: sides.length }} data-testid="pad-board">
+              {sides.map((side) => {
+                const info = streaks[side] ?? { count: 0, visible: 0, fresh: -1 };
+                const marks = rememberHoles(st.seed, side, info.count, info.fresh);
+                return (
+                <div key={side} className="pad-board-side" style={{ ['--side' as string]: sideColor(r, side) }} data-testid="pad-board-side" data-holes={info.count} data-punched={punchedLabel(marks)} data-sets={sets[side] ?? 0}>
+                  <i className="pad-bar" aria-hidden />
+                  <span className="pad-board-name">{sideName(side)}</span>
+                  <b className="pad-board-total">{st.scores[side]}</b>
+                  <small className="pad-board-bags">{st.bags[side]} bag{st.bags[side] === 1 ? '' : 's'}</small>
+                  <small className="pad-board-sets">{sets[side] ?? 0} set{sets[side] === 1 ? '' : 's'}{sets[side] === 2 ? (r.partnerships ? ' · one more ends it' : ' · one more and out') : ''}</small>
+                  {/* Persistent bullet holes (owner, 2026-10-29): one hole per shot this game,
+                      derived from holeMarks(history) ALONE — never from the rememberHoles store
+                      or the recap's punch — so the pad shows them on any open: mid-game, after a
+                      rotation, after a save/resume or a full relaunch. The fresh slot may punch
+                      in when the pad opens in the hand's immediate aftermath (handOver, punch not
+                      already marked); every other hole is simply there. Same raster art and slot
+                      rotations as the recap's .shot-holes. */}
+                  {info.visible > 0 && (
+                    <span className="pad-board-holes" data-testid={`pad-holes-${side}`} aria-hidden="true">
+                      {Array.from({ length: info.visible }, (_, i) => (
+                        <img key={i} src="/shot/hole.png" alt=""
+                          className={i === info.fresh && !marks.punched[i] && st.phase === 'handOver' ? 'hole-in' : undefined}
+                          style={{ ['--rot' as string]: `${HOLE_SLOTS[i]?.rot ?? 0}deg` }} />
+                      ))}
+                    </span>
+                  )}
+                </div>
+                );
+              })}
+            </div>
+          </header>
+          {/* S2: the by-hand column (its own scroller in landscape; display:contents in portrait) */}
+          <PadHands st={st} names={names} sideName={sideName} dealerName={dealerName} lastRef={lastRef} />
         </div>
         <details className="locked-details" data-testid="locked-rules-details">
           <summary>🔒 House rules for this game</summary>

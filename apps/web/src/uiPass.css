@@ -300,3 +300,15 @@ aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
 .pad-hand-head .pad-last + .pad-review { margin-left: 10px; }
 .pad-review-panel { margin: 8px 0 4px; display: flex; justify-content: center; }
 .pad-review-panel > .trick-browser { flex: 0 1 520px; max-width: 100%; }
+
+/* ---- Results screens carry the full score pad ----
+   Owner, 2026-11-12: game over "should have full score pad not just the last
+   hand played". The pad's hand list (PadHands) sits in the results' scroll
+   area; the short box score and the last-hand-only review it replaces are
+   hidden there, and so is the now-redundant Score pad link. */
+.go-pad { width: 100%; text-align: left; }
+.go-scroll:has(.go-pad) .box-score, .vic-scroll:has(.go-pad) .box-score,
+.go-scroll:has(.go-pad) > .tt-tricks-show, .vic-scroll:has(.go-pad) .tt-tricks-show,
+.go-scroll:has(.go-pad) > .tt-tricks, .vic-scroll:has(.go-pad) .tt-tricks { display: none; }
+.gameover:has(.go-pad) .confirm-actions > .quiet-row-btn { display: none; }
+.go-pad .pad-hand { margin-bottom: 8px; }

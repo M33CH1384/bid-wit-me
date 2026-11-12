@@ -76,7 +76,7 @@ import { fireCue, fx, useReduceEffects } from './fx';
 import { PhotoFinishTape, VictoryConfetti } from './RecapFx';
 import { CONFETTI_GOLDS } from './recapfx';
 import { photoFinish, winMargin } from './animfx/detect';
-import { sideColor } from './ScorePad';
+import { PadHands, sideColor } from './ScorePad';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { handClearPx, layoutPublishStale } from './bidPanelFit';
@@ -3959,6 +3959,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                     the box score it belongs with */}
                 <RecapTrickReview key={st.handNo} tricks={piles} face={face} />
                 <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} roll reduced={reduceFx} />
+                {/* The full score pad, hand by hand, each with its own trick review (owner, 2026-11-12). */}
+                <div className="go-pad pad2" data-testid="results-pad"><PadHands st={st} names={names} sideName={(i) => sideName(r, i, names)} dealerName={dealerLabel} /></div>
                 {seriesChip()}
                 <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
                 {/* the merged report (2026-11-01): Postgame Report + reward
@@ -4018,6 +4020,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                   after a set ending's showcase beat */}
               <RecapTrickReview key={st.handNo} tricks={piles} face={face} />
               <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} roll reduced={reduceFx} />
+              {/* The full score pad, hand by hand, each with its own trick review (owner, 2026-11-12). */}
+              <div className="go-pad pad2" data-testid="results-pad"><PadHands st={st} names={names} sideName={(i) => sideName(r, i, names)} dealerName={dealerLabel} /></div>
               {/* the merged report (2026-11-01): Postgame Report + reward
                   rows join the box score in the scroll region — standings
                   stay fixed above, actions pinned below, as before. Story
