@@ -26,6 +26,7 @@ import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/barlow-condensed/800.css';
 import './styles.css';
+import './uiPass.css';
 
 // Route chunks load through importChunk: a deploy deletes the previous build's hashed
 // chunks, so a page opened before the deploy (an invite landing in a long-lived tab is
