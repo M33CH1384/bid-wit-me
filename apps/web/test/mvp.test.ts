@@ -26,8 +26,24 @@ describe('pickMvp', () => {
     expect(m.lines).toContainEqual({ label: 'Made own bid', value: '2 of 2' });
   });
 
-  it('a monster on the losing side is not the MVP', () => {
-    const h = [hand([2, 6, 2, 3], [2, 7, 2, 2])];
+  it('a better night on the losing side is not enough on its own', () => {
+    // seat 1 edges the best winner, but nowhere near "by a mile"
+    const h = [hand([4, 5, 3, 2], [4, 6, 3, 0]), hand([4, 5, 3, 2], [4, 6, 3, 0])];
+    expect(pickMvp(r, h, [0])!.side).toBe(0);
+  });
+
+  it('a losing-side player who out-played every winner by a mile takes it', () => {
+    // seat 1 carries the table hand after hand; the winners scrape by
+    const h = [hand([2, 7, 2, 2], [2, 8, 2, 1]), hand([2, 7, 2, 2], [2, 8, 2, 1]), hand([2, 7, 2, 2], [2, 8, 2, 1])];
+    const m = pickMvp(r, h, [0])!;
+    expect(m.seat).toBe(1);
+    expect(m.side).toBe(1);
+    expect(m.books).toBe(24);
+  });
+
+  it('the bar is both a ratio and a margin: a lopsided but tiny game stays with the winners', () => {
+    // 1.5x the winner's score, but only a few points clear in a one-hand game
+    const h = [hand([1, 4, 1, 3], [1, 5, 1, 2])];
     expect(pickMvp(r, h, [0])!.side).toBe(0);
   });
 
