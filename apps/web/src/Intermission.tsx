@@ -98,7 +98,7 @@ export function calloutsFor(st: GameState, mySide: number, names: string[]): Cal
 }
 
 export function Intermission({
-  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, trickReview, setAnimCtx,
+  st, names, mySide, secs, ready, onReady, online, onScorePad, onLeave, series, chatOpen, unread, onChat, trickReview, renegeCall, setAnimCtx,
 }: {
   /** rematch series chip */
   series?: ReactNode;
@@ -114,6 +114,8 @@ export function Intermission({
    *  2026-10-26 order — the tornado's cleared hands stay reachable from
    *  the table's RUN IT! chip once play resumes. */
   trickReview?: ReactNode;
+  /** Renege tables: the "Call renege" button while this seat still has a book it could call (the window stays open until the next deal). */
+  renegeCall?: ReactNode;
   /** Set-animation context (owner, 2026-10-21): the story stop this match is
    *  played at (the house — its animation plays here earned or not), the
    *  room's venue for "Match the room", and the player's picker choice.
@@ -532,6 +534,7 @@ export function Intermission({
                 trick browser itself, when open, takes the row's full
                 width below them. */}
             <div className="tt-foot-row">
+              {renegeCall}
               {trickReview}
               {onLeave && <button type="button" className="leave-red" data-testid="recap-leave" onClick={onLeave}>Leave game</button>}
             </div>

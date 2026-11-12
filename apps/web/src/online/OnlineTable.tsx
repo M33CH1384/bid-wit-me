@@ -225,6 +225,8 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
         onEyeZoomCalibration={(eyeZoomCal) => { const s = { ...settings, eyeZoomCal }; setSettings(s); saveSettings({ ...loadSettings(), eyeZoomCal }); }}
         online={{
           source, names, seatExtra, seatVideos, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity, toss: tossBinding,
+          // Renege tables: a call goes to the room in REAL seats — the server's engine rules on it.
+          renege: { call: (target: number, trick: number) => conn.send({ t: 'renegeCall', target: rot.R(target), trick }) },
           // Streaming surfaces reshape the chat binding: the broadcast frame has
           // no chat surface at all; the watch view reads chat but never posts
           // (its one affordance sends the viewer to the play door). The server

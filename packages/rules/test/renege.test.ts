@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type Card, type GameState, type TableRules,
-  RENEGE_PENALTY_BOOKS, RuleError, acceptRules, applyAction, canCallRenege, honestCards, lowestLegal, makeRules,
+  RENEGE_PENALTY_BOOKS, RuleError, acceptRules, applyAction, canCallRenege, canRunIt, honestCards, lowestLegal, makeRules,
   playableCards, renegeCallTargets, scoreHand, spectatorView, validateRules, viewFor,
 } from '../src';
 import { bidAll, fill, play, rigged } from './helpers';
@@ -207,6 +207,22 @@ describe('calling a renege', () => {
     expect(a.scores).toEqual(b.scores);
     expect(a.history[0]!.tricksWon).toEqual(b.history[0]!.tricksWon);
     expect(a.history[0]!.renegeCalls).toBeUndefined();
+  });
+});
+
+describe('Run it!', () => {
+  it('is never offered on a renege table: a renege would break the proof (found live, 2026-11-12)', () => {
+    // every seat, every point of an honest hand: no claim, and so no play-out that can lose its line
+    let st = table();
+    while (st.phase === 'playing') {
+      for (let s = 0; s < 4; s++) {
+        expect(canRunIt(st, s)).toBe(false);
+        expect(viewFor(st, s).canRunIt).toBe(false);
+      }
+      const seat = st.turn!;
+      st = applyAction(st, { type: 'play', seat, card: lowestLegal(st.rules, st.hands[seat]!, st.trick.plays, st.spadesBroken) });
+    }
+    expect(() => applyAction(reneged(), { type: 'runIt', seat: 0 })).toThrowError(RuleError);
   });
 });
 

@@ -1474,7 +1474,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .tt-backdrop ~ .modal-backdrop { z-index: 1010; }
 .hype-layer { z-index: 1100; }
 .sound-dock { z-index: 1050; }
-.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.animfx-layer):not(.toasts):not(.badge-unlock):not(.victory-screen):not(.recap-chat) {
+.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.animfx-layer):not(.toasts):not(.badge-unlock):not(.victory-screen):not(.recap-chat):not(.renege-overlay):not(.renege-verdict) {
   filter: blur(3px) brightness(.55) saturate(.8); pointer-events: none; transition: filter .25s ease;
 }
 .table-screen.modal-open .modal-backdrop { background: rgba(6,3,12,.35); }
@@ -2011,6 +2011,32 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .toss-wait { font-weight: 700; color: rgba(255,255,255,.92); padding: 4px 0 2px; }
 .toss-clock { margin-top: 10px; font-size: 12.5px; font-weight: 700; color: rgba(255,255,255,.65); }
 @media (prefers-reduced-motion: reduce) { .toss-btn, .toss-yes { animation: none; } }
+/* Renege calls (owner, 2026-11-12): the call pill, the book sheet and the ruling. The sheet and
+   the ruling borrow the toss sheet / misdeal panel shells; only the pieces of their own are here. */
+.renege-wrap { position: fixed; left: calc(10px + env(safe-area-inset-left)); bottom: calc(23vh + 110px + env(safe-area-inset-bottom)); z-index: 12; }
+.renege-btn { font-family: var(--display); font-weight: 900; font-style: italic; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; color: #fff; padding: 7px 14px 8px; border-radius: 999px; border: 2px solid rgba(255,255,255,.8); cursor: pointer; background: linear-gradient(180deg, #e5484d, #9b1c26); box-shadow: 0 6px 18px rgba(0,0,0,.5); }
+.renege-btn:hover { filter: brightness(1.1); }
+.renege-btn:active { transform: scale(.97); }
+/* phones: three pills do not fit the recap's footer row — the call takes its own line */
+@media (max-width: 560px) { .tt-foot-row > .tt-tricks-show.renege-recap { flex: 1 1 100%; } }
+.renege-overlay { z-index: 1010; } /* above the hand recap (.tt-backdrop, 1000): the call stays open there */
+.renege-sheet { width: min(96vw, 460px); }
+.renege-head, .renege-verdict-head.hit { color: #ff9aa2; }
+.renege-verdict-head.miss { color: #c9c2ff; }
+.renege-books { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.renege-row { padding: 7px 9px 8px; border-radius: 12px; background: rgba(255,255,255,.07); }
+.renege-no { display: block; font-family: var(--display); font-weight: 900; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.7); margin-bottom: 5px; }
+.renege-book, .renege-proof { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.renege-book.solo { margin-bottom: 14px; }
+.renege-proof { grid-template-columns: repeat(3, minmax(0, 84px)); justify-content: center; margin: 10px 0 4px; }
+.renege-play { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 2px; border: 2px solid transparent; border-radius: 10px; background: none; color: #fff; font: inherit; min-width: 0; }
+.renege-play.can { cursor: pointer; border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.06); }
+.renege-play.can:hover { border-color: #ff9aa2; background: rgba(229,72,77,.22); }
+.renege-play.picked { border-color: #ff9aa2; background: rgba(229,72,77,.28); }
+.renege-card { width: min(100%, 62px); aspect-ratio: 240 / 336; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+.renege-name { font-size: 11.5px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,.88); }
+.renege-verdict { z-index: 1020; }
+.renege-penalty { margin-top: 8px; font-family: var(--display); font-weight: 900; font-size: 18px; letter-spacing: .04em; text-transform: uppercase; color: #fff; }
 @keyframes runit-glow { 50% { box-shadow: 0 0 28px rgba(179,107,255,1), 0 0 64px rgba(71,209,255,.7), inset 0 1px 0 rgba(255,255,255,.5); } }
 @keyframes runit-attn { 0%, 100% { transform: scale(1); box-shadow: 0 0 18px rgba(179,107,255,.85), 0 0 0 0 rgba(255,255,255,.7); } 50% { transform: scale(1.09); box-shadow: 0 0 34px rgba(179,107,255,1), 0 0 0 14px rgba(255,255,255,0); } }
 .run-it-tip { position: relative; max-width: min(320px, 86vw); padding: 10px 12px; font-size: 14px; line-height: 1.35; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; border: 1px solid rgba(var(--gold-rgb),.7); box-shadow: 0 0 0 9999px rgba(5,2,10,.45), 0 0 24px rgba(var(--gold-rgb),.4); }

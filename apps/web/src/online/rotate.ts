@@ -4,7 +4,7 @@
  * bags, hand results) rotate by side. Other players' hands are never sent; they're filled with placeholders of
  * the right length so the renderer can draw card backs.
  */
-import type { Card, GameResult, GameState, HandRecord, PlayerView, SideHandResult, TableRules, Trick } from '@spades/rules';
+import type { Card, GameResult, GameState, HandRecord, PlayerView, RenegeCall, SideHandResult, TableRules, Trick } from '@spades/rules';
 
 export interface Rotation {
   n: number;
@@ -43,10 +43,16 @@ function rotSide(s: SideHandResult, rot: Rotation): SideHandResult {
   return { ...s, side: rot.Ls(s.side), seats: s.seats.map(rot.L).sort((a, b) => a - b), nils: s.nils.map((x) => ({ ...x, seat: rot.L(x.seat) })).sort((a, b) => a.seat - b.seat) };
 }
 
+/** A renege ruling into the local frame: the two seats rotate as seats, the two sides as sides. The proof cards ride as-is. */
+function rotRenegeCall(c: RenegeCall, rot: Rotation): RenegeCall {
+  return { ...c, by: rot.L(c.by), target: rot.L(c.target), from: rot.Ls(c.from), to: rot.Ls(c.to) };
+}
+
 function rotRecord(h: HandRecord, rot: Rotation): HandRecord {
   return { ...h, dealer: rot.L(h.dealer), bids: permute(h.bids, rot), tricksWon: permute(h.tricksWon, rot), sides: permute(h.sides.map((s) => rotSide(s, rot)), rot, true),
     // a tossed hand's set sides are side indices: they rotate with the sides or the recap blames the wrong team
-    ...(h.tossed ? { tossed: { setSides: h.tossed.setSides.map((s) => rot.Ls(s)) } } : {}) };
+    ...(h.tossed ? { tossed: { setSides: h.tossed.setSides.map((s) => rot.Ls(s)) } } : {}),
+    ...(h.renegeCalls ? { renegeCalls: h.renegeCalls.map((c) => rotRenegeCall(c, rot)) } : {}) };
 }
 
 function rotResult(r: GameResult | null, rot: Rotation): GameResult | null {
@@ -112,6 +118,8 @@ export function rotateView(v: PlayerView): { st: GameState; view: PlayerView; ro
     ...(v.misdealReveal ? { misdealReveal: { seat: rot.L(v.misdealReveal.seat), cards: v.misdealReveal.cards } } : {}),
     // The toss offer is public table state; its sides rotate into the local frame like the scores do.
     toss: v.toss ? { setSides: v.toss.setSides.map((s) => rot.Ls(s)), points: permute(v.toss.points, rot, true) } : null,
+    // Renege tables: the rulings are public and the callable books name seats — both move into the local frame.
+    ...(v.renege ? { renege: { calls: v.renege.calls.map((c) => rotRenegeCall(c, rot)), open: v.renege.open.map((b) => ({ trick: b.trick, targets: b.targets.map((s) => rot.L(s)) })) } } : {}),
   };
   return { st, view, rot };
 }

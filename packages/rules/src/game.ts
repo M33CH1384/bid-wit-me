@@ -577,6 +577,9 @@ export function canRunIt(st: GameState, seat: Seat): boolean {
   // The proof already respects empty hands: an out seat holds no unseen cards and is never
   // dealt a turn (nextLive), so a live seat's guarantee is unaffected.
   if (isEliminated(st, seat)) return false;
+  // Renege tables: no claim can be proven. The proof reads "did not follow" as "is out of the
+  // suit" and assumes every answer follows suit — neither holds when any card may be thrown.
+  if (renegeOn(st.rules)) return false;
   return evaluateRunIt(st, seat);
 }
 

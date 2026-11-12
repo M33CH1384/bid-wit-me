@@ -3,6 +3,7 @@ import { musicTension } from './musicTension';
 import { clearTableChatOpen, loadTableChatOpen, saveTableChatOpen } from './chatView';
 import { browsedTrick, stepTrickIndex, trickPositionLabel } from './lastTrickBrowse';
 import { RecapTrickReview } from './TrickBrowser';
+import { RenegeButton, RenegeSheet, RenegeVerdict } from './Renege';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { getViewAdjustState, isDefaultViewAdjust, onViewAdjustCommit, seedViewAdjust, subscribeViewAdjust, viewAdjustLabel, type ViewAdjust } from './viewAdjust';
 import { seedMotionViewEnabled } from './motionView';
@@ -33,7 +34,7 @@ import {
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
-import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
+import { type RenegeCall, type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import PersonaFace from './PersonaFace';
 import { personaFigureGlbUrl, personaFigureKeyForName } from './personaFigureKey';
@@ -113,7 +114,7 @@ import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
 import { plateTally, rememberHandTally, type HandTally } from './plateStats';
 import { MARGIN_LABEL, marginTierForSeat, type MarginTier } from './thinMargin';
-import { BOOK_GATHER_MS, landedTook, shownTook } from './tookDisplay';
+import { BOOK_GATHER_MS, landedTook, shownTook, withPenaltyBooks } from './tookDisplay';
 import { bidChipText, dealerChipMatches, plateTookText, popPlateTook, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeStickyTip, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
@@ -250,6 +251,8 @@ export interface OnlineBinding {
   /** Toss-the-hand poll (online): the room's open poll in LOCAL seats, the hand
    *  a poll already died on, and the two sends. Absent offline (Table runs the
    *  single-human confirm locally) and where the room refuses polls. */
+  /** Renege calls (online): send a call to the room — the server is the judge. LOCAL seats. Absent offline. */
+  renege?: { call: (target: number, trick: number) => void };
   toss?: {
     poll: { callerName: string; voters: number[]; yes: number[]; no: number[]; expiresAt: number; mine: boolean; myVote: boolean | null } | null;
     deadHand?: number;
@@ -1120,6 +1123,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // is — the sheet rides the same `hold` the learning tips use), and the hand
   // a "Keep playing" already killed the poll for.
   const [tossSheet, setTossSheet] = useState(false);
+  // Renege calls: the call sheet is open (offline the bots hold while it is, like the toss sheet).
+  const [renegeSheet, setRenegeSheet] = useState(false);
   const [tossDeadLocal, setTossDeadLocal] = useState<number | null>(null);
   // Toss pill dismissal (owner, 2026-11-07): the hand key (seed:handNo)
   // this player dismissed the call pill for. Local UI state only — never
@@ -1153,7 +1158,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const [sceneFirstFrame, setSceneFirstFrame] = useState(false);
   const [gateMountedAt] = useState(() => Date.now());
   const onSceneFirstFrame = useCallback(() => setSceneFirstFrame(true), []);
-  const { st, view, pause, error, apply, introHand, dealing, dealSettled, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, (learning && tipOpen) || tossSheet, startDealer, partnerHint, localReport, dealReady, sceneDealt, !!story);
+  const { st, view, pause, error, apply, introHand, dealing, dealSettled, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, (learning && tipOpen) || tossSheet || renegeSheet, startDealer, partnerHint, localReport, dealReady, sceneDealt, !!story);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
@@ -1518,7 +1523,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     const t = window.setTimeout(() => { if (!certifiedEver.current) setSceneSilent(true); }, 5000);
     return () => window.clearTimeout(t);
   }, [sceneSilent, presented, myTurn, st.phase, turnKey]);
-  const legal = highlightLegal({ myTurn, dropOpen: dropOpenView, phase: st.phase, presented, viewLegal: view.legal, hand });
+  const legal = highlightLegal({ myTurn, dropOpen: dropOpenView, phase: st.phase, presented, viewLegal: view.playable ?? view.legal, hand });
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
   const mySide = sideOf(HUMAN, r);
@@ -1787,7 +1792,9 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     sync.scheduled = Math.max(sync.scheduled, piles.length);
   }, [piles.length, landedBooks, st.handNo]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => clearLandTimers, []);
-  const tookShown = shownTook(landedTook(st.tricks, landedBooks, plates.books.length), plates.books);
+  const landedTally = landedTook(st.tricks, landedBooks, plates.books.length);
+  // Renege tables: books a ruling moved show at once (see withPenaltyBooks); no-op with no call made.
+  const tookShown = shownTook(view.renege?.calls.length && st.phase === 'playing' ? withPenaltyBooks(landedTally, st.tricks, st.tricksWon) : landedTally, plates.books);
   // The plate pop rides the tick itself: when a seat's shown count rises through
   // a landing, pop every copy of that plate. Hand changes never pop — a swapped-in
   // hand shows its true count silently.
@@ -1831,6 +1838,27 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     && (online ? (!!online.toss && !tossPoll && online.toss.deadHand !== st.handNo) : tossDeadLocal !== st.handNo && !tossSheet);
   const tossBlockedNote = !spectating && !story && st.phase === 'playing' && !!view.toss && view.tossBlockedByNil;
   const tossSideName = (side: number): string => (online ? online.sideLabel(side) : sideName(r, side, names));
+  // Renege calls (owner, 2026-11-12): the view lists the finished books this seat could still
+  // call (view.renege.open — empty for spectators). The call is live during the hand and on the
+  // recap until the next deal. Never in story mode. The ruling (view.renege.calls) is public: the
+  // newest one shows to the whole table.
+  const renegeOpen = !spectating && !story && !dealing && !runFx && (!online || !!online.renege) && (st.phase === 'playing' || st.phase === 'handOver')
+    ? (view.renege?.open ?? []).filter((b) => b.targets.length > 0) : [];
+  const canCallRenege = renegeOpen.length > 0;
+  const renegeCalls = view.renege?.calls ?? [];
+  const renegeKey = `${seed}:${st.handNo}`;
+  const renegeSeen = useRef<{ key: string; n: number }>({ key: renegeKey, n: renegeCalls.length });
+  const [renegeVerdict, setRenegeVerdict] = useState<RenegeCall | null>(null);
+  useEffect(() => {
+    const seen = renegeSeen.current;
+    if (seen.key !== renegeKey) { renegeSeen.current = { key: renegeKey, n: renegeCalls.length }; if (!renegeCalls.length) return; seen.n = 0; }
+    else if (renegeCalls.length <= seen.n) { seen.n = renegeCalls.length; return; }
+    renegeSeen.current = { key: renegeKey, n: renegeCalls.length };
+    setRenegeVerdict(renegeCalls[renegeCalls.length - 1]!);
+    setRenegeSheet(false);
+  }, [renegeKey, renegeCalls.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const clearRenegeVerdict = useCallback(() => setRenegeVerdict(null), []);
+  useEffect(() => { if (!canCallRenege) setRenegeSheet(false); }, [canCallRenege]);
   // When the human's bid panel is up, the misdeal call lives INSIDE that panel (impossible to miss);
   // the floating button only covers the window while other seats are still bidding.
   const bidPanelShowing = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !autoReveal;
@@ -2962,7 +2990,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // stays 0: the YOUR TURN badge and the lit cards arrive together, never one before the other.
   // The one-card free drop is exempt from that gate (turnPresentation.ts), so its count follows
   // the same exemption: the badge arrives with the lit card, not a beat behind it.
-  const playableCount = st.phase === 'playing' ? ((presented || dropOpenView) ? view.legal.filter((c) => (hand ?? []).includes(c)).length : 0) : legal.length;
+  const playableCount = st.phase === 'playing' ? ((presented || dropOpenView) ? (view.playable ?? view.legal).filter((c) => (hand ?? []).includes(c)).length : 0) : legal.length;
   const live = turnView({
     turn: localTurn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx,
     viewerSeat: HUMAN, spectating, legalCount: playableCount, selected: !!selected,
@@ -3782,6 +3810,18 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
       {canMisdeal && !bidPanelShowing && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
       {canToss && <TossButton onCall={() => { setSelected(null); if (online) online.toss!.call(); else setTossSheet(true); }} onDismiss={() => setTossDismissedHand(`${seed}:${st.handNo}`)} />}
+      {canCallRenege && st.phase === 'playing' && !renegeSheet && !renegeVerdict && !showPad && <RenegeButton onOpen={() => { setSelected(null); setRenegeSheet(true); }} />}
+      {canCallRenege && renegeSheet && (
+        <RenegeSheet
+          tricks={st.tricks}
+          open={renegeOpen}
+          face={face}
+          rules={r}
+          onCall={(target, trick) => { setRenegeSheet(false); if (online) online.renege!.call(target, trick); else apply({ type: 'callRenege', seat: HUMAN, target, trick }); }}
+          onClose={() => setRenegeSheet(false)}
+        />
+      )}
+      {renegeVerdict && <RenegeVerdict call={renegeVerdict} face={face} sideLabel={tossSideName} rules={r} onDone={clearRenegeVerdict} />}
       {tossBlockedNote && (
         <div className="toss-wrap"><span className="toss-note" data-testid="toss-blocked">Nil still live — this hand plays out</span></div>
       )}
@@ -3870,6 +3910,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
           chatOpen={chatOpen}
           onChat={() => setChatOpen(!chatOpen)}
           trickReview={<RecapTrickReview key={st.handNo} tricks={piles} face={face} />}
+          renegeCall={canCallRenege && st.phase === 'handOver' ? <RenegeButton recap onOpen={() => setRenegeSheet(true)} /> : undefined}
         />
       )}
       {seriesOpen && series && <SeriesSheet series={series} mine={seriesMine} onClose={() => setSeriesOpen(false)} />}

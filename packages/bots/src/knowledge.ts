@@ -1,6 +1,6 @@
 import {
   type Card, type PlayerView, type Play, type TableRules,
-  buildDeck, cardPower, effectiveSuit, handSize, isBooksHand, isNilBid, isTrump, partnerOf, sideOf, trickWinner,
+  buildDeck, cardPower, effectiveSuit, handSize, isBooksHand, isNilBid, isTrump, partnerOf, renegeOn, sideOf, trickWinner,
 } from '@spades/rules';
 
 /** Derived facts a bot uses for decisions; computed only from the seat's view (no peeking). */
@@ -71,6 +71,8 @@ export function know(v: PlayerView): Knowledge {
 export function voidsOf(v: PlayerView): Set<string>[] {
   const r = v.rules;
   const out = Array.from({ length: r.playerCount }, () => new Set<string>());
+  // Renege tables: not following proves nothing — the seat may be holding the suit. No void is ever "known".
+  if (renegeOn(r)) return out;
   for (const t of [...v.tricks, v.trick]) {
     if (!t.plays.length) continue;
     const led = effectiveSuit(t.plays[0]!.card, r);

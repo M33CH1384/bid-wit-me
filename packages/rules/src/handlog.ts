@@ -168,7 +168,9 @@ export class HandLogBuilder {
       });
     }
 
-    if (after.history.length > before.history.length) {
+    // a renege call made after the last card re-scores the hand in place (same history length)
+    const rescored = action.type === 'callRenege' && hand.complete && after.history.length === before.history.length && after.history.length > 0;
+    if (after.history.length > before.history.length || rescored) {
       // the hand was scored by this step: freeze the outcome from the engine's own record
       const rec = after.history[after.history.length - 1]!;
       hand.bids = [...rec.bids];

@@ -6,6 +6,7 @@ import { chooseExchange, choosePlay } from './play';
 export * from './bidding';
 export { choosePlay, chooseExchange, isPremium, NOVICE_BLUNDER_RATE } from './play';
 export { voidsOf } from './knowledge';
+export * from './renege';
 
 /**
  * Picks the next action for a bot seat from that seat's view only.

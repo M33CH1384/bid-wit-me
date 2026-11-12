@@ -8,11 +8,11 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, botPaceDelayMs, canRunIt, isJoker, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, secureSeed, lastCardDropOpen, tossStatus, viewFor, withCompleteNil,
+  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, botPaceDelayMs, canRunIt, isJoker, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, renegeOn, secureSeed, sideOf, lastCardDropOpen, tossStatus, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, noteTalkHand, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, chooseRenege, chooseRenegeCall, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, noteTalkHand, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
 import { GUIDE_FINALE, STORY_CHARACTERS, STORY_STOPS, STORY_TIER_SKILL, buzzMomentFor, deeSkillForStop, guideEventLine, guideFinaleLine, guideFinaleResolutionLine, guideFinaleStartLine, guideHandLine, mannerBandOf, newGuideState, storyFactsOf, storyPairTrackKey, storyRulesForStop, storyStopById, targetForStop, type AwarenessCase, type GuideFinaleFacts, type GuideState, type StoryBeat, type StoryBuzzInput, type StoryGameFacts, type StoryStop } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
@@ -178,6 +178,8 @@ export interface RoomData {
    * still knows the deadline; the in-memory wake alone does not survive.
    */
   botDueAt?: number | null;
+  /** Renege tables: when the bot call now pending (a renege proved on the table) is made (epoch ms). */
+  renegeDueAt?: number | null;
   /** the bot seat whose last-card free drop is scheduled out of turn, and when it lands (epoch ms) */
   dropSeat?: number | null;
   dropDueAt?: number | null;
@@ -378,6 +380,8 @@ export const BOT_WATCHDOG_MS = 5_000;
  * their silence cannot be farmed either — the hand simply plays on.
  */
 export const TOSS_POLL_MS = 30_000;
+/** Renege tables: the beat between a renege being proved on the table and a bot calling it. */
+export const BOT_RENEGE_CALL_MS = 1500;
 
 /** What the host environment (Durable Object or test harness) provides. */
 export interface RoomIO {
@@ -582,7 +586,8 @@ export class Room {
   /** Release 9b: turn a fresh table into a tournament match. */
   setupTournament(t: TournamentSeat, rules: TableRules): void {
     const d = this.data;
-    d.rules = clampRules(rules);
+    // stakes tables play it straight: no renege calls in a bracket
+    d.rules = { ...clampRules(rules), renege: false };
     d.tournament = { ...t, reported: false };
     d.botLevel = 'mixed';
     d.seats = Array.from({ length: 4 }, () => ({ kind: 'empty' as const }));
@@ -595,7 +600,8 @@ export class Room {
   /** Big Bank: turn a fresh table into a wager match. Private, rules locked, no bots ever. */
   setupChallenge(c: ChallengeSeat, rules: TableRules): void {
     const d = this.data;
-    d.rules = clampRules(rules);
+    // stakes tables play it straight: no renege calls with a wager on the line
+    d.rules = { ...clampRules(rules), renege: false };
     d.challenge = { ...c, reported: false };
     d.private = true;
     d.botLevel = 'mixed';
@@ -1488,6 +1494,10 @@ export class Room {
         this.tossVote(me, pid, msg.yes);
         break;
       }
+      case 'renegeCall': {
+        this.renegeCall(me, msg.target, msg.trick);
+        break;
+      }
       case 'leave': {
         this.leave(pid);
         this.conns.set(connId, null);
@@ -1975,6 +1985,51 @@ export class Room {
       d.dropDueAt = null;
     }
     d.tossPoll = null;
+  }
+
+  /* ------------------------------------------------------- renege calls */
+
+  /**
+   * A seated player calls an opponent's renege (renege tables only). No poll and no vote:
+   * the engine holds the truth and rules on the spot — the verdict and the moved books ride
+   * the next view to everyone. Open during trick play and on the hand-over screen until the
+   * next deal; never while a toss poll has the table frozen.
+   */
+  private renegeCall(me: Member, target: number, trick: number): void {
+    const d = this.data;
+    if (!d.game || d.phase !== 'playing') throw new RoomError('WRONG_PHASE', 'No hand in play');
+    if (me.seat === null) throw new RoomError('NOT_SEATED', 'Only players at the table can call a renege');
+    if (d.tossPoll) throw new RoomError('POLL_OPEN', 'A toss poll is open — vote first');
+    this.applyRenegeCall(me.seat as Seat, target as Seat, trick);
+  }
+
+  /** Apply a renege call through the normal path and tell the table how it came out. Throws RuleError on a call that cannot be made. */
+  private applyRenegeCall(seat: Seat, target: Seat, trick: number): void {
+    const d = this.data;
+    const wasOver = d.game!.phase === 'handOver';
+    this.apply({ type: 'callRenege', seat, target, trick });
+    const call = d.game!.renegeCalls?.at(-1);
+    if (!call) return;
+    const who = `${this.seatName(seat)} calls a renege on ${this.seatName(target)} (book ${trick + 1})`;
+    this.system(call.correct
+      ? `${who}: RENEGE — ${call.books} books to ${this.sideLabel(call.to)}`
+      : `${who}: no renege — ${call.books} books to ${this.sideLabel(call.to)}`);
+    // a ruling after the last card re-scored the hand: the countdown to the next deal starts over
+    // so the table has time to read it
+    if (wasOver && d.game!.phase === 'handOver') d.deadline = null;
+  }
+
+  /** Renege tables: the call a bot seat would make right now (a renege the table has seen proved), or null. */
+  private botRenegeCall(): { seat: Seat; target: Seat; trick: number } | null {
+    const d = this.data;
+    const g = d.game!;
+    for (let seat = 0; seat < g.rules.playerCount; seat++) {
+      const slot = d.seats[seat];
+      if (slot?.kind !== 'bot') continue;
+      const call = chooseRenegeCall(viewFor(g, seat), botSkillFor(slot.level, g.seed, seat, slot.name));
+      if (call) return { seat, ...call };
+    }
+    return null;
   }
 
   private apply(action: Action): void {
@@ -2875,6 +2930,20 @@ export class Room {
         }
         if (claimer >= 0) { this.apply({ type: 'runIt', seat: claimer as Seat }); changed = true; continue; }
       }
+      // Renege tables: a bot that caught an opponent — a renege PROVED on the table, never a hunch —
+      // calls it after a short beat. The table holds for that beat (no card lands under the call).
+      if (renegeOn(g.rules) && (g.phase === 'playing' || g.phase === 'handOver')) {
+        const call = this.botRenegeCall();
+        if (!call) d.renegeDueAt = null;
+        else {
+          d.renegeDueAt ??= now + BOT_RENEGE_CALL_MS;
+          if (now < d.renegeDueAt) { this.io.setAlarm(d.renegeDueAt); return changed; }
+          d.renegeDueAt = null;
+          try { this.applyRenegeCall(call.seat, call.target, call.trick); } catch (e) { console.error('bot renege call failed', e); }
+          changed = true;
+          continue;
+        }
+      }
       // Seated players or a connected spectator (an eliminated player stays to watch). Nobody connected: freeze.
       let paused = !Object.keys(this.data.members).some((id) => this.isConnected(id));
       const tour = d.tournament;
@@ -3158,6 +3227,14 @@ export class Room {
     const h = mate >= 0 ? d.hints?.[mate] : undefined;
     const hint = h && h.hand === d.game!.handNo && d.seats[mate]?.kind === 'human' ? parseHint(h.text) : null;
     let action = chooseBotAction(view, skill, undefined, hint) ?? this.fallbackAction(seat);
+    // Renege tables: a BOT whose side has no human on it may cut a suit it still holds, rarely
+    // (chooseRenege). Never a bot partnered with a person — nobody pays three books for a bot's
+    // cheat — and never a timed-out human's auto-play.
+    if (action.type === 'play' && slot0?.kind === 'bot' && renegeOn(d.rules)
+      && !d.seats.slice(0, d.rules.playerCount).some((s, i) => s.kind === 'human' && sideOf(i, d.rules) === sideOf(seat, d.rules))) {
+      const cut = chooseRenege(view, skill);
+      if (cut) action = { type: 'play', seat, card: cut };
+    }
     // persona lean (bots only): a slight bid nudge / Nil reluctance; illegal nudges fall through to the catch below
     const slot = d.seats[seat];
     if (slot?.kind === 'bot' && action.type === 'bid') {

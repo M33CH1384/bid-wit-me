@@ -343,6 +343,9 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           <label className="row"><span className="row-label">Bags and penalties<small>off: books over your bid score nothing</small></span><span className="row-control">
             <button type="button" data-testid="lobby-bags" className={`toggle ${settings.bagsOn !== false ? 'on' : ''}`} role="switch" aria-checked={settings.bagsOn !== false} aria-label="Bags and penalties" onClick={() => set('bagsOn', settings.bagsOn === false)}><span /></button>
           </span></label>
+          <label className="row"><span className="row-label">Renege calls<small>play any card; get caught and it costs 3 books</small></span><span className="row-control">
+            <button type="button" data-testid="lobby-renege" className={`toggle ${settings.renege === true ? 'on' : ''}`} role="switch" aria-checked={settings.renege === true} aria-label="Renege calls" onClick={() => set('renege', settings.renege !== true)}><span /></button>
+          </span></label>
           <p className="rules-summary" data-testid="lobby-rules-summary">{rulesSummary(settingsToRules(settings))}</p>
           <label className="row"><span className="row-label">First hand: books bid themselves<small>No bidding in hand 1 · 10 points per book</small></span><span className="row-control">
             <button type="button" data-testid="books-toggle" className={`toggle ${settings.firstHandBidsItself !== false ? 'on' : ''}`} role="switch" aria-checked={settings.firstHandBidsItself !== false} aria-label="First hand: books bid themselves" onClick={() => set('firstHandBidsItself', settings.firstHandBidsItself === false)}><span /></button>

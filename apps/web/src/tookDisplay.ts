@@ -38,3 +38,19 @@ export function landedTook(
 export function shownTook(landed: readonly number[], truth: readonly number[]): number[] {
   return truth.map((t, i) => Math.min(landed[i] ?? 0, t));
 }
+
+/**
+ * Renege tables: penalty books change hands without a trick being won, so the
+ * true tally can differ from "tricks this seat won". The difference (truth
+ * minus the full winner tally) is applied on top of the landed tally at once —
+ * a ruling moves the numbers the moment it is made, there is no flight to wait
+ * for. With no penalty in play the difference is zero and this is a no-op.
+ */
+export function withPenaltyBooks(
+  landed: readonly number[],
+  tricks: readonly { winner: number | null }[],
+  truth: readonly number[],
+): number[] {
+  const won = landedTook(tricks, tricks.length, truth.length);
+  return truth.map((t, i) => Math.max(0, (landed[i] ?? 0) + (t - (won[i] ?? 0))));
+}
