@@ -294,9 +294,60 @@ export function __resetMotionViewStore(): void {
   if (touchGestureActive) { touchGestureActive = false; for (const fn of [...touchListeners]) fn(); }
   setMotionSwayDeg(0);
   setMotionQuickSuspended(false);
+  sensorsAsked = false;
 }
 
 /* ---------------------------------------------------- permission/probe */
+
+/**
+ * RE-ARMING ON LAUNCH (owner, 2026-11-13: "The motion view setting only ever works if I toggle it
+ * off then on").
+ *
+ * iOS hands out motion access for ONE page session, and only from inside a tap. The Settings
+ * switch asks at the moment it is turned on, so the session it was turned on in worked — but the
+ * saved setting came back ON at the next launch with nobody having asked, the driver listened to a
+ * sensor that stayed silent, and the only way to get the question asked again was to flip the
+ * switch off and on.
+ *
+ * So while the option is on and this session has not asked yet, the first tap anywhere asks.
+ * Platforms with no permission step (Android, desktop) need nothing and get no listener. A
+ * refusal is not asked again this session — the switch in Settings still can be.
+ */
+let sensorsAsked = false;
+
+/** True when this platform gates motion behind a tap and this session has not been through it. */
+export function motionNeedsTap(orientationCtor?: unknown): boolean {
+  if (sensorsAsked) return false;
+  const ctor = arguments.length ? orientationCtor : (typeof window !== 'undefined' ? (window as unknown as Record<string, unknown>)['DeviceOrientationEvent'] : undefined);
+  return typeof (ctor as PermissionCtor | null | undefined)?.requestPermission === 'function';
+}
+
+/**
+ * Ask for motion access on the next tap. Returns the disarm (call it when the option turns off or
+ * the table unmounts). `target` and `env` are injectable for tests.
+ */
+export function armMotionSensorsOnTap(target?: MotionEventTargetLike, env: MotionSensorEnv = {}): () => void {
+  const t = target ?? (typeof window !== 'undefined' ? (window as unknown as MotionEventTargetLike) : undefined);
+  const has = Object.prototype.hasOwnProperty.call(env, 'orientationCtor');
+  if (!t || !(has ? motionNeedsTap(env.orientationCtor) : motionNeedsTap())) return () => {};
+  let live = true;
+  const off = () => {
+    if (!live) return;
+    live = false;
+    for (const type of MOTION_TAP_EVENTS) { try { t.removeEventListener(type, onTap as never, true); } catch { /* ignore */ } }
+  };
+  const onTap = () => {
+    if (!live) return;
+    off();
+    sensorsAsked = true; // one question per session, whatever the answer
+    // requestPermission is called synchronously inside enableMotionSensors, so it rides this tap.
+    void enableMotionSensors(env).catch(() => undefined);
+  };
+  for (const type of MOTION_TAP_EVENTS) { try { t.addEventListener(type, onTap as never, true); } catch { /* ignore */ } }
+  return off;
+}
+/** The events iOS counts as a tap for permission purposes. */
+export const MOTION_TAP_EVENTS = ['touchend', 'click'] as const;
 
 export type MotionEnableResult = 'granted' | 'denied' | 'absent';
 
@@ -339,6 +390,7 @@ export async function enableMotionSensors(env: MotionSensorEnv = {}, probeTimeou
         return 'denied';
       }
       if (res !== 'granted') return 'denied';
+      sensorsAsked = true; // granted for this page session
     }
   }
   const target = has('target') ? env.target : (typeof window !== 'undefined' ? (window as unknown as MotionEventTargetLike) : undefined);
