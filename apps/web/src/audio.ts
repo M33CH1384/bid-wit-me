@@ -535,6 +535,10 @@ export const FILM_SET_DIP: FilmTargets = { scoreHz: 380, scoreGain: 0.3, tone: 1
 export const FILM_BLAST: FilmTargets = { scoreHz: 300, scoreGain: 0.25, tone: 0.2, human: 0.25, world: 0.15 };
 /** The resting mix for a game phase at the Porch. Only bidding reshapes the scene; every
  *  other phase (playing, handOver, gameOver, scenes) breathes at the full mix. */
+/** How far the music sits back during a match-point hand ("a bit": about 4 dB). */
+export const MATCH_POINT_MUSIC_TRIM = 0.62;
+/** The echo the room's ambience is sent through during a match-point hand. */
+export const MATCH_POINT_ECHO = { seconds: 0.36, feedback: 0.46, lowpassHz: 2100, send: 0.7 } as const;
 export function filmTargets(phase: string): FilmTargets { return phase === 'bidding' ? FILM_BIDDING : FILM_NEUTRAL; }
 /** Exact attribution lines for the CC BY tracks (CREDITS.md + in-game Credits). */
 export const CC_BY_LINES = TRACKS.filter((t) => t.credit).map((t) => t.credit!);
@@ -1470,6 +1474,38 @@ class Engine {
     if (typeof window !== 'undefined') (window as unknown as { __bwmTension?: unknown }).__bwmTension = { level: lvl, audible: !!(this.ctx && this.tensionGain) };
     this.applyTension();
   }
+  /**
+   * MATCH POINT room (owner, 2026-11-13: "the music should turn down a bit and the ambiance should
+   * echo"). While the hand that can end the match is being played the music sits back
+   * (MATCH_POINT_MUSIC_TRIM) and the room's ambience — the venue bed and the ambient pad — is sent
+   * through a slow, dark feedback echo, so the table sounds like the only thing in a big quiet room.
+   * The send is silent at rest; nothing else in the mix changes.
+   */
+  private matchPointOn = false;
+  private mpEchoSend: GainNode | null = null;
+  private matchPointMusicTrim(): number { return this.matchPointOn ? MATCH_POINT_MUSIC_TRIM : 1; }
+  private buildMatchPointEcho() {
+    const c = this.ctx; this.mpEchoSend = null;
+    if (!c || !this.master) return;
+    try {
+      const send = c.createGain(); send.gain.value = 0;
+      const delay = c.createDelay(1.5); delay.delayTime.value = MATCH_POINT_ECHO.seconds;
+      const feedback = c.createGain(); feedback.gain.value = MATCH_POINT_ECHO.feedback;
+      const dark = c.createBiquadFilter(); dark.type = 'lowpass'; dark.frequency.value = MATCH_POINT_ECHO.lowpassHz;
+      send.connect(delay); delay.connect(dark); dark.connect(feedback); feedback.connect(delay); dark.connect(this.master);
+      this.venueBus?.connect(send); this.ambBus?.connect(send);
+      this.mpEchoSend = send;
+      if (this.matchPointOn) send.gain.value = MATCH_POINT_ECHO.send;
+    } catch { this.mpEchoSend = null; }
+  }
+  setMatchPoint(on: boolean) {
+    if (on === this.matchPointOn) return;
+    this.matchPointOn = on;
+    if (typeof window !== 'undefined') (window as unknown as { __bwmMatchPointAudio?: unknown }).__bwmMatchPointAudio = { on, echo: !!this.mpEchoSend };
+    const c = this.ctx; if (!c) return;
+    if (this.mpEchoSend) this.mpEchoSend.gain.setTargetAtTime(on ? MATCH_POINT_ECHO.send : 0, c.currentTime, on ? 0.9 : 0.5);
+    if (this.musicBus && this.settings.music) this.musicBus.gain.setTargetAtTime(this.settings.musicVolume ** 1.6 * 0.85 * this.matchPointMusicTrim(), c.currentTime, 0.9);
+  }
   private applyTension() {
     const c = this.ctx; if (!c || !this.musicBus) return;
     const want = this.settings.music && this.musicStatus === 'playing' ? Math.pow(this.tensionLevel, 1.6) * 0.13 : 0;
@@ -1948,7 +1984,7 @@ class Engine {
     }
     this.ensureDecks();
     if (!this.decks.length || !this.musicBus) return;
-    this.musicBus.gain.setTargetAtTime(this.settings.musicVolume ** 1.6 * 0.85, this.ctx.currentTime, 0.1);
+    this.musicBus.gain.setTargetAtTime(this.settings.musicVolume ** 1.6 * 0.85 * this.matchPointMusicTrim(), this.ctx.currentTime, 0.1);
     const cur = this.decks[this.active]!;
     if (cur.track !== null && !this.deckLoading(cur) && (this.deckDead(cur) || !cur.url)) {
       // The sounding deck lost its resource (OS media teardown, dead blob,
@@ -2533,7 +2569,7 @@ class Engine {
     this.fireNodes = null; // the old fire-bed nodes die with it too (the rebuild's resync restarts the bed if still wanted)
     const old = this.ctx;
     this.ctx = null;
-    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
+    this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = this.mpEchoSend = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
     this.analyser = null; // ensure() builds the new context's meter
     this.musicAnalyser = null; // buildMusicChain rebuilds the music path's meter with the decks
     this.loading = null;
@@ -2897,6 +2933,7 @@ class Engine {
       this.venueBus.connect(this.convWet); this.convWet.connect(this.convolver); this.convolver.connect(this.master);
       if (this.roomStyle) { const spec = irSpec(this.roomStyle); this.convolver.buffer = this.makeIR(spec.seconds); this.convWet.gain.value = spec.wet; }
     } catch { this.convolver = null; this.convWet = null; }
+    this.buildMatchPointEcho();
     this.voiceDuck = c.createGain(); this.voiceDuck.connect(this.master);
     this.voiceChatBus = c.createGain(); this.voiceChatBus.gain.value = normalizeCategoryVolumes(this.settings.volumes).playerVoice;
     this.voiceChatOut = c.createGain(); this.voiceChatOut.gain.value = 1; this.voiceChatBus.connect(this.voiceChatOut); this.voiceChatOut.connect(c.destination);
