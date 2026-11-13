@@ -313,7 +313,10 @@ describe('host + module: the degree reaches the glass', () => {
   });
   it('startPhotoreal threads the event level into the quake as power', () => {
     expect(host).toContain("name === 'quake' ? { power: e.level ?? 2 } : {}");
-    expect(host).toContain('tableRy: p.drawRy * pr, power');
+    // Pin rewritten 2026-11-12 with the crash-hardening merge: the host now builds module opts in
+    // createOpts(pl, power) for the effect runner. The requirement is unchanged — the tier reaches createFx.
+    expect(host).toContain('tableRy: pl.drawRy * pl.pr, power');
+    expect(host).toContain('opts: createOpts(pl, power)');
   });
   it('the module opts type carries the degree', () => {
     expect(dts).toContain('power?: number');

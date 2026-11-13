@@ -48,6 +48,18 @@ export interface ChunkLoadHooks<T> {
   retries?: number;
   /** Identity of the running build; the one-heal budget is scoped to it. Defaults to the build sha. */
   buildId?: string;
+  /**
+   * OPTIONAL loads (crash hardening, 2026-11-06): the NAME of an effect
+   * whose code is nice to have — an animation module, a warm-up import,
+   * a photoreal module. An optional load gets the same cache-bust
+   * retries, but when they run out it REJECTS instead of reloading the
+   * document: the effect is skipped and the game continues. The
+   * once-per-build heal flag is neither read nor written for optional
+   * loads, so an effect failure can never spend the navigation heal
+   * (or be blocked by it). Navigation itself (routes, the Scene chunk)
+   * omits this and keeps the essential heal exactly as before.
+   */
+  optional?: string;
 }
 
 function browserStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
@@ -97,7 +109,13 @@ export async function importChunk<T>(load: () => Promise<T>, hooks: ChunkLoadHoo
     // fires or its budget is already spent for this build, this is the moment
     // the player bounces (boundary screen / reload to the menu). Report it
     // before either happens — until 2026-10-30 this left no trace at all.
-    reportCrash('chunk', last, { url: url ?? '', build: buildId });
+    reportCrash('chunk', last, { url: url ?? '', build: buildId, ...(hooks.optional ? { optional: hooks.optional, stage: 'import' } : {}) });
+    if (hooks.optional) {
+      // No reload, no budget spent: the caller degrades (the effect is
+      // skipped) and whatever the player was doing continues.
+      console.warn(`[bwm] optional chunk "${hooks.optional}" failed after retries — skipping it, no reload`, last);
+      throw last;
+    }
     try {
       if (storage.getItem(CHUNK_RELOAD_KEY) !== buildId) {
         storage.setItem(CHUNK_RELOAD_KEY, buildId);

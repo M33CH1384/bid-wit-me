@@ -291,6 +291,13 @@ async function connect() {
 function onMessage(m: SocialServerMsg) {
   switch (m.t) {
     case 'hello': {
+      // Shape guard (crash hardening, 2026-11-06): the frame's parse is
+      // guarded, its shape was not — a hello whose users/global fields
+      // are not arrays threw inside this handler and wedged the store
+      // (socket alive, state stale forever). Treat them as empty, the
+      // same degradation m.tables already got.
+      const usersIn: typeof m.users = Array.isArray(m.users) ? m.users : [];
+      const globalIn: typeof m.global = Array.isArray(m.global) ? m.global : [];
       const tables: Record<string, OpenTable> = {};
       const ended: Record<string, true> = {};
       for (const t of m.tables ?? []) {
@@ -298,19 +305,19 @@ function onMessage(m: SocialServerMsg) {
         if (t.status === 'over') ended[t.code] = true;
       }
       const users: Record<string, PresenceEntry> = {};
-      for (const u of m.users) users[u.id] = u;
+      for (const u of usersIn) users[u.id] = u;
       const lastAt: Record<string, number> = { ...state.lastAt };
-      for (const u of m.users) if (typeof u.at === 'number') lastAt[u.id] = Math.max(lastAt[u.id] ?? 0, u.at);
+      for (const u of usersIn) if (typeof u.at === 'number') lastAt[u.id] = Math.max(lastAt[u.id] ?? 0, u.at);
       const now = Date.now();
       // First ever hello with no stored mention tracker: everything in the
       // kept history counts as seen (no badge for lines from before mentions
       // existed on this device).
       let mentionSeen = state.mentionSeen;
       if (!mentionSeenKnown) {
-        mentionSeen = m.global[m.global.length - 1]?.id ?? 0;
+        mentionSeen = globalIn[globalIn.length - 1]?.id ?? 0;
         saveMentionSeen(mentionSeen);
       }
-      set({ status: 'open', you: m.you, admin: m.admin, users: keepUsers(users, tables, Object.keys(ended), now), lastAt, global: m.global, friends: m.friends, settings: m.settings, unread: m.unread, tables, ended, mentionSeen });
+      set({ status: 'open', you: m.you, admin: m.admin, users: keepUsers(users, tables, Object.keys(ended), now), lastAt, global: globalIn, friends: m.friends, settings: m.settings, unread: m.unread, tables, ended, mentionSeen });
       send({ t: 'status', status });
       // A refresh restored an open DM thread (session persistence): refill it, as openDm would on tap.
       // Also refreshes the thread on reconnect, so a dropped socket doesn't leave a stale thread.

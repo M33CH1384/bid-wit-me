@@ -54,7 +54,7 @@ export function WheelsResultsShow({ who, quality, reduced, onDone }: {
   useEffect(() => {
     if (!wantStage) { setStageDone(true); return; }
     let alive = true;
-    void importChunk(() => import('./three/WheelsStage3D')).then(
+    void importChunk(() => import('./three/WheelsStage3D'), { optional: 'wheels-stage' }).then(
       (m) => { if (alive) setStage(() => m.WheelsStage3D); },
       () => { if (alive) setStageDone(true); }, // a failed stage load degrades to banner + sound
     );

@@ -35,6 +35,51 @@ export function offerTableRenderer(gl: WebGLRenderer, camera: Camera, quality: '
   for (const waiter of waiters) waiter(gpu);
 }
 
+/**
+ * Renderer identity for warm keying (crash hardening, 2026-11-06): a
+ * warm pass is only valid for the renderer + quality it compiled
+ * against. Leaving a table unmounts the scene shell and the renderer
+ * is force-disposed; a fresh table gets a NEW renderer, and the old
+ * session-wide cached warm said nothing about it.
+ */
+let rendererSeq = 0;
+const rendererIds = new WeakMap<WebGLRenderer, number>();
+function rendererId(gl: WebGLRenderer): number {
+  let id = rendererIds.get(gl);
+  if (id === undefined) { id = ++rendererSeq; rendererIds.set(gl, id); }
+  return id;
+}
+function warmKeyOf(g: Gpu): string { return `${rendererId(g.gl)}|${g.quality}`; }
+/** The renderer+quality the in-flight/completed warm actually warmed; null while unknown. */
+let warmedKey: string | null = null;
+
+/** Force the next warmTableEffects() to run a fresh pass (context restore, renderer teardown). */
+export function invalidateTableWarm(): void {
+  warming = null;
+  warmedKey = null;
+}
+
+/**
+ * Called when a table renderer goes away (the scene shell unmounts).
+ * Drops the stale offer so no later warm can resolve against the dead
+ * renderer, and invalidates its warm. Releasing a renderer that is not
+ * the current offer changes nothing.
+ */
+export function releaseTableRenderer(gl: WebGLRenderer): void {
+  if (!gpu || gpu.gl !== gl) return;
+  gpu = null;
+  invalidateTableWarm();
+}
+
+/** A lost context must never be compiled against: the compile would
+ * throw or, worse, be misread by the give-up clock as a slow compile. */
+function throwIfContextLost(g: Gpu): void {
+  const ctx = g.gl.getContext() as WebGLRenderingContext | null;
+  if (ctx && typeof ctx.isContextLost === 'function' && ctx.isContextLost()) {
+    throw new Error('warm skipped: renderer context is lost');
+  }
+}
+
 function rendererReady(): Promise<Gpu> {
   if (gpu) return Promise.resolve(gpu);
   return new Promise((resolve) => gpuWaiters.push(resolve));
@@ -137,7 +182,13 @@ export function compileAfterReady<T>(
  * after the table renderer exists and the decal image has decoded.
  */
 export function warmTableEffects(): Promise<FxWarmTimes> {
-  if (warming) return warming;
+  const key = gpu ? warmKeyOf(gpu) : null;
+  // Reuse the existing warm only when it targets the renderer + quality
+  // currently on offer (or no renderer is on offer yet and a pass is
+  // already waiting for one). A warm completed against a previous
+  // renderer — the leave-and-return case — is re-run, not reused.
+  if (warming && (key === null || warmedKey === null || warmedKey === key)) return warming;
+  warmedKey = null;
   const started = performance.now();
   warming = (async (): Promise<FxWarmTimes> => {
     const hole = timed(() => warmDomImage(SHOT_IMAGE_URLS[0]));
@@ -145,13 +196,14 @@ export function warmTableEffects(): Promise<FxWarmTimes> {
     const audio = timed(() => sound.warmEffects());
     const chrome = timed(() => warmChrome());
     const sheet = (async () => {
-      const mod = await importChunk(() => import('../sheetClothSim'));
+      const mod = await importChunk(() => import('../sheetClothSim'), { optional: 'sheet-cloth' });
       await mod.loadRipImage().catch(() => undefined);
       return compileAfterReady(Promise.resolve(), () => mod.warmSheet(), undefined);
     })();
     const tornado = (async () => {
-      const [ready, mod] = await Promise.all([rendererReady(), importChunk(() => import('../three/Tornado3D'))]);
-      return compileAfterReady(Promise.resolve(), () => mod.warmTornado(ready.gl, ready.camera, ready.quality), undefined);
+      const [ready, mod] = await Promise.all([rendererReady(), importChunk(() => import('../three/Tornado3D'), { optional: 'tornado3d' })]);
+      warmedKey = warmKeyOf(ready);
+      return compileAfterReady(Promise.resolve(), () => { throwIfContextLost(ready); return mod.warmTornado(ready.gl, ready.camera, ready.quality); }, undefined);
     })();
     // the blast warms beside the funnel: its shaders used to compile inside the
     // first blast frame (the hero-freeze fix, 2026-10-29) — same loader window.
@@ -159,8 +211,8 @@ export function warmTableEffects(): Promise<FxWarmTimes> {
     // interleaved setRenderTarget/render sections could paint a warm frame onto
     // the visible canvas (the main thread serializes them in practice anyway).
     const nuke = (async () => {
-      const [ready, mod] = await Promise.all([rendererReady(), importChunk(() => import('../three/Nuke3D'))]);
-      return compileAfterReady(tornado, () => mod.warmNuke(ready.gl, ready.camera, ready.quality), undefined);
+      const [ready, mod] = await Promise.all([rendererReady(), importChunk(() => import('../three/Nuke3D'), { optional: 'nuke3d' })]);
+      return compileAfterReady(tornado, () => { throwIfContextLost(ready); return mod.warmNuke(ready.gl, ready.camera, ready.quality); }, undefined);
     })();
     const [holeR, tapeR, audioR, chromeR, sheetR, tornadoR, nukeR] = await Promise.all([hole, tape, audio, chrome, sheet, tornado, nuke]);
     const times: FxWarmTimes = {
@@ -193,22 +245,22 @@ export async function measureHotFire(): Promise<Record<string, number>> {
   await lap('hole', () => warmDomImage('/shot/hole.png'));
   await lap('tape', () => warmDomImage('/shot/tape.webp'));
   await lap('rip', async () => {
-    const mod = await importChunk(() => import('../sheetClothSim'));
+    const mod = await importChunk(() => import('../sheetClothSim'), { optional: 'sheet-cloth' });
     await mod.loadRipImage();
   });
   await lap('audio', () => sound.warmEffects());
   await lap('sheet', async () => {
-    const mod = await importChunk(() => import('../sheetClothSim'));
+    const mod = await importChunk(() => import('../sheetClothSim'), { optional: 'sheet-cloth' });
     await mod.warmSheet();
   });
   if (gpu) {
     const ready = gpu;
     await lap('tornado', async () => {
-      const mod = await importChunk(() => import('../three/Tornado3D'));
+      const mod = await importChunk(() => import('../three/Tornado3D'), { optional: 'tornado3d' });
       await mod.warmTornado(ready.gl, ready.camera, ready.quality);
     });
     await lap('nuke', async () => {
-      const mod = await importChunk(() => import('../three/Nuke3D'));
+      const mod = await importChunk(() => import('../three/Nuke3D'), { optional: 'nuke3d' });
       await mod.warmNuke(ready.gl, ready.camera, ready.quality);
     });
   }

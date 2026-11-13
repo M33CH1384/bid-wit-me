@@ -50,7 +50,7 @@ import { ClassicHall } from './hallEnv';
 import { forceProgram, nextFrame, quietShaderErrors } from './shaderBudget';
 import { noteCrumb, reportCrash, setCrashContext } from '../telemetry';
 import { importChunk } from '../chunkLoad';
-import { offerTableRenderer } from '../effects/warm';
+import { invalidateTableWarm, offerTableRenderer, releaseTableRenderer, warmTableEffects } from '../effects/warm';
 import Venue3D, { feltPatternTexture, preloadVenueAssets } from './Venue3D';
 import ClassicStudio, { preloadClassicStudio } from './ClassicStudio';
 import BarbershopRoom, { preloadBarbershopRoom } from './BarbershopRoom';
@@ -2812,7 +2812,17 @@ export default function Scene(props: SceneProps) {
         // additive: registering ours after telemetry's changes neither
         // its firing nor its reports.
         gl.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); });
-        gl.domElement.addEventListener('webglcontextrestored', () => { setGlEpoch((n) => n + 1); });
+        gl.domElement.addEventListener('webglcontextrestored', () => {
+          setGlEpoch((n) => n + 1);
+          // The restored context starts with EMPTY program caches:
+          // three re-inits its own resources on the next render, but the
+          // effect shaders the warm pass linked are gone. Invalidate the
+          // warm and re-run it in the background (crash hardening,
+          // 2026-11-06) so the next effect doesn't pay its compiles
+          // mid-animation; the table itself is already back.
+          invalidateTableWarm();
+          void warmTableEffects();
+        });
         const w = window as unknown as { __bwmParallelShaders?: boolean };
         w.__bwmParallelShaders = gl.extensions.has('KHR_parallel_shader_compile');
         setAspect(size.width / size.height);
@@ -3057,7 +3067,12 @@ function RoomYawEnv({ yaw }: { yaw: number }) {
 function EffectWarmup({ quality }: { quality: 'high' | 'low' }) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
-  useEffect(() => { offerTableRenderer(gl, camera, quality); }, [gl, camera, quality]);
+  useEffect(() => {
+    offerTableRenderer(gl, camera, quality);
+    // On teardown (or a renderer/quality swap) the offer dies with this
+    // renderer: no later warm may resolve against it (crash hardening).
+    return () => { releaseTableRenderer(gl); };
+  }, [gl, camera, quality]);
   return null;
 }
 
@@ -3073,12 +3088,15 @@ function AfterTable({ quality, tableUp, trickArmed, onWheelsShow }: { quality: '
     if (!tableUp) return;
     let alive = true;
     const start = () => {
-      // A deploy can delete the hashed file this page still names. Retry, then reload once.
-      void importChunk(() => import('./Nuke3D')).then((m) => { if (alive) setNuke(m); }, () => {});
-      void importChunk(() => import('./Tornado3D')).then((m) => { if (alive) setTornado(m); }, () => {});
+      // A deploy can delete the hashed file this page still names. These
+      // are OPTIONAL chunks (crash hardening): retry with a cache-bust,
+      // then give up quietly — a missing celebration must never reload
+      // a live match. Only navigation chunks keep the reload heal.
+      void importChunk(() => import('./Nuke3D'), { optional: 'nuke3d' }).then((m) => { if (alive) setNuke(m); }, () => {});
+      void importChunk(() => import('./Tornado3D'), { optional: 'tornado3d' }).then((m) => { if (alive) setTornado(m); }, () => {});
       // The Wheels car rides the same lazy chunk family: mounting it here (its
       // model behind Suspense) quietly preloads the GLB after the felt is up.
-      void importChunk(() => import('./WheelsCar3D')).then((m) => { if (alive) setWheels(m); }, () => {});
+      void importChunk(() => import('./WheelsCar3D'), { optional: 'wheels-car' }).then((m) => { if (alive) setWheels(m); }, () => {});
     };
     // Idle, after the cloth is on: the nuke shaders are not part of dealing a resumed hand back in.
     const ric = (window as unknown as { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }).requestIdleCallback;
@@ -3093,7 +3111,7 @@ function AfterTable({ quality, tableUp, trickArmed, onWheelsShow }: { quality: '
     const mount = gl.domElement.parentElement;
     if (!mount) return;
     let stop: (() => void) | null = null, alive = true;
-    void importChunk(() => import('../photoreal/host')).then((m) => { if (alive) stop = m.startPhotoreal(mount); }, () => {});
+    void importChunk(() => import('../photoreal/host'), { optional: 'photoreal-host' }).then((m) => { if (alive) stop = m.startPhotoreal(mount); }, () => {});
     return () => { alive = false; stop?.(); };
   }, [tableUp, gl]);
   if (!nuke && !tornado && !wheels) return null;
