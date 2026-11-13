@@ -249,6 +249,20 @@ export function loadSettings(): Settings {
   } catch { /* ignore */ }
   return DEFAULT_SETTINGS;
 }
+/**
+ * The one-time tilt heal, in place (see normalizeSettings). Shared with the saved-GAME loader: a game
+ * resumed from a save carries its own copy of the settings, and that copy skipped the heal — so a
+ * resumed table still sat on the old leaned tilt (owner, 2026-11-13: "the sitting view still feels
+ * like standing and the standing view feels like I'm hovering over the table").
+ */
+export function healMotionTilt<T extends Pick<Settings, 'motionView' | 'viewAdjust' | 'motionTiltHealed'>>(s: T): T {
+  // Only a Motion view player has anything to heal; everyone else's settings pass through untouched.
+  if (!s.motionView || s.motionTiltHealed === true) return s;
+  s.viewAdjust = { ...s.viewAdjust, tilt: 0 };
+  s.motionTiltHealed = true;
+  return s;
+}
+
 /** Older saves: 'easy' / 'normal' bot levels ('normal' was the default → Mixed now; 'easy' → Novice). */
 export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { botLevel?: string }): Settings {
   const s = { ...DEFAULT_SETTINGS, ...j } as Settings;
@@ -269,8 +283,8 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
   // value crept toward the limit over sessions ("both the sitting and standing view seem way too
   // high up"). Whoever had it on gets the stock tilt back once; their zoom is untouched, and any
   // tilt they set by hand afterwards is theirs.
-  if (s.motionView && s.motionTiltHealed !== true) s.viewAdjust = { ...s.viewAdjust, tilt: 0 };
-  s.motionTiltHealed = true;
+  healMotionTilt(s);
+  s.motionTiltHealed = true; // nothing to heal later either: from here on the lean is never saved
   if (typeof s.eyeZoom !== 'boolean') s.eyeZoom = false; // eye zoom is opt-in; old saves start OFF
   s.eyeZoomCal = normalizeEyeZoomCalibration(s.eyeZoomCal); // personal gaze threshold; junk -> uncalibrated
   if (typeof s.turnUp !== 'boolean') s.turnUp = false; // slam mode is opt-in; old saves start OFF
