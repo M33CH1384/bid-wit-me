@@ -472,7 +472,9 @@ def mansion():
     prop('vintage_grandfather_clock_01', (-X + 0.8, 4.0), 90)
     prop('horse_statue_01', (X - 1.6, 4.4), -90, SCALE * 1.4)
     prop('sofa_02', (0, 7.4), 0)
-    prop('gothic_coffee_table', (0, 5.3), 0)
+    # Smaller and tucked up to the sofa: at full size, straight behind the partner's seat, it read as big as
+    # the game table from the sitting view (owner, 2026-11-13: "the table behind my partner is too large").
+    prop('gothic_coffee_table', (0, 5.75), 0, SCALE * 0.6)
     prop('GreenChair_01', (-5.0, 5.4), 55)
     prop('GreenChair_01', (5.0, 5.4), -55)
     prop('antique_ceramic_vase_01', (-7.0, 1.2), 0, SCALE * 1.6)

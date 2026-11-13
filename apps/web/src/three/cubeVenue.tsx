@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Box3, type Group, Mesh, MeshStandardMaterial, type Object3D, type PointLight, RepeatWrapping, SRGBColorSpace, TextureLoader, VideoTexture } from 'three';
+import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, type Object3D, type PointLight, RepeatWrapping, SRGBColorSpace, TextureLoader, VideoTexture } from 'three';
 import { flickerAt, glowAt, venueLifeFor } from '../venueLife';
 import { pulseDue } from './framePulse';
 import { fx } from '../fx';
@@ -55,6 +55,57 @@ function ground(obj: Group, floorWorldY: number): void {
   obj.updateMatrixWorld(true);
   const box = new Box3().setFromObject(obj);
   obj.position.y += floorWorldY - box.min.y;
+}
+
+/** How long the seated figures may go without the chair model before built chairs stand in (ms). */
+export const CHAIR_STAND_IN_MS = 2500;
+/** Seat height of the built chair above the floor: the fleet standard the seated figures are posed to. */
+export const SIMPLE_CHAIR_SEAT = 0.49;
+/** Triangles in one built chair (seven boxes). */
+export const SIMPLE_CHAIR_TRIS = 7 * 12;
+
+/**
+ * A plain dining chair out of seven boxes — seat, back, back rail and four legs — facing +z like the
+ * chair model, feet on y = 0. It stands in wherever the model is not loaded (Low quality, or a failed
+ * load), so a seated figure always has something under it.
+ */
+export function buildSimpleChair(): Group {
+  const g = new Group();
+  g.name = 'simple-chair';
+  const wood = new MeshStandardMaterial({ color: '#2a1a12', roughness: 0.7 });
+  const pad = new MeshStandardMaterial({ color: '#3b2a44', roughness: 0.85 });
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number, m: MeshStandardMaterial) => {
+    const mesh = new Mesh(new BoxGeometry(w, h, d), m);
+    mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true;
+    g.add(mesh);
+  };
+  const S = SIMPLE_CHAIR_SEAT;
+  box(0.5, 0.07, 0.5, 0, S - 0.035, 0, pad); // seat, top at S
+  box(0.5, 0.42, 0.06, 0, S + 0.33, -0.24, pad); // back pad
+  box(0.54, 0.06, 0.07, 0, S + 0.57, -0.24, wood); // top rail
+  for (const [x, z] of [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]] as const) {
+    const tall = z < 0; // rear legs run up into the back
+    const h = tall ? S + 0.56 : S - 0.07;
+    box(0.05, h, 0.05, x, h / 2, z, wood);
+  }
+  return g;
+}
+
+function addSimpleChairs(host: Group, spots: readonly { x: number; z: number; ry: number }[], skip: (spot: { x: number; z: number; ry: number }) => boolean): Group[] {
+  const out: Group[] = [];
+  for (const spot of spots) {
+    if (skip(spot)) continue;
+    const c = buildSimpleChair();
+    c.rotation.y = spot.ry; c.position.set(spot.x, STUDIO.floorY, spot.z);
+    host.add(c); out.push(c);
+  }
+  return out;
+}
+
+function disposeSimpleChair(g: Group): void {
+  const mats = new Set<MeshStandardMaterial>();
+  g.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.geometry.dispose(); mats.add(m.material as MeshStandardMaterial); } });
+  mats.forEach((m) => m.dispose());
 }
 
 export function useLocalTod(handNo: number) {
@@ -131,11 +182,21 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
   }, [cfg, quality, lock.tod, invalidate]);
 
   useEffect(() => {
-    if (quality !== 'high' || !propsRef.current) return;
-    let dead = false; const added: Object3D[] = [];
+    if (quality !== 'high' || !propsRef.current) return; // Low seats no figures, so it stands no chairs either
+    let dead = false; const added: Object3D[] = []; const fallback: Group[] = [];
     const ktx2 = new KTX2Loader().setTranscoderPath('/assets/basis/').detectSupport(gl);
     const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder); loader.setKTX2Loader(ktx2);
     const load = (url: string) => new Promise<import('three').Group>((res, rej) => loader.load(url, (g) => res(g.scene as Group), undefined, rej));
+    // The seated figures do not wait for the chair model, and on a phone it can arrive late or not at all —
+    // which left them sitting on air (owner, 2026-11-13: "my opponents don't have chairs"). If the model is
+    // not in by CHAIR_STAND_IN_MS, or its load fails, built chairs stand in until (and unless) it lands.
+    const standIn = () => {
+      if (dead || !propsRef.current || added.length || fallback.length) return;
+      fallback.push(...addSimpleChairs(propsRef.current, cfg.chairSpots ?? studioSpots, (spot) => hideOwnChair && isOwnSeatSpot(spot, ownDir)));
+      invalidate();
+    };
+    const clearStandIn = () => { for (const g of fallback) { g.parent?.remove(g); disposeSimpleChair(g); } fallback.length = 0; };
+    const standInTimer = window.setTimeout(standIn, CHAIR_STAND_IN_MS);
     void (async () => {
       try {
         // This room's chair spots (a rendered room at a kit-chair venue brings its own); same loop, same own-chair guard.
@@ -143,13 +204,14 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
         const chair = await load(`${CLASSIC}/chair.glb`);
         const lamp = cfg.pendants === false || rendered ? null : await load(`${CLASSIC}/lamp.glb`);
         if (dead || !propsRef.current) return; const host = propsRef.current;
+        window.clearTimeout(standInTimer); clearStandIn();
         for (const spot of CHAIR_SPOTS) { if (hideOwnChair && isOwnSeatSpot(spot, ownDir)) continue; const c = chair.clone(true) as Group; c.rotation.y = spot.ry; c.position.set(spot.x, 0, spot.z); c.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); host.add(c); ground(c, STUDIO.floorY); added.push(c); }
         if (lamp) for (const x of [-STUDIO.lampX, STUDIO.lampX]) { const l = lamp.clone(true) as Group; l.position.set(x, 0, 0); l.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = false; m.receiveShadow = true; } }); host.add(l); l.updateMatrixWorld(true); const box = new Box3().setFromObject(l); l.position.y += STUDIO.floorY + STUDIO.lampShadeBottom - box.min.y; added.push(l); }
         (window as unknown as { __bwmVenue?: unknown }).__bwmVenue = { id: cfg.id, fx: false, studio: true, room: cfg.slug, props: true, tod: lock.tod };
         invalidate();
-      } catch { /* shell stays */ }
+      } catch { window.clearTimeout(standInTimer); standIn(); /* the shell stays; nobody sits on air */ }
     })();
-    return () => { dead = true; for (const g of added) g.parent?.remove(g); ktx2.dispose(); };
+    return () => { dead = true; window.clearTimeout(standInTimer); for (const g of added) g.parent?.remove(g); clearStandIn(); ktx2.dispose(); };
   }, [cfg, quality, gl, invalidate, lock.tod, hideOwnChair, ownDir, rendered]);
 
   const w = STUDIO.roomX * 2;
