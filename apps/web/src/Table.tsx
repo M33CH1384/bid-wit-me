@@ -1832,10 +1832,10 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
   // Last-card showdown (showdown.ts): every side still chasing its bid needs this final book.
   const sdSides = showdownSides(st);
-  const sdTeams = sdSides.map((side) => ({ name: sideName(st.rules, side, names), color: sideColor(st.rules, side) }));
+  const sdTeams = sdSides.map((side) => ({ side, name: sideName(st.rules, side, names), color: sideColor(st.rules, side) }));
   const sdLast = st.tricks[st.tricks.length - 1];
   const sdWinSide = sdLast && typeof sdLast.winner === 'number' ? sideOf(sdLast.winner, st.rules) : null;
-  const sdWinner = sdWinSide === null ? null : { name: sideName(st.rules, sdWinSide, names), color: sideColor(st.rules, sdWinSide) };
+  const sdWinner = sdWinSide === null ? null : { side: sdWinSide, name: sideName(st.rules, sdWinSide, names), color: sideColor(st.rules, sdWinSide) };
   // the Run it! button + its one-time spotlight tip
   const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
   // Misdeal: offered only while the engine allows it (this seat has not bid yet — other seats

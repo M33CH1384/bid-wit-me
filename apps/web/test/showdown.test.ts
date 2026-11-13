@@ -77,7 +77,7 @@ describe('showdown wiring', () => {
   it('bots skip the out-of-turn last-card drop and use the held pace', () => {
     const src = read('../src/useGame.ts');
     expect(src).toContain("if (!forced && !showdown && st.phase === 'playing')");
-    expect(src).toContain('showdown ? SHOWDOWN_BOT_MS : BOT_PLAY_MS');
+    expect(src).toContain("showdown && turn.kind === 'play' && !forced ? (SHOWDOWN_BOT_MS - BOT_PLAY_MS) * k : 0");
   });
 
   it('the scene slows the flight but leaves drags and over-cuts alone', () => {

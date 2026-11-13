@@ -276,10 +276,11 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       seed: st.seed, handNo: st.handNo, trickNo: st.tricks.length, seat: turn.seat,
       position: turn.kind === 'play' ? st.trick.plays.length : 0,
       playerCount: st.rules.playerCount, kind: turn.kind,
-      baseMs: turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : showdown ? SHOWDOWN_BOT_MS : BOT_PLAY_MS,
+      baseMs: turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : BOT_PLAY_MS,
       jokerDown: turn.kind === 'play' && st.trick.plays.some((p) => isJoker(p.card)),
     }) * k
-      + (turn.kind === 'bid' ? offlineTalk.consultBidDelay(turn.seat, st) : 0);
+      + (turn.kind === 'bid' ? offlineTalk.consultBidDelay(turn.seat, st) : 0)
+      + (showdown && turn.kind === 'play' && !forced ? (SHOWDOWN_BOT_MS - BOT_PLAY_MS) * k : 0);
     let t2 = 0;
     const t = setTimeout(() => {
       const lv = levelRef.current;

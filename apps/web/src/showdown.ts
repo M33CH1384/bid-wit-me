@@ -40,5 +40,6 @@ export function heartbeatMs(cardsDown: number): number {
   return Math.max(430, 1000 - Math.max(0, cardsDown) * 170);
 }
 
-/** How long the winner strap holds once the last book is taken. */
-export const SHOWDOWN_REVEAL_MS = 2600;
+/** The finale, from the last card leaving a hand: its flight in silence, the
+ *  hit as it lands, then the call. */
+export const SHOWDOWN_REVEAL_MS = 4400;
