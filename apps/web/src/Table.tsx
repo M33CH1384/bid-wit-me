@@ -7,7 +7,7 @@ import { RenegeButton, RenegeSheet, RenegeVerdict } from './Renege';
 import { rememberHandTricks } from './handTricks';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { getViewAdjustState, isDefaultViewAdjust, onViewAdjustCommit, seedViewAdjust, subscribeViewAdjust, viewAdjustLabel, type ViewAdjust } from './viewAdjust';
-import { seedMotionViewEnabled } from './motionView';
+import { armMotionSensorsOnTap, seedMotionViewEnabled } from './motionView';
 import {
   clearEyeCalibrationRequest, getEyeCalibrationRequested, seedEyeZoomCalibration, seedEyeZoomEnabled,
   subscribeEyeCalibrationRequested, type EyeGazeCalibration,
@@ -1077,6 +1077,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // the Settings toggle tap that turned the setting on.
   useState(() => { seedMotionViewEnabled(settings.motionView === true); return true; });
   useEffect(() => { seedMotionViewEnabled(settings.motionView === true); }, [settings.motionView]);
+  // A saved ON comes back at launch without iOS having been asked this session: the first tap asks (motionView.ts).
+  useEffect(() => (settings.motionView === true ? armMotionSensorsOnTap() : undefined), [settings.motionView]);
   // Eye zoom (owner, 2026-11-07): the toggle + calibration mirrors ride the
   // same seed lifecycle. Scene's gaze driver subscribes to them; the camera
   // permission was already settled by the Settings toggle tap.
