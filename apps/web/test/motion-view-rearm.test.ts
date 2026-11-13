@@ -98,3 +98,32 @@ describe('saved tilt heal', () => {
     expect(normalizeSettings({ motionView: false, viewAdjust: { tilt: 9, zoom: 1 } }).viewAdjust.tilt).toBe(9);
   });
 });
+
+// Owner, 2026-11-13, after the heal shipped: "The sitting view still feels like standing and the
+// standing view feels like I'm hovering over the table" — the game had been RESUMED, and a save
+// carries its own copy of the settings, which skipped the heal.
+describe('a resumed game is healed too', () => {
+  it('healMotionTilt clears a leaned tilt once and keeps the zoom', async () => {
+    const { healMotionTilt } = await import('../src/settings');
+    const s = healMotionTilt({ motionView: true, viewAdjust: { tilt: 15, zoom: 1.1 }, motionTiltHealed: undefined });
+    expect(s.viewAdjust).toEqual({ tilt: 0, zoom: 1.1 });
+    expect(s.motionTiltHealed).toBe(true);
+    s.viewAdjust = { tilt: 4, zoom: 1.1 };
+    expect(healMotionTilt(s).viewAdjust.tilt).toBe(4); // set by hand afterwards: stands
+  });
+  it('the save loader runs the settings it restores through the heal', () => {
+    const src = readFileSync(new URL('../src/save.ts', import.meta.url), 'utf8');
+    expect(src).toContain('settings: healMotionTilt({ ...DEFAULT_SETTINGS, ...d.settings })');
+  });
+  it('a real save round trip: the resumed settings come back level', async () => {
+    const { parseSave } = await import('../src/save');
+    const { newGame, makeRules } = await import('@spades/rules');
+    const { DEFAULT_SETTINGS } = await import('../src/settings');
+    const state = newGame(makeRules('joker'), 'seed-heal');
+    const raw = JSON.stringify({ v: 1, savedAt: 1, seed: 'seed-heal', settings: { ...DEFAULT_SETTINGS, motionView: true, motionTiltHealed: undefined, viewAdjust: { tilt: 15, zoom: 1 } }, state, chat: [] });
+    const back = parseSave(raw);
+    expect(back).not.toBeNull();
+    expect(back!.settings.viewAdjust.tilt).toBe(0);
+    expect(back!.settings.motionTiltHealed).toBe(true);
+  });
+});

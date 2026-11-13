@@ -5,7 +5,7 @@
  */
 import { type GameState, pendingTurn, viewFor } from '@spades/rules';
 import type { ChatMsg } from './overlay';
-import { DEFAULT_SETTINGS, type Settings } from './settings';
+import { DEFAULT_SETTINGS, healMotionTilt, type Settings } from './settings';
 
 export const SAVE_KEY = 'bwm.game';
 export const SAVE_VERSION = 1;
@@ -77,7 +77,7 @@ export function parseSave(raw: string | null): SavedGame | null {
     // must be a state the engine accepts
     viewFor(st, 0);
     pendingTurn(st);
-    return { v: SAVE_VERSION, savedAt: d.savedAt ?? 0, seed: d.seed, settings: { ...DEFAULT_SETTINGS, ...d.settings }, state: st, chat: isArr(d.chat) ? (d.chat as ChatMsg[]) : [], ...(isArr(d.names) && d.names.length === n && d.names.every((x) => typeof x === 'string') ? { names: d.names as string[] } : {}), ...(isArr(d.teamNames) ? { teamNames: d.teamNames.map((x) => (typeof x === 'string' ? x.slice(0, 40) : null)) } : {}) };
+    return { v: SAVE_VERSION, savedAt: d.savedAt ?? 0, seed: d.seed, settings: healMotionTilt({ ...DEFAULT_SETTINGS, ...d.settings }), state: st, chat: isArr(d.chat) ? (d.chat as ChatMsg[]) : [], ...(isArr(d.names) && d.names.length === n && d.names.every((x) => typeof x === 'string') ? { names: d.names as string[] } : {}), ...(isArr(d.teamNames) ? { teamNames: d.teamNames.map((x) => (typeof x === 'string' ? x.slice(0, 40) : null)) } : {}) };
   } catch {
     return null;
   }
