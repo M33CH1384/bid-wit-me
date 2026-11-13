@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
 import { normalizeWheelsCar, WHEELS_CAR_METALNESS, WHEELS_CAR_ROUGHNESS } from '../src/three/wheelsCarModel';
 
-// The Wheels roadster is a TRELLIS appearance bake: its GLB material
+// The Wheels supercar is a TRELLIS appearance bake: its GLB material
 // declares ONLY a baseColorTexture, so the glTF defaults would make it
 // metallicFactor 1.0 / roughnessFactor 1.0 — a metal has no diffuse
 // response, and neither render home (the table Scene's venue light, the

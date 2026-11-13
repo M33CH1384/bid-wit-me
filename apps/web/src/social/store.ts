@@ -14,6 +14,7 @@ import { destOfTab, tabForDest, CENTRAL_DEST_IDS, type CentralDest } from './cen
 export type { CentralDest };
 import { playChatSound } from './chatSounds';
 import { coverThen } from '../spray';
+import { currentSocialEntryDevice, socialFanSkipped } from './entryPeak';
 import { noteCrumb } from '../telemetry';
 
 export type SocialTab = 'players' | 'chat' | 'messages' | 'friends' | 'leaders' | 'tournaments' | 'challenges' | 'settings'
@@ -174,6 +175,17 @@ function set(p: Partial<SocialState> | ((s: SocialState) => Partial<SocialState>
   subs.forEach((f) => f());
 }
 export function useSocial(): SocialState { return useSyncExternalStore(social.subscribe, social.get, social.get); }
+
+/** A Social panel move (open/close and its deep-link kin): rides the
+ *  Card Fan's coverThen swap — EXCEPT on iOS, where the fan's own
+ *  compositor peak is what kills the renderer at this swap on a
+ *  loaded session (crash-social4; entryPeak.ts has the record). There
+ *  the move applies instantly, the same cut the fan's repeat
+ *  cooldown already makes. Everywhere else the fan plays as before. */
+function panelSwap(apply: () => void) {
+  if (socialFanSkipped(currentSocialEntryDevice())) apply();
+  else coverThen(apply, 'profile-social');
+}
 
 let ws: WebSocket | null = null;
 let retry = 0;
@@ -513,31 +525,31 @@ export const social = {
     // class). Already open (a tab/deep-link re-target) applies
     // instantly; there is no screen change to cover.
     if (state.open) apply();
-    else coverThen(apply, 'profile-social');
+    else panelSwap(apply);
   },
   close() {
     noteCrumb('social', 'close');
     const apply = () => set({ open: false, profile: null, profileId: null });
-    if (state.open) coverThen(apply, 'profile-social');
+    if (state.open) panelSwap(apply);
     else apply();
   },
   showTour(id: string | null) {
     const apply = () => set({ open: true, tab: 'tournaments', dest: 'matchups', profile: null, profileId: null, tour: id });
     if (state.open) apply();
-    else coverThen(apply, 'profile-social');
+    else panelSwap(apply);
   },
   /** open the Big Bank tab; with an id, straight to that challenge's detail */
   showChallenge(id: string | null) {
     const apply = () => set({ open: true, tab: 'challenges', dest: 'matchups', profile: null, profileId: null, wager: id });
     if (state.open) apply();
-    else coverThen(apply, 'profile-social');
+    else panelSwap(apply);
   },
   /** open the Big Bank create flow (optionally with the opponent pre-named from a profile) */
   startChallenge(opponent?: string) {
     social.start();
     const apply = () => set({ open: true, tab: 'challenges', dest: 'matchups', profile: null, profileId: null, wager: null, wagerCreate: opponent ? { opponent } : {} });
     if (state.open) apply();
-    else coverThen(apply, 'profile-social');
+    else panelSwap(apply);
   },
   /** BWM Central: go to a destination (the bottom nav / top tabs). */
   dest(d: CentralDest) {
@@ -547,7 +559,7 @@ export const social = {
   openMatch(id: string) {
     const apply = () => set({ open: true, tab: 'match', dest: 'matchups', matchId: id, profile: null, profileId: null });
     if (state.open) apply();
-    else coverThen(apply, 'profile-social');
+    else panelSwap(apply);
   },
   /** the panel body reports its scroll so a profile Back can restore it */
   noteScroll(y: number) { lastScroll = y; },
@@ -557,7 +569,7 @@ export const social = {
   openCompare(name: string, id?: string) {
     const apply = () => set({ open: true, profile: name, profileId: id ?? null, compareFor: name, profileReturn: { tab: state.tab, scroll: lastScroll } });
     if (state.open) apply();
-    else coverThen(apply, 'profile-social');
+    else panelSwap(apply);
   },
   clearWagerCreate() { set({ wagerCreate: null }); },
   dismissNotice(id: string) { set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })); },

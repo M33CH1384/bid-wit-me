@@ -13,6 +13,7 @@ import { dealerAnnouncement, hudSeatName, withCurrentDealerLine } from '../deale
 import type { VideoMesh, VideoState } from './video';
 import { dealTimeline } from '../three/dealTimeline';
 import { finishedTrickHoldMs, nextTrickPause } from '../trickTiming';
+import { releaseAfterNukeClearance } from '../nukeGate';
 
 export function useConn(conn: TableConnection): ConnState {
   return useSyncExternalStore(conn.subscribe, conn.getState);
@@ -98,13 +99,23 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
     // Run it! holds for that show and the score opens when the hold (and the show) ends.
     const last = shown.st.tricks.at(-1)?.plays ?? [];
     const ending = shown.st.phase === 'handOver' || shown.st.phase === 'gameOver';
-    const t = setTimeout(() => setPause(false), finishedTrickHoldMs({
-      speed: 1,
-      handEnding: ending,
-      run: last.some((p) => p.run),
-      nuke: isNukeTrick(last) ? (fx.tableNuke ?? 'full') : null,
-    }));
-    return () => clearTimeout(t);
+    const nuked = isNukeTrick(last);
+    // Same clearance rule as offline (owner, 2026-11-06), display-side:
+    // the server's clock is its own, so this client's pause holds the
+    // finished trick on screen until THIS client's blast has cleared —
+    // a lead that arrives early is never rendered into the still-running
+    // blast (where Card3D's sweep would blow it off the felt for good).
+    return releaseAfterNukeClearance({
+      holdMs: finishedTrickHoldMs({
+        speed: 1,
+        handEnding: ending,
+        run: last.some((p) => p.run),
+        nuke: nuked ? (fx.tableNuke ?? 'full') : null,
+      }),
+      gated: nuked,
+      episodeOpen: () => fx.blastEpisodeOpen,
+      onRelease: () => setPause(false),
+    });
   }, [pause, shown?.st.tricks.length, shown?.st.phase]);
 
   const dealing = !!intro && intro.hand === shown?.st.handNo && Date.now() < intro.until;
@@ -139,6 +150,8 @@ export function useOnlineSource(cs: ConnState, conn: TableConnection): (GameSour
       case 'misdeal': return conn.act({ type: 'misdeal' }, seq);
       // a toss never rides the act channel: the room poll (tossCall/tossVote) carries it — see OnlineBinding.toss
       case 'toss': return false;
+      // a renege call rides its own room message (renegeCall) in REAL seats — see OnlineBinding.renege
+      case 'callRenege': return false;
       case 'nextHand': conn.send({ t: 'next' }); return true;
     }
   }, [conn, seq]);

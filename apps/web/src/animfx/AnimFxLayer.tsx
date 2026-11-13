@@ -24,7 +24,7 @@
  *    own canvas, so the sound fires from the same edge that starts it.
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { type Bid, type GameResult, type HandRecord, type Phase, type TableRules, type Trick } from '@spades/rules';
+import { firstBookCard, type Bid, type GameResult, type HandRecord, type Phase, type TableRules, type Trick } from '@spades/rules';
 import { useSocial } from '../social/store';
 
 /**
@@ -877,6 +877,15 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
     // cutthroat elimination moment: the crack flash (the dead look itself is persistent, below)
     for (const seat of newlyEliminated(p.eliminated, snap.eliminated)) {
       if (calm()) continue;
+      // ONE BUST, ONE CRACK (crack tiers, 2026-11-06): when the Big
+      // Joker's own throw caused this elimination — its book locked the
+      // set, or its throw busted the nil that failed (stamped on the
+      // hand record by the engine: outByBigJoker) — the photoreal quake
+      // already cracked the screen for it at the throw, so the plate
+      // crack (and its glassCrack) stands down. An elimination caused
+      // by any other card keeps the plate crack exactly as shipped.
+      const lastRec = st.history[st.history.length - 1];
+      if (lastRec?.outByBigJoker?.includes(seat)) continue;
       const r = plateRectOf(seat);
       if (r) { addShot({ kind: 'crack', x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h }, 850); sound.play('glassCrack'); }
     }
@@ -888,6 +897,14 @@ export default function AnimFxLayer({ st, online = false, names, resultPresented
     if (snap.handNo === p.handNo) {
       for (const seat of nilBustedSeats(p, snap)) {
         if (calm()) continue;
+        // ONE BUST, ONE CRACK (crack tiers, 2026-11-06): when the
+        // busting book was won with the Big Joker itself, the photoreal
+        // quake already cracked the screen for this bust at the throw
+        // (HEAVY/MAX) — the plate crack (and its glassCrack) stands
+        // down, so the same recording never fires twice for one bust.
+        // A bust caused by any other card keeps the plate crack
+        // exactly as shipped.
+        if (firstBookCard(st.rules, st.tricks, seat) === 'BJ') continue;
         // the crack radiates from the taken card's LANDING point (the
         // seat's trick slot) when the layout knows it, else the plate
         const sp = slotPt(seat);

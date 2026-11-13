@@ -21,7 +21,13 @@
  *   unclean-exit        — witness report: the PREVIOUS session ended while at
  *                         a table with no clean exit and no pagehide — the
  *                         signature of process death (jetsam), which by
- *                         definition can never report itself
+ *                         definition can never report itself. A second arm
+ *                         (crash-social4) covers the home route: the session
+ *                         never reached a table but its persisted breadcrumb
+ *                         road ends at a Social open with no close after it.
+ *                         The ring is therefore mirrored to localStorage —
+ *                         in-memory crumbs died with the process they were
+ *                         meant to explain.
  *   manual              — a deliberate report (support / probes)
  *
  * Every report carries a breadcrumb ring: route changes, connection status
@@ -57,6 +63,7 @@ const MAX_CRUMBS = 40;
 const MAX_MESSAGE = 500;
 const MAX_STACK_LINES = 12;
 const WATCH_KEY = 'bwm.crash.watch';
+const CRUMBS_KEY = 'bwm.crash.crumbs';
 
 const crumbs: Crumb[] = [];
 const sentAt = new Map<string, number>();
@@ -74,9 +81,28 @@ export function noteCrumb(label: string, detail = ''): void {
   try {
     crumbs.push({ t: Date.now(), label: String(label).slice(0, 40), detail: String(detail).slice(0, 120) });
     if (crumbs.length > MAX_CRUMBS) crumbs.splice(0, crumbs.length - MAX_CRUMBS);
+    persistCrumbs();
     if (label === 'scene-mount') setWatch({ atTable: true, route: safePath(), suspendedClean: false });
     if (label === 'scene-unmount') setWatch({ atTable: false, suspendedClean: false });
   } catch { /* breadcrumbs are best-effort */ }
+}
+
+/* The ring is mirrored to localStorage on every crumb (crash-social4):
+ * in-memory only, the road died with the process — exactly the deaths
+ * the ring exists to explain (a Home-route jetsam left no report and
+ * no crumbs, three rounds running). The next boot's witness reads the
+ * persisted ring BEFORE its own first crumb overwrites it. */
+function persistCrumbs(): void {
+  try { localStorage.setItem(CRUMBS_KEY, JSON.stringify(crumbs)); } catch { /* best-effort */ }
+}
+
+function loadPrevCrumbs(): Crumb[] {
+  try {
+    const raw = localStorage.getItem(CRUMBS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as Crumb[];
+    return Array.isArray(arr) ? arr.filter((c) => c && typeof c.label === 'string') : [];
+  } catch { return []; }
 }
 
 export function getCrashCrumbs(): readonly Crumb[] { return crumbs; }
@@ -113,17 +139,35 @@ function setWatch(patch: Partial<Watch>): void {
 /** If the previous session died at a table, say so — once, on the next boot. */
 function witnessPreviousSession(): void {
   const prev = loadWatch();
+  const prevCrumbs = loadPrevCrumbs();
   setWatch({ atTable: false, route: safePath(), suspendedClean: false });
-  if (!prev || !prev.atTable || prev.suspendedClean) return;
+  if (!prev || prev.suspendedClean) return;
   if (Date.now() - prev.ts > 7 * 24 * 3600_000) return; // a stale flag is not evidence
-  // Mark the boot for the audio engine: this page is a crash-resume, and its
-  // first unlock gesture earns one deliberate graph rebuild (the iOS audio
-  // session can be dead after a jetsam kill in a way no in-graph meter can
-  // detect — see audio.ts healCrashResumedAudio).
-  markUncleanBoot();
-  reportCrash('unclean-exit', new Error('previous session ended at a table with no clean exit and no pagehide — process death suspected'), {
-    prevRoute: prev.route, prevBuild: prev.build, prevAgeSec: Math.round((Date.now() - prev.ts) / 1000),
-  });
+  if (prev.atTable) {
+    // Mark the boot for the audio engine: this page is a crash-resume, and its
+    // first unlock gesture earns one deliberate graph rebuild (the iOS audio
+    // session can be dead after a jetsam kill in a way no in-graph meter can
+    // detect — see audio.ts healCrashResumedAudio).
+    markUncleanBoot();
+    reportCrash('unclean-exit', new Error('previous session ended at a table with no clean exit and no pagehide — process death suspected'), {
+      prevRoute: prev.route, prevBuild: prev.build, prevAgeSec: Math.round((Date.now() - prev.ts) / 1000),
+    });
+    return;
+  }
+  /* crash-social4 — the home arm: a session that never reached a table
+   * leaves no witness under the at-table rule, which is how the
+   * Social-entry deaths stayed invisible for three rounds. If the
+   * persisted road ends at a Social OPEN with no close after it and
+   * the session never said a clean goodbye, the process died with
+   * the panel opening — say so, with the road attached. */
+  const socialCrumbs = prevCrumbs.filter((c) => c.label === 'social');
+  const lastSocial = socialCrumbs[socialCrumbs.length - 1];
+  if (lastSocial && lastSocial.detail === 'open') {
+    reportCrash('unclean-exit', new Error('previous session ended after a Social open with no clean exit and no pagehide — process death suspected'), {
+      prevRoute: prev.route, prevBuild: prev.build, prevAgeSec: Math.round((Date.now() - prev.ts) / 1000),
+      homeDeath: true, prevCrumbs: prevCrumbs.slice(-10),
+    });
+  }
 }
 
 /* ------------------------------------------------------------- transport */

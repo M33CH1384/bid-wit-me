@@ -245,6 +245,35 @@ function fanFloorLift(pose: Xform): number {
   return lift;
 }
 
+/** Clearance kept between a moving card's lowest corner and the table under it. */
+export const TABLE_CLEAR_MARGIN = 0.003;
+
+/**
+ * How far a card at this pose must rise so none of its four corners is inside the table — felt, the rail's inner
+ * bevel, its cap, or its outer bevel (tableTopY). 0 when it is already clear, or not over the table at all.
+ *
+ * The gather's own guard (gather.ts) only knows the felt plane. A card that crosses the rail while tilted — a deal
+ * to a side seat, a trick swept to a rim pile, a slam near a corner — passed through the rail there, which stands
+ * 0.10 above the felt. Card3D applies this every frame a table card moves, so no flight can cut a corner.
+ * Allocation-free: it runs per card per frame.
+ */
+export function tableClearLift(px: number, py: number, pz: number, qx: number, qy: number, qz: number, qw: number, scale: number, margin = TABLE_CLEAR_MARGIN): number {
+  const hw = (CW / 2) * scale, hh = (CH / 2) * scale;
+  // the card's local +x and +y axes in world space (rotate the unit vectors by q)
+  const xx = 1 - 2 * (qy * qy + qz * qz), xy = 2 * (qx * qy + qz * qw), xz = 2 * (qx * qz - qy * qw);
+  const yx = 2 * (qx * qy - qz * qw), yy = 1 - 2 * (qx * qx + qz * qz), yz = 2 * (qy * qz + qx * qw);
+  const thick = (CT / 2) * scale;
+  let lift = 0;
+  for (let i = 0; i < 4; i++) {
+    const sx = i & 1 ? hw : -hw, sy = i & 2 ? hh : -hh;
+    const top = tableTopY(px + sx * xx + sy * yx, pz + sx * xz + sy * yz);
+    if (top === null) continue;
+    const need = top + margin + thick - (py + sx * xy + sy * yy);
+    if (need > lift) lift = need;
+  }
+  return lift;
+}
+
 /** Opponent's held fan: upright cards near the rail, backs toward the table centre.
  *  `rest` is the DROP channel (0..1, off-turn only — scope in fanRest.ts:
  *  Sitting at any aspect, Standing in landscape): it lowers the whole fan
@@ -598,10 +627,19 @@ export function ringSpot(pos: SeatPos, n: number): Vector3 {
 }
 
 /** Seat badge anchor (above the opponent's cards). */
-export function badgeSpot(pos: SeatPos, n: number): [number, number, number] {
+/** Where the partner's plate anchors when a figure is seated there: over the crown of the head, not over the cards. */
+export const SEATED_TOP_BADGE = { y: 0.92, back: 0.3 };
+
+/**
+ * `seated`: a 3D figure sits at this seat. The top (partner) plate was anchored "above the partner's cards", a rule
+ * from before seated figures: that spot is now the figure's face and chest, so the plate hid the partner (owner,
+ * 2026-11-11). With a figure there it anchors above the head instead. Side plates already sit beside their figures.
+ */
+export function badgeSpot(pos: SeatPos, n: number, seated = false): [number, number, number] {
   const d = seatDir(pos, n);
   const p = edgePoint(d, 0).add(d.clone().multiplyScalar(0.12));
   if (pos === 'left' || pos === 'right') return [p.x * 0.78, 0.62, p.z - 0.55];
+  if (seated) return [p.x, SEATED_TOP_BADGE.y, p.z - SEATED_TOP_BADGE.back];
   // top seat: centered over the partner's cards — Demetrius 2026-10-19 (plate must sit above and
   // centered over the cards in portrait, never overlapping them)
   return [p.x, 0.42, p.z];

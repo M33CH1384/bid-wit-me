@@ -10,7 +10,7 @@
  * setup screens is the Rules card — on the bots form exactly as it
  * already was on the create-a-table form (pinned in target-score.test.ts)
  * — writing the one shared Settings.targetScore that settingsToRules
- * carries into the dealt game. No rename of the "Bots & score" card:
+ * carries into the dealt game. The card was later renamed "Bots" (owner, 2026-11-12: it only holds bot skill):
  * naming is a separate owner decision; the card keeps its title and
  * simply no longer holds the score.
  */
@@ -114,7 +114,7 @@ describe('bots form — the score lives in the Rules card only', () => {
   it('has exactly ONE target seg on the whole form — none left in "Bots & score"', async () => {
     await toBotsForm();
     expect(targetSegs()).toHaveLength(1);
-    const botsCard = card('Bots & score');
+    const botsCard = card('Bots');
     expect(botsCard).not.toBeNull();
     expect(targetSegs(botsCard!)).toHaveLength(0);
     // the Bots skill seg still lives there — only the score moved

@@ -15,6 +15,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { CHAIR_SPOTS, STUDIO } from './classicStudioLayout';
+import { useRoomShown } from './RoomBackdrop';
 import { isOwnSeatSpot, useOwnChairHidden, useOwnSeatDir } from './ownChair';
 import { noteRoomAssets } from '../assetGate';
 
@@ -42,7 +43,12 @@ function ground(obj: Group, floorWorldY: number): void {
   obj.position.y += floorWorldY - box.min.y;
 }
 
+/**
+ * When the room around the table is a Blender render (RoomBackdrop), so the box shell and pendants stand
+ * down. The chairs stay, and an invisible floor keeps catching the table's and the chairs' live shadows.
+ */
 export default function ClassicStudio({ quality }: { quality: 'high' | 'low' }) {
+  const rendered = useRoomShown();
   const hideOwnChair = useOwnChairHidden();
   const ownDir = useOwnSeatDir();
   const gl = useThree((s) => s.gl);
@@ -102,7 +108,7 @@ export default function ClassicStudio({ quality }: { quality: 'high' | 'low' }) 
           ground(c, STUDIO.floorY);
           added.push(c);
         }
-        for (const x of [-STUDIO.lampX, STUDIO.lampX]) {
+        for (const x of rendered ? [] : [-STUDIO.lampX, STUDIO.lampX]) {
           const l = lamp.clone(true) as Group;
           l.position.set(x, 0, 0);
           // shades do not cast the key light (the test scene's two dark blobs on the felt)
@@ -138,13 +144,19 @@ export default function ClassicStudio({ quality }: { quality: 'high' | 'low' }) 
       }
       ktx2.dispose();
     };
-  }, [quality, gl, invalidate, hideOwnChair, ownDir]);
+  }, [quality, gl, invalidate, hideOwnChair, ownDir, rendered]);
 
   const w = STUDIO.roomX * 2;
   return (
     <group>
       {/* shell at the shared floor height; studio y=0 is the floorboards */}
       <group position={[0, STUDIO.floorY, 0]}>
+        {rendered ? (
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow>
+            <planeGeometry args={[40, 40]} />
+            <shadowMaterial transparent opacity={0.42} />
+          </mesh>
+        ) : (<>
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow>
           <planeGeometry args={[w, STUDIO.depth]} />
           <meshStandardMaterial ref={floorMat} color="#584a3c" roughness={1} />
@@ -193,6 +205,7 @@ export default function ClassicStudio({ quality }: { quality: 'high' | 'low' }) 
           <boxGeometry args={[w, 0.18, 0.3]} />
           <meshStandardMaterial color="#2a1a12" roughness={0.8} />
         </mesh>
+        </>)}
       </group>
       <group ref={propsRef} />
     </group>

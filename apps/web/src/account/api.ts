@@ -4,6 +4,7 @@
  * except one cheap GET /api/auth/config + /me when the menu opens.
  */
 import { noteSession, noteSessionLoading } from './sessionHint';
+import { handoffCodeFromSearch, inAppShell, mintPageUrl, noteHandoffPending, stripHandoffCode } from './handoff';
 import { useSyncExternalStore } from 'react';
 import { clearIdleNotice } from '../inactivity';
 import { invalidateVenueUnlocks } from '../venues';
@@ -94,14 +95,33 @@ export function loadAccount(force = false): Promise<void> {
     noteSessionLoading();
     try {
       const [cfg, me] = await Promise.all([call<{ providers: ProviderId[]; passkeys: boolean; accounts: boolean }>('config'), call<{ user: AccountUser | null }>('me')]);
-      set({ ready: true, accounts: !!cfg.accounts, providers: (cfg.providers ?? []).filter((p) => p in PROVIDER_LABEL), passkeys: !!cfg.passkeys && typeof PublicKeyCredential !== 'undefined', user: me.user ?? null });
+      let user = me.user ?? null;
+      let handedOff = false;
+      const handoffCode = handoffCodeFromSearch(location.search); // deep-link return from the browser handoff
+      if (handoffCode) {
+        // The code never stays in the URL — single-use, and a reload must not re-offer it.
+        history.replaceState(history.state, '', location.pathname + stripHandoffCode(location.search) + location.hash);
+        if (!user && inAppShell()) {
+          // No session in this jar yet and we're inside the app: spend the code for a
+          // real one. Outside the shell a stray ?handoff= is only stripped — and the
+          // server also refuses to spend codes for non-shell clients, so no account
+          // can move either way.
+          const rr = await call<{ user: AccountUser | null }>('handoff/redeem', { code: handoffCode });
+          if (rr.user) { user = rr.user; handedOff = true; }
+          else set({ notice: rr.error ?? 'That sign-in code did not work.', noticeKind: 'error' });
+        }
+      }
+      set({ ready: true, accounts: !!cfg.accounts, providers: (cfg.providers ?? []).filter((p) => p in PROVIDER_LABEL), passkeys: !!cfg.passkeys && typeof PublicKeyCredential !== 'undefined', user });
       // definitive only when auth/me itself answered (a failed/non-JSON call stays 'unknown')
-      noteSession(me.user ? 'user' : (me.ok === false || me.error ? null : 'guest'));
-      if (me.user) await afterSignIn(me.user, result === 'ok' || result === 'new');
+      noteSession(user ? 'user' : (me.ok === false || me.error ? null : 'guest'));
+      if (user) await afterSignIn(user, result === 'ok' || result === 'new' || handedOff);
       // An OAuth RETURN (?signin=ok/new) is an interactive sign-in completing —
       // unlike the silent restore this same function performs on every other
       // load, which must never raise the first-sign-in preferences offer.
       if (me.user && (result === 'ok' || result === 'new')) set({ firstSignIn: me.user });
+      // A completed handoff is the same kind of completion — the passkey ceremony
+      // just happened, in the browser — so it earns the first-sign-in treatment too.
+      if (user && handedOff) set({ firstSignIn: user });
     } catch {
       set({ ready: true, accounts: false, providers: [], passkeys: false });
       noteSession(null);
@@ -194,6 +214,30 @@ function passkeyError(e: unknown): string {
   if (n === 'NotAllowedError' || n === 'AbortError') return 'Passkey request was cancelled.';
   if (n === 'InvalidStateError') return 'This device already has a passkey for this account.';
   return (e as Error)?.message || 'Passkey request failed.';
+}
+
+/* ---- sign-in handoff (app shell; see handoff.ts for the why) */
+/** Browser side: mint a one-time code for THIS signed-in session. */
+export async function mintHandoffCode(): Promise<{ code?: string; expiresAt?: number; error?: string }> {
+  const r = await call<{ code?: string; expiresAt?: number }>('handoff/mint', {});
+  return { code: r.code, expiresAt: r.expiresAt, error: r.error };
+}
+/** App side: leave for the browser half. Marks the handoff pending first, so the
+ *  sign-in sheet offers the typed-code box when the player comes back. */
+export function openHandoffBrowser(): void {
+  noteHandoffPending();
+  window.open(mintPageUrl(), '_system');
+}
+/** App side: spend a typed-in code. Adopts the session through the same set()
+ *  choke point as every other sign-in; a completed handoff IS an interactive
+ *  sign-in (the ceremony just ran in the browser), so it sets firstSignIn. */
+export async function redeemHandoffCode(code: string): Promise<string | null> {
+  const r = await call<{ user?: AccountUser }>('handoff/redeem', { code });
+  if (!r.user) return r.error ?? 'That sign-in code did not work.';
+  set({ user: r.user, notice: 'Signed in.', noticeKind: 'ok' });
+  set({ firstSignIn: r.user });
+  await afterSignIn(r.user, true);
+  return null;
 }
 
 /* ---- "Save my progress" */

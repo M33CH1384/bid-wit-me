@@ -176,7 +176,7 @@ describe('the rendered recap (a real hand played to handOver)', () => {
     return st;
   }
 
-  it('carries exactly one review entry, inside the header — and no Run It pill anywhere', () => {
+  it('carries exactly one review entry, inside the footer in line with Leave — and no Run It pill anywhere', () => {
     const st = toHandOver('recap-trick-top');
     expect(st.phase).toBe('handOver');
     expect(st.tricks.length).toBeGreaterThan(0);
@@ -186,9 +186,17 @@ describe('the rendered recap (a real hand played to handOver)', () => {
       onReady: () => {}, onScorePad: () => {}, onChat: () => {}, onLeave: () => {},
       trickReview: createElement(RecapTrickReview, { tricks: st.tricks, face }),
     }));
+    // Owner, 2026-11-07 (superseding the 2026-10-26 header siting this
+    // test pinned before): the pill lives in the FOOTER now, in the
+    // same row as Leave — and the header no longer carries it.
+    const foot = html.slice(html.indexOf('tt-foot'), html.indexOf('</footer>'));
+    expect(foot).toContain('data-testid="recap-tricks-show"');
+    expect(foot).toContain('Review the tricks');
+    const row = html.slice(html.indexOf('tt-foot-row'), html.indexOf('</footer>'));
+    expect(row).toContain('data-testid="recap-tricks-show"');
+    expect(row).toContain('data-testid="recap-leave"');
     const head = html.slice(html.indexOf('tt-head'), html.indexOf('tt-body'));
-    expect(head).toContain('data-testid="recap-tricks-show"');
-    expect(head).toContain('Review the tricks');
+    expect(head).not.toContain('recap-tricks-show');
     // exactly one review entry on the whole sheet
     expect(html.split('recap-tricks-show').length - 1).toBe(1);
     expect(html).not.toContain('Review last trick');
@@ -219,7 +227,7 @@ describe('wiring — one browser, both doors', () => {
   it('the recap receives the browser from the table, over the hand just played — one recap mount, plus the two results doors', () => {
     expect(table).toContain("import { RecapTrickReview } from './TrickBrowser';");
     expect(table).toContain('trickReview={<RecapTrickReview key={st.handNo} tricks={piles} face={face} />}');
-    // The recap keeps exactly ONE entry (the header's). Option C (owner,
+    // The recap keeps exactly ONE entry (the footer's). Option C (owner,
     // 2026-11-05) additionally carries the same control onto both results
     // surfaces — a set ending's showcase beat has no recap to hold the
     // door — so the file's count is the import + the recap mount + the
@@ -228,12 +236,18 @@ describe('wiring — one browser, both doors', () => {
     expect(table.split('trickReview={').length - 1).toBe(1);
   });
 
-  it('the entry renders in the recap HEADER — the top of the sheet, ahead of the body', () => {
+  it('the entry renders in the recap FOOTER — in line with Leave, below the body', () => {
+    // Owner, 2026-11-07 — supersedes the 2026-10-26 header siting this
+    // test pinned before ("the entry renders in the recap HEADER"): in
+    // portrait the pill's own header line cost the score cards their
+    // height. The footer is pinned in every orientation, so the
+    // no-scroll requirement the header move served still holds.
     expect(intermission).toContain('{trickReview}');
-    expect(intermission.indexOf('{trickReview}')).toBeGreaterThan(intermission.indexOf('tt-head'));
-    expect(intermission.indexOf('{trickReview}')).toBeLessThan(intermission.indexOf('tt-body'));
-    // and never in the body's flow again (the bottom siting is what clipped)
-    expect(intermission.slice(intermission.indexOf('tt-body'))).not.toContain('{trickReview}');
+    expect(intermission.indexOf('{trickReview}')).toBeGreaterThan(intermission.indexOf('tt-foot'));
+    expect(intermission.indexOf('{trickReview}')).toBeGreaterThan(intermission.indexOf('tt-body'));
+    // and never in the header again
+    const head = intermission.slice(intermission.indexOf('tt-head'), intermission.indexOf('tt-body'));
+    expect(head).not.toContain('{trickReview}');
   });
 
   it('the removed Run It recap pill cannot creep back (owner 2026-10-26)', () => {
@@ -244,17 +258,20 @@ describe('wiring — one browser, both doors', () => {
     expect(css).not.toMatch(/\.tt-run(-show)?\s*\{/);
   });
 
-  it('the header siting is styled: the header wraps, the pill keeps the tap floor, the browser keeps its measure', () => {
+  it('the footer siting is styled: Review and Leave halve the row, the browser keeps its measure', () => {
+    // Supersedes 'the header siting is styled…' (2026-10-26 pins) with
+    // the 2026-11-07 footer siting. The pill's own rules stay
+    // byte-identical to its in-flow siting (44px floor).
     expect(css).toContain('.tt-head { flex-wrap: wrap; }');
-    expect(css).toContain('.tt-head > .tt-tricks-show { flex: none; }');
-    expect(css).toContain('.tt-head > .tt-tricks { flex: 1 1 100%;');
-    expect(css).toContain('.tt-head > .tt-tricks > .trick-browser { flex: none; width: min(520px, 100%); }');
-    // phone widths: the pill takes its own full-width line under the title row,
-    // and flex order keeps the chat button on the title row beside the title
-    expect(css).toContain('.tt-head > .tt-tricks-show { flex: 1 1 100%; margin-top: 2px; order: 2; }');
-    expect(css).toContain('.tt-head .tt-chat-btn { order: 1; }');
-    expect(css).toContain('justify-content: center; order: 2; }');
-    // the pill's own rules are byte-identical to its in-flow siting (44px floor)
+    expect(css).toContain('.tt-foot-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; width: 100%; }');
+    expect(css).toContain('.tt-foot-row > .tt-tricks-show { flex: 1 1 0; }');
+    expect(css).toContain('.tt-foot-row > .leave-red { flex: 1 1 0; }');
+    // the open browser takes the row's full width, capped at its old measure
+    expect(css).toContain('.tt-foot-row > .tt-tricks { flex: 1 1 100%; min-width: 0; display: flex; justify-content: center; }');
+    expect(css).toContain('.tt-foot-row > .tt-tricks > .trick-browser { flex: 0 1 520px; max-width: 100%; }');
+    // the header siting is GONE — it must not creep back
+    expect(css).not.toContain('.tt-head > .tt-tricks');
+    expect(css).not.toContain('.tt-head .tt-chat-btn { order: 1; }');
     expect(css).toContain('.tt-tricks { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }');
     expect(css).toContain('.tt-tricks-show { align-self: center;');
     expect(css).toContain('.tt-tricks-show { align-self: center; margin: 0; padding: 6px 14px; min-height: 44px;');
@@ -262,5 +279,15 @@ describe('wiring — one browser, both doors', () => {
     expect(css).not.toContain('grid-area: tricks');
     expect(css).not.toContain('grid-area: run');
     expect(css).not.toContain('"run run"');
+  });
+
+  it('the header padding reservation stays in EVERY orientation (decided 2026-11-07)', () => {
+    // Workstream E moved the chat button out of the portrait header, but
+    // the reservation is NOT dead there: .tt-count keeps margin-left:auto
+    // and still lands on the header's right edge — the SoundDock's
+    // footprint — whenever an online undecided recap shows the countdown.
+    // So styles.css:4468's rule stays as-is; this pin keeps anyone from
+    // "cleaning it up" in portrait only.
+    expect(css).toContain('.tt-head { padding-right: calc(54px + env(safe-area-inset-right)); }');
   });
 });

@@ -5,7 +5,9 @@
  * labels inside every cell, team names in the team colour. The last scored hand is highlighted; the hand being
  * played shows as "in progress" with the bids so far.
  */
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { handTricksFor } from './handTricks';
+import { TrickBrowserPanel } from './TrickBrowser';
 import { useEscapeClose } from './useEscapeClose';
 import { type GameState, type HandRecord, type SideHandResult, type TableRules, bidLabel, hostMinimum, shotCounts, shotOutOn } from '@spades/rules';
 import { SEAT_COLORS } from './overlay';
@@ -105,6 +107,70 @@ function Row({ color, name, bid, took, points, chips, total, bags, bagsAdded, de
   );
 }
 
+/**
+ * The pad's hand-by-hand list: the hands strip, then one block per hand with
+ * each side's bid, books, points and running total, and a Review tricks door
+ * on every hand whose plays were kept (handTricks.ts). Shared by the score pad
+ * and the game-over screen (owner, 2026-11-12: the results "should have full
+ * score pad not just the last hand played").
+ */
+export function PadHands({ st, names, sideName, dealerName, lastRef }: { st: GameState; names: string[]; sideName: (side: number) => string; dealerName?: string; lastRef?: React.RefObject<HTMLElement | null> }) {
+  const r = st.rules;
+  const sides = Array.from({ length: st.scores.length }, (_, i) => i);
+  const lastNo = st.history[st.history.length - 1]?.handNo;
+  const inProgress = st.phase !== 'gameOver' && st.phase !== 'handOver' && !st.history.some((h) => h.handNo === st.handNo);
+  const seatName = (x: number) => hudSeatName(x, names);
+  const currentDealer = dealerName?.trim() || seatName(st.dealer);
+  // Trick review, one hand open at a time.
+  const [reviewHand, setReviewHand] = useState<number | null>(null);
+  return (
+          <div className="pad-hands">
+          <HandsStrip history={st.history} sides={sides} label={sideName} color={(s) => sideColor(r, s)} testId="pad-strip" />
+          <div className="pad-cols v2" aria-hidden>
+            <span>{r.partnerships ? 'Team' : 'Player'}</span><span>Bid</span><span>Took</span><span>Points</span><span>Total</span>
+          </div>
+          {st.history.length === 0 && !inProgress && <p className="muted">No hands scored yet.</p>}
+          {st.history.map((h) => (
+            <section key={h.handNo} ref={h.handNo === lastNo && !inProgress ? lastRef : undefined} className={`pad-hand ${h.handNo === lastNo ? 'last' : ''}`} data-testid={`pad-hand-${h.handNo}`}>
+              <header className="pad-hand-head"><b>Hand {h.handNo}</b><span>{seatName(h.dealer)} dealt</span>{(() => {
+                const moments = [
+                  ...bostonSides(h).map((s) => <em key={`b${s}`} className="rchip boston">BOSTON</em>),
+                  ...wheelsMade(r, h).map((w) => <em key={`w${w.side}`} className="rchip wheels">WHEELS</em>),
+                  ...(h.nuke ? [<em key="n" className="rchip nuke">☢ NUKE</em>] : []),
+                ];
+                return moments.length ? <span className="pad-moments" data-testid={`pad-moment-${h.handNo}`}>{moments}</span> : null;
+              })()}{h.handNo === lastNo && <span className="pad-last">{st.phase === 'gameOver' ? 'FINAL' : 'LAST HAND'}</span>}
+                {handTricksFor(st.seed, h.handNo) && (
+                  <button type="button" className={`pad-review${reviewHand === h.handNo ? ' on' : ''}`} data-testid={`pad-review-${h.handNo}`} aria-expanded={reviewHand === h.handNo}
+                    onClick={() => setReviewHand(reviewHand === h.handNo ? null : h.handNo)}>{reviewHand === h.handNo ? 'Hide tricks' : 'Review tricks'}</button>
+                )}</header>
+              {h.sides.map((s) => (
+                <Row key={s.side} color={sideColor(r, s.side)} name={sideName(s.side)} bid={bidText(h, s)} took={s.tricks}
+                  points={signed(s.points)} details={breakdown(r, s)} chips={resultChips(r, h, s, st).filter((c) => c.kind !== 'books' && c.kind !== 'made')}
+                  total={s.totalScore} bags={s.totalBags} bagsAdded={s.bagsAdded} />
+              ))}
+              {reviewHand === h.handNo && (() => {
+                const tricks = handTricksFor(st.seed, h.handNo);
+                return tricks ? <div className="pad-review-panel" data-testid={`pad-review-panel-${h.handNo}`}><TrickBrowserPanel key={h.handNo} tricks={tricks} face={seatName} onClose={() => setReviewHand(null)} /></div> : null;
+              })()}
+            </section>
+          ))}
+          {inProgress && (
+            <section ref={lastRef} className="pad-hand current" data-testid="pad-hand-current">
+              <header className="pad-hand-head"><b>Hand {st.handNo}</b><span>{currentDealer} deals</span><span className="pad-last">IN PROGRESS</span></header>
+              {sides.map((side) => {
+                const seats = r.partnerships ? [side, side + 2] : [side];
+                const bids = seats.map((x) => st.bids[x]);
+                return <Row key={side} color={sideColor(r, side)} name={sideName(side)}
+                  bid={bids.every((b) => b === 'books') ? '—' : bids.map((b) => (b === null ? '…' : bidLabel(b))).join(' + ')}
+                  took={seats.reduce((a, x) => a + (st.tricksWon[x] ?? 0), 0)} points="–" total={st.scores[side]!} bags={st.bags[side]!} />;
+              })}
+            </section>
+          )}
+          </div>
+  );
+}
+
 export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dealerName, onLeave }: { st: GameState; names: string[]; onClose: () => void; onContinue?: () => void; locked?: ReactNode; sideName: (side: number) => string; /** current hand's dealer, from the engine seat's occupant; past hands keep their own dealer seat */ dealerName?: string; /** Hand Recap only: open the Leave choice (Save & go to menu / Quit game) */ onLeave?: () => void }) {
   const r = st.rules;
   const sides = Array.from({ length: st.scores.length }, (_, i) => i);
@@ -161,42 +227,7 @@ export function ScorePad({ st, names, onClose, onContinue, locked, sideName, dea
             </div>
           </header>
           {/* S2: the by-hand column (its own scroller in landscape; display:contents in portrait) */}
-          <div className="pad-hands">
-          <HandsStrip history={st.history} sides={sides} label={sideName} color={(s) => sideColor(r, s)} testId="pad-strip" />
-          <div className="pad-cols v2" aria-hidden>
-            <span>{r.partnerships ? 'Team' : 'Player'}</span><span>Bid</span><span>Took</span><span>Points</span><span>Total</span>
-          </div>
-          {st.history.length === 0 && !inProgress && <p className="muted">No hands scored yet.</p>}
-          {st.history.map((h) => (
-            <section key={h.handNo} ref={h.handNo === lastNo && !inProgress ? lastRef : undefined} className={`pad-hand ${h.handNo === lastNo ? 'last' : ''}`} data-testid={`pad-hand-${h.handNo}`}>
-              <header className="pad-hand-head"><b>Hand {h.handNo}</b><span>{seatName(h.dealer)} dealt</span>{(() => {
-                const moments = [
-                  ...bostonSides(h).map((s) => <em key={`b${s}`} className="rchip boston">BOSTON</em>),
-                  ...wheelsMade(r, h).map((w) => <em key={`w${w.side}`} className="rchip wheels">WHEELS</em>),
-                  ...(h.nuke ? [<em key="n" className="rchip nuke">☢ NUKE</em>] : []),
-                ];
-                return moments.length ? <span className="pad-moments" data-testid={`pad-moment-${h.handNo}`}>{moments}</span> : null;
-              })()}{h.handNo === lastNo && <span className="pad-last">{st.phase === 'gameOver' ? 'FINAL' : 'LAST HAND'}</span>}</header>
-              {h.sides.map((s) => (
-                <Row key={s.side} color={sideColor(r, s.side)} name={sideName(s.side)} bid={bidText(h, s)} took={s.tricks}
-                  points={signed(s.points)} details={breakdown(r, s)} chips={resultChips(r, h, s, st).filter((c) => c.kind !== 'books' && c.kind !== 'made')}
-                  total={s.totalScore} bags={s.totalBags} bagsAdded={s.bagsAdded} />
-              ))}
-            </section>
-          ))}
-          {inProgress && (
-            <section ref={lastRef} className="pad-hand current" data-testid="pad-hand-current">
-              <header className="pad-hand-head"><b>Hand {st.handNo}</b><span>{currentDealer} deals</span><span className="pad-last">IN PROGRESS</span></header>
-              {sides.map((side) => {
-                const seats = r.partnerships ? [side, side + 2] : [side];
-                const bids = seats.map((x) => st.bids[x]);
-                return <Row key={side} color={sideColor(r, side)} name={sideName(side)}
-                  bid={bids.every((b) => b === 'books') ? '—' : bids.map((b) => (b === null ? '…' : bidLabel(b))).join(' + ')}
-                  took={seats.reduce((a, x) => a + (st.tricksWon[x] ?? 0), 0)} points="–" total={st.scores[side]!} bags={st.bags[side]!} />;
-              })}
-            </section>
-          )}
-          </div>
+          <PadHands st={st} names={names} sideName={sideName} dealerName={dealerName} lastRef={lastRef} />
         </div>
         <details className="locked-details" data-testid="locked-rules-details">
           <summary>🔒 House rules for this game</summary>

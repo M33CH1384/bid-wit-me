@@ -401,6 +401,41 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .modal-backdrop { position: fixed; inset: 0; background: rgba(6,3,12,.55); display: grid; place-items: center; padding: 16px; z-index: 20; }
 .modal { width: min(580px, 100%); max-height: 88dvh; display: flex; flex-direction: column; gap: 12px; padding: 18px; --slant: 18px; }
 .modal h2 { margin: 0; text-align: center; font-family: var(--display); font-weight: 800; font-size: 34px; letter-spacing: .05em; color: var(--gold); text-shadow: 0 0 18px rgba(var(--gold-rgb),.7); }
+/* Eye zoom calibration (2026-11-07): the two-look setup over the table. */
+.eye-cal-card { text-align: center; align-items: stretch; }
+.eye-cal-card h3 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: .04em; color: var(--gold); }
+.eye-cal-card p { margin: 0; color: var(--muted); font-size: 15px; }
+.eye-cal-bar { height: 8px; border-radius: 4px; background: rgba(var(--edge-rgb),.25); overflow: hidden; }
+.eye-cal-bar i { display: block; height: 100%; background: var(--gold); border-radius: 4px; transition: width .1s linear; }
+.eye-cal-card .link { align-self: center; }
+.eye-zoom-cal-btn { display: block; padding: 4px 0 0; font-size: 13px; }
+/* The simulated table inside the calibration (owner, 2026-11-08): a drawn
+   felt + the player's own fan in the proportions of the real table view
+   (three/layout.ts: the felt centre projects to the upper-middle of the
+   screen; the own fan's bottom edge rides ~5% of the height above the
+   screen's bottom, cards rolled to the 0.2 rad hand cap). Pure CSS shapes —
+   no scene, no images — so it renders identically in Settings, the lobby,
+   and over a real table, in both themes. The prompt card rides the top while
+   sampling so it never covers the table centre. */
+.eye-cal-backdrop.eye-cal-live .eye-cal-card { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(580px, calc(100vw - 32px)); }
+.eye-cal-sim { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.eye-cal-sim-table { position: absolute; left: 50%; top: 42%; width: min(88vw, 600px); aspect-ratio: 2.05; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(ellipse at 50% 40%, #27694a 0%, #17452f 58%, #0d2f1f 100%); box-shadow: inset 0 0 0 6px rgba(122, 82, 40, .85), inset 0 0 0 9px rgba(var(--gold-rgb), .28), inset 0 -18px 34px rgba(0, 0, 0, .45), 0 24px 48px rgba(0, 0, 0, .4); opacity: .55; filter: saturate(.65); transition: opacity .3s ease, filter .3s ease, box-shadow .3s ease; }
+.eye-cal-sim-centre { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid transparent; }
+.eye-cal-sim-table.lit { opacity: 1; filter: none; box-shadow: inset 0 0 0 6px rgba(122, 82, 40, .85), inset 0 0 0 9px rgba(var(--gold-rgb), .45), inset 0 -18px 34px rgba(0, 0, 0, .45), 0 24px 48px rgba(0, 0, 0, .4), 0 0 44px rgba(var(--gold-rgb), .22); }
+.eye-cal-sim-table.lit .eye-cal-sim-centre { border-color: rgba(var(--gold-rgb), .85); box-shadow: 0 0 18px rgba(var(--gold-rgb), .5), inset 0 0 12px rgba(var(--gold-rgb), .35); }
+.eye-cal-sim-fan { --sim-card-w: clamp(42px, 14.5vmin, 62px); position: absolute; left: 50%; bottom: 4.5%; transform: translateX(-50%); display: flex; justify-content: center; opacity: .55; filter: saturate(.65); transition: opacity .3s ease, filter .3s ease; }
+.eye-cal-sim-card { display: block; width: var(--sim-card-w); aspect-ratio: .72; margin-inline: calc(var(--sim-card-w) * -.18); border: 1px solid rgba(20, 12, 40, .35); border-radius: 7px; background: linear-gradient(160deg, #fdfbf5, #e9e2d2); box-shadow: 0 6px 14px rgba(0, 0, 0, .35); transform: rotate(var(--tilt)) translateY(var(--lift)); transform-origin: 50% 140%; position: relative; transition: border-color .3s ease, box-shadow .3s ease; }
+.eye-cal-sim-card::after { content: '♠'; position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--sim-card-w) * .42); color: rgba(24, 16, 48, .5); }
+.eye-cal-sim-fan.lit { opacity: 1; filter: none; }
+.eye-cal-sim-fan.lit .eye-cal-sim-card { border-color: rgba(var(--gold-rgb), .9); box-shadow: 0 0 16px rgba(var(--gold-rgb), .55), 0 8px 16px rgba(0, 0, 0, .35); }
+@media (prefers-reduced-motion: no-preference) {
+  .eye-cal-sim-table.lit .eye-cal-sim-centre { animation: eye-cal-pulse 1.1s ease-in-out infinite; }
+}
+@keyframes eye-cal-pulse { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.18); } }
+@media (orientation: landscape) and (max-height: 500px) {
+  .eye-cal-sim-table { top: 55%; width: min(56vw, 620px); }
+  .eye-cal-sim-fan { bottom: 3%; --sim-card-w: clamp(38px, 15vh, 56px); }
+}
 .scroll { overflow: auto; }
 .summary-table, .pad { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 .summary-table th, .pad th { color: var(--purple-hot); font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; padding: 4px; text-align: center; }
@@ -762,6 +797,16 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   font-family:var(--display); font-weight:700; font-size:18px; letter-spacing:.06em; text-transform:uppercase; touch-action:manipulation;
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
 .value-chip { font-family:var(--display); font-weight:700; font-size:14.5px; letter-spacing:.06em; color:var(--gold); background:rgba(var(--gold-rgb),.12); padding:5px 10px; text-transform:none; }
+/* Story resume signpost (owner, 2026-11-08): as a shared quiet-row its
+   title shared one line with the pair chip, and wherever the two
+   outmeasured the row the title wrapped and its last word dangled
+   ("RESUME — THE KING OF THE / BLOCK"). The signpost stacks instead:
+   the title on its own single line, the chip as a sub-line beneath —
+   one button, the same read at every width. The title can never wrap;
+   on a screen narrower than the title itself, ellipsis is the valve.
+   Other quiet-rows keep the shared label-left / chip-right pattern. */
+.story-resume-row { flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; }
+.story-resume-row > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .corner-tab { position:absolute; right:0; bottom:0; width:20px; height:20px; background:var(--gold); clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 .deck-thumbs { display:flex; gap:10px; overflow-x:auto; padding:4px 2px 8px; width:100%; }
 .deck-thumbs .dt { flex:0 0 auto; width:86px; border:0; padding:6px 6px 8px; background:rgba(255,255,255,.05); color:var(--ink); display:flex; flex-direction:column; gap:6px; align-items:center; touch-action:manipulation;
@@ -1085,6 +1130,16 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .tt-chat-btn { position: relative; flex: none; margin-left: auto; width: 44px; height: 44px; border: 0; border-radius: 12px; font-size: 17px; line-height: 1; color: #fff; background: rgba(var(--purple-rgb),.92); box-shadow: 0 4px 10px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.25); display: grid; place-items: center; pointer-events: auto; cursor: pointer; }
 .tt-chat-btn.on { background: rgba(40,24,64,.95); }
 .tt-chat-btn .unread { top: -6px; right: -6px; }
+/* The recap renders the chat button TWICE (header + the footer's Score
+   pad row) and exactly one copy shows per orientation: landscape keeps
+   the header copy (owner, 2026-10-20 — in the header row it can never
+   float over a score), portrait shows the footer copy at the bottom of
+   the screen (owner, 2026-11-07). Identical behaviour, badge and aria. */
+.tt-foot .tt-chat-btn { display: none; }
+@media (orientation: portrait) {
+  .tt-head > .tt-chat-btn { display: none; }
+  .tt-foot .tt-chat-btn { display: grid; }
+}
 .tt-count { margin-left: auto; font-size: 14px; color: var(--muted); white-space: nowrap; }
 .tt-count.hot { color: var(--red); }
 .tt-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; justify-content: flex-start; align-items: center; gap: 24px; padding: 22px 16px 30px; }
@@ -1361,35 +1416,38 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 /* Score-card trick browser (owner 2026-10-24): the recap's Review control —
    a pill in the Run It review's idiom that opens the trick browser (the
    table readout's own lt-* classes and stepping helpers) over the hand
-   just played. Since 2026-10-26 it renders in the recap's HEADER (the
-   rules right below), not the sheet's flow. */
+   just played. Since 2026-11-07 it renders in the recap's FOOTER, in
+   line with the Leave button (the rules right below); from 2026-10-26
+   to 2026-11-07 it rendered in the recap's header. */
 .tt-tricks { margin: 2px 0 4px; align-self: center; width: min(520px, 100%); }
 .tt-tricks-show { align-self: center; margin: 0; padding: 6px 14px; min-height: 44px; appearance: none; -webkit-appearance: none; font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .06em; color: #f6f2ff; background: rgba(20, 10, 36, .92); border: 1px solid rgba(var(--edge-rgb), .55); border-radius: 999px; }
-/* The tricks entry rides the recap HEADER (owner, 2026-10-26: "move the
-   review the tricks to the top of the ui so there's no need to scroll in
-   landscape" — it sat at the foot of the body's flow, the landscape
-   rail's last row, clipped at the rail's edge in his Hand 5 shot). The
-   header wraps: on wide sheets the pill sits in the title row, inside
-   the header's existing 44px content height, so no landscape budget
-   moves; on phone-width sheets it takes its own full-width line under
-   the title row. The open browser always takes a full-width header
-   line, measure-capped at the same 520px its in-flow siting had, and
-   closing hands the header back. The recap's old second review entry —
-   the Run It cleared-hands pill (the .tt-run* rules, removed with it) —
-   is gone entirely: the recap keeps exactly this one door, and the
-   tornado's cleared hands stay reachable from the table's RUN IT! chip
-   once play resumes. */
+/* The tricks entry rides the recap FOOTER (owner, 2026-11-07: "move the
+   review tricks button to the lower area and put it in line with the
+   leave button make them each have half of the screen so the score
+   cards fully show"). From 2026-10-26 to 2026-11-07 it sat in the
+   HEADER (owner, 2026-10-26: "move the review the tricks to the top of
+   the ui so there's no need to scroll in landscape" — back then it had
+   sat at the foot of the body's flow, the landscape rail's last row,
+   clipped at the rail's edge in his Hand 5 shot) — but in portrait the
+   pill's own header line cost the score cards their height (his
+   2026-11-07 shot: the second team card sliced by the pinned footer).
+   The footer is pinned in EVERY orientation, so the no-scroll
+   landscape requirement still holds, and the header line goes back to
+   the cards. The recap's old second review entry — the Run It
+   cleared-hands pill (the .tt-run* rules, removed with it) — is gone
+   entirely: the recap keeps exactly this one door, and the tornado's
+   cleared hands stay reachable from the table's RUN IT! chip once
+   play resumes. */
 .tt-head { flex-wrap: wrap; }
-.tt-head > .tt-tricks-show { flex: none; }
-.tt-head > .tt-tricks { flex: 1 1 100%; width: 100%; margin: 2px 0 4px; display: flex; justify-content: center; order: 2; }
-.tt-head > .tt-tricks > .trick-browser { flex: none; width: min(520px, 100%); }
-@media (max-width: 560px) {
-  /* phone widths: the chat button keeps the title row (flex order puts it
-     ahead of the full-width pill line — greedy line-breaking would
-     otherwise strand it on a third line under the pill) */
-  .tt-head .tt-chat-btn { order: 1; }
-  .tt-head > .tt-tricks-show { flex: 1 1 100%; margin-top: 2px; order: 2; }
-}
+.tt-foot-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; width: 100%; }
+.tt-foot-row > .tt-tricks-show { flex: 1 1 0; }
+.tt-foot-row > .leave-red { flex: 1 1 0; }
+.tt-foot-row > .tt-tricks { flex: 1 1 100%; min-width: 0; display: flex; justify-content: center; }
+.tt-foot-row > .tt-tricks > .trick-browser { flex: 0 1 520px; max-width: 100%; }
+/* The footer's top row: Score pad at one end, the portrait chat copy at
+   the other (owner, 2026-11-07), inside the footer's existing height —
+   no new row, and no width taken from the Review/Leave halves below. */
+.tt-foot-toprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
 .trick-browser { display: flex; flex-direction: column; gap: 5px; padding: 8px 12px; border-radius: 12px; background: rgba(16, 8, 30, .55); border: 1px solid rgba(var(--edge-rgb), .45); }
 .tb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tb-head .lt-label { width: auto; text-align: left; }
@@ -1416,7 +1474,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .tt-backdrop ~ .modal-backdrop { z-index: 1010; }
 .hype-layer { z-index: 1100; }
 .sound-dock { z-index: 1050; }
-.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.animfx-layer):not(.toasts):not(.badge-unlock):not(.victory-screen):not(.recap-chat) {
+.table-screen.modal-open > :not(.modal-backdrop):not(.tt-backdrop):not(.hype-layer):not(.animfx-layer):not(.toasts):not(.badge-unlock):not(.victory-screen):not(.recap-chat):not(.renege-overlay):not(.renege-verdict) {
   filter: blur(3px) brightness(.55) saturate(.8); pointer-events: none; transition: filter .25s ease;
 }
 .table-screen.modal-open .modal-backdrop { background: rgba(6,3,12,.35); }
@@ -1824,14 +1882,20 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .team-name-edit input { flex: 1; min-width: 0; background: rgba(255,255,255,.07); border: 1px solid rgba(var(--edge-rgb),.35); border-radius: 6px; color: var(--ink); padding: 7px 9px; font: inherit; font-size: 16px; }
 .team-name-edit input::placeholder { color: var(--muted); opacity: .8; }
 .team-name-edit button { border: 1px solid rgba(var(--edge-rgb),.45); background: rgba(var(--purple-rgb),.25); color: var(--ink); border-radius: 6px; padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
-/* Previous-team picker (owner, 2026-11-05): one-tap chips of the player's
-   own earlier team names under a team-name field. One neutral rule — the
-   vars carry both themes. Chips are full 44px tap targets. */
-.prev-teams { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
-.prev-teams-label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
-.prev-team-chip { border: 1px solid rgba(var(--edge-rgb),.45); background: rgba(var(--purple-rgb),.18); color: var(--ink); border-radius: 999px; padding: 8px 14px; min-height: 44px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
-.prev-team-chip:is(:hover, :focus-visible) { filter: brightness(1.12); }
-.prev-team-chip:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+/* Previous-team picker (owner, 2026-11-05; DROPDOWN per owner, 2026-11-08):
+   the player's own earlier team names under a team-name field, in a native
+   select — the chip stack it replaces piled the names rows tall and pushed
+   the landscape form off the screen. One row tall at rest, however many
+   teams he has. One neutral rule set — the vars carry both themes; the
+   select wears the app's global select style, sized like the venue select
+   in this same form (full width, 44px, 16px). The wrapper takes the full
+   row (width:100%): the host .ess-row is a wrapping flex row, and a
+   shrink-to-fit picker would share the name field's line and squeeze the
+   field to nothing — the chip stack's bulk used to force the line break. */
+.prev-teams { display: flex; align-items: center; gap: 8px; margin-top: 8px; width: 100%; }
+.prev-teams-label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 2px; flex: none; }
+.prev-teams-select { flex: 1; min-width: 0; width: 100%; min-height: 44px; font-size: 16px; cursor: pointer; }
+.prev-teams-select:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 .team-name-edit button:hover { background: rgba(var(--purple-rgb),.45); }
 .lobby-team-name, .tt-team-edit { display: grid; gap: 3px; margin: 6px 0; }
 .lobby-team-name small, .tt-team-edit small { font-size: 10px; letter-spacing: .12em; opacity: .75; }
@@ -1915,11 +1979,17 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    the toss a trick-play one), in the game's blue/violet rather than amber so
    the two calls can never be confused. Like the misdeal call it paints at
    full strength from its first frame: availability is honest by presence. */
-.toss-wrap { position: fixed; left: 50%; bottom: calc(26vh + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 12; }
+.toss-wrap { position: fixed; left: 50%; bottom: calc(26vh + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 12; display: flex; align-items: center; gap: 8px; }
 .toss-btn { font-family: var(--display); font-weight: 900; font-style: italic; font-size: 19px; letter-spacing: .04em; text-transform: uppercase; color: #fff; padding: 9px 20px 10px; border-radius: 999px; border: 2px solid rgba(255,255,255,.85); cursor: pointer;
   background: linear-gradient(180deg, #7a5cff, #4338ca); box-shadow: 0 6px 22px rgba(0,0,0,.55), 0 0 18px rgba(99,102,241,.55); }
 .toss-btn:hover { filter: brightness(1.1); }
 .toss-btn:active { transform: scale(.97); }
+/* The pill's dismiss ✕ (owner, 2026-11-07): its own round target riding
+   at the pill's trailing edge — hides the pill for this player for the
+   rest of the hand (local state only; never a poll opt-out). */
+.toss-dismiss { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 2px solid rgba(255,255,255,.85); background: rgba(24, 16, 54, .94); color: #fff; font-size: 15px; line-height: 1; display: grid; place-items: center; cursor: pointer; box-shadow: 0 6px 22px rgba(0,0,0,.55); }
+.toss-dismiss:hover { filter: brightness(1.2); }
+.toss-dismiss:active { transform: scale(.94); }
 .toss-note { font-family: var(--display); font-weight: 800; letter-spacing: .05em; font-size: 13.5px; text-transform: uppercase; color: #e6e2ff; background: rgba(38,30,80,.82); border: 1px solid rgba(255,255,255,.35); padding: 6px 14px; border-radius: 999px; white-space: nowrap; }
 .toss-overlay { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 14px; background: rgba(5,2,10,.45); }
 .toss-sheet { position: relative; width: min(94vw, 430px); max-height: calc(100dvh - 28px); overflow-y: auto; padding: 18px 20px 15px; text-align: center; border-radius: 18px; }
@@ -1941,6 +2011,32 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .toss-wait { font-weight: 700; color: rgba(255,255,255,.92); padding: 4px 0 2px; }
 .toss-clock { margin-top: 10px; font-size: 12.5px; font-weight: 700; color: rgba(255,255,255,.65); }
 @media (prefers-reduced-motion: reduce) { .toss-btn, .toss-yes { animation: none; } }
+/* Renege calls (owner, 2026-11-12): the call pill, the book sheet and the ruling. The sheet and
+   the ruling borrow the toss sheet / misdeal panel shells; only the pieces of their own are here. */
+.renege-wrap { position: fixed; left: calc(10px + env(safe-area-inset-left)); bottom: calc(23vh + 110px + env(safe-area-inset-bottom)); z-index: 12; }
+.renege-btn { font-family: var(--display); font-weight: 900; font-style: italic; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; color: #fff; padding: 7px 14px 8px; border-radius: 999px; border: 2px solid rgba(255,255,255,.8); cursor: pointer; background: linear-gradient(180deg, #e5484d, #9b1c26); box-shadow: 0 6px 18px rgba(0,0,0,.5); }
+.renege-btn:hover { filter: brightness(1.1); }
+.renege-btn:active { transform: scale(.97); }
+/* phones: three pills do not fit the recap's footer row — the call takes its own line */
+@media (max-width: 560px) { .tt-foot-row > .tt-tricks-show.renege-recap { flex: 1 1 100%; } }
+.renege-overlay { z-index: 1010; } /* above the hand recap (.tt-backdrop, 1000): the call stays open there */
+.renege-sheet { width: min(96vw, 460px); }
+.renege-head, .renege-verdict-head.hit { color: #ff9aa2; }
+.renege-verdict-head.miss { color: #c9c2ff; }
+.renege-books { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.renege-row { padding: 7px 9px 8px; border-radius: 12px; background: rgba(255,255,255,.07); }
+.renege-no { display: block; font-family: var(--display); font-weight: 900; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.7); margin-bottom: 5px; }
+.renege-book, .renege-proof { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.renege-book.solo { margin-bottom: 14px; }
+.renege-proof { grid-template-columns: repeat(3, minmax(0, 84px)); justify-content: center; margin: 10px 0 4px; }
+.renege-play { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 2px; border: 2px solid transparent; border-radius: 10px; background: none; color: #fff; font: inherit; min-width: 0; }
+.renege-play.can { cursor: pointer; border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.06); }
+.renege-play.can:hover { border-color: #ff9aa2; background: rgba(229,72,77,.22); }
+.renege-play.picked { border-color: #ff9aa2; background: rgba(229,72,77,.28); }
+.renege-card { width: min(100%, 62px); aspect-ratio: 240 / 336; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+.renege-name { font-size: 11.5px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,.88); }
+.renege-verdict { z-index: 1020; }
+.renege-penalty { margin-top: 8px; font-family: var(--display); font-weight: 900; font-size: 18px; letter-spacing: .04em; text-transform: uppercase; color: #fff; }
 @keyframes runit-glow { 50% { box-shadow: 0 0 28px rgba(179,107,255,1), 0 0 64px rgba(71,209,255,.7), inset 0 1px 0 rgba(255,255,255,.5); } }
 @keyframes runit-attn { 0%, 100% { transform: scale(1); box-shadow: 0 0 18px rgba(179,107,255,.85), 0 0 0 0 rgba(255,255,255,.7); } 50% { transform: scale(1.09); box-shadow: 0 0 34px rgba(179,107,255,1), 0 0 0 14px rgba(255,255,255,0); } }
 .run-it-tip { position: relative; max-width: min(320px, 86vw); padding: 10px 12px; font-size: 14px; line-height: 1.35; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; border: 1px solid rgba(var(--gold-rgb),.7); box-shadow: 0 0 0 9999px rgba(5,2,10,.45), 0 0 24px rgba(var(--gold-rgb),.4); }
@@ -2427,10 +2523,57 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    shows on screen — a tuning aid, never permanent chrome. Sits below the
    pre-deal note's slot so the two never collide. NO entrance animation: an
    opacity-0 first frame is the misdeal invisibility defect family. */
-.view-adjust-chip { position: absolute; left: 50%; top: calc(128px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 31; display: flex; flex-direction: column; align-items: center; gap: 2px;
+/* The view-adjust readout lives in the bottom strip now, below the
+   player's card fan (owner, 2026-11-07): with Motion view's lean it can
+   be up almost constantly, and its old home over the felt (top: 128px,
+   under the partner plates) sat in the game's face. Placement, measured
+   in the lane rig at 390×844: the own-plate cluster owns the very
+   bottom (~64px with its YOUR TURN tab), so the chip rides directly
+   above it — under the fan's arc at centre (the fan's lowest corners
+   are at its ends, clear of the chip's width), clear of the played
+   cards and the bid panel (centre felt, far above), the toss pill
+   (26vh up) and the chat rail (right edge). The fan's lowest centre
+   cards pass behind its top edge — their bottom corner band only; the
+   card indices live at the fan's tops. In phone landscape the closed
+   fan rides lower and the strip under it is only ~40px, so there the
+   chip hugs the bottom edge instead. */
+.view-adjust-chip { position: absolute; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 31; display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 8px 16px; border-radius: 999px; background: rgba(10, 6, 18, .82); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .35), 0 12px 28px rgba(0,0,0,.5); text-align: center; pointer-events: none; }
 .view-adjust-chip .va-label { font: 800 14px/1.1 var(--display); letter-spacing: .08em; color: var(--gold); white-space: nowrap; }
 .view-adjust-chip .va-hint { font-size: 11.5px; font-weight: 600; color: var(--ink); opacity: .85; white-space: nowrap; }
+
+/* Motion view's in-table quick toggle (owner, 2026-11-08): a small
+   pill in the lower screen, present only while the option is on. It
+   borrows the readout chip's glass so the pair read as one family.
+   Placement, surveyed by DOM rects in the lane rig at 390×844 (the
+   first guess — the bottom-left corner — sits ON the own plate: in
+   portrait the plate cluster owns the bottom-LEFT, x 8–223 /
+   y 777–836; LAST TRICK owns the bottom-right, the chat/control rail
+   the right edge from y 386): the pill rides at the LEFT of the
+   readout chip's own band (bottom: 100px), immediately left of where
+   the centred chip appears, 3px clear of the YOUR TURN tab's top and
+   clear of the plate; like the chip, it overlaps only the fan's
+   lower-left corner band — the card indices live at the fan's tops.
+   The hit area is a real 44px even though the pill reads small. In
+   short landscape the own plate is fixed at bottom-left too
+   (x 8–217 / y 360–420 at 932×430) with the fan starting at x 173,
+   so there the pill stacks directly above the plate at the left
+   edge, clear of the plate and of its YOUR TURN tab.
+   SUPERSEDED at phone sizes (owner, 2026-11-08 — the band above IS
+   his cards on his phone): on portrait phones and short landscape
+   the pill now parks UNDER the plate in the plate's own spot while
+   the plate stack lifts to make room — see the .short rules in the
+   landscape block below and the portrait phone block. This base
+   placement still governs every other screen. */
+.motion-view-btn { position: absolute; left: calc(10px + env(safe-area-inset-left)); bottom: calc(100px + env(safe-area-inset-bottom)); z-index: 31;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 44px; min-height: 44px; padding: 8px 14px;
+  border: 0; border-radius: 999px; background: rgba(10, 6, 18, .82); color: var(--gold);
+  box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .45), 0 12px 28px rgba(0,0,0,.5);
+  font: 800 12.5px/1 var(--display); letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.motion-view-btn svg { flex: none; }
+.motion-view-btn.is-suspended { color: var(--ink); opacity: .75; box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .25), 0 12px 28px rgba(0,0,0,.5); }
+.motion-view-btn:active { transform: scale(.96); }
 
 /* Versus intro in LANDSCAPE (owner, 2026-10-28: "it needs to be much wider
    on landscape so that none of the words are hidden — I shouldn't have to
@@ -2442,6 +2585,23 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
    cells across the wide pane) instead of stacking label over cells.
    Portrait and taller screens keep the stacked card, untouched. */
 @media (orientation: landscape) and (max-height: 560px) {
+  /* the readout hugs the bottom edge under the closed fan (see the
+     .view-adjust-chip note above) */
+  .view-adjust-chip { bottom: calc(6px + env(safe-area-inset-bottom)); }
+  /* the motion quick toggle: the own plate is fixed at bottom-left
+     in landscape too, so the pill stacks directly above it — the
+     plate's border box tops at y 360 at 932×430 but its YOUR TURN
+     tab pokes ~13px higher, so 92px of lift clears the tab too.
+     On .short screens the under-plate rules directly below
+     supersede this (owner, 2026-11-08). */
+  .motion-view-btn { left: calc(8px + env(safe-area-inset-left)); bottom: calc(92px + env(safe-area-inset-bottom)); }
+  /* Motion pill UNDER the plate on short screens (owner, 2026-11-08
+     — full note at the portrait phone block): the plate parks 10px
+     above the bottom edge, no room for the 44px pill beneath it, so
+     while the pill exists the pill takes the plate's own parking
+     spot and the plate stack lifts one pill-height + a 6px gap. */
+  .table-screen.short .motion-view-btn { left: calc(8px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .table-screen.short:has(.motion-view-btn) .me-plate { bottom: calc(60px + env(safe-area-inset-bottom)); }
   .bwm-loading-card:has(.versus) { width: min(100%, 920px); gap: 5px; }
   .bwm-loading-card:has(.versus) .bwm-loading-mark { width: min(36%, 148px); }
   .versus-shake { display: grid; grid-template-columns: minmax(272px, 330px) minmax(0, 1fr); grid-template-areas: "stage tape" "stage cards" "skip skip"; column-gap: 22px; row-gap: 8px; align-items: start; }
@@ -2701,6 +2861,45 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 .rw-num.down { color: #ff8a8a; }
 .rw-num.small { font-size: 15px; color: var(--muted); }
 .rw-sub { font-family: var(--display); font-size: 12.5px; letter-spacing: .06em; color: var(--muted); }
+/* Achievement inspect (owner, 2026-11-07): the unlock row is a real
+   button (the .rw-row reset: full width, inherited type, a 44px floor)
+   with a quiet Details hint; its sheet mirrors the Player Card badge
+   sheet (profile/playercard.css .pcard-badge-*) line for line — same
+   anatomy, same deep-band pairing in both themes, same dismissal —
+   portaled to the document root like the card takeover, because the
+   victory panel's glass/slant layers trap position:fixed. The sheet
+   is four short lines over a 52px medal: it fits the short landscape
+   viewports (932×430 / 844×390) whole, with no inner scroll. */
+.rw-ach-row { width: 100%; min-height: 44px; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.rw-ach-row:focus-visible { outline: 2px solid rgba(var(--gold-rgb), .8); outline-offset: 2px; }
+.rw-ach-hint { flex: none; align-self: center; font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--muted); }
+.rw-ach-scrim { position: fixed; inset: 0; z-index: 1190; background: rgba(10, 6, 24, .38); }
+.rw-ach-pop { position: fixed; z-index: 1191; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(320px, calc(100vw - 32px)); max-height: calc(100dvh - 32px);
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 36px 14px 14px; border-radius: 12px;
+  background: linear-gradient(180deg, #201a3d, #131022);
+  color: #f7f1de; text-align: left;
+  box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb), .55), 0 10px 30px rgba(5, 2, 16, .55); }
+.rw-ach-pop-medal { width: 52px; height: 52px; flex: none; border-radius: 50%;
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 34% 28%, #f4dc8e, #c9a227 58%, #8a6a14);
+  border: 1.5px solid rgba(255, 246, 214, .65);
+  box-shadow: inset 0 0 0 1.5px rgba(90, 60, 0, .35), 0 3px 8px rgba(0, 0, 0, .4); }
+.rw-ach-pop-medal::before { content: ''; position: absolute; inset: 4px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #3a2c10, #191204 72%);
+  box-shadow: inset 0 0 0 1px rgba(238, 201, 106, .5); }
+.rw-ach-pop-glyph { position: relative; z-index: 1; font-size: 24px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .65)); }
+.rw-ach-pop-body { min-width: 0; flex: 1; }
+.rw-ach-pop-name { margin: 0; font-family: var(--display); font-weight: 800; font-size: 17px; line-height: 1.15; overflow-wrap: anywhere; }
+.rw-ach-pop-kind { margin: 2px 0 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #e8c96a; }
+.rw-ach-pop-about { margin: 6px 0 0; font-size: 13px; line-height: 1.35; color: #e9e2cf; }
+.rw-ach-pop-paid { margin: 6px 0 0; font-size: 12px; color: #bdb49a; font-variant-numeric: tabular-nums; }
+.rw-ach-pop-x { position: absolute; top: 6px; right: 6px;
+  width: 26px; height: 26px; border-radius: 50%;
+  border: none; background: rgba(255, 255, 255, .08);
+  color: #f7f1de; font-size: 12px; line-height: 1; cursor: pointer; }
 /* Play-Well feat lines (owner, 2026-10-29): one compact block in the rows
    column — the feats ride as wrapping pills (each pill one line, pills
    wrap as units) so even a seven-feat game adds only a few line-heights
@@ -2971,7 +3170,7 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
 
 /* score pad v2 */
 .modal-backdrop.pad-backdrop { z-index: 1200; background: rgba(6,3,12,.72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-.pad-open .tt-team-edit, .pad-open .tt-head, .pad-open .tt-foot > button:not(.primary) { visibility: hidden; }
+.pad-open .tt-team-edit, .pad-open .tt-head, .pad-open .tt-foot > button:not(.primary), .pad-open .tt-foot-toprow > button, .pad-open .tt-foot-row > button { visibility: hidden; }
 .score-pad.v2 { position: relative; }
 .pad-sticky { position: sticky; top: 0; z-index: 4; background: #1E1424; padding: 0 40px 12px 0; box-shadow: 0 10px 0 #1E1424; }
 .pad-sticky .pad-x { top: 0; right: 0; }
@@ -3088,6 +3287,18 @@ select { background: var(--field); color: var(--ink); border: 1px solid rgba(var
   .table-screen .me-plate .plate-stats { flex-wrap: wrap; gap: 3px; }
   .table-screen .me-plate .plate-stats .chip { font-size: 9.5px; padding: 0 4px; }
   .table-screen .me-plate .plate-turn { left: 26px; top: -14px; font-size: 10px; letter-spacing: .1em; }
+  /* Motion pill UNDER the plate (owner, 2026-11-08): "the motion
+     button should go under my plate it's covering my card". The
+     plate parks 8px above the bottom edge — no room for the 44px
+     pill beneath it as it sits — so while the pill exists (Motion
+     view on) the pill takes the plate's own parking spot and the
+     whole plate stack lifts by exactly one pill-height + a 6px gap
+     (the YOUR TURN tab is a child of the plate and rides with it).
+     The gate is the pill itself via :has() — pure CSS like this
+     block's own gate, so it cannot miss on a real phone; with
+     Motion off, nothing moves. */
+  .table-screen .motion-view-btn { left: calc(8px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .table-screen:has(.motion-view-btn) .me-plate { bottom: calc(58px + env(safe-area-inset-bottom)); }
 }
 
 /* drag-to-play: the lifted card under your finger, drawn above everything */
@@ -3905,7 +4116,14 @@ html[data-theme="neon"] .table-screen :is(.glass, .panel, .modal, .sheet, .decis
    read, nothing to relearn). If the art can't sit as pure decoration,
    it doesn't sit at all. */
 html[data-theme="neon"] .wiz-home { position: relative; }
-html[data-theme="neon"] .wiz-home > *:not(.home-streak-fire):not(.home-blizzard) { position: relative; z-index: 1; }
+/* The content lift: real children (splash, actions) ride above the
+   emblem paintings. Every decoration layer is excluded BY NAME — the
+   fire band (fixed), the blizzard (absolute), the emblem smoke
+   (absolute) — because the blanket selector outranks their own rules
+   on specificity (:not() arguments count), and a decoration layer
+   that falls into the stage flow inflates it until the home scrolls
+   (fire 2026-11-01, smoke 2026-11-08). */
+html[data-theme="neon"] .wiz-home > *:not(.home-streak-fire):not(.home-blizzard):not(.emblem-smoke) { position: relative; z-index: 1; }
 /* Backdrop coverage (2026-10-26, owner screenshot): the emblem used to be
    boxed into a 252px medallion at the hero — when the stage grid (d3523e95)
    distributed the home's air, the distributed breath between the tagline
@@ -4345,6 +4563,34 @@ html[data-theme="neon"] .sheet .vol-slider::-moz-range-progress { background: va
 .vic-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; width: 100%; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .vic-foot .confirm-actions { flex: none; width: 100%; }
 
+/* Victory settle (owner, 2026-11-06, screenshot: "After the animation the
+   box score area should slide down to show the avatars" — the budget
+   squeeze above lands on the spotlight: at phone heights it rendered
+   ~110px tall and the winner cards + losers row sat clipped inside its
+   own scroll region, reading exactly as if the foot panel covered them).
+   Choreography: the entrance keeps the budget layout verbatim; when it
+   completes, Table.tsx adds .vic-settled and FLIP-slides the foot panel
+   down while the spotlight takes its natural height — the foot's
+   .vic-scroll absorbs the difference, as it was designed to. In the
+   settled layout the winners can never be squeezed again: the cap only
+   ever lets the LOSERS' tail scroll inside the spot, on screens too
+   short for everything, so the foot (pinned actions included) always
+   keeps its floor. Column composition only (min-height 561px): the
+   ≤560px grid further below is a side-by-side layout that rests as the
+   D8 audit left it — there is no panel-over-cards stack to slide. */
+@media (min-height: 561px) {
+  .victory-screen.vic-settled .victory-spot { flex: 0 0 auto; max-height: calc(100dvh - 320px); overflow-y: auto; }
+  .victory-screen .vic-foot.vic-sliding { transition: transform .6s cubic-bezier(.22, .9, .26, 1); will-change: transform; }
+}
+/* Short portrait phones (561–740px tall): the settled spotlight compacts
+   the way the landscape grid already does (winner cards 96px, loser
+   frames capped), so the foot keeps a usable scroll window at rest
+   instead of a sliver. Entrance composition is untouched. */
+@media (min-height: 561px) and (max-height: 740px) {
+  .victory-screen.vic-settled .vs-card { min-height: 96px; }
+  .victory-screen.vic-settled .vs-tile.lose.quiet .vs-frame { max-height: 48px; }
+}
+
 /* D8 (design audit 2026-10-24): short-height composition — in phone landscape
    (375–430px tall) the stacked column crushed the winner spotlight to a ~100px
    scroll window and the placements region to ~0–15px. Below 560px tall the
@@ -4749,6 +4995,12 @@ html[data-theme="neon"] .rw-takeover-stage::before { background: radial-gradient
   .tt-foot.stack .exit-divider { display: none; }
   .tt-foot .quiet-row-btn { flex: none; }
   .tt-foot .leave-red { flex: none; padding: 0 18px; }
+  /* In the row-direction footer the Review/Leave row sits in line with
+     the other actions as one flexible unit (its two halves still split
+     it evenly), and the Score pad top row keeps its natural width. */
+  .tt-foot-row { flex: 1 1 0; width: auto; }
+  .tt-foot-row > .leave-red { flex: 1 1 0; padding: 0 10px; }
+  .tt-foot-toprow { flex: none; width: auto; }
 }
 
 /* Recap rail fit at SE landscape (owner via Yoda, 2026-10-25: no scrolling
@@ -4919,9 +5171,6 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .setup-bar-actions .go { width: 100%; }
 .setup-bar .sticky-note { margin: 6px 0 0; }
 .ess-barred { padding-bottom: calc(138px + env(safe-area-inset-bottom)); }
-@media (orientation: landscape) and (max-height: 540px) {
-  .setup-bar { width: min(860px, 100%); }
-}
 
 /* Deck tile fit (owner 2026-10-24): a tile's frame must HUG its content.
    The gallery row used to stretch every tile to the tallest sibling
@@ -4959,16 +5208,22 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 .setup-preview figcaption { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px 12px; background: rgba(12,7,18,.82); }
 .setup-preview figcaption small { font-family: var(--display); font-weight: 800; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
 .setup-preview figcaption b { font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: .03em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dg-inuse { position: absolute; top: 14px; right: 14px; background: var(--gold); color: #1a0f24; font-family: var(--display);
+.dg-inuse { position: absolute; top: 14px; left: 14px; background: var(--gold); color: #1a0f24; font-family: var(--display);
   font-weight: 800; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
 /* Deck tap model (owner, 2026-11-05): each cover sits in a .dg-cell — the
    slider's flex item / snap child — so the cover can stay a plain button
    while the eye rides as its sibling (a button inside a button is invalid
    HTML). The eye opens the deck browser without choosing; it is a real
    44×44 hit target wearing a quiet 30px chip over the cover art's corner,
-   one shared rule for both themes. */
+   one shared rule for both themes.
+   Eye corner (owner, 2026-11-08): the eye rides the cover's upper RIGHT
+   ("The eye button should be in the upper right corner of the card") —
+   the same 2px insets it had at the left, mirrored. The "Your deck"
+   badge held that corner, so the two trade corners in the same move:
+   .dg-inuse sits at the upper left (above) rather than under the eye's
+   chip on the chosen tile. */
 .dg-cell { position: relative; flex: 0 0 auto; scroll-snap-align: center; display: flex; }
-.dg-eye { position: absolute; top: 2px; left: 2px; z-index: 2; width: 44px; height: 44px; padding: 0; border: 0;
+.dg-eye { position: absolute; top: 2px; right: 2px; z-index: 2; width: 44px; height: 44px; padding: 0; border: 0;
   background: transparent; display: grid; place-items: center; cursor: pointer; touch-action: manipulation; }
 .dg-eye-chip { width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; font-size: 15px;
   line-height: 1; background: rgba(12,7,18,.55); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.4); opacity: .78;
@@ -5178,36 +5433,43 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 @keyframes dbr-drop { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 /* ===============================================================
-   S1 landscape fit (design audit 2026-10-25, HANDOFF.md "Bots setup /
-   Create table"): on a short landscape phone the pinned .setup-bar plus
-   the stacked header ate ~60% of the height and the form showed through
-   a ~120px slot. In --land-phone the table step becomes a 3-column grid
-   and the commit bar stops floating: it sits static at the foot of the
-   last column, under Rules. Portrait and tablets never enter this query.
-   Col 1: Your team + Bots & score (online create: Table)
-   Col 2: Deck & venue
-   Col 3: Rules (+ Sound on create) + the commit bar
+   S1 landscape fit (design audit 2026-10-25; GEOMETRY SUPERSEDED by
+   the owner's pick, 2026-11-08): the audit's answer to the short
+   landscape phone was a 3-column grid with the commit bar docked as a
+   static grid item at the top of the last column. Measured against
+   the owner's phone it read as three unrelated stacks with their
+   bottoms sliced at the scrollport edge, and the bar scrolled away
+   with the form. The compaction arithmetic then proved the form
+   cannot fit this viewport at all (teams-dropdown lane, 2026-11-08),
+   and offered four directions the owner picked (C): ONE PAGE SCROLL.
+   In --land-phone the step now keeps the portrait composition inside
+   the landscape stage's bounded scrollport: the cards stack in one
+   column (the .ess base flow), the commit bar returns to its base
+   fixed pin at the viewport bottom, and the scrollport's 122px
+   bottom margin (the all-landscape binding) applies at this tier
+   too, so the last card scrolls fully clear of the bar. This
+   concedes the no-inner-scroll landscape gate FOR THIS FORM SURFACE
+   ONLY, on the owner's explicit pick; game and recap surfaces keep
+   the gate. What survives from the audit pass at this tier: the 54px
+   step top padding (Gate-G head clearance), the compact header type,
+   and the S2 deck-strip compaction below. Portrait and tablets never
+   enter this query.
    =============================================================== */
 @media (orientation: landscape) and (max-height: 540px) {
-  .wizard.step-table .wiz-step { max-width: none; padding: 54px max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left)); }
-  .wizard.step-table:has(.setup-bar) .wiz-step { margin-bottom: 0; }
+  .wizard.step-table .wiz-step { max-width: 560px; padding: 54px max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left)); }
   .wizard.step-table .wiz-crumb { margin: 0; font-size: 11px; }
   .wizard.step-table .wiz-title { font-size: 22px; margin: 0 0 8px; }
   .wizard.step-table .wiz-title small { display: inline; margin: 0 0 0 10px; font-size: 12px; }
-  .wizard.step-table .ess.ess-barred { display: grid; grid-template-columns: 1.1fr 1fr 1fr; grid-auto-flow: row dense; align-items: start; gap: 10px; padding-bottom: 0; width: 100%; }
-  .wizard.step-table .ess-barred > .setup-card { margin: 0; }
-  /* explicit rows: the CTA owns row 1 of the last column, so DEAL ME IN /
-     CREATE TABLE is on screen the moment the step opens */
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Your team"],
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Table"] { grid-column: 1; grid-row: 1; }
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Bots & score"] { grid-column: 1; grid-row: 2 / span 3; }
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Bots & score"]:first-child { grid-row: 1 / span 4; }
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Deck & venue"] { grid-column: 2; grid-row: 1 / span 4; }
-  .wizard.step-table .ess-barred > .setup-bar { grid-column: 3; grid-row: 1; position: static; transform: none; left: auto; bottom: auto; width: auto; padding: 0; background: none; }
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Rules"] { grid-column: 3; grid-row: 2; }
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Sound"] { grid-column: 3; grid-row: 3; }
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Table"] ~ .setup-card[aria-label="Deck & venue"] { grid-row: 1 / span 4; }
-  .wizard.step-table .ess-barred > .setup-bar .setup-bar-summary { white-space: normal; text-align: left; font-size: 12px; }
+  /* One column (owner pick, 2026-11-08): the barred essentials stack
+     in DOM order exactly as portrait — the .ess base is a flex column,
+     so this rule only has to defeat the generic land-phone .ess
+     two-column grid further up this file (a treatment the bar-less
+     lobby list keeps). The commit bar is NOT restyled at this tier:
+     its base fixed pin and centred one-line summary govern, the
+     scrollport's bottom edge binds to the bar's top edge via the
+     all-landscape 122px margin, and the in-scroll end reserve stays
+     the landscape 16px. */
+  .wizard.step-table .ess.ess-barred { display: flex; }
   /* S2 deck thumbs (--land-phone): a compact row of ~3 thumbs (name only, no tag line,
      max 96px wide) plus a "+N decks" chip that pages the slider; the long label shortens. */
   .wizard.step-table .ess-barred .deck-gallery{ gap: 8px; padding: 4px 2px 6px; }
@@ -5217,6 +5479,21 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .ess-barred .dg-cover .dg-tag, .wizard.step-table .ess-barred .dg-cover .dg-inuse { display: none; }
   .wizard.step-table .ess-barred .dg-more { display: inline-flex; align-items: center; align-self: flex-start; position: relative; height: 30px; padding: 0 12px; margin: 0 0 6px; border: 0; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .04em; color: var(--lav, #cdb8ff); background: rgba(var(--purple-rgb),.14); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb),.35); clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
   .wizard.step-table .ess-barred .dg-more::after { content: ''; position: absolute; inset: -7px 0; }
+  /* Whole labels in the strip (owner, 2026-11-08): the tile width rides on
+     the CELL, not the cover. The cover's % --dg-w resolved against its own
+     flex-item cell — the cell sized to the cover's 96px max-width
+     contribution, then (96-16)/3 collapsed the cover to a 27px sliver in
+     Chromium (names wider than their tiles); Safari resolved it as
+     designed but snap-align:center parked the strip with half-cut tiles
+     at both edges (the owner's "…HIST" clip). Cells now take the gallery
+     share directly (the S2 three-across row), covers fill their cell, and
+     the strip rests flush at a tile edge — every visible name whole. */
+  .wizard.step-table .ess-barred .dg-cell { flex-basis: calc((100% - 16px) / 3); max-width: 96px; scroll-snap-align: start; }
+  /* No space before the brace, matching the scoped cover rule above:
+     deck-tile-fit.test.ts pins ONE spaced cover-rule definition site for
+     both themes (parity) — a spaced selector here would read as a second
+     one (its count runs over the raw file, comments included). */
+  .wizard.step-table .ess-barred .dg-cover{ width: 100%; }
 }
 @media (orientation: landscape) and (max-height: 540px) and (max-width: 700px) {
   .wizard.step-table .wiz-crumb { display: none; }
@@ -5239,8 +5516,8 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
   .wizard.step-table .ess-barred > .setup-card { margin: 0; }
   .wizard.step-table .ess-barred > .setup-card[aria-label="Your team"],
   .wizard.step-table .ess-barred > .setup-card[aria-label="Table"] { grid-column: 1; grid-row: 1; }
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Bots & score"] { grid-column: 1; grid-row: 2 / span 3; }
-  .wizard.step-table .ess-barred > .setup-card[aria-label="Bots & score"]:first-child { grid-row: 1 / span 4; }
+  .wizard.step-table .ess-barred > .setup-card[aria-label="Bots"] { grid-column: 1; grid-row: 2 / span 3; }
+  .wizard.step-table .ess-barred > .setup-card[aria-label="Bots"]:first-child { grid-row: 1 / span 4; }
   .wizard.step-table .ess-barred > .setup-card[aria-label="Deck & venue"] { grid-column: 2; grid-row: 1 / span 4; }
   .wizard.step-table .ess-barred > .setup-bar { grid-column: 3; grid-row: 1; position: static; transform: none; left: auto; bottom: auto; width: auto; padding: 0; background: none; }
   .wizard.step-table .ess-barred > .setup-bar .setup-bar-summary { white-space: normal; text-align: left; }
@@ -5254,8 +5531,8 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
 @media (orientation: landscape) and (min-height: 541px) and (min-width: 900px) {
   .wizard.step-table .ess.ess-barred:has(> .setup-preview) { grid-template-columns: minmax(0, .625fr) minmax(0, .625fr) minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; align-items: stretch; gap: 16px; }
   .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Your team"] { grid-column: 1; grid-row: 1; }
-  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Bots & score"] { grid-column: 2; grid-row: 1; }
-  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Bots & score"]:first-child { grid-column: 1 / 3; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Bots"] { grid-column: 2; grid-row: 1; }
+  .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Bots"]:first-child { grid-column: 1 / 3; }
   .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Deck & venue"] { grid-column: 1 / 3; grid-row: 2 / span 3; }
   .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-preview { display: flex; grid-column: 3; grid-row: 1 / span 2; min-height: 260px; }
   .wizard.step-table .ess-barred:has(> .setup-preview) > .setup-card[aria-label="Rules"] { grid-column: 3; grid-row: 4; align-self: start; }
@@ -5589,3 +5866,148 @@ body:has(.modal-backdrop) .setup-bar { visibility: hidden; }
    floor does not apply there (the panel budget cannot hold it — the
    landscape-fit pins read this rule's padding/font, kept identical) */
 .table-screen.short .bid-grid button { padding: 3px 0; font-size: 15px; min-height: 0; }
+
+/* ---------- Settings sheet declutter (owner, 2026-11-08) ----------
+   "Rework the settings menu — it's an eye sore, all the controls
+   looking to be jumbled together." Presentation only, layered on the
+   2026-10-20 grouped cards the same additive way they were built:
+   every rule below is scoped to the ONE sheet and overrides nothing
+   outside it; no setting, control, label, default or persistence
+   changes, and Classic/Neon share the structure (the theme paints).
+   What was jumbled, from the sheet's own CSS: three row systems with
+   three rhythms shared one scroll (ruled .row at 9px padding, unruled
+   .sf-row floating at gap 10, .vol-row at gap 2 with negative margins),
+   and the .sf-note descriptions ran INLINE after their labels, so the
+   long ones (the Deacon's 160 characters, Reduce effects, Motion view)
+   wrapped the label itself into a ragged block while the switch
+   floated beside it. The fixes: section cards and headers get real
+   air; ONE row anatomy (same min-height, same 12px padding, same
+   hairline, last row of a group drops it) for every row kind; notes
+   become quiet blocks UNDER their label so the label line is one
+   clean line again; sliders keep their full-width rows inside the
+   same rhythm; the bot-talk block gets its sub-header (.set-subh). */
+[data-testid="more-options"] .set-group { margin-top: 22px; padding: 10px 14px 16px; }
+[data-testid="more-options"] .sheet-body > .set-group:first-child { margin-top: 4px; }
+[data-testid="more-options"] .sheet-head { padding-bottom: 10px; }
+[data-testid="more-options"] .set-group > .sheet-h { margin: 0 0 2px; }
+[data-testid="more-options"] .set-group:has(.set-group-body.open) > .sheet-h { border-bottom: 1px solid rgba(var(--edge-rgb),.16); padding-bottom: 8px; margin-bottom: 6px; }
+[data-testid="more-options"] .set-group .row, [data-testid="more-options"] .set-group .sf-row { min-height: 56px; padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,.06); }
+[data-testid="more-options"] .set-group .vol-row { padding-top: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.06); }
+[data-testid="more-options"] .set-group-inner > :is(.row, .sf-row, .vol-row, .gold-tab-row):last-child { border-bottom: 0; }
+[data-testid="more-options"] .bot-talk-fields > :is(.sf-row, .vol-row):last-child { border-bottom: 0; }
+[data-testid="more-options"] .sound-fields { gap: 0; padding-top: 2px; }
+[data-testid="more-options"] .sound-fields .vol-row { margin: 0; }
+[data-testid="more-options"] .sf-note { display: block; margin-top: 3px; line-height: 1.45; }
+[data-testid="more-options"] .row-label small { margin-top: 3px; line-height: 1.45; }
+[data-testid="more-options"] .sheet-actions { margin-bottom: 8px; }
+[data-testid="more-options"] .sound-fields .hint { margin-top: 14px; line-height: 1.55; }
+[data-testid="more-options"] .about-row { padding: 10px 0 4px; }
+[data-testid="more-options"] .set-group .gold-tab-row { display: flex; align-items: center; width: 100%; min-height: 56px; margin: 0; padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,.06); text-align: left; }
+[data-testid="more-options"] .bot-talk-fields { margin-top: 4px; }
+.set-subh { font-family: var(--display); font-size: 12.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); margin: 0; padding-top: 16px; }
+
+/* Hand recap on tablets and desktops (owner, 2026-11-12: "looks fine for a
+ * phone screen but not for larger screens" — his 948×750 window showed the
+ * recap as a 452px phone column parked against the left edge with the rest
+ * of the screen black). Two causes: (1) between 900 and 1023px wide the
+ * wizard's tablet-rail pin (.tt at 452px, backdrop flex-start) still
+ * governed any screen taller than the landscape tier's 560px, and (2) at
+ * every large size the sheet stretched the full window height with a
+ * phone-style stacked footer, so a short recap floated in an empty slab
+ * over a window-wide Continue bar. This layer, for ≥900px wide and taller
+ * than the landscape tier: the sheet is a centered dialog sized to its
+ * content (scrolling only when the content needs it), the two-region body
+ * the ≥1024px layer introduced now starts at 900px with a narrower rail,
+ * and the footer is one action row — secondary actions left, Continue
+ * right at a button's width. Below 900px wide and at ≤560px tall nothing
+ * here applies. Theme-agnostic (parity law). */
+@media (min-width: 900px) and (min-height: 561px) {
+  .tt-backdrop { justify-content: center; align-items: center; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
+  .tt { width: min(1040px, 100%); flex: none; align-self: center; max-height: 100%; }
+  .tt-body { padding: 24px 24px 28px; }
+  .tt-foot.stack { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 12px; padding: 14px 24px 16px; }
+  .tt-foot.stack .tt-foot-toprow { order: 1; flex: none; width: auto; }
+  .tt-foot.stack .tt-foot-row { order: 2; flex: none; width: auto; flex-wrap: nowrap; }
+  .tt-foot.stack .tt-foot-row > .tt-tricks-show,
+  .tt-foot.stack .tt-foot-row > .leave-red { flex: none; padding-left: 20px; padding-right: 20px; }
+  .tt-foot.stack .primary { order: 3; width: auto; flex: 0 1 340px; min-width: 240px; margin-left: auto; }
+  .tt-foot.stack .exit-divider { display: none; }
+  /* the trick browser, once opened, takes its own full row under the actions */
+  .tt-foot.stack .tt-foot-row:has(> .tt-tricks) { order: 4; flex: 1 1 100%; flex-wrap: wrap; }
+}
+@media (min-width: 900px) and (max-width: 1023px) and (min-height: 561px) {
+  .tt-body {
+    display: grid;
+    grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+    grid-template-areas: "scores recap" "strip recap" "callouts recap";
+    grid-template-rows: auto auto 1fr;
+    align-content: start;
+    align-items: start;
+    justify-items: stretch;
+    column-gap: 20px;
+  }
+  .tt-top-scores { grid-area: scores; width: 100%; }
+  .tt-strip { grid-area: strip; width: 100%; }
+  .tt-callouts { grid-area: callouts; }
+  .tt-recap { grid-area: recap; width: 100%; }
+}
+
+/* Large-screen pass (owner, 2026-11-12, after the responsive audit). Tall
+ * tablet/desktop windows only (>=900px wide, taller than the phone-landscape
+ * tiers), so phones in either orientation keep every rule above. */
+@media (min-width: 900px) and (min-height: 561px) {
+  /* Setup choice steps: the two door cards sat pinned under the header at
+   * full window width with the lower half of the screen empty. They now sit
+   * as a centered pair, a little above the middle, sized to the window. */
+  .wiz-step > .decision-cards { width: min(1080px, 100%); height: clamp(300px, 44vh, 440px); max-height: none; margin: auto auto; flex: 0 0 auto; transform: translateY(-4vh); gap: 20px; }
+  .wiz-step > .decision-cards > .decision-card { padding: 26px 28px; }
+  .wiz-step > .decision-cards .dc-main { gap: 8px; }
+  .wiz-step > .decision-cards .dc-main b { font-size: clamp(34px, 3.4vw, 52px); }
+  .wiz-step > .decision-cards .dc-main small { font-size: 17px; }
+  .wiz-step > .decision-cards > .decision-card::before { right: 28px; bottom: 24px; }
+
+  /* Settings: the sheet spanned the window, so sliders ran ~1,170px and the
+   * two-up toggle grid left holes. It is now a centered panel, one setting
+   * per row (label left, control right), sliders at a control's width. */
+  .sheet-backdrop:has(> [data-testid="more-options"]) { align-items: center; padding: 24px; }
+  [data-testid="more-options"].sheet { width: min(980px, 100%); max-width: none; height: min(760px, 100%); max-height: 100%; grid-template-columns: 200px minmax(0, 1fr); gap: 12px 24px; padding: 18px 22px 20px; }
+  [data-testid="more-options"] > .sheet-body { padding-right: 4px; }
+  [data-testid="more-options"] .set-group.rail-active .set-group-inner { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  [data-testid="more-options"] .set-group.rail-active .set-group-inner > .row:has(> .row-control > .toggle) { grid-column: 1 / -1; }
+  [data-testid="more-options"] .set-group.rail-active .set-group-inner > .row { padding: 12px 4px; min-height: 56px; background: none; box-shadow: none; border-bottom: 1px solid rgba(255,255,255,.07); }
+  [data-testid="more-options"] .set-group.rail-active .row-label { font-size: 15px; }
+  [data-testid="more-options"] .set-group.rail-active .row-label small { font-size: 12.5px; }
+  [data-testid="more-options"] .vol-row { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: center; column-gap: 20px; }
+  [data-testid="more-options"] .vol-row > .vol-head { display: contents; }
+  [data-testid="more-options"] .vol-row .vol-label { grid-column: 1; grid-row: 1; }
+  [data-testid="more-options"] .vol-row .vol-slider { grid-column: 2; grid-row: 1; width: calc(100% - 46px); }
+  [data-testid="more-options"] .vol-row .vol-val { grid-column: 2; grid-row: 1; justify-self: end; }
+  [data-testid="more-options"] .vol-row .switch { grid-column: 2; grid-row: 2; justify-self: end; }
+  [data-testid="more-options"] .sf-row.seg-stack { flex-direction: row; align-items: center; justify-content: space-between; }
+  [data-testid="more-options"] .sf-row.seg-stack > .seg { width: 340px; flex: none; }
+}
+
+/* No visible scrollbars anywhere (owner, 2026-11-12: "i don't like the idea
+ * of scrollbar anywhere in the app"). Areas that overflow still scroll by
+ * wheel, trackpad, touch and keyboard; only the bar itself is never drawn. */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Table chat at tablet width (900-1199px): the open panel ran into the
+ * centre message on the felt. It narrows, and the message wraps inside the
+ * space the panel leaves. */
+@media (min-width: 900px) and (max-width: 1199px) and (min-height: 561px) {
+  .table-screen .chat.open { width: 240px; }
+  .table-screen:has(.chat.open) .center-note-wrap { left: 320px; right: 320px; }
+  .table-screen:has(.chat.open) .center-note-wrap > * { max-width: 100%; white-space: normal; text-align: center; }
+}
+
+/* Setup choice steps on portrait tablets: the phone column sat pinned under
+ * the header with two thirds of the screen empty. Centered, larger cards. */
+@media (orientation: portrait) and (min-width: 700px) and (min-height: 800px) {
+  .wiz-step:has(> .decision-cards) { max-width: 660px; justify-content: center; padding-bottom: 14vh; }
+  .wiz-step > .decision-cards { max-width: none; gap: 18px; }
+  .wiz-step > .decision-cards > .decision-card { min-height: 150px; padding: 26px 28px; }
+  .wiz-step > .decision-cards .dc-main b { font-size: 38px; }
+  .wiz-step > .decision-cards .dc-main small { font-size: 16.5px; }
+}

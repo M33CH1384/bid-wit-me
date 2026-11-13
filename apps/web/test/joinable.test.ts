@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LIMITS, type RoomInfo, type SeatInfo } from '@spades/protocol';
-import { joinableSeats, spectatorsFull } from '../src/online/joinable';
+import { joinableSeats, lobbyAutoSitSeat, partnerSeat, spectatorsFull } from '../src/online/joinable';
 
 function room(over: Partial<RoomInfo> & { seats: SeatInfo[] }): RoomInfo {
   return {
@@ -40,5 +40,57 @@ describe('joinable seats', () => {
     expect(spectatorsFull(room({ phase: 'playing', seats: [], spectators: watchers }))).toBe(true);
     expect(spectatorsFull(room({ phase: 'playing', seats: [], spectators: watchers.slice(0, 2) }))).toBe(false);
     expect(spectatorsFull(room({ phase: 'lobby', seats: [], spectators: watchers }))).toBe(false);
+  });
+});
+
+/**
+ * Partner-seat pins (owner bundle 2026-11-08, M1): in a partnership room a
+ * joining partner belongs ACROSS from the host — beside the host is the
+ * opposing side (the 2026-11-06 incident: auto-seating put his partner on
+ * the other team and the game scored her as an opponent from hand 1).
+ * Cutthroat has no partners: its ordering and auto-sit stay exactly as they were.
+ */
+describe('partner seat (M1)', () => {
+  const partnerRoom = (seats: SeatInfo[], over: Partial<RoomInfo> = {}): RoomInfo => room({
+    seats,
+    hostId: 'Host',
+    rules: { playerCount: 4, partnerships: true } as RoomInfo['rules'],
+    ...over,
+  });
+
+  it('partnerSeat is across from the host in partnership, null in cutthroat', () => {
+    const seats = [human('Host'), { kind: 'empty' as const }, { kind: 'empty' as const }, { kind: 'empty' as const }];
+    expect(partnerSeat(partnerRoom(seats))).toBe(2);
+    expect(partnerSeat(room({ seats, hostId: 'Host', rules: { playerCount: 4, partnerships: false } as RoomInfo['rules'] }))).toBeNull();
+    // host not seated yet (the creator's own first arrival): no preference
+    const unseated = [{ kind: 'empty' as const }, { kind: 'empty' as const }, { kind: 'empty' as const }, { kind: 'empty' as const }];
+    expect(partnerSeat(partnerRoom(unseated))).toBeNull();
+  });
+
+  it('joinableSeats offers the partner seat first in partnership, so invites advertise it', () => {
+    const seats = [human('Host'), { kind: 'empty' as const }, { kind: 'empty' as const }, bot('Booker')];
+    expect(joinableSeats(partnerRoom(seats))).toEqual([2, 1, 3]);
+  });
+
+  it('joinableSeats order is unchanged in cutthroat', () => {
+    const seats = [human('Host'), { kind: 'empty' as const }, { kind: 'empty' as const }, bot('Booker')];
+    expect(joinableSeats(room({ seats, hostId: 'Host', rules: { playerCount: 4, partnerships: false } as RoomInfo['rules'] }))).toEqual([1, 2, 3]);
+  });
+
+  it('auto-sit takes the partner seat when it is empty', () => {
+    const seats = [human('Host'), { kind: 'empty' as const }, { kind: 'empty' as const }, { kind: 'empty' as const }];
+    expect(lobbyAutoSitSeat(partnerRoom(seats))).toBe(2);
+  });
+
+  it('auto-sit falls back to the lowest empty seat when the partner seat is taken', () => {
+    const seats = [human('Host'), { kind: 'empty' as const }, human('Partner'), { kind: 'empty' as const }];
+    expect(lobbyAutoSitSeat(partnerRoom(seats))).toBe(1);
+    const botThere = [human('Host'), { kind: 'empty' as const }, bot('Booker'), { kind: 'empty' as const }];
+    expect(lobbyAutoSitSeat(partnerRoom(botThere))).toBe(1);
+  });
+
+  it('auto-sit in cutthroat is the lowest empty seat, exactly as before', () => {
+    const seats = [human('Host'), { kind: 'empty' as const }, { kind: 'empty' as const }, { kind: 'empty' as const }];
+    expect(lobbyAutoSitSeat(room({ seats, hostId: 'Host', rules: { playerCount: 4, partnerships: false } as RoomInfo['rules'] }))).toBe(1);
   });
 });

@@ -3,8 +3,17 @@ import { musicTension } from './musicTension';
 import { clearTableChatOpen, loadTableChatOpen, saveTableChatOpen } from './chatView';
 import { browsedTrick, stepTrickIndex, trickPositionLabel } from './lastTrickBrowse';
 import { RecapTrickReview } from './TrickBrowser';
+import { RenegeButton, RenegeSheet, RenegeVerdict } from './Renege';
+import { rememberHandTricks } from './handTricks';
 import { enterTable, quitGame, silenceGame, suspendGame } from './gameSession';
 import { getViewAdjustState, isDefaultViewAdjust, onViewAdjustCommit, seedViewAdjust, subscribeViewAdjust, viewAdjustLabel, type ViewAdjust } from './viewAdjust';
+import { seedMotionViewEnabled } from './motionView';
+import {
+  clearEyeCalibrationRequest, getEyeCalibrationRequested, seedEyeZoomCalibration, seedEyeZoomEnabled,
+  subscribeEyeCalibrationRequested, type EyeGazeCalibration,
+} from './eyeZoom';
+import { EyeZoomCalibrate } from './EyeZoomCalibrate';
+import MotionViewButton from './MotionViewButton';
 import { cardControlLabel } from './cardA11y';
 import type { HandHitCard } from './three/handHit';
 import { FIRST_FRAME_FALLBACK_MS, dealGateOpen } from './three/dealFlight';
@@ -26,7 +35,7 @@ import {
 import { ScorePad, setTeamNames, sideName } from './Modals';
 import { LockedRulesPanel } from './LockedRules';
 import { booksBanner, teamMinNote } from './polishText';
-import { type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
+import { type RenegeCall, type Series, addSeriesGame, seriesForGameStart, seriesSides, summarizeGame } from '@spades/rules';
 import { SeriesChip, SeriesSheet, loadSeries, saveSeries } from './Series';
 import PersonaFace from './PersonaFace';
 import { personaFigureGlbUrl, personaFigureKeyForName } from './personaFigureKey';
@@ -68,7 +77,9 @@ import { fireCue, fx, useReduceEffects } from './fx';
 import { PhotoFinishTape, VictoryConfetti } from './RecapFx';
 import { CONFETTI_GOLDS } from './recapfx';
 import { photoFinish, winMargin } from './animfx/detect';
-import { sideColor } from './ScorePad';
+import { PadHands, sideColor } from './ScorePad';
+import { pickMvp } from './mvp';
+import { MvpBeat } from './MvpBeat';
 import { useDealtSlots } from './dealtSlots';
 import { FeltHand } from './FeltHand';
 import { handClearPx, layoutPublishStale } from './bidPanelFit';
@@ -106,7 +117,9 @@ import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
 import { plateTally, rememberHandTally, type HandTally } from './plateStats';
 import { MARGIN_LABEL, marginTierForSeat, type MarginTier } from './thinMargin';
-import { BOOK_GATHER_MS, landedTook, shownTook } from './tookDisplay';
+import { showdownSides } from './showdown';
+import { ShowdownLayer } from './ShowdownLayer';
+import { BOOK_GATHER_MS, landedTook, shownTook, withPenaltyBooks } from './tookDisplay';
 import { bidChipText, dealerChipMatches, plateTookText, popPlateTook, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
 import { biddingNote, noticeStickyTip, noticeTip, seatFacingName, seatInitial, trickTakenLine } from './seatLabel';
@@ -243,6 +256,8 @@ export interface OnlineBinding {
   /** Toss-the-hand poll (online): the room's open poll in LOCAL seats, the hand
    *  a poll already died on, and the two sends. Absent offline (Table runs the
    *  single-human confirm locally) and where the room refuses polls. */
+  /** Renege calls (online): send a call to the room — the server is the judge. LOCAL seats. Absent offline. */
+  renege?: { call: (target: number, trick: number) => void };
   toss?: {
     poll: { callerName: string; voters: number[]; yes: number[]; no: number[]; expiresAt: number; mine: boolean; myVote: boolean | null } | null;
     deadHand?: number;
@@ -362,6 +377,8 @@ interface Props {
   /** Adjustable table view: a finished tilt/zoom gesture (or a double-tap reset) saves here. */
   onViewAdjust?: (adj: ViewAdjust) => void;
   onTurnUp?: (on: boolean) => void;
+  /** Eye zoom: a finished two-look calibration saves here (settings, this device only). */
+  onEyeZoomCalibration?: (cal: EyeGazeCalibration | null) => void;
   /** A saved in-progress game to resume at exactly the same point. */
   resume?: SavedGame;
   /** Rematch or resume: keep the series tally. A new game leaves this unset and starts at 0–0. */
@@ -427,9 +444,9 @@ function positions(n: number): SeatPos[] {
 
 /* -------------------------------------------------------------- chat feed */
 const talkOn = () => { try { return JSON.parse(localStorage.getItem('bwm.talk.v1') ?? '{}').botTalk !== false; } catch { return true; } };
-/** The Wheels results gate (TableGame owns the state): a 10th-book emit
- *  whose timer lands after the game has ended must not fire into the
- *  covered table — it stashes the feat for the results surface instead;
+/** The Wheels results gate (TableGame owns the state): a contract-crossing
+ *  car emit whose timer lands after the game has ended must not fire into
+ *  the covered table — it stashes the feat for the results surface instead;
  *  a live emit records its key so the results replay never doubles it. */
 interface WheelsGate {
   phaseRef: { current: GameState['phase'] };
@@ -488,41 +505,49 @@ function useChat(st: GameState, names: string[], initial: ChatMsg[] | undefined,
         window.setTimeout(() => fx.emit('wheels', { sub: `${who} · ${w.total} books` }), 250);
       }
     }
-    // Cutthroat wheels: your 10th book of the hand (once per hand per player)
+    // Cutthroat chat beat: a player's 10th book of the hand is announced
+    // (once per hand per player) — chat only since 2026-11-08: the CAR
+    // answers the make of a Wheels call, not a bare 10th book (below).
     const runWait = st.tricks.slice(p.tricks.length).some((t) => t.plays.some((q) => q.run)) ? runWaitMs(st) : 0;
     if (st.handNo === p.handNo) for (const s of wheelsTenth(r, p.tricksWon, st.tricksWon)) {
       push('System', `🏎 Wheels! ${names[s]} took a 10th book`, true);
-      const key = `${st.handNo}:tenth:${s}`;
-      const text = `${names[s]} · 10 books`;
-      window.setTimeout(() => {
-        // the game ended under this timer: the results surface owns the show
-        if (wheelsGate.phaseRef.current === 'gameOver') wheelsGate.stash(key, text);
-        else { wheelsGate.shownLive.add(key); fx.emit('wheelsCar', { text }); }
-      }, 900 + runWait);
     }
-    // first hand (books bid themselves, so no bids): a team's 10th book of the hand → the same celebration
+    // first hand (books bid themselves, so no bids): a team's 10th book of
+    // the hand is announced — chat only: no call was made on a books hand,
+    // so there is no make for the car to answer.
     if (st.handNo === p.handNo) for (const side of wheelsTenthBooks(r, st.bids, p.tricksWon, st.tricksWon)) {
       const who = sideName(r, side, names);
       push('System', `🏎 Wheels! ${who} took 10 books`, true);
-      const key = `${st.handNo}:tenthBooks:${side}`;
-      const text = `${who} · 10 books`;
-      window.setTimeout(() => {
-        if (wheelsGate.phaseRef.current === 'gameOver') wheelsGate.stash(key, text);
-        else { wheelsGate.shownLive.add(key); fx.emit('wheelsCar', { text }); }
-      }, 900 + runWait);
     }
-    // the confetti falls on the EARN, not the call (owner, 2026-11-05): the
-    // gold rain that used to ride the bid declaration now falls when a
-    // declaring side's books actually reach its contract — once per hand,
-    // on the same beat as the car's 10th-book blocks above. The declaration
-    // keeps its pop / sound / shake; a side that gets set never sees rain.
-    // Same game-over gate as the car: never fire into the results-covered
-    // table — the results surface replays the feat with the car show.
-    if (st.handNo === p.handNo && wheelsEarned(r, st.bids, p.tricksWon, st.tricksWon).length) {
+    // the confetti AND the car fall on the EARN, not the call (confetti:
+    // owner, 2026-11-05; the car moved here 2026-11-08 — "it should happen
+    // whenever you achieve 10"): ONE shared wheelsEarned computation — a
+    // declaring side's books crossing up to its contract on this transition
+    // — drives both, on the same beat. For a bid of exactly 10 the crossing
+    // IS the 10th book; a higher Wheels call celebrates at its contract
+    // book, with the rain. The declaration keeps its pop / sound / shake;
+    // a side that gets set sees neither rain nor car, and a bare 10th book
+    // on a lower bid (or on a books hand) earns neither — the chat beats
+    // above still announce those. Game-over gate: never fire into the
+    // results-covered table — the car stashes its feat for the results
+    // surface to replay; the rain has no stash and simply stands down.
+    const earnedWheels = st.handNo === p.handNo ? wheelsEarned(r, st.bids, p.tricksWon, st.tricksWon) : [];
+    if (earnedWheels.length) {
       window.setTimeout(() => {
         if (wheelsGate.phaseRef.current === 'gameOver') return;
         fx.emit('wheelsRain', { silent: true });
       }, 900 + runWait);
+      for (const e of earnedWheels) {
+        const key = 'side' in e ? `${st.handNo}:earned:${e.side}` : `${st.handNo}:earned:${e.seat}`;
+        const text = 'side' in e
+          ? `${sideName(r, e.side, names)} · ${wheelsFor(r, st.bids).find((w) => w.side === e.side)?.total ?? 10} books`
+          : `${names[e.seat]} · ${st.bids[e.seat]} books`;
+        window.setTimeout(() => {
+          // the game ended under this timer: the results surface owns the show
+          if (wheelsGate.phaseRef.current === 'gameOver') wheelsGate.stash(key, text);
+          else { wheelsGate.shownLive.add(key); fx.emit('wheelsCar', { text }); }
+        }, 900 + runWait);
+      }
     }
     // ☢ a nuke arming (second Joker down, trick still open — any trick) is announced once, on the way in
     if (st.handNo === p.handNo && nukeArmed(st) && !nukeArmed(p)) push('System', '☢ Nuke armed — ready to blow', true);
@@ -817,11 +842,22 @@ function MisdealButton({ onCall }: { onCall: () => void }) {
  * 'Toss the hand?' — shown only while the engine proves a set is locked
  * (view.toss). Offline the tap opens the confirm sheet (the human's vote is
  * the only one; the bots consent). Online the tap calls the room poll.
+ * The ✕ (owner, 2026-11-07) dismisses the pill for THIS player only, for
+ * the rest of the current hand — a local-UI courtesy, never a poll
+ * opt-out: another player's call still presents the vote sheet to the
+ * dismisser exactly as before. Its tap can never fire the call.
  */
-function TossButton({ onCall }: { onCall: () => void }) {
+export function TossButton({ onCall, onDismiss }: { onCall: () => void; onDismiss: () => void }) {
   return (
     <div className="toss-wrap">
       <button type="button" className="toss-btn" data-testid="toss-call" onClick={onCall}>Toss the hand? 🗑</button>
+      <button
+        type="button"
+        className="toss-dismiss"
+        data-testid="toss-dismiss"
+        aria-label="Dismiss"
+        onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+      >✕</button>
     </div>
   );
 }
@@ -1022,7 +1058,7 @@ function ViewAdjustChip() {
   );
 }
 
-function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onViewAdjust, onTurnUp, resume, continueSeries, carryNames, online, onMainMenu, startDealer, story, publishScene, publishAnchor, rehomeScene, seatNamesRef }: Props & SceneSink) {
+function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onRematch, onQuality, onView, onViewAdjust, onTurnUp, onEyeZoomCalibration, resume, continueSeries, carryNames, online, onMainMenu, startDealer, story, publishScene, publishAnchor, rehomeScene, seatNamesRef }: Props & SceneSink) {
   useEffect(() => { setActiveDeck(settings.deck); }, [settings.deck]);
   // Adjustable table view (owner, 2026-10-29): seed the tilt/zoom store from
   // the saved settings during this first render — before the Scene mounts and
@@ -1032,6 +1068,38 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // back out through onViewAdjust and persist with the rest of the settings.
   useState(() => { seedViewAdjust(settings.viewAdjust); return true; });
   useEffect(() => { if (!getViewAdjustState().adjusting) seedViewAdjust(settings.viewAdjust); }, [settings.viewAdjust]);
+  // Motion view (owner, 2026-11-07): the toggle's runtime mirror rides the
+  // same seed lifecycle as the view offset itself — set before the Scene
+  // mounts, kept in step with the saved setting after. Scene's motion
+  // driver subscribes to it; the sensor permission was already settled by
+  // the Settings toggle tap that turned the setting on.
+  useState(() => { seedMotionViewEnabled(settings.motionView === true); return true; });
+  useEffect(() => { seedMotionViewEnabled(settings.motionView === true); }, [settings.motionView]);
+  // Eye zoom (owner, 2026-11-07): the toggle + calibration mirrors ride the
+  // same seed lifecycle. Scene's gaze driver subscribes to them; the camera
+  // permission was already settled by the Settings toggle tap.
+  useState(() => { seedEyeZoomEnabled(settings.eyeZoom === true); seedEyeZoomCalibration(settings.eyeZoomCal ?? null); return true; });
+  useEffect(() => { seedEyeZoomEnabled(settings.eyeZoom === true); }, [settings.eyeZoom]);
+  useEffect(() => { seedEyeZoomCalibration(settings.eyeZoomCal ?? null); }, [settings.eyeZoomCal]);
+  // Eye zoom calibration overlay state. It opens on its own the first
+  // time an enabled-but-uncalibrated player is actually AT the table —
+  // the auto-open effect lives further down, gated on the loader being
+  // gone, so the steps never burn behind the versus intro — and whenever
+  // the Settings row's Calibrate / Recalibrate raises the request flag.
+  // Dismissing it just leaves gaze inactive.
+  const [eyeCalOpen, setEyeCalOpen] = useState(false);
+  const eyeCalDismissedRef = useRef(false);
+  useEffect(() => {
+    const check = () => {
+      if (getEyeCalibrationRequested()) {
+        clearEyeCalibrationRequest();
+        eyeCalDismissedRef.current = false;
+        setEyeCalOpen(true);
+      }
+    };
+    check();
+    return subscribeEyeCalibrationRequested(check);
+  }, []);
   const onViewAdjustRef = useRef(onViewAdjust);
   onViewAdjustRef.current = onViewAdjust;
   useEffect(() => onViewAdjustCommit((adj) => onViewAdjustRef.current?.(adj)), []);
@@ -1060,7 +1128,14 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // is — the sheet rides the same `hold` the learning tips use), and the hand
   // a "Keep playing" already killed the poll for.
   const [tossSheet, setTossSheet] = useState(false);
+  // Renege calls: the call sheet is open (offline the bots hold while it is, like the toss sheet).
+  const [renegeSheet, setRenegeSheet] = useState(false);
   const [tossDeadLocal, setTossDeadLocal] = useState<number | null>(null);
+  // Toss pill dismissal (owner, 2026-11-07): the hand key (seed:handNo)
+  // this player dismissed the call pill for. Local UI state only — never
+  // sent to the server, never read by the poll/vote paths; a new hand's
+  // key simply never matches, so the pill returns on its own.
+  const [tossDismissedHand, setTossDismissedHand] = useState<string | null>(null);
   const speed = learning && settings.speed !== 'turbo' ? 'slow' : settings.speed;
   const n0 = (resume?.state.rules ?? initialRules).playerCount;
   // Rematch seat carry (owner, 2026-11-04): an explicit hand-in (the recovery
@@ -1088,7 +1163,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const [sceneFirstFrame, setSceneFirstFrame] = useState(false);
   const [gateMountedAt] = useState(() => Date.now());
   const onSceneFirstFrame = useCallback(() => setSceneFirstFrame(true), []);
-  const { st, view, pause, error, apply, introHand, dealing, dealSettled, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, (learning && tipOpen) || tossSheet, startDealer, partnerHint, localReport, dealReady, sceneDealt, !!story);
+  const { st, view, pause, error, apply, introHand, dealing, dealSettled, k } = online ? online.source : useGame(initialRules, seed, levelFor, speed, resume?.state, (learning && tipOpen) || tossSheet || renegeSheet, startDealer, partnerHint, localReport, dealReady, sceneDealt, !!story);
   useEffect(() => { online?.setLearning?.(learning); }, [learning]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = st.rules;
   const n = r.playerCount;
@@ -1319,6 +1394,13 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
 
   const shownTrick = pause ? st.tricks[st.tricks.length - 1]! : st.trick;
   const piles = pause ? st.tricks.slice(0, -1) : st.tricks;
+  // File the finished hand's play-by-play so the score pad can review it later (handTricks.ts):
+  // once the next hand is dealt the engine no longer has it.
+  useEffect(() => {
+    if (st.phase !== 'handOver' && st.phase !== 'gameOver') return;
+    const last = st.history[st.history.length - 1];
+    if (last && st.tricks.length) rememberHandTricks(st.seed, last.handNo, st.tricks);
+  }, [st.phase, st.handNo, st.tricks.length]); // eslint-disable-line react-hooks/exhaustive-deps
   // online: `locked` while our move is in flight (until the server acks it), so it can't be sent twice
   const spectating = !!online?.spectator;
   const face = (seat: number) => seatFacingName(names, seat, spectating);
@@ -1453,7 +1535,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     const t = window.setTimeout(() => { if (!certifiedEver.current) setSceneSilent(true); }, 5000);
     return () => window.clearTimeout(t);
   }, [sceneSilent, presented, myTurn, st.phase, turnKey]);
-  const legal = highlightLegal({ myTurn, dropOpen: dropOpenView, phase: st.phase, presented, viewLegal: view.legal, hand });
+  const legal = highlightLegal({ myTurn, dropOpen: dropOpenView, phase: st.phase, presented, viewLegal: view.playable ?? view.legal, hand });
   const exchangeStep = st.phase === 'exchange' ? st.exchange[0] : undefined;
   const humanExchanging = myTurn && exchangeStep?.from === HUMAN;
   const mySide = sideOf(HUMAN, r);
@@ -1482,6 +1564,12 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // actually loaded. The loader holds for it alongside dressed/effectsWarm.
   const [assetsSettled, setAssetsSettled] = useState(false);
   const [loadGone, setLoadGone] = useState(false);
+  // Eye zoom auto-calibration: the loader lifting IS "we are at the
+  // table" — only then may the two-look setup open on its own.
+  useEffect(() => {
+    if (!loadGone) return;
+    if (settings.eyeZoom === true && !settings.eyeZoomCal && !eyeCalDismissedRef.current) setEyeCalOpen(true);
+  }, [loadGone, settings.eyeZoom, settings.eyeZoomCal]);
   // Versus intro (boxing match card on the loader): eligibility is decided once, at
   // mount — a fresh game start that hasn't shown the intro for this match seed yet.
   // A mid-game refresh reuses the seed (and `resume` offline / a started game online),
@@ -1716,7 +1804,9 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     sync.scheduled = Math.max(sync.scheduled, piles.length);
   }, [piles.length, landedBooks, st.handNo]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => clearLandTimers, []);
-  const tookShown = shownTook(landedTook(st.tricks, landedBooks, plates.books.length), plates.books);
+  const landedTally = landedTook(st.tricks, landedBooks, plates.books.length);
+  // Renege tables: books a ruling moved show at once (see withPenaltyBooks); no-op with no call made.
+  const tookShown = shownTook(view.renege?.calls.length && st.phase === 'playing' ? withPenaltyBooks(landedTally, st.tricks, st.tricksWon) : landedTally, plates.books);
   // The plate pop rides the tick itself: when a seat's shown count rises through
   // a landing, pop every copy of that plate. Hand changes never pop — a swapped-in
   // hand shows its true count silently.
@@ -1740,6 +1830,12 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     prevShown.current = tookShown;
   }, [shownKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
+  // Last-card showdown (showdown.ts): every side still chasing its bid needs this final book.
+  const sdSides = showdownSides(st);
+  const sdTeams = sdSides.map((side) => ({ side, name: sideName(st.rules, side, names), color: sideColor(st.rules, side) }));
+  const sdLast = st.tricks[st.tricks.length - 1];
+  const sdWinSide = sdLast && typeof sdLast.winner === 'number' ? sideOf(sdLast.winner, st.rules) : null;
+  const sdWinner = sdWinSide === null ? null : { side: sdWinSide, name: sideName(st.rules, sdWinSide, names), color: sideColor(st.rules, sdWinSide) };
   // the Run it! button + its one-time spotlight tip
   const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
   // Misdeal: offered only while the engine allows it (this seat has not bid yet — other seats
@@ -1756,9 +1852,35 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // mode (excluded by the owner — online story rooms refuse server-side too).
   const tossPoll = online?.toss?.poll ?? null;
   const canToss = !spectating && !story && !dealing && st.phase === 'playing' && !!view.toss && !view.tossBlockedByNil
+    && tossDismissedHand !== `${seed}:${st.handNo}`
     && (online ? (!!online.toss && !tossPoll && online.toss.deadHand !== st.handNo) : tossDeadLocal !== st.handNo && !tossSheet);
   const tossBlockedNote = !spectating && !story && st.phase === 'playing' && !!view.toss && view.tossBlockedByNil;
   const tossSideName = (side: number): string => (online ? online.sideLabel(side) : sideName(r, side, names));
+  // Renege calls (owner, 2026-11-12): the view lists the finished books this seat could still
+  // call (view.renege.open — empty for spectators). The call is live during the hand and on the
+  // recap until the next deal. Never in story mode. The ruling (view.renege.calls) is public: the
+  // newest one shows to the whole table.
+  const renegeOpen = !spectating && !story && !dealing && !runFx && (!online || !!online.renege) && (st.phase === 'playing' || st.phase === 'handOver')
+    ? (view.renege?.open ?? []).filter((b) => b.targets.length > 0) : [];
+  const canCallRenege = renegeOpen.length > 0;
+  const renegeCalls = view.renege?.calls ?? [];
+  const renegeKey = `${seed}:${st.handNo}`;
+  const renegeSeen = useRef<{ key: string; n: number }>({ key: renegeKey, n: renegeCalls.length });
+  const [renegeVerdict, setRenegeVerdict] = useState<RenegeCall | null>(null);
+  useEffect(() => {
+    const seen = renegeSeen.current;
+    if (seen.key !== renegeKey) { renegeSeen.current = { key: renegeKey, n: renegeCalls.length }; if (!renegeCalls.length) return; seen.n = 0; }
+    else if (renegeCalls.length <= seen.n) { seen.n = renegeCalls.length; return; }
+    renegeSeen.current = { key: renegeKey, n: renegeCalls.length };
+    setRenegeVerdict(renegeCalls[renegeCalls.length - 1]!);
+    setRenegeSheet(false);
+  }, [renegeKey, renegeCalls.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const clearRenegeVerdict = useCallback(() => setRenegeVerdict(null), []);
+  useEffect(() => { if (!canCallRenege) setRenegeSheet(false); }, [canCallRenege]);
+  // The toss sheet holds the bots while it is open (useGame's `hold`), and it only DRAWS while the
+  // engine still offers a toss. If the offer goes away with the flag still set, the bots would be
+  // held by a sheet nobody can see or close — so the flag follows the offer.
+  useEffect(() => { if (tossSheet && (!view.toss || st.phase !== 'playing')) setTossSheet(false); }, [tossSheet, view.toss, st.phase]);
   // When the human's bid panel is up, the misdeal call lives INSIDE that panel (impossible to miss);
   // the floating button only covers the window while other seats are still bidding.
   const bidPanelShowing = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !autoReveal;
@@ -2398,7 +2520,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     const tm = setTimeout(() => setToasts([]), 3200);
     const toastHold = list.length ? fx.hold(3200, 'toasts') : () => {};
     // A set is the shotgun blast on that scorecard panel (the recap plays the boom). No full-screen banner.
-    // Streak / Wheels wait a beat so their pop-ups don't cover the muzzle flash.
+    // Streak waits a beat so its pop-up doesn't cover the muzzle flash.
     const timers: (() => void)[] = [];
     const calls = calloutsFor(st, mySide, names);
     const shot = calls.some((c) => c.kind === 'shot' || c.kind === 'gotShot');
@@ -2408,22 +2530,9 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       timers.push(() => clearTimeout(ht));
     }
     const streak = calls.find((c) => c.kind === 'streak');
-    // Wheels made: a team that bid 10+ together and took 10+ books → the roadster peel-out
-    const made = wheelsMade(r, rec);
-    if (made.length) {
-      const w = made[0]!;
-      const who = `${sideName(r, w.side, names)} made ${w.bid} · took ${w.books}`;
-      const key = `${rec.handNo}:made:${w.side}`;
-      if (st.phase === 'gameOver') {
-        // This record closed the game: firing into the bus now plays the
-        // show under the results overlay (the heard-but-not-seen bug).
-        // Stash it — the results surface replays it at presentation.
-        stashResultsWheels(key, who);
-      } else {
-        wheelsShownLive.current.add(key);
-        timers.push(fx.later('wheelsCar', shot ? 1500 : streak ? 2600 : 600, { text: who }));
-      }
-    }
+    // No Wheels car at hand end (owner, 2026-11-08): the car fired live at
+    // the contract-making book in useChat, or — when that book closed the
+    // game — was stashed for the results replay. Nothing to summon here.
     if (streak) timers.push(fx.later('streak', shot ? 1100 : 400, { level: streak.level, text: streak.text.split(' · ')[0], sub: streak.text.split(' · ')[1] }));
     return () => { clearTimeout(tm); toastHold(); timers.forEach((c) => c()); };
   }, [st.history, histTick, r, names, mySide, !!pause]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2451,6 +2560,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // The pass waits out the finished-trick hold (pause): every card must have landed and the final
   // trick must have had its on-table beat before anything slides to the dealer (Demetrius 2026-10-19).
   const [collecting, setCollecting] = useState(false);
+  /** The hand just ended by a toss (the engine stamps the record): the cards still in every hand get thrown in. */
+  const tossedHandOver = st.phase === 'handOver' && !!st.history[st.history.length - 1]?.tossed;
   const collectTimer = useRef<number | null>(null);
   useEffect(() => {
     if (st.phase === 'handOver' && !st.result && !online && !pause) {
@@ -2586,7 +2697,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // trick completes); the quake warms at hand start in joker modes.
   const trickArmed = isNukeTrick(st.trick.plays);
   useEffect(() => { if (trickArmed && photorealFor({ kind: 'nuke' }) === 'nuke') warmPhotoreal('nuke'); }, [trickArmed]);
-  useEffect(() => { if (r.deck === 'joker54' && photorealFor({ kind: 'jokerBig' }) === 'quake') warmPhotoreal('quake'); }, [st.handNo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (r.deck === 'joker54' && photorealFor({ kind: 'jokerBig' }) === 'quake') { warmPhotoreal('quake'); warmPhotoreal('whip'); } }, [st.handNo]); // eslint-disable-line react-hooks/exhaustive-deps
   const nukeFiredFor = useRef<string | null>(null);
   useEffect(() => {
     if (!nukeKey || nukeKey === nukeAtMount.current) return;
@@ -2630,6 +2741,61 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const endingBeat = st.phase === 'gameOver' && (st.result?.endReason === 'shotOut' || st.result?.endReason === 'third-set') && !endingBeatDone;
   const showRecap = !pause && !collecting && talkOpen && (st.phase === 'handOver' || endingBeat);
   const showResults = st.phase === 'gameOver' && !pause && !runFx && talkOpen && !!st.result && !endingBeat;
+  // Victory settle (owner, 2026-11-06: "After the animation the box score
+  // area should slide down to show the avatars"): the online victory
+  // screen's entrance keeps the frame-budget layout, in which the
+  // spotlight is the shrinkable region and the winner cards end up
+  // clipped under the foot panel. When the entrance completes the screen
+  // settles — the spotlight takes its natural height (.vic-settled in
+  // styles.css) and the panel slides down to rest below the full cards.
+  // A tap settles at once (the same tap that clears the celebration fx);
+  // reduced motion settles from the first frame, with no slide.
+  const [vicSettled, setVicSettled] = useState(false);
+  useEffect(() => { if (st.phase !== 'gameOver') setVicSettled(false); }, [st.phase]);
+  const vicScreenRef = useRef<HTMLDivElement>(null);
+  const vicSlideDelta = useRef(0);
+  const settleVictory = () => {
+    const screen = vicScreenRef.current;
+    if (!screen || screen.classList.contains('vic-settled')) return;
+    // FLIP, first half: measure the squeeze BEFORE the settled layout
+    // lands — the spotlight's content height (its scrollHeight, with the
+    // settled cap applied) against the height the budget actually gave
+    // it. The slide below starts the panel exactly that far up.
+    const spot = screen.querySelector<HTMLElement>('.victory-spot');
+    let delta = 0;
+    if (spot && window.matchMedia('(min-height: 561px)').matches) {
+      const cap = Math.max(0, screen.clientHeight - 320);
+      delta = Math.max(0, Math.min(spot.scrollHeight, cap) - spot.clientHeight);
+    }
+    vicSlideDelta.current = delta;
+    setVicSettled(true);
+  };
+  const vicPresented = showResults && !!online?.victory && !!st.result;
+  useEffect(() => {
+    if (!vicPresented) return;
+    // reduced motion: no entrance to wait out and no slide — the panel
+    // simply rests in the slid-down position from the first frame
+    if (reduceFx) { setVicSettled(true); return; }
+    const t = window.setTimeout(() => settleVictory(), 1200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vicPresented, reduceFx]);
+  // FLIP, second half: the settled layout has landed (layout effects run
+  // before paint) — hold the panel where the entrance left it, then let
+  // its transition carry it down over the measured distance.
+  useLayoutEffect(() => {
+    if (!vicSettled) return;
+    const delta = vicSlideDelta.current;
+    vicSlideDelta.current = 0;
+    const foot = vicScreenRef.current?.querySelector<HTMLElement>('.vic-foot');
+    if (!foot || delta <= 4 || reduceFx) return;
+    foot.style.transform = `translateY(${-delta}px)`;
+    foot.classList.add('vic-sliding');
+    const raf = requestAnimationFrame(() => { foot.style.transform = ''; });
+    const done = window.setTimeout(() => { foot.classList.remove('vic-sliding'); foot.style.transform = ''; }, 700);
+    return () => { cancelAnimationFrame(raf); window.clearTimeout(done); foot.classList.remove('vic-sliding'); foot.style.transform = ''; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vicSettled]);
   // Story Mode: a finished story match NEVER takes the generic rewards
   // report — every exit from this modal routes through the host's exit
   // into StoryHome's outro (win: reward line, deck/set-anim unlock
@@ -2639,6 +2805,12 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // action is the onward one and replay lives on the map card. A story
   // LOSS keeps its rematch (same stop, story-scoped via the host).
   const storyGame = !!story;
+  // Player of the game (mvp.ts): named once the game is over, shown as a short beat over the
+  // arriving results and then as a line on them. Story games carry their own outro instead.
+  const mvp = !storyGame && st.phase === 'gameOver' && st.result ? pickMvp(r, st.history, st.result.winners) : null;
+  const mvpNode = mvp ? (
+    <MvpBeat mvp={mvp} name={face(mvp.seat)} team={r.partnerships ? sideName(r, mvp.side, names) : undefined} color={sideColor(r, mvp.side)} gameKey={`${st.seed ?? ''}:${st.history.length}`} reduced={reduceFx} />
+  ) : null;
   // MERGED VICTORY SCREEN (owner, 2026-11-01: "we basically have 2 victory
   // screens we should reevaluate and reduce to one" — the in-table screen
   // survives and absorbs the Postgame Report). The breakdown is computed
@@ -2718,11 +2890,9 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     const feats = resultsWheelsFeats(r, st.history, st.tricksWon, wheelsShownLive.current);
     const f = feats[0];
     if (!f) return;
-    stashResultsWheels(f.key, f.kind === 'made'
-      ? `${sideName(r, f.side!, names)} made ${f.bid} · took ${f.books}`
-      : f.kind === 'tenth'
-        ? `${names[f.seat!]} · 10 books`
-        : `${sideName(r, f.side!, names)} · 10 books`);
+    stashResultsWheels(f.key, f.side !== undefined
+      ? `${sideName(r, f.side, names)} made ${f.bid} · took ${f.books}`
+      : `${names[f.seat!]} made ${f.bid} · took ${f.books}`);
   }, [showResults, resultsWheels]); // eslint-disable-line react-hooks/exhaustive-deps
   // A guest claim landing on the merged screen swaps the credited
   // breakdown in: mirror it into the stash so a later reload's recovery
@@ -2848,7 +3018,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // stays 0: the YOUR TURN badge and the lit cards arrive together, never one before the other.
   // The one-card free drop is exempt from that gate (turnPresentation.ts), so its count follows
   // the same exemption: the badge arrives with the lit card, not a beat behind it.
-  const playableCount = st.phase === 'playing' ? ((presented || dropOpenView) ? view.legal.filter((c) => (hand ?? []).includes(c)).length : 0) : legal.length;
+  const playableCount = st.phase === 'playing' ? ((presented || dropOpenView) ? (view.playable ?? view.legal).filter((c) => (hand ?? []).includes(c)).length : 0) : legal.length;
   const live = turnView({
     turn: localTurn, phase: st.phase, pause, dealing, locked: turnLocked, covered: !!runFx,
     viewerSeat: HUMAN, spectating, legalCount: playableCount, selected: !!selected,
@@ -3083,6 +3253,16 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
         const key = personaFigureKeyForName(seat.name);
         if (key) gate.add(`glb figure (persona ${key})`, fetchSettled(personaFigureGlbUrl(key)));
       }
+      // The viewer's own Run It figure (owner 2026-11-08): his
+      // persona GLB joins the same gate — the figure mounts only
+      // for his own show, but a cold fetch at claim time would eat
+      // the rise, so the body is in place before he can ever run
+      // it. Spectators have no own figure. Story tables included:
+      // the story layer resolves his figure through the same key.
+      if (!spectating) {
+        const ownKey = personaFigureKeyForName(names[HUMAN] ?? '');
+        if (ownKey) gate.add(`glb figure (own run-it ${ownKey})`, fetchSettled(personaFigureGlbUrl(ownKey)));
+      }
     }
 
     publish();
@@ -3299,6 +3479,16 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     shownTrick: display.trick,
     trickArmed: !!view.nukeArmed,
     slam: display.slam,
+    // 'Run it!' stand (owner 2026-11-08): the claimer's figure stands
+    // for the slam + tornado and re-seats by the next hand. Keyed off
+    // the same runFx the show itself uses, so every client that
+    // renders the show stands the same claimer (bots included).
+    runStand: runFx ? { seat: runFx.claimer, at: runFx.at, mega: runFx.mega, cards: runFx.cards } : null,
+    // 'Run it!' — the viewer's OWN player stands for his own run
+    // (owner 2026-11-08): the persona figure key his seat name
+    // resolves to. The figure layers mount it only while HE claims;
+    // spectators have no own seat, so theirs is null.
+    ownFigureKey: spectating ? null : personaFigureKeyForName(names[HUMAN] ?? ''),
     reduceFx,
     venue,
     view: effView,
@@ -3330,6 +3520,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     // onReady never fired for the new game, and the table sat on
     // "Setting the table…" for good (owner report, 2026-11-03).
     gameSeed: online ? seed : String(st.seed ?? ''),
+    showdown: sdSides.length >= 2,
     loadSettled: !loading,
     onFeltTap: () => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } },
     renderSeat,
@@ -3337,7 +3528,11 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     dealing: dealing || redeal?.phase === 'deal',
     dealReady,
     animK: redeal?.phase === 'deal' ? k * MISDEAL_DEAL_SPEED : k,
-    gatherHands: redeal?.phase === 'gather' && !fx.osReducedMotion,
+    // A tossed hand (owner, 2026-11-12: "everyone should toss their cards to the next dealer… my cards
+    // stayed in my hand"): the engine ends the hand with cards still held, so every hand — mine and the
+    // other seats' — is thrown onto a heap in the middle of the felt (Scene tossItem).
+    gatherHands: (redeal?.phase === 'gather' && !fx.osReducedMotion) || tossedHandOver,
+    gatherToNext: tossedHandOver,
     dealEpoch,
     dealFlight: redeal?.phase === 'deal',
     kingGunSeat: kingGunSeatFor(story) ?? online?.kingGunSeat ?? null,
@@ -3401,6 +3596,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       )}
       {badge && badge.seat !== HUMAN && <SeatBadge badge={badge} />}
       <ViewAdjustChip />
+      <MotionViewButton />
 
       {/* scorebug */}
       <header className="scorebug">
@@ -3532,6 +3728,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
       {showTrumpPopup && <TrumpPopup rules={r} onDone={dismissTrumpPopup} />}
+      <ShowdownLayer teams={sdTeams} cardsDown={st.trick.plays.length} winner={sdWinner} reduced={reduceFx} />
       {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={trickTakenLine(face(winnerSeat))} />}
 
       {/* toasts */}
@@ -3642,7 +3839,19 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       {online?.overlay}
       {canRun && <RunItButton tip={runTip} onDismissTip={() => setRunTip(false)} onRun={() => { setRunTip(false); setSelected(null); apply({ type: 'runIt', seat: HUMAN }); }} />}
       {canMisdeal && !bidPanelShowing && <MisdealButton onCall={() => { setSelected(null); apply({ type: 'misdeal', seat: HUMAN }); }} />}
-      {canToss && <TossButton onCall={() => { setSelected(null); if (online) online.toss!.call(); else setTossSheet(true); }} />}
+      {canToss && <TossButton onCall={() => { setSelected(null); if (online) online.toss!.call(); else setTossSheet(true); }} onDismiss={() => setTossDismissedHand(`${seed}:${st.handNo}`)} />}
+      {canCallRenege && st.phase === 'playing' && !renegeSheet && !renegeVerdict && !showPad && <RenegeButton onOpen={() => { setSelected(null); setRenegeSheet(true); }} />}
+      {canCallRenege && renegeSheet && (
+        <RenegeSheet
+          tricks={st.tricks}
+          open={renegeOpen}
+          face={face}
+          rules={r}
+          onCall={(target, trick) => { setRenegeSheet(false); if (online) online.renege!.call(target, trick); else apply({ type: 'callRenege', seat: HUMAN, target, trick }); }}
+          onClose={() => setRenegeSheet(false)}
+        />
+      )}
+      {renegeVerdict && <RenegeVerdict call={renegeVerdict} face={face} sideLabel={tossSideName} rules={r} onDone={clearRenegeVerdict} />}
       {tossBlockedNote && (
         <div className="toss-wrap"><span className="toss-note" data-testid="toss-blocked">Nil still live — this hand plays out</span></div>
       )}
@@ -3731,6 +3940,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
           chatOpen={chatOpen}
           onChat={() => setChatOpen(!chatOpen)}
           trickReview={<RecapTrickReview key={st.handNo} tricks={piles} face={face} />}
+          renegeCall={canCallRenege && st.phase === 'handOver' ? <RenegeButton recap onOpen={() => setRenegeSheet(true)} /> : undefined}
         />
       )}
       {seriesOpen && series && <SeriesSheet series={series} mine={seriesMine} onClose={() => setSeriesOpen(false)} />}
@@ -3762,7 +3972,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
         const title = winHeadline(res.winners.map((w) => sideName(r, w, names)), r.partnerships);
         const iWon = !spectating && res.winners.includes(mySide);
         return (
-          <div className="victory-screen espn" role="dialog" aria-label="Game over" data-testid="victory" onPointerDown={() => setGoFxOff(true)}>
+          <div className={`victory-screen espn${vicSettled ? ' vic-settled' : ''}`} ref={vicScreenRef} role="dialog" aria-label="Game over" data-testid="victory" onPointerDown={() => { setGoFxOff(true); settleVictory(); }}>
             {/* Victory confetti is ONE system (Wave B): the rebuilt seeded canvas
                 rain (RecapFx), mounted on the PRESENTING surface — this screen
                 only exists once the result is presented (showResults waits out
@@ -3789,6 +3999,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
               {/* the middle of the foot scrolls inside the panel (long games run
                   tall); the action buttons stay pinned below it, always reachable */}
               <div className="vic-scroll" data-testid="victory-scroll">
+                {mvpNode}
                 {/* the XP slider leads the scroll (owner, 2026-11-01: it
                     sat behind the box score + Postgame Report, so far down
                     "people will never see it") — directly under the fixed
@@ -3812,6 +4023,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                     the box score it belongs with */}
                 <RecapTrickReview key={st.handNo} tricks={piles} face={face} />
                 <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={res.winners} roll reduced={reduceFx} />
+                {/* The full score pad, hand by hand, each with its own trick review (owner, 2026-11-12). */}
+                <div className="go-pad pad2" data-testid="results-pad"><PadHands st={st} names={names} sideName={(i) => sideName(r, i, names)} dealerName={dealerLabel} /></div>
                 {seriesChip()}
                 <p className="muted small" data-testid="end-reason">{endReasonText(r, st, (side) => sideName(r, side, names))} {st.history.length} hand{st.history.length === 1 ? '' : 's'} played.</p>
                 {/* the merged report (2026-11-01): Postgame Report + reward
@@ -3860,6 +4073,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                 ))}
             </ol>
             <div className="scroll go-scroll" data-testid="gameover-scroll">
+              {mvpNode}
               {/* the XP slider leads the scroll (owner, 2026-11-01: it sat
                   behind the box score + Postgame Report, so far down
                   "people will never see it") — directly under the fixed
@@ -3871,6 +4085,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
                   after a set ending's showcase beat */}
               <RecapTrickReview key={st.handNo} tricks={piles} face={face} />
               <BoxScore st={st} label={(s) => sideName(r, s, names)} mySide={mySide} winners={st.result.winners} roll reduced={reduceFx} />
+              {/* The full score pad, hand by hand, each with its own trick review (owner, 2026-11-12). */}
+              <div className="go-pad pad2" data-testid="results-pad"><PadHands st={st} names={names} sideName={(i) => sideName(r, i, names)} dealerName={dealerLabel} /></div>
               {/* the merged report (2026-11-01): Postgame Report + reward
                   rows join the box score in the scroll region — standings
                   stay fixed above, actions pinned below, as before. Story
@@ -3947,6 +4163,12 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       {/* profile modal over the table (face taps): a direct child so the .modal-open
           blur rule exempts its .modal-backdrop like every other table modal */}
       <TableProfileModal />
+      {eyeCalOpen && settings.eyeZoom === true && (
+        <EyeZoomCalibrate
+          onCalibrated={(cal) => { onEyeZoomCalibration?.(cal); }}
+          onClose={() => { eyeCalDismissedRef.current = true; setEyeCalOpen(false); }}
+        />
+      )}
     </div>
   );
 }

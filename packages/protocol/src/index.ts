@@ -187,6 +187,10 @@ export type ClientMsg =
   | { t: 'tossCall' }
   /** Vote in the open toss poll. Votes are final once cast. */
   | { t: 'tossVote'; yes: boolean }
+  /** Renege tables (rules.renege): call the player in REAL seat `target` for reneging in
+   *  finished book `trick` (0-based, this hand). The room's engine is the judge: the verdict
+   *  and the moved books ride the next view (view.renege.calls) for the whole table. */
+  | { t: 'renegeCall'; target: number; trick: number }
   /** Story co-op: arm this player's ready flag for the room's current story phase
    *  (lobby sit-down / tape / scene / outro). Both pair members ready = the phase advances.
    *  `stopId` (host, lobby phase; either player, outro phase) asks to run a different stop next —
@@ -431,6 +435,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return { t: m.t };
     case 'tossVote':
       return typeof m.yes === 'boolean' ? { t: 'tossVote', yes: m.yes } : null;
+    case 'renegeCall':
+      return isInt(m.target) && m.target >= 0 && m.target < 4 && isInt(m.trick) && m.trick >= 0 && m.trick < 17 ? { t: 'renegeCall', target: m.target, trick: m.trick } : null;
     case 'storyReady':
       return { t: 'storyReady', ...(isStr(m.stopId, 40) ? { stopId: m.stopId } : {}) };
     case 'storyFinale':

@@ -251,6 +251,10 @@ export interface PlayerCardData {
      *  the per-game counters; hands recorded before the toss stamp shipped
      *  carry no toss fact and count 0 — the stat starts at ship) */
     tosses: { forced: number; conceded: number };
+    /** Player of the game awards across both modes, and their share of
+     *  the games an MVP was named in (personalStats owns the numbers;
+     *  games recorded before the stamp shipped are in neither) */
+    mvps: { total: number; games: number; pct: number | null };
   };
   /** head-to-head vs the viewer, FROM THE VIEWER'S perspective
    *  ({games, wins: viewer's wins, losses: viewer's losses}); present only
@@ -361,6 +365,7 @@ export async function cardFor(
       quits,
       tkos: { dealt: combined.tkoDealt, suffered: combined.tkoSuffered },
       tosses: { forced: combined.tossesForced, conceded: combined.tossesConceded },
+      mvps: { total: combined.mvps, games: combined.mvpGames, pct: combined.mvpPct },
     },
   };
 

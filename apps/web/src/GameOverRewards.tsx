@@ -6,7 +6,8 @@ import { CardTakeover, CARD_TAKEOVER_DELAY_MS, CARD_TAKEOVER_EXIT_MS, cardTakeov
 import { VictoryConfetti } from './RecapFx';
 import { cardDisplayName, rankGlyph } from './cardRank';
 import { fx, useReduceEffects } from './fx';
-import { PlayerCard, type CardRankData, type PlayerCardData } from './profile/PlayerCard';
+import { BADGE_KIND_LABEL, PlayerCard, type CardRankData, type PlayerCardData } from './profile/PlayerCard';
+import { ACHIEVEMENT_ART } from './achievementArt';
 import { loadAccount, useAccount } from './account/api';
 import { SignInSheet, UsernamePicker } from './account/AccountUI';
 import { clearPendingClaim, loadClaimResult, peekPendingClaim, setClaimSurfaceGameId, submitPendingClaim } from './pendingClaim';
@@ -1080,6 +1081,16 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
   // is the whole show there.
   const tKey = cardTakeoverKey(d);
   const [takeover, setTakeover] = useState<{ key: string; leaving: boolean } | null>(null);
+  // Achievement inspect (owner, 2026-11-07: the unlock row was a dead
+  // display row — "I should be able to tap this and get some info on
+  // it"). The row below is a real button; tapping it opens the
+  // achievement's info sheet in place, the Player Card badge sheet's
+  // behaviour carried to this surface. Keyed by achievement id and
+  // resolved against the CURRENT data at render, so a guest claim's
+  // data swap can never leave a stale sheet standing — if the open
+  // achievement is gone from the swapped data, the sheet is gone too.
+  const [openAchId, setOpenAchId] = useState<string | null>(null);
+  const openAch = openAchId ? d.achievements.find((a) => a.id === openAchId) ?? null : null;
   useEffect(() => {
     if (!play || reduced || !tKey) return;
     if (takeoverDismissed(tKey)) return;
@@ -1136,13 +1147,24 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
     }
     for (const a of d.achievements) {
       const i = row++;
+      const achOpen = openAchId === a.id;
       rows.push(
-        <div key={`a-${a.id}`} className="rw-row" style={{ animationDelay: `${i * 160}ms` }}>
+        <button
+          key={`a-${a.id}`}
+          type="button"
+          className="rw-row rw-ach-row"
+          data-testid={`rewards-achievement-${a.id}`}
+          style={{ animationDelay: `${i * 160}ms` }}
+          aria-expanded={achOpen}
+          aria-label={`Achievement: ${a.title} — details`}
+          onClick={() => setOpenAchId(achOpen ? null : a.id)}
+        >
           <div className="rw-icon">🏆</div>
           <div className="rw-body">
             <div className="rw-top"><span>Achievement: {a.title}</span><b className="rw-num small">+{a.xp} XP{a.coins ? ` · +${a.coins}` : ''}</b></div>
           </div>
-        </div>,
+          <span className="rw-ach-hint" aria-hidden>Details ›</span>
+        </button>,
       );
     }
     for (const c of d.challenges) {
@@ -1161,7 +1183,7 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
     <>
       {d.postgame && (
         <div className="rw-postgame" data-testid="postgame-report">
-          <h3 className="rw-pg-title">Postgame Report</h3>
+          <h3 className="rw-pg-title"><span>Postgame Report</span><em className="rw-pg-final">Final</em></h3>
           <table className="cmp-table">
             <thead><tr><th></th><th>Final</th><th>Books</th><th>Nils made</th></tr></thead>
             <tbody>
@@ -1169,10 +1191,10 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
                 const top = Math.max(...d.postgame!.sides.map((x) => x.score));
                 const tone: RollTone = s.score < 0 ? 'scoreLoss' : s.score > 0 && s.score === top ? 'scoreWin' : 'scoreFlat';
                 return (
-                  <tr key={s.label}><th>{s.label}</th><td><RollNum to={s.score} play={play} reduced={reduced} duration={1150} delay={250} step={50} tone={tone} origin="100% 50%" format={(v) => v.toLocaleString()} /></td><td>{s.books}</td><td>{s.nilsMade}</td></tr>
+                  <tr key={s.label} className={s.score === top ? 'rw-pg-win' : 'rw-pg-lose'}><th>{s.label}</th><td><RollNum to={s.score} play={play} reduced={reduced} duration={1150} delay={250} step={50} tone={tone} origin="100% 50%" format={(v) => v.toLocaleString()} /></td><td>{s.books}</td><td>{s.nilsMade}</td></tr>
                 );
               })}
-              <tr><th>Your books</th><td colSpan={3}>{d.postgame.myBooks} books{d.postgame.myNilsMade > 0 ? ` · ${d.postgame.myNilsMade} nil${d.postgame.myNilsMade === 1 ? '' : 's'} made` : ''}</td></tr>
+              <tr className="rw-pg-you"><th>Your books</th><td colSpan={3}>{d.postgame.myBooks} books{d.postgame.myNilsMade > 0 ? ` · ${d.postgame.myNilsMade} nil${d.postgame.myNilsMade === 1 ? '' : 's'} made` : ''}</td></tr>
             </tbody>
           </table>
           {d.postgame.moments.length > 0 && (
@@ -1193,11 +1215,27 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
                 </>)}
             </ul>
           )}
+          {/* The line score (owner, 2026-11-12: this screen "should read like a slide on
+              a espn show showing stats"): hands across, sides down, each cell the points
+              that side scored in that hand, the final total at the end — a broadcast line
+              score, off the same timeline the old "Hand 1 · 70–60" list printed. */}
           {(d.postgame.timeline?.length ?? 0) > 1 && (
-            <div className="rw-timeline" data-testid="postgame-timeline">
-              {d.postgame.timeline!.map((t) => (
-                <span key={t.hand} className="rw-timeline-row">Hand {t.hand} · {t.scores.join('–')}</span>
-              ))}
+            <div className="rw-timeline rw-linescore" data-testid="postgame-timeline">
+              <table>
+                <thead><tr><th></th>{d.postgame.timeline!.map((t) => <th key={t.hand}>{t.hand}</th>)}<th className="rw-ls-total">T</th></tr></thead>
+                <tbody>
+                  {d.postgame.sides.map((sd, i) => (
+                    <tr key={sd.label}>
+                      <th>{sd.label}</th>
+                      {d.postgame!.timeline!.map((t, k) => {
+                        const pts = (t.scores[i] ?? 0) - (k > 0 ? (d.postgame!.timeline![k - 1]!.scores[i] ?? 0) : 0);
+                        return <td key={t.hand} className={pts < 0 ? 'neg' : ''}>{pts}</td>;
+                      })}
+                      <td className="rw-ls-total">{sd.score}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -1251,6 +1289,37 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
        * retirement are unchanged. */}
       {takeover && d.cardUp && d.cardAfter && d.rankAfter && createPortal(
         <CardTakeover d={d} leaving={takeover.leaving} onDismiss={dismissTakeover} />,
+        document.body,
+      )}
+      {/* The achievement inspect sheet (owner, 2026-11-07): opened by
+       * tapping an unlock row above, it floats over the results in
+       * place — never navigates, never disturbs the screen behind it —
+       * and closes on the scrim, the ✕, or a second tap on the row,
+       * exactly like the Player Card badge sheet it mirrors. Portaled
+       * to the document root for the takeover's reason: the victory
+       * panel's glass / slant layers trap position:fixed. Every line
+       * is row or catalog fact: the achievement's own icon and
+       * earned-for line from achievementArt.ts (mirroring the server
+       * defs' hints), the server-owned title the row shows, and what
+       * it paid in THIS game in the row's own numbers. The results
+       * payload carries no earned date for these unlocks, so the
+       * sheet shows none — nothing fetched, nothing invented; an id
+       * the catalog somehow lacks keeps the 🏆 and shows no about
+       * line rather than a wrong one (the Player Card's own rule). */}
+      {openAch && createPortal(
+        <>
+          <div className="rw-ach-scrim" data-testid="rewards-achievement-scrim" onClick={() => setOpenAchId(null)} />
+          <div className="rw-ach-pop" data-testid="rewards-achievement-detail" role="dialog" aria-label={`${openAch.title} — achievement details`}>
+            <span className="rw-ach-pop-medal" aria-hidden><span className="rw-ach-pop-glyph">{ACHIEVEMENT_ART[openAch.id]?.icon ?? '🏆'}</span></span>
+            <div className="rw-ach-pop-body">
+              <p className="rw-ach-pop-name">{openAch.title}</p>
+              <p className="rw-ach-pop-kind">{BADGE_KIND_LABEL.achievement}</p>
+              {ACHIEVEMENT_ART[openAch.id]?.about && <p className="rw-ach-pop-about">{ACHIEVEMENT_ART[openAch.id]!.about}</p>}
+              <p className="rw-ach-pop-paid">This game: +{openAch.xp} XP{openAch.coins ? ` · +${openAch.coins}` : ''}</p>
+            </div>
+            <button type="button" className="rw-ach-pop-x" data-testid="rewards-achievement-detail-close" aria-label="Close achievement details" onClick={() => setOpenAchId(null)}>✕</button>
+          </div>
+        </>,
         document.body,
       )}
     </>

@@ -25,7 +25,12 @@
  *    CREDITS.md) fires once from Setup at the entrance's start when a
  *    fire tier presents, gated exactly like its sibling fire one-shot
  *    (the fireOut extinguish hiss): SFX settings rule it, and calm /
- *    reduce-effects silences it.
+ *    reduce-effects silences it. Since 2026-11-07 a sustained crackle
+ *    bed (audio.ts's menu fire bed; fire-loop.mp3, baked from the
+ *    cue's own crackle body) starts beside the cue under the same
+ *    gate and persists for the fire band's whole lifetime — the cue
+ *    alone left the burning fire silent, which is what the owner
+ *    reported. The engine owns the bed's fades and switch gates.
  *
  * Trigger discipline (Setup owns the gate; the decision is pure and
  * pinned here): the entrance plays ONCE per arrival, keyed to the

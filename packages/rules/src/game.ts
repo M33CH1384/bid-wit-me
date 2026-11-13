@@ -1,10 +1,10 @@
 import type { Card } from './cards';
-import { type TableRules, blindNilRulesOf, buildDeck, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, minimumFits, nilRulesOf, removedForActive, shotOutOn, tricksForActive, validateRules, withCompleteNil, RulesConfigError } from './config';
+import { type TableRules, blindNilRulesOf, buildDeck, cardPower, effectiveSuit, handSize, hostMinimum, isTrump, minimumFits, nilRulesOf, removedForActive, renegeOn, RENEGE_PENALTY_BOOKS, shotOutOn, tricksForActive, validateRules, withCompleteNil, RulesConfigError } from './config';
 import { evaluateRunIt } from './runIt';
 import { createRng, shuffle } from './rng';
 import {
   type Bid, type GameResult, type SideHandResult,
-  booksStillNeeded, checkGameEnd, isBooksHand, isNilBid, isShot, partnerOf, scoreHand, scoreTossedHand, shotCounts, shotOutResult, shotOutSides, sideCount, sideOf, thirdSetResult, tricksStillRemaining,
+  booksStillNeeded, checkGameEnd, isBooksHand, isNilBid, isShot, partnerOf, scoreHand, scoreTossedHand, shotCounts, shotOutResult, shotOutSides, sideCount, sideOf, sideSeats, thirdSetResult, tricksStillRemaining,
 } from './scoring';
 
 export type Seat = number;
@@ -49,6 +49,40 @@ export interface HandRecord {
    * hands and on records written before this field existed.
    */
   tossed?: { setSides: number[] };
+  /**
+   * Seats whose failure this hand was CAUSED by a Big Joker throw: a nil
+   * bidder whose first book was won with the Big Joker (that book busts
+   * the nil on the spot), or a seat whose side's set became
+   * mathematically locked on the book a Big Joker won (see
+   * bigJokerOutSeats). Stamped by scoredRecord alongside `nuke`, for the
+   * same reason: the record keeps only trick counts. The AnimFxLayer
+   * reads it for the ONE BUST, ONE CRACK stacking rule — when the Big
+   * Joker's own throw caused the bust or the eliminating set, the
+   * photoreal quake is that event's crack and the seat-plate crack does
+   * not fire for it; any other cause keeps the plate crack. Absent when
+   * no seat qualifies, and on records written before this field existed.
+   */
+  outByBigJoker?: Seat[];
+  /** Renege calls made on this hand (renege tables only), in call order. Absent when none were made. */
+  renegeCalls?: RenegeCall[];
+}
+
+/**
+ * One renege the engine saw (renege tables only): `seat` threw `card` on the `led` card in book
+ * `trick` (0-based) while holding `held`, cards of the led suit. PRIVATE: it lives on the game state
+ * and never rides a seat view — the table has to catch it.
+ */
+export interface RenegeRecord { trick: number; seat: Seat; led: Card; card: Card; held: Card[]; called?: true }
+
+/**
+ * A renege call and its verdict — public the moment it is made. `books` change sides: `from` side to
+ * `to` side (the reneging side to the caller's when `correct`, the caller's to the accused's when not).
+ * `proof` rides a correct call: the card led, the card thrown, and one led-suit card the seat was holding.
+ */
+export interface RenegeCall {
+  by: Seat; target: Seat; trick: number; correct: boolean;
+  books: number; from: number; to: number;
+  proof?: { led: Card; played: Card; held: Card };
 }
 
 export interface GameState {
@@ -99,6 +133,20 @@ export interface GameState {
    * (it is the proof of no spades). Set by the misdeal action on the redealt state, cleared by the next deal.
    */
   misdealReveal?: { seat: Seat; cards: Card[] };
+  /** Renege tables: every renege of the current hand, the engine's private truth (see RenegeRecord). Never in a view. */
+  reneges?: RenegeRecord[];
+  /** Renege tables: the calls made on the current hand, public. Cleared by the next deal. */
+  renegeCalls?: RenegeCall[];
+  /**
+   * Renege tables: penalty books still owed — a side called with fewer books than the penalty pays
+   * the rest out of the books it wins later in the hand. Whatever is unpaid at the last card is forgiven.
+   */
+  renegeDebt?: { from: number; toSeat: Seat; books: number }[];
+  /**
+   * Renege tables: the standing the current hand was dealt from. A call made after the last card
+   * (before the next deal) re-scores the hand from here with the books moved.
+   */
+  handStart?: { scores: number[]; bags: number[]; failStreak?: number[]; eliminated?: boolean[] };
 }
 
 export type Action =
@@ -117,12 +165,19 @@ export type Action =
    * flat contract score. `seat` is the player who called the poll.
    */
   | { type: 'toss'; seat: Seat }
+  /**
+   * Renege tables: `seat` calls `target` (an opponent) for reneging in finished book `trick`
+   * (0-based, this hand). The engine is the judge: right, and the penalty books move to the caller's
+   * side; wrong, and they move the other way. Open during trick play and after the last card until
+   * the next deal (see canCallRenege).
+   */
+  | { type: 'callRenege'; seat: Seat; target: Seat; trick: number }
   | { type: 'nextHand' };
 
 export type RuleErrorCode =
   | 'WRONG_PHASE' | 'NOT_YOUR_TURN' | 'BAD_SEAT' | 'BAD_BID' | 'BID_TOO_LOW' | 'NIL_NOT_ALLOWED'
   | 'BLIND_NIL_NOT_ALLOWED' | 'CARD_NOT_IN_HAND' | 'MUST_FOLLOW_SUIT' | 'SPADES_NOT_BROKEN'
-  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'ALREADY_PLAYED' | 'CANNOT_RUN_IT' | 'NO_MISDEAL' | 'CANNOT_TOSS' | 'ELIMINATED' | 'BAD_RULES';
+  | 'MUST_LEAD_TWO_OF_CLUBS' | 'BAD_EXCHANGE' | 'ALREADY_REVEALED' | 'ALREADY_PLAYED' | 'CANNOT_RUN_IT' | 'NO_MISDEAL' | 'CANNOT_TOSS' | 'ELIMINATED' | 'BAD_RULES' | 'BAD_RENEGE_CALL';
 
 export class RuleError extends Error {
   constructor(public readonly code: RuleErrorCode, message: string) {
@@ -298,6 +353,11 @@ function dealHand(prev: GameState, handNo: number, dealer: Seat, misdeal = 0): G
     // a fresh deal (misdeal redeal included) starts clean: the thrown hand only lives on the state
     // the misdeal action itself returns, and the per-hand redeal count restarts with the hand
     misdeals: misdeal, misdealReveal: undefined,
+    // renege tables: a clean slate each deal, and the standing a post-hand call re-scores from
+    reneges: undefined, renegeCalls: undefined, renegeDebt: undefined,
+    handStart: renegeOn(r)
+      ? { scores: [...prev.scores], bags: [...prev.bags], ...(prev.failStreak ? { failStreak: [...prev.failStreak] } : {}), ...(prev.eliminated ? { eliminated: [...prev.eliminated] } : {}) }
+      : undefined,
   };
   if (handNo === 1 && r.firstHandBidsItself) {
     // "First hand: books bid themselves": no bidding, straight to play; every book scores 10
@@ -517,6 +577,9 @@ export function canRunIt(st: GameState, seat: Seat): boolean {
   // The proof already respects empty hands: an out seat holds no unseen cards and is never
   // dealt a turn (nextLive), so a live seat's guarantee is unaffected.
   if (isEliminated(st, seat)) return false;
+  // Renege tables: no claim can be proven. The proof reads "did not follow" as "is out of the
+  // suit" and assumes every answer follows suit — neither holds when any card may be thrown.
+  if (renegeOn(st.rules)) return false;
   return evaluateRunIt(st, seat);
 }
 
@@ -904,11 +967,116 @@ export function legalPlays(st: GameState, seat: Seat): Card[] {
  * leader has set the led suit. Used by the play handler's validation and by the player view,
  * so the engine, the server and the client's tappable cards never disagree about the drop.
  */
-export function playableCards(st: GameState, seat: Seat): Card[] {
+export function honestCards(st: GameState, seat: Seat): Card[] {
   if (st.phase !== 'playing') return [];
   if (st.turn === seat) return legalPlays(st, seat);
   if (!lastCardDropOpen(st, seat)) return [];
   return [st.hands[seat]![0]!];
+}
+
+/**
+ * The cards the engine will ACCEPT from `seat` right now. Everywhere but a renege table that is
+ * exactly `honestCards`. On a renege table (rules.renege) nobody is locked into following suit:
+ * once a card has been led, the turn seat may throw anything in hand. Leads keep their rules
+ * (spades broken, 2♣ first) — a lead is in plain sight, so there is nothing to catch.
+ */
+export function playableCards(st: GameState, seat: Seat): Card[] {
+  const honest = honestCards(st, seat);
+  if (!renegeOn(st.rules) || st.phase !== 'playing' || st.turn !== seat) return honest;
+  if (anchoredTrickPlays(st).length === 0) return honest;
+  return [...st.hands[seat]!];
+}
+
+/* ------------------------------------------------------------ renege calls */
+
+/**
+ * May `seat` make a renege call right now? A renege table, a live seat, and a hand with at least one
+ * finished book: during trick play, or after the last card until the next deal. Never once the game
+ * is over, and never on a tossed hand (the table agreed to throw it in).
+ */
+export function canCallRenege(st: GameState, seat: Seat): boolean {
+  if (!renegeOn(st.rules) || isEliminated(st, seat)) return false;
+  if (st.phase !== 'playing' && st.phase !== 'handOver') return false;
+  if (!st.tricks.length || !st.handStart) return false;
+  if (st.phase === 'handOver' && st.history[st.history.length - 1]?.tossed) return false;
+  return true;
+}
+
+/** Why this exact call cannot be made (null when it can): a finished book, an opponent who followed in it, not called before. */
+function renegeCallProblem(st: GameState, seat: Seat, target: Seat, trick: number): string | null {
+  const r = st.rules;
+  if (!canCallRenege(st, seat)) return 'No renege call can be made right now';
+  if (!Number.isInteger(target) || target < 0 || target >= r.playerCount || target === seat || sideOf(target, r) === sideOf(seat, r)) return 'Call an opponent';
+  const t = Number.isInteger(trick) ? st.tricks[trick] : undefined;
+  if (!t) return 'Pick a finished book from this hand';
+  if (t.leader === target || !t.plays.some((p) => p.seat === target)) return 'That player led that book or was not in it';
+  if (st.renegeCalls?.some((c) => c.target === target && c.trick === trick)) return 'That play has already been called';
+  return null;
+}
+
+/** The (target, book) pairs `seat` could still call, book by book — what a call sheet offers. */
+export function renegeCallTargets(st: GameState, seat: Seat): { trick: number; targets: Seat[] }[] {
+  if (!canCallRenege(st, seat)) return [];
+  return st.tricks.map((t, trick) => ({
+    trick,
+    targets: t.plays.map((p) => p.seat).filter((target) => renegeCallProblem(st, seat, target, trick) === null),
+  }));
+}
+
+/** Pay down owed penalty books out of whatever the owing side holds now. Pure. */
+function settleRenegeDebt(st: GameState): GameState {
+  const debts = st.renegeDebt;
+  if (!debts?.length) return st;
+  const r = st.rules;
+  const tricksWon = [...st.tricksWon];
+  const left: NonNullable<GameState['renegeDebt']> = [];
+  for (const d of debts) {
+    let owed = d.books;
+    // a made Nil is never rescued or wrecked by the transfer when it can be helped: books come off the
+    // side's bidding seat first (most books first), a Nil seat's last
+    const seats = [...sideSeats(d.from, r)].sort((a, b) => Number(isNilBid(st.bids[a])) - Number(isNilBid(st.bids[b])) || tricksWon[b]! - tricksWon[a]!);
+    for (const s of seats) {
+      const take = Math.min(owed, tricksWon[s]!);
+      tricksWon[s]! -= take;
+      tricksWon[d.toSeat]! += take;
+      owed -= take;
+    }
+    if (owed > 0) left.push({ ...d, books: owed });
+  }
+  return { ...st, tricksWon, renegeDebt: left.length ? left : undefined };
+}
+
+function callRenege(st: GameState, seat: Seat, target: Seat, trick: number): GameState {
+  const problem = renegeCallProblem(st, seat, target, trick);
+  if (problem) throw new RuleError('BAD_RENEGE_CALL', problem);
+  const r = st.rules;
+  const hit = st.reneges?.find((x) => x.seat === target && x.trick === trick && !x.called);
+  const correct = !!hit;
+  const loser = correct ? target : seat;
+  const winner = correct ? seat : target;
+  // the books land on the winning side's bidding seat, so a penalty never busts that side's own Nil
+  const partner = partnerOf(winner, r);
+  const toSeat = isNilBid(st.bids[winner]) && partner !== null && !isNilBid(st.bids[partner]) ? partner : winner;
+  const call: RenegeCall = { by: seat, target, trick, correct, books: RENEGE_PENALTY_BOOKS, from: sideOf(loser, r), to: sideOf(winner, r) };
+  if (hit) {
+    const shown = new Set(st.tricks.flatMap((t) => t.plays.map((p) => p.card)));
+    call.proof = { led: hit.led, played: hit.card, held: hit.held.find((c) => shown.has(c)) ?? hit.held[0]! };
+  }
+  let next: GameState = {
+    ...st,
+    reneges: st.reneges?.map((x) => (x === hit ? { ...x, called: true as const } : x)),
+    renegeCalls: [...(st.renegeCalls ?? []), call],
+    renegeDebt: [...(st.renegeDebt ?? []), { from: call.from, toSeat, books: call.books }],
+  };
+  next = settleRenegeDebt(next);
+  if (st.phase !== 'handOver') return next;
+  // After the last card: the hand was already scored — take that score back and score it again
+  // with the books moved. Whatever the side could not pay is forgiven, as at any last card.
+  const pre = st.handStart!;
+  return finishHand({
+    ...next, phase: 'playing', scores: [...pre.scores], bags: [...pre.bags], history: st.history.slice(0, -1), result: null,
+    ...(pre.failStreak ? { failStreak: [...pre.failStreak] } : {}), ...(pre.eliminated ? { eliminated: [...pre.eliminated] } : {}),
+  });
 }
 
 function explainIllegal(st: GameState, seat: Seat, card: Card): RuleError {
@@ -1020,6 +1188,11 @@ export function applyAction(st: GameState, action: Action): GameState {
     if (st.phase !== 'handOver') throw new RuleError('WRONG_PHASE', 'Hand is not over');
     return dealHand(st, st.handNo + 1, (st.dealer + 1) % n);
   }
+  if (action.type === 'callRenege') {
+    const caller = action.seat;
+    if (!Number.isInteger(caller) || caller < 0 || caller >= n) throw new RuleError('BAD_SEAT', `Bad seat ${caller}`);
+    return callRenege(st, caller, action.target, action.trick);
+  }
   const seat = action.seat;
   if (!Number.isInteger(seat) || seat < 0 || seat >= n) throw new RuleError('BAD_SEAT', `Bad seat ${seat}`);
   if (isEliminated(st, seat)) throw new RuleError('ELIMINATED', 'You are out of this game');
@@ -1109,6 +1282,19 @@ export function applyAction(st: GameState, action: Action): GameState {
       if (st.turn !== seat && !lastCardDropOpen(st, seat)) throw new RuleError('NOT_YOUR_TURN', 'Not your turn to play');
       const legal = playableCards(st, seat);
       if (!legal.includes(action.card)) throw explainIllegal(st, seat, action.card);
+      // Renege tables: the engine keeps the truth the table has to catch — a card thrown off the
+      // led suit while a card of that suit was in the hand. Private (never in a view).
+      let reneges = st.reneges;
+      if (renegeOn(r)) {
+        const anchored = anchoredTrickPlays(st);
+        if (anchored.length && st.turn === seat) {
+          const led = effectiveSuit(anchored[0]!.card, r);
+          const held = st.hands[seat]!.filter((c) => effectiveSuit(c, r) === led);
+          if (held.length && effectiveSuit(action.card, r) !== led) {
+            reneges = [...(reneges ?? []), { trick: st.tricks.length, seat, led: anchored[0]!.card, card: action.card, held }];
+          }
+        }
+      }
       const hands = [...st.hands];
       hands[seat] = hands[seat]!.filter((c) => c !== action.card);
       const play: Play = { seat, card: action.card };
@@ -1135,7 +1321,7 @@ export function applyAction(st: GameState, action: Action): GameState {
           t = nextLive(st, t);
           while (thrown.has(t)) t = nextLive(st, t);
         }
-        return { ...st, hands, spadesBroken, trick: { ...st.trick, plays }, turn: t };
+        return { ...st, hands, spadesBroken, reneges, trick: { ...st.trick, plays }, turn: t };
       }
       // 🃏 Throw-in reorder: the led suit (plays[0]) is always the trick leader's card,
       // even when the final trick's cards landed out of turn.
@@ -1149,9 +1335,11 @@ export function applyAction(st: GameState, action: Action): GameState {
       let nukes = st.nukes;
       if (isNukeTrick(ordered)) { nukes = [...(st.nukes ?? Array(sideCount(r)).fill(0))]; nukes[sideOf(ordered[bi]!.seat, r)]!++; }
       let next: GameState = {
-        ...st, hands, spadesBroken, tricks, tricksWon, ...(nukes ? { nukes } : {}),
+        ...st, hands, spadesBroken, reneges, tricks, tricksWon, ...(nukes ? { nukes } : {}),
         trick: { leader: winner, plays: [], winner: null }, turn: winner,
       };
+      // penalty books still owed come out of the book just won
+      next = settleRenegeDebt(next);
       if (tricks.length === booksInHand(st)) next = finishHand(next);
       return next;
     }
@@ -1217,6 +1405,98 @@ function finishPartnershipHand(st: GameState, sides: SideHandResult[], scores: n
  * played-out path (`finishHand`) and the toss path, so both records are
  * built by exactly one hand.
  */
+/**
+ * The card `seat` won their FIRST book of the hand with, or null while
+ * they have none. Replays the completed tricks in order. (The web layer
+ * reads this live, off the current state, for the one-bust-one-crack
+ * stacking rule: a nil whose first book is the Big Joker was busted BY
+ * the Big Joker.)
+ */
+export function firstBookCard(r: TableRules, tricks: readonly Trick[], seat: Seat): Card | null {
+  for (const t of tricks) {
+    if (trickWinnerOf(t, r) === seat) return t.plays.find((p) => p.seat === seat)?.card ?? null;
+  }
+  return null;
+}
+
+/**
+ * A completed trick's winner: from its plays when they can be scored
+ * under the given rules (engine truth), else the winner the trick was
+ * banked with. Play-less tricks occur in reconstructed states
+ * (fixtures, migrations), and active-count deck variants can leave a
+ * legally played card unranked under the base rules; the replay
+ * helpers below run inside every scoredRecord, so they must never
+ * throw where the bestRuns stamp — which trusts t.winner the same
+ * way — would not.
+ */
+function trickWinnerOf(t: Trick, r: TableRules): Seat {
+  if (!t.plays.length) return t.winner ?? -1;
+  try {
+    return trickWinner(t.plays, r);
+  } catch {
+    // A hand dealt under an active-count deck variant (removedForActive)
+    // can hold a card the finishing state's base rules do not rank —
+    // e.g. 3C in a two-player cutthroat endgame. The banked winner is
+    // the engine's own record of the trick; a replay must never throw
+    // where scoring itself did not.
+    return t.winner ?? -1;
+  }
+}
+
+/**
+ * Seats whose failure this hand was CAUSED by a Big Joker throw:
+ *  - a nil bidder whose first book was won with the Big Joker (the
+ *    throw busts their nil on the spot), or
+ *  - a seat whose side's set became mathematically LOCKED on the book a
+ *    Big Joker won — the flip trick: not locked before it (books still
+ *    needed <= tricks left, this one included), locked after it (needed
+ *    > tricks left) — the toss poll's lock standard, evaluated with the
+ *    hand's true trick total so a partial (tossed) prefix stays honest.
+ * Books hands have no contracts to lock, so the lock walk is skipped
+ * there (and nils cannot exist in one). Pure replay over the hand's
+ * tricks; stamped on the record by scoredRecord, the one place the
+ * hand's tricks still exist.
+ */
+export function bigJokerOutSeats(st: Pick<GameState, 'rules' | 'bids' | 'tricks' | 'trickCount'>): Seat[] {
+  const r = st.rules;
+  const bids = st.bids as Bid[];
+  const out = new Set<Seat>();
+  const winners = st.tricks.map((t) => trickWinnerOf(t, r));
+  // Nil busts: the bidder's first book, if the Big Joker won it.
+  for (let seat = 0; seat < r.playerCount; seat++) {
+    if (!isNilBid(bids[seat])) continue;
+    if (firstBookCard(r, st.tricks, seat) === 'BJ') out.add(seat);
+  }
+  // Set locks: walk the books; a side already locked before a trick
+  // keeps its lock unattributed — only the flip trick can cause one.
+  if (!isBooksHand(bids)) {
+    const total = tricksStillRemaining(st) + st.tricks.length;
+    const taken: number[] = Array(r.playerCount).fill(0);
+    const locked = new Set<number>();
+    for (let k = 0; k < st.tricks.length; k++) {
+      const after = total - k - 1; // tricks left once this one completes
+      for (let s = 0; s < sideCount(r); s++) {
+        if (locked.has(s)) continue;
+        const need = booksStillNeeded(r, bids, taken, s);
+        if (need !== null && need > after + 1) locked.add(s); // locked before this trick — not its doing
+      }
+      const w = winners[k]!;
+      if (w >= 0) taken[w] = (taken[w] ?? 0) + 1;
+      for (let s = 0; s < sideCount(r); s++) {
+        if (locked.has(s)) continue;
+        const need = booksStillNeeded(r, bids, taken, s);
+        if (need !== null && need > after) {
+          locked.add(s);
+          if (st.tricks[k]!.plays.find((p) => p.seat === w)?.card === 'BJ') {
+            for (const seat of sideSeats(s, r)) out.add(seat);
+          }
+        }
+      }
+    }
+  }
+  return [...out];
+}
+
 function scoredRecord(st: GameState, sides: SideHandResult[]): { record: HandRecord; scores: number[]; bags: number[] } {
   const bids = st.bids as Bid[];
   const r = st.rules;
@@ -1253,6 +1533,12 @@ function scoredRecord(st: GameState, sides: SideHandResult[]): { record: HandRec
     }
     record.bestRuns = best;
   }
+  // Stamp the seats whose failure the Big Joker caused (a nil it
+  // busted, a set its book locked) while the tricks are still here —
+  // the one-bust-one-crack stacking rule's memory (see HandRecord).
+  const bjOut = bigJokerOutSeats(st);
+  if (bjOut.length) record.outByBigJoker = bjOut;
+  if (st.renegeCalls?.length) record.renegeCalls = st.renegeCalls.map((c) => ({ ...c }));
   return { record, scores, bags };
 }
 
@@ -1388,7 +1674,18 @@ export interface PlayerView {
   /** Books in this hand when the table is short (17 with three still in). */
   trickCount?: number;
   bidOptions: BidOptions | null;
+  /** The cards that follow the rules right now. Bots, hints and timer fallbacks pick from here. */
   legal: Card[];
+  /**
+   * The cards the engine will accept right now. Same as `legal` everywhere but a renege table,
+   * where a seat following a lead may throw anything in hand. The hand UI gates on this.
+   */
+  playable: Card[];
+  /**
+   * Renege tables only: the calls made on this hand (public verdicts), and the finished books this
+   * seat could still call, each with the opponents it may name. Absent on every other table.
+   */
+  renege?: { calls: RenegeCall[]; open: { trick: number; targets: Seat[] }[] };
   /** This seat can claim 'Run it!': guaranteed from cards they can see, not from the hidden layout. */
   canRunIt?: boolean;
   /** This seat may call a misdeal right now: spade-less hand, seen, and they have not bid yet. */
@@ -1431,7 +1728,9 @@ function project(st: GameState, seat: Seat, spectate: boolean): PlayerView {
     scores: [...st.scores], bags: [...st.bags], history: st.history, result: st.result,
     failStreak: [...(st.failStreak ?? [])], eliminated: [...(st.eliminated ?? [])], ...(st.trickCount !== undefined ? { trickCount: st.trickCount } : {}),
     bidOptions: spectate ? null : st.phase === 'bidding' && st.turn === seat ? bidOptions(st, seat) : null,
-    legal: spectate ? [] : playableCards(st, seat),
+    legal: spectate ? [] : honestCards(st, seat),
+    playable: spectate ? [] : playableCards(st, seat),
+    ...(renegeOn(st.rules) ? { renege: { calls: (st.renegeCalls ?? []).map((c) => ({ ...c })), open: spectate ? [] : renegeCallTargets(st, seat) } } : {}),
     // Spectators never learn whether a seat can run it, and we don't search to find out.
     canRunIt: spectate ? false : canRunIt(st, seat),
     canMisdeal: spectate ? false : canMisdeal(st, seat),

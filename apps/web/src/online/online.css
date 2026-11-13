@@ -16,6 +16,9 @@
 .invite { display: flex; gap: 8px; }
 .invite input { flex: 1; font-size: 13px; color: var(--muted); }
 .lobby .hint { color: var(--muted); font-size: 12.5px; margin: 8px 2px; text-align: center; }
+/* crossed-partners warning (2026-11-08): plain words under the seat table —
+   gold, centred, unmissable without shouting; a warning, never a block */
+.lobby .crossed-note { color: var(--gold, #e8b64c); font-size: 13px; font-weight: 600; margin: 8px 2px; text-align: center; }
 .lobby .waiting { text-align: center; color: var(--muted); font-family: var(--display); letter-spacing: .08em; font-size: 17px; text-transform: uppercase; }
 .lobby > .primary.big { width: 100%; margin-bottom: 8px; }
 .modes.compact .mode { padding: 9px 10px; }

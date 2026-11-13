@@ -8,11 +8,11 @@
  *  - all durable state lives in one plain-JSON `RoomData` object that the DO saves as a single row.
  */
 import {
-  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, botPaceDelayMs, canRunIt, isJoker, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, secureSeed, lastCardDropOpen, tossStatus, viewFor, withCompleteNil,
+  type Action, type GameHandLog, type GameState, type Series, addSeriesGame, emptySeries, seriesForGameStart, seriesMatches, seriesSides, summarizeGame, type PlayerView, type TableRules, RuleError, RulesConfigError, acceptRules, applyAction, botPaceDelayMs, canRunIt, isJoker, runPlayout, type Seat, spectatorView, HandLogBuilder, isFreshDeal, isNukeTrick, nukeArmed, nextDealer, makeRules, newGameUndealt, dealFirstHand, pendingTurn, renegeOn, secureSeed, sideOf, lastCardDropOpen, tossStatus, viewFor, withCompleteNil,
 } from '@spades/rules';
 import { voiceGender } from '@spades/bots';
 import { BUCKET_THIN } from './voice/writer';
-import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, noteTalkHand, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
+import { type TalkEvent, type TalkLine, type TalkState, type TalkTable, botTalk, chooseBotAction, chooseRenege, chooseRenegeCall, loudLoser, parseHint, leanBid, botSkillFor, personaSkillFloor, seatSkill, leanNil, momentsFor, newTalkState, noteTalkHand, pickBotNames, platePersona, prePlayLine, activeCatalog, bucketFor } from '@spades/bots';
 import { GUIDE_FINALE, STORY_CHARACTERS, STORY_STOPS, STORY_TIER_SKILL, buzzMomentFor, deeSkillForStop, guideEventLine, guideFinaleLine, guideFinaleResolutionLine, guideFinaleStartLine, guideHandLine, mannerBandOf, newGuideState, storyFactsOf, storyPairTrackKey, storyRulesForStop, storyStopById, targetForStop, type AwarenessCase, type GuideFinaleFacts, type GuideState, type StoryBeat, type StoryBuzzInput, type StoryGameFacts, type StoryStop } from '@spades/bots';
 import {
   type BotLevel, type ChatLine, type ClientMsg, type HostMusic, type MediaState, type RoomInfo, type RoomPhase, type RunPlayback, type SeatInfo, type ServerMsg,
@@ -116,6 +116,12 @@ export interface RoomData {
   botTalk?: boolean;
   /** per side: custom team name (null/unset = partner names) */
   teamNames?: (string | null)[];
+  /** per side: the member who set that side's current team name (null/unset = no
+   * recorded namer — challenge-seeded, bot-filled, or set before this was tracked;
+   * such names stay glued to their side exactly as names always did). A recorded
+   * namer's name FOLLOWS them on lobby seat moves (owner ruling 2026-11-08:
+   * names belong to the people who set them, not to the side index). */
+  teamNameBy?: (string | null)[];
   /** trash-talk cooldown state (bot reveals etc.) */
   talk?: TalkState;
   /** rematch series (see @spades/rules series) */
@@ -172,6 +178,8 @@ export interface RoomData {
    * still knows the deadline; the in-memory wake alone does not survive.
    */
   botDueAt?: number | null;
+  /** Renege tables: when the bot call now pending (a renege proved on the table) is made (epoch ms). */
+  renegeDueAt?: number | null;
   /** the bot seat whose last-card free drop is scheduled out of turn, and when it lands (epoch ms) */
   dropSeat?: number | null;
   dropDueAt?: number | null;
@@ -338,6 +346,15 @@ export const TOURNAMENT_EMPTY_GRACE_MS = 90_000;
 /** seated host dropped without leaving: pass host after this long so the table can still start or rematch */
 export const HOST_DISCONNECT_GRACE_MS = 30_000;
 export const DEFAULT_TIMING: RoomTiming = { botMs: 750, trickPauseMs: 1300, dealMs: 3200, disconnectGraceMs: 10_000, handOverMs: 20_000 };
+/**
+ * Online trick-pacing trim (owner, 2026-11-08: "Trim plain tricks only — nukes
+ * keep their full pause"). leadIn takes this off the PLAIN trick pause only;
+ * the nuked composition keeps the untrimmed trickPauseMs base under its
+ * NUKE_ALLOWANCE_MS, byte-identical to before. Mirrors the offline trim's
+ * shape (the client's plain branch carries TRICK_PACING_TRIM_MS while its
+ * nuke branch reads the untrimmed base).
+ */
+export const ONLINE_TRICK_PACING_TRIM_MS = 350;
 /** A loader that never reports ready must not freeze the table. Matches the client's give-up. */
 export const LOADER_HOLD_MAX_MS = 45_000;
 /**
@@ -363,6 +380,8 @@ export const BOT_WATCHDOG_MS = 5_000;
  * their silence cannot be farmed either — the hand simply plays on.
  */
 export const TOSS_POLL_MS = 30_000;
+/** Renege tables: the beat between a renege being proved on the table and a bot calling it. */
+export const BOT_RENEGE_CALL_MS = 1500;
 
 /** What the host environment (Durable Object or test harness) provides. */
 export interface RoomIO {
@@ -539,7 +558,7 @@ export class Room {
     if (!m || !pid) return;
     if (this.kickedOut(undefined, uid)) { this.rejectKick(connId); return; }
     if (m.uid === uid) return;
-    this.claimAccount(pid, uid);
+    this.claimAccount(pid, uid, connId);
     const now = this.conns.get(connId) ?? pid;
     if (now !== pid) {
       const kept = this.data.members[now];
@@ -567,7 +586,8 @@ export class Room {
   /** Release 9b: turn a fresh table into a tournament match. */
   setupTournament(t: TournamentSeat, rules: TableRules): void {
     const d = this.data;
-    d.rules = clampRules(rules);
+    // stakes tables play it straight: no renege calls in a bracket
+    d.rules = { ...clampRules(rules), renege: false };
     d.tournament = { ...t, reported: false };
     d.botLevel = 'mixed';
     d.seats = Array.from({ length: 4 }, () => ({ kind: 'empty' as const }));
@@ -580,7 +600,8 @@ export class Room {
   /** Big Bank: turn a fresh table into a wager match. Private, rules locked, no bots ever. */
   setupChallenge(c: ChallengeSeat, rules: TableRules): void {
     const d = this.data;
-    d.rules = clampRules(rules);
+    // stakes tables play it straight: no renege calls with a wager on the line
+    d.rules = { ...clampRules(rules), renege: false };
     d.challenge = { ...c, reported: false };
     d.private = true;
     d.botLevel = 'mixed';
@@ -811,10 +832,41 @@ export class Room {
   }
 
   /**
+   * Team-name ownership (owner ruling 2026-11-08, M2): a side's name belongs to
+   * the member who set it (teamNameBy), not to the side index. Called after a
+   * member's seat changes outside a running game. If the member is now seated
+   * on the other side from a name they own, the name leaves the old side and
+   * applies to their new side — unless the new side already carries a name
+   * owned by a member still seated there, or a name with no recorded owner
+   * (challenge-seeded / bot-filled): that name stays, and the carried name is
+   * dropped (its owner can rename their new side explicitly). An unseated
+   * namer moves nothing: the name waits with its side until they sit again.
+   */
+  private followTeamName(pid: string): void {
+    const d = this.data;
+    if (!d.rules.partnerships || d.phase === 'playing' || !d.teamNames || !d.teamNameBy) return;
+    const me = d.members[pid];
+    if (!me || me.seat === null) return;
+    const mySide = me.seat % 2;
+    for (let side = 0; side < 2; side++) {
+      if (side === mySide || d.teamNameBy[side] !== pid) continue;
+      const carried = d.teamNames[side];
+      d.teamNames[side] = null;
+      d.teamNameBy[side] = null;
+      if (!carried) continue;
+      const holder = d.teamNameBy[mySide];
+      const holderSeatedHere = !!holder && holder !== pid && d.members[holder]?.seat != null && d.members[holder]!.seat! % 2 === mySide;
+      if (d.teamNames[mySide] && (holderSeatedHere || !holder)) continue; // their name stays; the carried name is dropped
+      d.teamNames[mySide] = carried;
+      d.teamNameBy[mySide] = pid;
+    }
+  }
+
+  /**
    * One account, one member. A second connection of the same account joins the member already here
    * (and a second seat, if one was taken, is given back).
    */
-  private claimAccount(pid: string, uid: string): void {
+  private claimAccount(pid: string, uid: string, connId?: string): void {
     const d = this.data;
     const m = d.members[pid];
     if (!m) return;
@@ -826,8 +878,19 @@ export class Room {
     const dropId = keepId === pid ? otherId : pid;
     const drop = d.members[dropId]!;
     const keep = d.members[keepId]!;
+    if (drop.seat !== null && drop.seat !== keep.seat && d.phase !== 'lobby') {
+      // Owner ruling 2026-11-08 (M3): once a game is on, an account link must
+      // never move a seated player — no seat handed to a bot, no connection
+      // re-pointed across seats. The fold is refused outright: both members
+      // keep their own seats and connections, and the linking connection is
+      // told plainly (the sit handler's own words for the same refusal).
+      if (connId) this.err(connId, 'ALREADY_SEATED', 'This account is already seated at this table');
+      return;
+    }
     if (drop.seat !== null && drop.seat !== keep.seat) {
-      d.seats[drop.seat] = d.phase === 'playing' ? this.botSeat(drop.name) : { kind: 'empty' };
+      // lobby only (the game-on case is refused above): the second seat is
+      // released as a plain vacancy — the fold never fills it with a bot
+      d.seats[drop.seat] = { kind: 'empty' };
     }
     for (const [cid, p] of this.conns) if (p === dropId) this.conns.set(cid, keepId);
     if (d.hostId === dropId) d.hostId = keepId;
@@ -835,6 +898,8 @@ export class Room {
     keep.gid ??= drop.gid;
     delete d.members[dropId];
     keep.uid = uid;
+    // team-name ownership follows the surviving member, never dangles
+    if (d.teamNameBy) d.teamNameBy = d.teamNameBy.map((x) => (x === dropId ? keepId : x));
     // The name already on the kept member stays. A second hello must not rename the seat.
     this.seatReserved(keepId);
   }
@@ -995,7 +1060,7 @@ export class Room {
     }
     // token matched a different body than the account already seated here: fold them into one member
     if (uid && Object.keys(d.members).some((id) => id !== pid && d.members[id]!.uid === uid)) {
-      this.claimAccount(pid, uid);
+      this.claimAccount(pid, uid, connId);
       pid = this.conns.get(connId) ?? pid;
     }
     // A bot that took the seat during the disconnect grace gives it back. Never leave them watching.
@@ -1070,6 +1135,8 @@ export class Room {
         d.seats[msg.seat] = { kind: 'human', playerId: pid };
         me.seat = msg.seat;
         me.timeouts = 0;
+        // a team name the mover set follows them to their new side (M2)
+        this.followTeamName(pid);
         if (d.phase === 'playing') {
           // the new player takes over the seat's hand and score as is; on that seat's own turn their clock starts fresh
           const g = d.game;
@@ -1183,6 +1250,8 @@ export class Room {
       case 'teamName': {
         if (d.story) throw new RoomError('LOCKED', 'Story teams are billed by the players\u2019 names');
         if (!d.rules.partnerships) throw new RoomError('NO_TEAMS', 'No teams in Cutthroat');
+        // Renames lock once the game starts (owner ruling 2026-11-08), mirroring venue.
+        if (d.phase === 'playing') throw new RoomError('IN_GAME', 'Team names are set before the game starts');
         if (me.seat === null || me.seat >= d.rules.playerCount) throw new RoomError('NOT_SEATED', 'Sit down to name your team');
         const name = cleanTeamName(msg.name);
         if (name === null) throw new RoomError('BAD_NAME', "That team name isn't allowed");
@@ -1191,6 +1260,11 @@ export class Room {
         if ((names[side] ?? '') === name) return;
         names[side] = name || null;
         d.teamNames = names;
+        // the name belongs to its namer: record who set it so it can follow
+        // them on lobby seat moves instead of stranding on the side index
+        const by = [...(d.teamNameBy ?? [null, null])];
+        by[side] = name ? pid : null;
+        d.teamNameBy = by;
         this.system(name ? `${me.name} named their team “${name}”` : `${me.name} reset their team name`);
         break;
       }
@@ -1418,6 +1492,10 @@ export class Room {
       }
       case 'tossVote': {
         this.tossVote(me, pid, msg.yes);
+        break;
+      }
+      case 'renegeCall': {
+        this.renegeCall(me, msg.target, msg.trick);
         break;
       }
       case 'leave': {
@@ -1907,6 +1985,51 @@ export class Room {
       d.dropDueAt = null;
     }
     d.tossPoll = null;
+  }
+
+  /* ------------------------------------------------------- renege calls */
+
+  /**
+   * A seated player calls an opponent's renege (renege tables only). No poll and no vote:
+   * the engine holds the truth and rules on the spot — the verdict and the moved books ride
+   * the next view to everyone. Open during trick play and on the hand-over screen until the
+   * next deal; never while a toss poll has the table frozen.
+   */
+  private renegeCall(me: Member, target: number, trick: number): void {
+    const d = this.data;
+    if (!d.game || d.phase !== 'playing') throw new RoomError('WRONG_PHASE', 'No hand in play');
+    if (me.seat === null) throw new RoomError('NOT_SEATED', 'Only players at the table can call a renege');
+    if (d.tossPoll) throw new RoomError('POLL_OPEN', 'A toss poll is open — vote first');
+    this.applyRenegeCall(me.seat as Seat, target as Seat, trick);
+  }
+
+  /** Apply a renege call through the normal path and tell the table how it came out. Throws RuleError on a call that cannot be made. */
+  private applyRenegeCall(seat: Seat, target: Seat, trick: number): void {
+    const d = this.data;
+    const wasOver = d.game!.phase === 'handOver';
+    this.apply({ type: 'callRenege', seat, target, trick });
+    const call = d.game!.renegeCalls?.at(-1);
+    if (!call) return;
+    const who = `${this.seatName(seat)} calls a renege on ${this.seatName(target)} (book ${trick + 1})`;
+    this.system(call.correct
+      ? `${who}: RENEGE — ${call.books} books to ${this.sideLabel(call.to)}`
+      : `${who}: no renege — ${call.books} books to ${this.sideLabel(call.to)}`);
+    // a ruling after the last card re-scored the hand: the countdown to the next deal starts over
+    // so the table has time to read it
+    if (wasOver && d.game!.phase === 'handOver') d.deadline = null;
+  }
+
+  /** Renege tables: the call a bot seat would make right now (a renege the table has seen proved), or null. */
+  private botRenegeCall(): { seat: Seat; target: Seat; trick: number } | null {
+    const d = this.data;
+    const g = d.game!;
+    for (let seat = 0; seat < g.rules.playerCount; seat++) {
+      const slot = d.seats[seat];
+      if (slot?.kind !== 'bot') continue;
+      const call = chooseRenegeCall(viewFor(g, seat), botSkillFor(slot.level, g.seed, seat, slot.name));
+      if (call) return { seat, ...call };
+    }
+    return null;
   }
 
   private apply(action: Action): void {
@@ -2641,7 +2764,9 @@ export class Room {
       // a nuked trick (Big Joker over Little Joker) gets the table's fixed nuke allowance on top
       const last = g.tricks[g.tricks.length - 1]!.plays;
       const nuked = isNukeTrick(last); // either Joker order
-      return this.timing.trickPauseMs + (nuked ? NUKE_ALLOWANCE_MS[this.data.nukeIntensity ?? 'full'] : 0);
+      if (nuked) return this.timing.trickPauseMs + NUKE_ALLOWANCE_MS[this.data.nukeIntensity ?? 'full'];
+      // plain trick: the owner's pacing trim (2026-11-08) — the nuked branch above keeps the untrimmed base
+      return Math.max(0, this.timing.trickPauseMs - ONLINE_TRICK_PACING_TRIM_MS);
     }
     return 0;
   }
@@ -2804,6 +2929,20 @@ export class Room {
           console.error('run it check failed', e);
         }
         if (claimer >= 0) { this.apply({ type: 'runIt', seat: claimer as Seat }); changed = true; continue; }
+      }
+      // Renege tables: a bot that caught an opponent — a renege PROVED on the table, never a hunch —
+      // calls it after a short beat. The table holds for that beat (no card lands under the call).
+      if (renegeOn(g.rules) && (g.phase === 'playing' || g.phase === 'handOver')) {
+        const call = this.botRenegeCall();
+        if (!call) d.renegeDueAt = null;
+        else {
+          d.renegeDueAt ??= now + BOT_RENEGE_CALL_MS;
+          if (now < d.renegeDueAt) { this.io.setAlarm(d.renegeDueAt); return changed; }
+          d.renegeDueAt = null;
+          try { this.applyRenegeCall(call.seat, call.target, call.trick); } catch (e) { console.error('bot renege call failed', e); }
+          changed = true;
+          continue;
+        }
       }
       // Seated players or a connected spectator (an eliminated player stays to watch). Nobody connected: freeze.
       let paused = !Object.keys(this.data.members).some((id) => this.isConnected(id));
@@ -3088,6 +3227,14 @@ export class Room {
     const h = mate >= 0 ? d.hints?.[mate] : undefined;
     const hint = h && h.hand === d.game!.handNo && d.seats[mate]?.kind === 'human' ? parseHint(h.text) : null;
     let action = chooseBotAction(view, skill, undefined, hint) ?? this.fallbackAction(seat);
+    // Renege tables: a BOT whose side has no human on it may cut a suit it still holds, rarely
+    // (chooseRenege). Never a bot partnered with a person — nobody pays three books for a bot's
+    // cheat — and never a timed-out human's auto-play.
+    if (action.type === 'play' && slot0?.kind === 'bot' && renegeOn(d.rules)
+      && !d.seats.slice(0, d.rules.playerCount).some((s, i) => s.kind === 'human' && sideOf(i, d.rules) === sideOf(seat, d.rules))) {
+      const cut = chooseRenege(view, skill);
+      if (cut) action = { type: 'play', seat, card: cut };
+    }
     // persona lean (bots only): a slight bid nudge / Nil reluctance; illegal nudges fall through to the catch below
     const slot = d.seats[seat];
     if (slot?.kind === 'bot' && action.type === 'bid') {

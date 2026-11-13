@@ -131,3 +131,12 @@ button.brand-btn.brand-passkey.ghost { background: var(--gold) !important; }
 .acct-guest { align-self: center; min-height: 44px; padding: 0 16px; font-size: 13px; }
 .brand-btn.brand-passkey:is(:hover, :focus-visible), .acct-guest:is(:hover, :focus-visible) { filter: brightness(1.08); }
 .brand-btn.brand-passkey:focus-visible, .acct-guest:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+
+/* ---- sign-in handoff (app shell): the typed-code fallback form */
+.acct-handoff-code { display: grid; gap: 8px; margin: 14px 0 4px; text-align: left; }
+.acct-handoff-code label { font-size: 13px; color: var(--muted); }
+.acct-handoff-code input {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 18px; letter-spacing: 2px;
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line, rgba(255,255,255,.25));
+  background: rgba(0,0,0,.25); color: inherit; text-transform: uppercase;
+}

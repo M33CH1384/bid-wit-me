@@ -19,6 +19,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { STUDIO, CHAIR_SPOTS } from './classicStudioLayout';
+import { useRoomShown } from './RoomBackdrop';
 import { isOwnSeatSpot, useOwnChairHidden, useOwnSeatDir } from './ownChair';
 import { BARBER_ASSETS, skySeekFraction, todFromDate, todLighting, type TodState } from './barbershopLayout';
 
@@ -39,6 +40,8 @@ export interface CubeVenueConfig {
   windows?: CubeWindow[]; sky?: boolean; pendants?: boolean;
   boxes?: CubeBox[]; cyls?: CubeCyl[]; planes?: CubePlane[]; tori?: CubeTorus[];
   points?: { p: [number, number, number]; c: string; i: number; d: number }[];
+  /** where the four chairs stand; defaults to the Classic Studio spots */
+  chairSpots?: readonly { x: number; z: number; ry: number }[];
 }
 
 export function cubeTris(withProps: boolean, cfg: CubeVenueConfig): number {
@@ -97,6 +100,10 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
   const propsRef = useRef<Group>(null);
   const lifeLights = useRef<(PointLight | null)[]>([]);
   const floorMat = useRef<MeshStandardMaterial>(null);
+  // The room around the table is a Blender render (RoomBackdrop): the shell and pendants stand down, the chairs
+  // stay, and an invisible floor keeps catching the live shadows of the table, chairs and figures.
+  const rendered = useRoomShown();
+  const studioSpots = CHAIR_SPOTS;
   const lock = useLocalTod(handNo);
   const light = todLighting(lock.tod);
   const [skyTex, setSkyTex] = useState<import('three').Texture | null>(null);
@@ -131,8 +138,10 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
     const load = (url: string) => new Promise<import('three').Group>((res, rej) => loader.load(url, (g) => res(g.scene as Group), undefined, rej));
     void (async () => {
       try {
+        // This room's chair spots (a rendered room at a kit-chair venue brings its own); same loop, same own-chair guard.
+        const CHAIR_SPOTS = cfg.chairSpots ?? studioSpots;
         const chair = await load(`${CLASSIC}/chair.glb`);
-        const lamp = cfg.pendants === false ? null : await load(`${CLASSIC}/lamp.glb`);
+        const lamp = cfg.pendants === false || rendered ? null : await load(`${CLASSIC}/lamp.glb`);
         if (dead || !propsRef.current) return; const host = propsRef.current;
         for (const spot of CHAIR_SPOTS) { if (hideOwnChair && isOwnSeatSpot(spot, ownDir)) continue; const c = chair.clone(true) as Group; c.rotation.y = spot.ry; c.position.set(spot.x, 0, spot.z); c.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); host.add(c); ground(c, STUDIO.floorY); added.push(c); }
         if (lamp) for (const x of [-STUDIO.lampX, STUDIO.lampX]) { const l = lamp.clone(true) as Group; l.position.set(x, 0, 0); l.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = false; m.receiveShadow = true; } }); host.add(l); l.updateMatrixWorld(true); const box = new Box3().setFromObject(l); l.position.y += STUDIO.floorY + STUDIO.lampShadeBottom - box.min.y; added.push(l); }
@@ -141,7 +150,7 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
       } catch { /* shell stays */ }
     })();
     return () => { dead = true; for (const g of added) g.parent?.remove(g); ktx2.dispose(); };
-  }, [cfg, quality, gl, invalidate, lock.tod, hideOwnChair, ownDir]);
+  }, [cfg, quality, gl, invalidate, lock.tod, hideOwnChair, ownDir, rendered]);
 
   const w = STUDIO.roomX * 2;
   const wins = cfg.windows ?? [];
@@ -160,6 +169,7 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
   return (
     <group>
       <group position={[0, STUDIO.floorY, 0]}>
+        {rendered ? <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow><planeGeometry args={[40, 40]} /><shadowMaterial transparent opacity={0.42} /></mesh> : <>
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow><planeGeometry args={[w, STUDIO.depth]} /><meshStandardMaterial ref={floorMat} color={cfg.floorTint} roughness={cfg.floorRough ?? 0.9} /></mesh>
         {!cfg.open && !wins.length && <mesh position={[0, STUDIO.height / 2, STUDIO.zFar]} receiveShadow><planeGeometry args={[w, STUDIO.height]} /><meshStandardMaterial color={cfg.wall} roughness={0.94} /></mesh>}
         {!cfg.open && wallSegs.map((b, i) => <mesh key={`w${i}`} position={b.p}><boxGeometry args={b.s} /><meshStandardMaterial color={b.c} roughness={0.94} /></mesh>)}
@@ -175,11 +185,32 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
         {(cfg.planes ?? []).map((b, i) => <mesh key={`p${i}`} position={b.p} rotation={b.rot ?? [0, 0, 0]} receiveShadow>{b.sky && skyTex ? <><planeGeometry args={b.s} /><meshBasicMaterial map={skyTex} color={skyColor} side={2} /></> : b.sea ? <><planeGeometry args={b.s} /><meshStandardMaterial color={b.c ?? '#2a6a8a'} roughness={0.35} metalness={0.1} /></> : <><planeGeometry args={b.s} /><meshStandardMaterial color={b.c ?? '#888888'} roughness={0.9} side={2} /></>}</mesh>)}
         {(cfg.points ?? []).map((pt, i) => <pointLight key={`l${i}`} ref={(el) => { lifeLights.current[i] = el; }} position={pt.p} color={pt.c} intensity={pt.i} distance={pt.d} decay={2} />)}
         <CubeLifePulse cfg={cfg} quality={quality} lights={lifeLights} />
+        </>}
       </group>
       <group ref={propsRef} />
     </group>
   );
 }
+
+/** The dressing for a rendered room: no shell of its own, just the chairs and the shadow-catching floor. */
+/**
+ * The seated figures at every bespoke-room venue sit at the shared "kit" chair spots, not the Classic Studio ones
+ * (PersonaFigures' VENUE_SEAT_GEOMETRY; the two must agree or a figure sits beside its chair).
+ */
+const KIT_CHAIR_SPOTS: readonly { x: number; z: number; ry: number }[] = [
+  { x: 0, z: -1.98, ry: 0 },
+  { x: 0, z: 1.98, ry: Math.PI },
+  { x: -2.14, z: 0, ry: Math.PI / 2 },
+  { x: 2.14, z: 0, ry: -Math.PI / 2 },
+];
+const CLASSIC_SPOT_VENUES = new Set(['classic', 'blockAfterDark', 'mansion']);
+/** The dressing for one venue's rendered room, with its chairs where that venue's figures sit. */
+export function bareRoomFor(venue: string): CubeVenueConfig {
+  return CLASSIC_SPOT_VENUES.has(venue) ? BARE_ROOM : BARE_KIT_ROOM;
+}
+
+export const BARE_ROOM: CubeVenueConfig = { id: 'rendered', slug: 'rendered', floorUrl: null, floorRepeat: [1, 1], floorTint: '#000000', wall: '#000000', wallDark: '#000000', ceiling: null, open: true, pendants: false };
+const BARE_KIT_ROOM: CubeVenueConfig = { ...BARE_ROOM, chairSpots: KIT_CHAIR_SPOTS };
 
 export function preloadCubeVenue(cfg: CubeVenueConfig, quality: 'high' | 'low' = 'high'): void {
   // The GLB props load at High only (the props effect above stands down

@@ -925,10 +925,11 @@ export default function StoryHome() {
         onMainMenu={() => goScreen(finishedRef.current?.seed === screen.seed ? { k: 'outro', stop, won: finishedRef.current.won } : { k: 'map' })}
         onSuspend={() => goScreen({ k: 'map' })}
         onRematch={() => startGame(stop)}
-        onQuality={(quality) => applySettings({ ...settings, quality })}
+        onQuality={(quality) => applySettings({ ...settings, quality, qualityPicked: true })}
         onView={(view) => applySettings({ ...settings, view })}
         onViewAdjust={(viewAdjust) => applySettings({ ...settings, viewAdjust })}
         onTurnUp={(turnUp) => applySettings({ ...settings, turnUp })}
+        onEyeZoomCalibration={(eyeZoomCal) => applySettings({ ...settings, eyeZoomCal })}
       />
     );
   } else if (screen.k === 'outro') {

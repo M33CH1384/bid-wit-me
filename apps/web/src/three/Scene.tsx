@@ -2,13 +2,14 @@ import { RUN_SLAM_MS } from '../runIt';
 import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
+import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Color, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial, createRestCardMaterial } from './Card3D';
 import { enterFigureLeanMode } from './figureResidency';
 import { perfCrumb, publishPerfCensus } from '../perfCensus';
 import { noteSceneActivity, sceneIsActive, setSceneCovered, setLifeHeld } from './framePulse';
 import { perfGovernor, applyCaps, capsFor } from './perfGovernor';
+import { effectiveCanvasDprCap } from './wheelsDprLift';
 import { createBackCardMaterial } from './cardBack';
 import DeuceFxLayer from './DeuceFxLayer';
 import { CUT_FACE_ANGLE, setDeuceCutPose } from './deuceImpact';
@@ -20,14 +21,19 @@ import { departureSlot, handCardKey, handReactKey } from '../handOrder';
 import { GAP_S, spreadSeconds, cardIdFromHit, echoTap, fanGapPx, fanMotion, handCardChrome, handDepthOpts, handRenderOrder, hitsInPaintOrder, noteTapUp, pointerNdc, posePx, raiseLocalY, raiseSpreadPx, spreadFitScale } from './handLift';
 import { type HandHitCard, pickHandCard, publishHandHits, publishedHandHits } from './handHit';
 import { ViewGestureTracker, applyViewAdjustToSpec, beginViewAdjustGesture, endViewAdjustGesture, getViewAdjustState, isDefaultViewAdjust, resetViewAdjust, subscribeViewAdjust, updateViewAdjustLive, zoomForWheelDelta, type ViewAdjust } from '../viewAdjust';
+import { MotionViewDriver, applyMotionSwayToSpec, getMotionQuickSuspended, getMotionSwayDeg, getMotionViewEnabled, isExternalViewGestureActive, noteExternalViewGesture, subscribeExternalViewGesture, subscribeMotionQuickSuspend, subscribeMotionSway, subscribeMotionViewEnabled, type MotionEventTargetLike } from '../motionView';
+import { EyeZoomDriver, getEyeCalibrating, getEyeZoomCalibration, getEyeZoomEnabled, setEyeZoomNote, subscribeEyeCalibrating, subscribeEyeZoomCalibration, subscribeEyeZoomEnabled } from '../eyeZoom';
+import { useSettingsSheet } from '../settingsSheet';
+import { social } from '../social/store';
 import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
+import { SHOWDOWN_FLIGHT } from '../showdown';
 import { DEFAULT_SLAM, type DragSample, clearDrop, dragSlamIntensity, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
 import { reducedMotion } from './handLift';
 import { fanRestSeconds, fanRestTarget, restCharacter, NEUTRAL_REST_CHARACTER, type FanRestPose, type RestCharacter } from './fanRest';
 import { flickFlightFor, pickFlightVariant, type FlightVariant, type FlightVariantId } from './flightPose';
 import { VISIBLE_FELT, landTrick, playSeed, runScatter } from './landing';
-import { runSlamSchedule } from './runSlamPose';
+import { runSlamGripPlan, runSlamSchedule, type SlamGripPlan } from './runSlamPose';
 import { shakeOffset, swayOffset } from './shake';
 import { captureFlipFrame, flipHeld, flipRehearsed, flipUserFlipped, markRehearsed, noteFlipSizeCommit, notePresentedFrame, noteRehearsalSize, registerCover, releaseFlipHold, setFlipHoldLock, subscribeFlipHold } from './flipHold';
 import { isShortLandscape } from '../viewport';
@@ -78,7 +84,11 @@ import CookoutYardRoom from './CookoutYardRoom';
 import GrandmaRoom, { preloadGrandmaRoom } from './GrandmaRoom';
 import MansionRoom, { preloadMansionRoom } from './MansionRoom';
 import { type VenueDef, type VenueId, VENUE_DEFS, venueAssetUrls } from '../venues';
-import { bodyGeometry, cardGeometry, feltGeometry, railGeometry } from './geometry';
+import { bodyGeometry, cardGeometry, cushionGeometry, feltGeometry, railGeometry } from './geometry';
+import { RAIL_SHADOW_SIZE, feltNapTexture, railShadowTexture } from './tableLook';
+import { loadTableModel, withWhite } from './tableModel';
+import RoomBackdrop, { roomEnvUrl, useRoomFailed, useRoomShown } from './RoomBackdrop';
+import CubeVenueRoom, { bareRoomFor } from './cubeVenue';
 import {
   CH, CW, MIN_STRIP_PX, TRICK_SCALE, type CamSpec, type FanOpts, type SeatPos, type Xform, badgeSpot, cameraFor, cameraPoseAt, CAMERA_VIEW_TWEEN_MS, cardScreenQuad, deckSpot, fanCssPx, fanLayout, handCardPlane, handFan, kingGunSpot, makeCamera, jitterOf, opponentFan, phoneHandFan, PHONE_HAND_STRIP_PX, pileSpot, ringSpot, trickSpot,
   flatRest,
@@ -157,6 +167,8 @@ export interface SceneProps {
   landing?: 'fixed' | 'physics';
   /** The game's seed: with hand, trick and card it seeds every landing, so all clients agree. */
   gameSeed?: string;
+  /** Last-card showdown: played cards fly slower and higher (showdown.ts). */
+  showdown?: boolean;
   /** The owning Table's loader has settled for the CURRENT game (gate
    *  complete or given up). The scene persists across games inside a
    *  table session (perf fix A, 2026-11-03); this signal is what lets
@@ -202,6 +214,17 @@ export interface SceneProps {
   /** 'Run it!': the claimer's remaining cards slam down face up in a row at the table centre ALL AT ONCE, then
    *  everyone else's remaining cards hit the table together in a quick cascade (then the tornado takes everything) */
   slam?: { seat: number; cards: Card[]; others?: { seat: number; card: Card }[] } | null;
+  /** 'Run it!' stand (owner 2026-11-08): the claimer's seated figure
+   *  stands for the slam + tornado, then re-seats (three/figureStand.ts).
+   *  Presentation only; the figure layers ignore it when unmounted. */
+  runStand?: { seat: number; at: number; mega: boolean; cards: Card[] } | null;
+  /** Run It — the viewer's OWN player stands (owner 2026-11-08): the
+   *  persona figure key the local human seat's name resolves to (the
+   *  same personaFigureKeyForName path every seat name takes). The
+   *  figure layers mount a figure for it ONLY while the viewer
+   *  himself claims a run — outside his show his seat renders
+   *  exactly as it always has (no figure). Null for spectators. */
+  ownFigureKey?: string | null;
   /** the venue (3D arena) around the table; default classic */
   venue?: VenueId;
   /** Post-hand: books slide to the next dealer for collection (Demetrius 2026-10-19). */
@@ -228,6 +251,9 @@ export interface SceneProps {
    *  front of the CURRENT dealer — and a misdeal passes the deal, so on the redealt state this
    *  is the incoming dealer's spot: the pile travels to them. */
   gatherHands?: boolean;
+  /** With gatherHands: a TOSSED hand — every hand is thrown onto a loose heap in the middle of the felt,
+   *  toward the next dealer, instead of gliding back to the current dealer's deck (a misdeal). */
+  gatherToNext?: boolean;
   /** Misdeal redeal, beat 2: bumped when the redeal should deal out — remounts the card layer
    *  so this hand's normal shuffle + deal flight replays under the same hand number. */
   dealEpoch?: number;
@@ -343,20 +369,29 @@ function CameraRig({ view = 'standing', people = false }: { view?: 'standing' | 
   const vaState = useSyncExternalStore(subscribeViewAdjust, getViewAdjustState);
   const adjRef = useRef(vaState.adj);
   adjRef.current = vaState.adj;
+  // Motion sway (owner, 2026-11-08): the live-only lateral offset rides
+  // on top of the saved tilt/zoom in exactly the same composition seat —
+  // applied AFTER the adjust, in place() and in the Cards fan refit, so
+  // the room pans while the hand keeps its solved layout. It is not part
+  // of the saved adjust and centres the moment motion stops.
+  const sway = useSyncExternalStore(subscribeMotionSway, getMotionSwayDeg, getMotionSwayDeg);
+  const swayRef = useRef(sway);
+  swayRef.current = sway;
   const baseRef = useRef<{ pos: number[]; look: number[] } | null>(null);
   const placeRef = useRef<(pos: readonly number[], look: readonly number[], t: number) => void>(() => undefined);
   placeRef.current = (pos, look, t) => {
     const cam = camera as import('three').PerspectiveCamera;
-    const s = applyViewAdjustToSpec({ pos, look, fov: cam.fov }, adjRef.current);
+    const s = applyMotionSwayToSpec(applyViewAdjustToSpec({ pos, look, fov: cam.fov }, adjRef.current), swayRef.current);
     cam.position.set(s.pos[0]!, s.pos[1]!, s.pos[2]!);
     cam.lookAt(new Vector3(s.look[0]!, s.look[1]!, s.look[2]!));
     sound.setSpatialListener(s.pos, s.look); // the listener follows the ACTUAL camera
-    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom };
+    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom, sway: swayRef.current };
   };
   useLayoutEffect(() => {
     const a = size.width >= 32 && size.height >= 32 ? size.width / size.height : 9 / 16;
     const stockSpec = cameraFor(a, short, view);
-    const spec = people && view === 'sitting' ? peopleSpec(stockSpec) : stockSpec;
+    const base = people && view === 'sitting' ? peopleSpec(stockSpec) : stockSpec;
+    const spec = base;
     const cam = camera as import('three').PerspectiveCamera;
     if (!Number.isFinite(spec.fov)) return;
     cam.fov = spec.fov;
@@ -374,16 +409,17 @@ function CameraRig({ view = 'standing', people = false }: { view?: 'standing' | 
     const fromPos = baseRef.current?.pos ?? [cam.position.x, cam.position.y, cam.position.z];
     const fromLook = lookAtRef.current ?? (() => { const d = new Vector3(); cam.getWorldDirection(d); return [cam.position.x + d.x, cam.position.y + d.y, cam.position.z + d.z]; })();
     anim.current = { from: [...fromPos], to: [...spec.pos], fromLook: [...fromLook], toLook: [...spec.look], start: performance.now(), dur: reduced ? 0 : CAMERA_VIEW_TWEEN_MS };
-    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t: 0, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom };
+    (window as unknown as { __bwmCam?: unknown }).__bwmCam = { view, people, y: cam.position.y, z: cam.position.z, x: cam.position.x, t: 0, tweenMs: CAMERA_VIEW_TWEEN_MS, tilt: adjRef.current.tilt, zoom: adjRef.current.zoom, sway: swayRef.current };
     invalidate();
   }, [camera, size, short, view, people, invalidate]);
-  // Offset changed (a drag, a reset, a seed): re-place instantly on the
-  // current base pose. A running view tween reads the store live instead.
+  // Offset changed (a drag, a reset, a seed) or the sway moved: re-place
+  // instantly on the current base pose. A running view tween reads the
+  // stores live instead.
   useEffect(() => {
     if (anim.current || !baseRef.current) return;
     placeRef.current(baseRef.current.pos, baseRef.current.look, 1);
     invalidate();
-  }, [vaState.adj, invalidate]);
+  }, [vaState.adj, sway, invalidate]);
   useFrame(() => {
     const a = anim.current; if (!a) return;
     // Wall clock, never raw frame dt (see cameraPoseAt): an idle demand-loop's first dt is huge.
@@ -424,10 +460,14 @@ function ViewAdjustControls() {
     const queueLive = (adj: ViewAdjust) => { pending = adj; if (!raf) raf = requestAnimationFrame(flush); };
     const settle = () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } pending = null; };
     const tracker = new ViewGestureTracker({
-      onBegin: () => beginViewAdjustGesture(),
+      // The touch flag tells Motion view a finger owns the view right now
+      // (motionView.ts): motion input yields for the whole gesture and
+      // re-baselines when it ends. The store's adjusting flag cannot say
+      // this — motion itself sets it.
+      onBegin: () => { noteExternalViewGesture(true); beginViewAdjustGesture(); },
       onLive: (adj) => queueLive(adj),
-      onEnd: (adj) => { settle(); endViewAdjustGesture(adj); },
-      onReset: () => { settle(); resetViewAdjust(); },
+      onEnd: (adj) => { settle(); noteExternalViewGesture(false); endViewAdjustGesture(adj); },
+      onReset: () => { settle(); noteExternalViewGesture(false); resetViewAdjust(); },
     });
     let wheelAdj: ViewAdjust | null = null;
     let wheelTimer: ReturnType<typeof setTimeout> | null = null;
@@ -444,12 +484,12 @@ function ViewAdjustControls() {
     const onWheel = (e: WheelEvent) => {
       if (e.target !== el || tracker.active) return;
       e.preventDefault();
-      if (!wheelAdj) beginViewAdjustGesture();
+      if (!wheelAdj) { noteExternalViewGesture(true); beginViewAdjustGesture(); }
       const base = wheelAdj ?? getViewAdjustState().adj;
       wheelAdj = { tilt: base.tilt, zoom: zoomForWheelDelta(base.zoom, e.deltaY) };
       queueLive(wheelAdj);
       if (wheelTimer) clearTimeout(wheelTimer);
-      wheelTimer = setTimeout(() => { wheelTimer = null; const a = wheelAdj; wheelAdj = null; if (a) { settle(); endViewAdjustGesture(a); } }, 350);
+      wheelTimer = setTimeout(() => { wheelTimer = null; const a = wheelAdj; wheelAdj = null; if (a) { settle(); noteExternalViewGesture(false); endViewAdjustGesture(a); } }, 350);
     };
     const onInterrupt = () => tracker.cancelAll();
     wrap.addEventListener('pointerdown', onDown);
@@ -469,9 +509,120 @@ function ViewAdjustControls() {
       window.removeEventListener('blur', onInterrupt);
       if (wheelTimer) clearTimeout(wheelTimer);
       settle();
+      noteExternalViewGesture(false);
       tracker.cancelAll();
     };
   }, [gl]);
+  return null;
+}
+
+/**
+ * Motion view mount (owner, 2026-11-07): the sensor driver lives exactly
+ * as long as this table view does — the same mount as ViewAdjustControls
+ * above, so every table surface carries it (Low included: Low rides this
+ * same Canvas) and nothing outlives the table. The driver writes through
+ * the viewAdjust store, so the chip, the save channel and everything
+ * downstream are the drag's own. Pause reasons ride the app's own
+ * signals: the felt touch flag (fed by ViewAdjustControls), the Settings
+ * sheet, the Social panel, this scene's covered state (recap / results
+ * up), the app backgrounding, and Reduce effects (the app's switch or
+ * the OS setting, via the fx prefs). Every resume re-anchors inside the
+ * driver, so the view never jumps when a pause lifts.
+ */
+function MotionViewControls({ covered }: { covered: boolean }) {
+  const enabled = useSyncExternalStore(subscribeMotionViewEnabled, getMotionViewEnabled, getMotionViewEnabled);
+  const sheet = useSettingsSheet();
+  const driverRef = useRef<MotionViewDriver | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const d = new MotionViewDriver({ target: window as unknown as MotionEventTargetLike });
+    driverRef.current = d;
+    const onVis = () => d.setSuspended('hidden', document.visibilityState === 'hidden');
+    onVis();
+    document.addEventListener('visibilitychange', onVis);
+    const onPrefs = () => d.setSuspended('reduced', fx.reduced || fx.osReducedMotion);
+    onPrefs();
+    const unsubPrefs = fx.subscribePrefs(onPrefs);
+    const applySocial = () => d.setSuspended('social', social.get().open);
+    applySocial();
+    const unsubSocial = social.subscribe(applySocial);
+    // The in-table Motion button (owner, 2026-11-08): its quick suspend
+    // is just another pause reason to the driver — a tap freezes tilt
+    // and sway in place; the next tap resumes and re-baselines.
+    const applyQuick = () => d.setSuspended('quick', getMotionQuickSuspended());
+    applyQuick();
+    const unsubQuick = subscribeMotionQuickSuspend(applyQuick);
+    d.setEnabled(getMotionViewEnabled());
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      unsubPrefs();
+      unsubSocial();
+      unsubQuick();
+      d.dispose();
+      driverRef.current = null;
+    };
+  }, []);
+  useEffect(() => { driverRef.current?.setEnabled(enabled); }, [enabled]);
+  useEffect(() => { driverRef.current?.setSuspended('sheet', sheet.open); }, [sheet.open]);
+  useEffect(() => { driverRef.current?.setSuspended('covered', covered); }, [covered]);
+  return null;
+}
+
+/**
+ * Eye zoom mount (owner, 2026-11-07): the gaze driver lives exactly as
+ * long as this table view does — the same mount as MotionViewControls
+ * above, so every table surface carries it (Low included). The driver
+ * owns a LOCAL-ONLY camera session that exists only while it is running:
+ * pause reasons ride the app's own signals (the Settings sheet, the
+ * Social panel, this scene's covered state, the app backgrounding,
+ * Reduce effects, the calibration overlay holding the camera), and one
+ * cooldown feed implements last-input-wins — a felt touch gesture rests
+ * gaze while it lasts and for 5 s after it ends. A session failure is
+ * surfaced once, in plain words, on the Settings row.
+ */
+function EyeZoomControls({ covered }: { covered: boolean }) {
+  const enabled = useSyncExternalStore(subscribeEyeZoomEnabled, getEyeZoomEnabled, getEyeZoomEnabled);
+  const calibration = useSyncExternalStore(subscribeEyeZoomCalibration, getEyeZoomCalibration, getEyeZoomCalibration);
+  const calibrating = useSyncExternalStore(subscribeEyeCalibrating, getEyeCalibrating, getEyeCalibrating);
+  const sheet = useSettingsSheet();
+  const driverRef = useRef<EyeZoomDriver | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const d = new EyeZoomDriver({
+      onSessionError: () => setEyeZoomNote('Camera stopped — Eye zoom is resting.'),
+    });
+    driverRef.current = d;
+    const onVis = () => d.setSuspended('hidden', document.visibilityState === 'hidden');
+    onVis();
+    document.addEventListener('visibilitychange', onVis);
+    const onPrefs = () => d.setSuspended('reduced', fx.reduced || fx.osReducedMotion);
+    onPrefs();
+    const unsubPrefs = fx.subscribePrefs(onPrefs);
+    const applySocial = () => d.setSuspended('social', social.get().open);
+    applySocial();
+    const unsubSocial = social.subscribe(applySocial);
+    const onTouch = () => {
+      const active = isExternalViewGestureActive();
+      d.setSuspended('touch', active);
+      if (!active) d.noteExternalInput();
+    };
+    const unsubTouch = subscribeExternalViewGesture(onTouch);
+    d.setEnabled(getEyeZoomEnabled());
+    d.setCalibration(getEyeZoomCalibration());
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      unsubPrefs();
+      unsubSocial();
+      unsubTouch();
+      d.dispose();
+      driverRef.current = null;
+    };
+  }, []);
+  useEffect(() => { driverRef.current?.setEnabled(enabled); }, [enabled]);
+  useEffect(() => { driverRef.current?.setCalibration(calibration); }, [calibration]);
+  useEffect(() => { driverRef.current?.setSuspended('calibrating', calibrating); }, [calibrating]);
+  useEffect(() => { driverRef.current?.setSuspended('sheet', sheet.open); }, [sheet.open]);
+  useEffect(() => { driverRef.current?.setSuspended('covered', covered); }, [covered]);
   return null;
 }
 
@@ -634,31 +785,55 @@ function useStreamedMaps(urls: string[]): { maps: (Texture | null)[]; settled: b
   return { maps, settled };
 }
 
-type TableGeos = { felt: BufferGeometry; rail: BufferGeometry; body: BufferGeometry };
-let geosCache: TableGeos | null = null;
+type TableGeos = { felt: BufferGeometry; rail: BufferGeometry; body: BufferGeometry; cushion: BufferGeometry | null; inlay: BufferGeometry | null; base: BufferGeometry | null };
+const geosCache = new Map<string, TableGeos>();
 
-/** Felt, rail, then apron, each in its own frame. The first paint uses a flat disc so extrude work is not on it. */
-function useTableGeos(): TableGeos | null {
-  const [geos, setGeos] = useState<TableGeos | null>(geosCache);
+/**
+ * Felt, rail, then apron, each in its own frame. The first paint uses a flat disc so extrude work is not on it.
+ * A venue with a Blender table (tools/blender/build_table.py) swaps the rail, armrest, apron and base for the
+ * modelled ones; if that file cannot be fetched the built-in shapes stand in.
+ */
+function useTableGeos(model: string | undefined): TableGeos | null {
+  const key = model ?? '';
+  const [geos, setGeos] = useState<TableGeos | null>(geosCache.get(key) ?? null);
   useEffect(() => {
-    if (geosCache) { setGeos(geosCache); return; }
+    const hit = geosCache.get(key);
+    if (hit) { setGeos(hit); return; }
     let alive = true;
+    setGeos(null);
     void (async () => {
       await nextFrame();
       if (!alive) return;
       const felt = feltGeometry();
-      await nextFrame();
-      if (!alive) return;
-      const rail = railGeometry();
-      await nextFrame();
-      if (!alive) return;
-      geosCache = { felt, rail, body: bodyGeometry() };
-      if (alive) setGeos(geosCache);
+      let built: TableGeos | null = null;
+      if (model) {
+        const parts = await loadTableModel(model).catch(() => null);
+        if (!alive) return;
+        if (parts?.rail && parts.apron) built = { felt, rail: parts.rail, body: parts.apron, cushion: parts.cushion ?? null, inlay: parts.inlay ?? null, base: parts.base ?? null };
+      }
+      if (!built) {
+        await nextFrame();
+        if (!alive) return;
+        const rail = railGeometry();
+        await nextFrame();
+        if (!alive) return;
+        const body = bodyGeometry();
+        await nextFrame();
+        if (!alive) return;
+        const cushion = cushionGeometry();
+        built = { felt, rail, body, cushion, inlay: null, base: null };
+        if (model) for (const g of [rail, body, cushion]) withWhite(g);
+      }
+      geosCache.set(key, built);
+      if (alive) setGeos(built);
     })();
     return () => { alive = false; };
-  }, []);
+  }, [key, model]);
   return geos;
 }
+
+/** Repeats of the suede weave per world unit: fine enough that the cloth reads as fibre, not as a pattern. */
+const FELT_WEAVE = 6.5;
 
 function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
   const hi = quality === 'high';
@@ -670,8 +845,12 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
     felt = new MeshStandardMaterial({ map: feltPatternTexture(def.feltPattern, def.felt), roughness: def.feltPattern === 'gingham' ? 0.45 : 0.6, envMapIntensity: 0.25 });
     if (def.feltPattern === 'gingham') { felt.normalMap = flatN; felt.normalScale.set(0.15, 0.15); }
   } else {
-    felt = new MeshStandardMaterial({ color: def.felt, roughness: 1, roughnessMap: flatR, normalMap: flatN, envMapIntensity: 0.35 });
-    felt.normalScale.set(0.9, 0.9);
+    // Cloth: a brushed nap in the colour, and on High a sheen lobe so the pile catches light at grazing angles.
+    const cloth = { color: def.felt, map: feltNapTexture(), roughness: 1, roughnessMap: flatR, normalMap: flatN, envMapIntensity: 0.35 };
+    felt = hi
+      ? new MeshPhysicalMaterial({ ...cloth, sheen: 0.3, sheenRoughness: 0.7, sheenColor: new Color(def.felt).lerp(new Color('#ffffff'), 0.15) })
+      : new MeshStandardMaterial(cloth);
+    felt.normalScale.set(1.25, 1.25);
   }
   let wood: MeshStandardMaterial;
   switch (def.rail) {
@@ -707,7 +886,13 @@ function buildTableMaterials(def: VenueDef, quality: 'high' | 'low') {
       ? new MeshStandardMaterial({ color: def.apron, metalness: 0.7, roughness: 0.3 })
       : new MeshStandardMaterial({ map: white, roughness: 0.6, color: def.apron });
   const floor = new MeshStandardMaterial({ color: '#120b18', roughness: 0.95 });
-  return { felt, wood, apron, floor };
+  // Padded armrest inside the rail (the rail stays as the outer trim), on tables that have one.
+  const cushion = def.cushionTint ? new MeshStandardMaterial({ color: def.cushionTint, roughness: 0.5, normalMap: flatN, normalScale: new Vector2(0.55, 0.55), envMapIntensity: 0.9 }) : null;
+  // Metal strip let into the rail or apron of a modelled table.
+  const inlay = def.tableModel && def.inlayTint ? new MeshStandardMaterial({ color: def.inlayTint, metalness: 1, roughness: 0.28, envMapIntensity: 1.3 }) : null;
+  // A modelled table carries baked ambient occlusion in its vertex colours.
+  if (def.tableModel) for (const m of [wood, apron, cushion, inlay]) if (m) m.vertexColors = true;
+  return { felt, wood, apron, floor, cushion, inlay };
 }
 
 function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { quality: 'high' | 'low'; lit: boolean; onReady?: () => void; onTextured?: () => void; def: VenueDef; /** A story seam room provides this table's floor — suppress the classic ground plane (it sits at the same FLOOR_Y and z-fights the room's own floor; owner device report 2026-10-28: Rec Center floor rendering as dark streaks). */ roomFloor?: boolean }) {
@@ -715,7 +900,9 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
   const urls = useMemo(() => (railUrl ? [...tableTextureUrls(quality), railUrl] : tableTextureUrls(quality)), [quality, railUrl]);
   const { maps, settled } = useStreamedMaps(urls);
   const invalidate = useThree((s) => s.invalidate);
-  const geos = useTableGeos();
+  const geos = useTableGeos(def.tableModel);
+  // A rendered room brings its own floor (RoomBackdrop), so the classic ground plane stands down while it is up.
+  const roomShown = useRoomShown();
   const basic = useMemo(() => ({
     felt: new MeshBasicMaterial({ color: def.felt }),
     wood: new MeshBasicMaterial({ color: def.railTint }),
@@ -726,6 +913,7 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
   const full = useMemo(() => buildTableMaterials(def, quality), [def, quality]);
   const logo = useMemo(() => logoTexture(invalidate), [invalidate]);
   const logoMat = useMemo(() => new MeshBasicMaterial({ map: logo, transparent: true, opacity: 0.13, depthWrite: false }), [logo]);
+  const railShadowMat = useMemo(() => new MeshBasicMaterial({ map: railShadowTexture(), transparent: true, opacity: 0.42, depthWrite: false }), []);
   const textured = useRef(false);
   /* Maps are session-shared Textures now (streamedTexCache), so the
    * "already applied" mark cannot live on the texture — it belongs to
@@ -747,8 +935,8 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
       });
     };
     if (!def.feltPattern) {
-      take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(0.9, 0.9); full.felt.needsUpdate = true; }, 2.2);
-      take(feltR ?? null, (t) => { full.felt.roughnessMap = t; full.felt.needsUpdate = true; }, 2.2);
+      take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(1.25, 1.25); full.felt.needsUpdate = true; }, FELT_WEAVE);
+      take(feltR ?? null, (t) => { full.felt.roughnessMap = t; full.felt.needsUpdate = true; }, FELT_WEAVE);
     } else if (def.feltPattern === 'gingham') {
       take(feltN ?? null, (t) => { full.felt.normalMap = t; full.felt.normalScale.set(0.15, 0.15); full.felt.needsUpdate = true; }, 2.2);
     }
@@ -761,6 +949,11 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
       take(feltN ?? null, (t) => { full.wood.normalMap = t; full.wood.normalScale.set(0.3, 0.3); full.wood.needsUpdate = true; }, 2.2);
     } else if (def.rail !== 'crystal' && def.rail !== 'chrome' && def.rail !== 'metal') {
       take(railMap ?? null, (t) => { full.wood.map = t; full.wood.needsUpdate = true; full.apron.map = t; full.apron.needsUpdate = true; }, 1.4);
+    }
+    // The armrest's leather grain reuses the suede image already on the table (a clone shares the upload).
+    if (full.cushion && feltN && !full.cushion.userData.grain) {
+      const cushion = full.cushion;
+      jobs.push(() => { const g = feltN.clone(); g.repeat.set(3.2, 3.2); g.needsUpdate = true; cushion.normalMap = g; cushion.userData.grain = 1; cushion.needsUpdate = true; invalidate(); });
     }
     let i = 0;
     let raf = 0;
@@ -803,6 +996,15 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
           <mesh geometry={geos.felt} material={feltMat} receiveShadow />
           <mesh geometry={geos.rail} material={woodMat} castShadow receiveShadow />
           <mesh geometry={geos.body} material={apronMat} receiveShadow />
+          {lit && full.cushion && geos.cushion && <mesh geometry={geos.cushion} material={full.cushion} castShadow receiveShadow />}
+          {lit && full.inlay && geos.inlay && <mesh geometry={geos.inlay} material={full.inlay} />}
+          {geos.base && <mesh geometry={geos.base} material={apronMat} castShadow receiveShadow />}
+          {lit && (
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0006, 0]} renderOrder={-1}>
+              <planeGeometry args={RAIL_SHADOW_SIZE} />
+              <primitive object={railShadowMat} attach="material" />
+            </mesh>
+          )}
         </>
       ) : (
         <mesh rotation={[-Math.PI / 2, 0, 0]} material={feltMat} receiveShadow>
@@ -818,7 +1020,7 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
         <primitive object={basic.stripe} attach="material" />
       </mesh>
       {def.id === 'classic' && !roomFloor && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]} receiveShadow visible={!roomShown}>
           <planeGeometry args={[30, 30]} />
           <primitive object={lit ? full.floor : basic.floor} attach="material" />
         </mesh>
@@ -848,13 +1050,15 @@ function flipped(t: Xform): Xform {
   return { p: [t.p[0], t.p[1], t.p[2]], q: [q.x, q.y, q.z, q.w], s: t.s };
 }
 
-function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fontsReady: boolean; safeFrac: number; lit: boolean }) {
+function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fontsReady: boolean; safeFrac: number; lit: boolean; slamGripRef?: RefObject<SlamGripPlan | null> }) {
   const { safeFrac, quality, n, handNo, dealer, positions, human, myHand, handCounts, shownTrick, piles, legal, selected, promoted, onCardTap } = props;
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
   const canvasSize = useThree((s) => s.size);
   // Drag-to-play: where a dropped card starts its flight (the finger point), fixed once per play.
   const dropOrigins = useRef(new Map<string, Xform>());
+  // The claim signature the published slam grip plan belongs to (one plan per Run It claim).
+  const slamGripSig = useRef<string | null>(null);
   const invalidate = useThree((s) => s.invalidate);
   const aniso = Math.min(quality === 'high' ? 8 : 2, gl.capabilities.getMaxAnisotropy());
   const res = quality;
@@ -1014,8 +1218,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   // quads stay the stock ones, exactly as with the people framing. At the
   // default offset with no pilot this is byte-identical to before (no refit).
   const vaState = useSyncExternalStore(subscribeViewAdjust, getViewAdjustState);
+  const swayDeg = useSyncExternalStore(subscribeMotionSway, getMotionSwayDeg, getMotionSwayDeg);
   const refitM = useMemo(() => {
-    if (!peopleCam && isDefaultViewAdjust(vaState.adj)) return null;
+    if (!peopleCam && isDefaultViewAdjust(vaState.adj) && swayDeg === 0) return null;
     const stock = cameraFor(aspect, short, view);
     const people = peopleSpec(stock);
     // The people refit, exactly as shipped: M = V * S^-1 against the stock
@@ -1025,17 +1230,18 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     const peopleM = peopleCam
       ? camMatrixOf(people.pos, people.look).multiply(camMatrixOf(stock.pos, stock.look).invert())
       : null;
-    if (isDefaultViewAdjust(vaState.adj)) return peopleM;
+    if (isDefaultViewAdjust(vaState.adj) && swayDeg === 0) return peopleM;
     // The player's tilt/zoom composes ON TOP of the base framing (the stock
     // spec, or the people spec at the pilot): its own M = A * B^-1,
     // multiplied onto peopleM where there is one. The product is
     // M(actual) * S^-1 either way, so the fan keeps its solved screen
-    // layout at any offset.
+    // layout at any offset. Motion sway composes after the adjust, in
+    // the same seat, so the fan holds its layout while the room pans.
     const base = peopleCam ? people : stock;
-    const actual = applyViewAdjustToSpec(base, vaState.adj);
+    const actual = applyMotionSwayToSpec(applyViewAdjustToSpec(base, vaState.adj), swayDeg);
     const adjM = camMatrixOf(actual.pos, actual.look).multiply(camMatrixOf(base.pos, base.look).invert());
     return peopleM ? adjM.multiply(peopleM) : adjM;
-  }, [peopleCam, aspect, short, view, vaState.adj]);
+  }, [peopleCam, aspect, short, view, vaState.adj, swayDeg]);
   const refitXf = (x: Xform): Xform => {
     if (!refitM) return x;
     const m = new Matrix4().compose(new Vector3(x.p[0], x.p[1], x.p[2]), new Quaternion(x.q[0], x.q[1], x.q[2], x.q[3]), new Vector3(x.s, x.s, x.s));
@@ -1132,6 +1338,33 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
   const collecting = !!props.collecting;
   const nextDealer = (dealer + 1) % n;
   const collectTarget = deckSpot(positions[nextDealer]!, n);
+  // A TOSSED hand is thrown in, not collected (owner, 2026-11-12: "the animation of players throwing
+  // their hands to the dealer or the table when the toss hand is agreed upon"). Seat by seat, starting
+  // with the viewer, each hand leaves as a quick burst of cards on high arcs and lands as one loose,
+  // overlapping heap in the middle of the felt, pulled a little toward the next dealer who will pick it
+  // up — every card at its own angle, face down. Same seed on every client: the heap matches online.
+  const tossThrow = !!props.gatherToNext;
+  const tossHash = (a: number) => { const x = Math.sin(a * 12.9898 + handNo * 78.233) * 43758.5453; return x - Math.floor(x); };
+  const tossSpot = (seat: number, i: number): Xform => {
+    const a = tossHash(seat * 131 + i * 17 + 1) * Math.PI * 2;
+    const rad = 0.08 + tossHash(seat * 71 + i * 29 + 2) * 0.44;
+    const yaw = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), (tossHash(seat * 37 + i * 53 + 3) - 0.5) * Math.PI * 1.7);
+    const q = yaw.multiply(new Quaternion(...collectTarget.q));
+    return {
+      p: [collectTarget.p[0] * 0.3 + Math.cos(a) * rad, collectTarget.p[1] + 0.0012 * (seat * 13 + i), collectTarget.p[2] * 0.3 + Math.sin(a) * rad * 0.78],
+      q: [q.x, q.y, q.z, q.w],
+      s: collectTarget.s,
+    };
+  };
+  const tossItem = (seat: number, i: number) => ({
+    target: tossSpot(seat, i),
+    duration: 0.52 + tossHash(seat * 11 + i * 7 + 4) * 0.22,
+    arc: 0.5 + tossHash(seat * 5 + i * 3 + 5) * 0.45,
+    motion: 'flight' as const,
+    delay: ((seat - human + n) % n) * 0.24 + i * 0.03,
+    ...(i === 0 ? { sfxStart: 'sweep' as const } : {}),
+    ...(i % 3 === 0 ? { sfxLand: 'play' } : {}),
+  });
   // Review anchoring + sweep serialization (sweepGate.ts): when a trick newly
   // flips into the piles, a plain trick's (no Run It, no nuke — those shows
   // own their own clocks) gather is delayed so the sweep starts at the last
@@ -1252,7 +1485,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // the popup treatment, not the flight. Trump-led steals never had that
     // flight (wasOvercut false) and keep their toss, exactly as before.
     const overcut = props.landCue(pl.card).includes(',overcut') || !!dfx?.wasOvercut;
-    const flight = overcut ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
+    // Last-card showdown (showdown.ts): the final cards hang in the air before they land.
+    const flight = overcut ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : props.showdown ? { ...SHOWDOWN_FLIGHT } : { duration: 0.5, arc: 0.35 * toss };
     // Toss family (owner, 2026-10-30): every played card draws a toss from the
     // seeded family — never the same family member twice in a row — while the
     // flick gesture overrides with its own flat skim toss built from the
@@ -1272,6 +1506,10 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // play's flight start, so the sweep floor shifting one flight cannot
     // bunch the next bot's card against it — the rhythm the scheduler
     // (useGame / the server room) drew is the rhythm the table shows.
+    // Flight order (sweepGate.ts, owner 2026-11-06): it also never starts
+    // before the previous play has LANDED plus a small beat — the draw's
+    // floor sits below the 500 ms flight, so spacing alone let follows
+    // leave while the previous card was still in the air.
     // Human-seat plays (and legacy auto / Run It plays) take the plain
     // serialization, exactly as before.
     const pace = props.botPace;
@@ -1282,6 +1520,7 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
         itemDelaySec: autoDelaySec,
         sweepEndFrameSec: pileSeq.current.sweepUntil,
         prevStartFrameSec: prevPl ? playStarts.current.starts.get(`${handNo}-${prevPl.card}`) ?? null : null,
+        prevRestFrameSec: prevPl ? playRests.current.rests.get(`${handNo}-${prevPl.card}`) ?? null : null,
         spacingSec: (botPaceDelayMs({
           seed: props.gameSeed ?? '', handNo, trickNo, seat: pl.seat, position: order,
           playerCount: n, kind: 'play', baseMs: pace.baseMs,
@@ -1336,6 +1575,37 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       }
     }
   }
+  // 'Run it!' hands-with-cards (owner 2026-11-08): publish the claimer's
+  // grip plan for the standing figure — the MIDDLE slam card's flight,
+  // computed by runSlamGripPlan from the same calls the slam builder
+  // below makes, once per claim, from the moment runStand appears (the
+  // figure needs it during the zoom, before props.slam renders).
+  // Reduced motion flies no runslam path, so there is no plan and the
+  // figure's hands stay on the shipped solve.
+  if (props.slamGripRef) {
+    const rs = props.runStand;
+    if (rs && !reduced) {
+      const sig = `${rs.at}:${rs.seat}`;
+      if (slamGripSig.current !== sig) {
+        slamGripSig.current = sig;
+        const seatRest = restFor(rs.seat);
+        const midCard = rs.cards[Math.round((rs.cards.length - 1) / 2)];
+        props.slamGripRef.current = runSlamGripPlan({
+          gameSeed: props.gameSeed ?? '', handNo, seat: rs.seat, at: rs.at,
+          cards: rs.cards, seatPos: positions[rs.seat]!, n,
+          drop: seatRest.drop, pinch: seatRest.pinch, trickScale,
+          // The human claimer's middle card departs from his held
+          // strip slot (the slam builder's own departureSlot call
+          // below), not a fan slot — his figure's hands start where
+          // his cards actually start.
+          fromOverride: rs.seat === human && midCard ? departureSlot(held.current.slots, held.current.cards, midCard) : undefined,
+        });
+      }
+    } else if (!rs && slamGripSig.current !== null) {
+      slamGripSig.current = null;
+      props.slamGripRef.current = null;
+    }
+  }
   // 'Run it!': the claimer's cards slam down in sequence (then the tornado takes everything)
   if (props.slam) {
     const { seat, cards } = props.slam;
@@ -1387,7 +1657,9 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     if (seat === human) continue;
     const c = handCounts[seat]!;
     for (let i = 0; i < c; i++) {
-      if (gather) {
+      if (gather && tossThrow) {
+        items.push({ key: `${handNo}-b${seat}-${i}`, card: null, ...tossItem(seat, i), spatialSeat: positions[seat]!, spatialN: n });
+      } else if (gather) {
         items.push({ key: `${handNo}-b${seat}-${i}`, card: null, target: deck, duration: 0.7, arc: 0.25, motion: 'glide', delay: seat * 0.07 + i * 0.015, sfxStart: 'sweep', spatialSeat: positions[seat]!, spatialN: n });
       } else {
         const rest = restFor(seat);
@@ -1501,6 +1773,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
       order,
       // Misdeal gather: my fan rides the same collection glide into the deck as every other hand.
       ...(gather ? { target: deck, from: undefined, delay: i * 0.02, holdUntilMove: false, sfxStart: 'sweep' as const, dim: false, tap: null, duration: 0.7, motion: 'glide' as const, arc: 0.25, raise: 0 } : {}),
+      // A tossed hand: my cards are thrown onto the heap with everyone else's (tossItem), first out.
+      ...(gather && tossThrow ? { sfxStart: undefined, ...tossItem(human, i) } : {}),
     });
   });
   pendingHold.current = { handNo, cards: nextCards, slots: nextSlots, count: faceCount, seen: nextSeen };
@@ -1711,9 +1985,25 @@ function HandFill() {
 }
 const _up = new Vector3(0, 0.25, 0);
 
+/**
+ * Shadow bias by shadow-map size. The key light's shadow map covers the whole table, so each
+ * texel of a smaller map spans more felt — and with the bias tuned for the 2k map, the felt
+ * starts shadowing ITSELF in dark curved bands, worst on the far side from the light (owner,
+ * 2026-11-12, on an iPhone: a streaky "shadow" across the top of the table "in a few games").
+ * Phones run 1k maps and the governor drops lower still, so the offsets grow as the map
+ * shrinks. The 2k values are the original tuning, unchanged. Pure (tests).
+ */
+export function shadowBiasFor(size: number): { bias: number; normalBias: number } {
+  if (size >= 2048) return { bias: -0.00012, normalBias: 0.012 };
+  if (size >= 1024) return { bias: -0.0003, normalBias: 0.02 };
+  if (size >= 512) return { bias: -0.0006, normalBias: 0.035 };
+  return { bias: -0.001, normalBias: 0.06 };
+}
+
 function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: VenueDef; shadowSize: number }) {
   const hi = quality === 'high';
   const cast = hi && shadowSize > 0;
+  const sb = shadowBiasFor(shadowSize);
   return (
     <>
       <ambientLight intensity={hi ? 0.15 : 0.55} />
@@ -1727,8 +2017,8 @@ function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: Ve
         color={def.key}
         castShadow={cast}
         shadow-mapSize={[Math.max(shadowSize, 256), Math.max(shadowSize, 256)]}
-        shadow-bias={-0.00012}
-        shadow-normalBias={0.012}
+        shadow-bias={sb.bias}
+        shadow-normalBias={sb.normalBias}
         shadow-radius={6}
       />
       {/* Classic used to skip this. The spotlight falls off at the near edge, so the hand
@@ -1757,7 +2047,7 @@ function trickRects(camera: Camera, size: { width: number; height: number }, pos
   });
 }
 
-function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number } }) {
+function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe, seated }: Pick<SceneProps, 'positions' | 'n' | 'human' | 'renderSeat'> & { portal: RefObject<HTMLDivElement>; safeFrac: number; short: boolean; safe: { l: number; r: number; t: number; b: number }; /** per seat: a 3D figure sits there (the partner's plate then anchors above the head) */ seated?: readonly boolean[] }) {
   const invalidate = useThree((st) => st.invalidate);
 
   // Joint plate layout (three/plateLayout.ts): all three upper plates are
@@ -1781,7 +2071,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
       .map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0)
       .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
     const proj = (p: (typeof positions)[number]) => {
-      const v = new Vector3(...badgeSpot(p, n)).project(camera);
+      const v = new Vector3(...badgeSpot(p, n, !!seated?.[positions.indexOf(p)])).project(camera);
       return { x: (v.x + 1) * size.width / 2, y: (1 - v.y) * size.height / 2 };
     };
     // a measured rect shifted by a delta — used to re-derive a child's
@@ -1870,7 +2160,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
           const calcShort = (el: Object3D, camera: Camera, size: { width: number; height: number }) =>
             side === 'top' ? [(size.width / 2) - 170, 68 + safe.t] : side === 'left' ? [8 + safe.l, size.height * (n === 3 ? 0.36 : 0.43)] : [size.width - 58 - safe.r, size.height * (n === 3 ? 0.36 : 0.43)];
           return (
-            <Html key={seat} position={badgeSpot(p, n)} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
+            <Html key={seat} position={badgeSpot(p, n, !!seated?.[seat])} calculatePosition={calcShort} zIndexRange={[5, 0]} className={`seat-anchor ${cls}`} portal={portal}>
               {renderSeat(seat)}
             </Html>
           );
@@ -1899,7 +2189,7 @@ function Badges({ positions, n, human, renderSeat, portal, safeFrac, short, safe
           }
           : undefined;
         return (
-          <Html key={seat} position={badgeSpot(p, n)} center={!side} calculatePosition={calc} zIndexRange={[5, 0]} className={`seat-anchor${side ? ` side-${side}` : ''}`} portal={portal}>
+          <Html key={seat} position={badgeSpot(p, n, !!seated?.[seat])} center={!side} calculatePosition={calc} zIndexRange={[5, 0]} className={`seat-anchor${side ? ` side-${side}` : ''}`} portal={portal}>
             {renderSeat(seat)}
           </Html>
         );
@@ -1944,7 +2234,9 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
     cardDim.name = 'card-dim';
     cardBack.name = 'card-back';
     cardRest.name = 'card-rest';
-    const litMats = [table.felt, table.wood, table.apron, table.floor, card, cardDim, cardBack, cardRest];
+    const litMats: Material[] = [table.felt, table.wood, table.apron, table.floor, card, cardDim, cardBack, cardRest];
+    if (table.cushion) { table.cushion.name = 'cushion'; litMats.push(table.cushion); }
+    if (table.inlay) { table.inlay.name = 'inlay'; litMats.push(table.inlay); }
     void (async () => {
       await nextFrame();
       if (!alive) return;
@@ -2006,7 +2298,7 @@ function ResumeRamp({ quality, def, onShow, onLit, onDpr, onShadow, onHall }: { 
   return null;
 }
 
-function HallAttach({ active }: { active: boolean }) {
+function HallAttach({ active, room }: { active: boolean; room?: string }) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
   const scene = useThree((s) => s.scene);
@@ -2031,14 +2323,19 @@ function HallAttach({ active }: { active: boolean }) {
         await forceProgram(gl, camera, m, dummy);
       }
       scene.environment = tex;
-      scene.background = tex;
-      scene.backgroundBlurriness = 0.55;
-      scene.backgroundIntensity = 0.22;
-      scene.environmentIntensity = 0.55;
+      if (room) {
+        // The room's own render lights the table; its cube map (RoomBackdrop) is the picture behind it.
+        scene.environmentIntensity = 1.0;
+      } else {
+        scene.background = tex;
+        scene.backgroundBlurriness = 0.55;
+        scene.backgroundIntensity = 0.22;
+        scene.environmentIntensity = 0.55;
+      }
       invalidate();
     })();
-  }, [gl, camera, scene, invalidate]);
-  return <ClassicHall active={active} onMap={onMap} />;
+  }, [gl, camera, scene, invalidate, room]);
+  return <ClassicHall active={active} onMap={onMap} url={room ? roomEnvUrl(room) : undefined} />;
 }
 
 /** Hand taps resolve against the quads Cards published this render, before the raycaster. */
@@ -2190,6 +2487,11 @@ export default function Scene(props: SceneProps) {
   const hi = props.quality === 'high';
   const badgeLayer = useRef<HTMLDivElement>(null!);
   const tableGroup = useRef<Group>(null);
+  /* Run It hands-with-cards (owner 2026-11-08): Cards writes the
+     claimer's middle-card grip plan here (runSlamGripPlan — the show's
+     own slam path); the figure layers read it to keep the standing
+     figure's hands on the cards through the slam. */
+  const slamGripRef = useRef<SlamGripPlan | null>(null);
   const [layerReady, setLayerReady] = useState(false);
   const def = VENUE_DEFS[props.venue ?? 'classic'];
   const classic = def.id === 'classic';
@@ -2208,6 +2510,13 @@ export default function Scene(props: SceneProps) {
   // own-chair context follows it — the suppressed chair is the one at
   // the viewer's canonical seat direction, not always the south one.
   const roomYaw = props.roomYaw ?? 0;
+  // A room rendered in Blender (tools/blender/build_room.py) replaces the box shell. Story stops keep their own rooms.
+  const renderedRoom = !!def.room && !props.storyStopId;
+  const roomUp = useRoomShown();
+  const roomFailed = useRoomFailed();
+  // A venue with a rendered room skips its built-in room, unless the render could not be fetched. Classic keeps its
+  // studio mounted (it stands its own shell down) so its chairs are there from the first frame.
+  const shellOn = classic || !renderedRoom || roomFailed;
   const ownSeatView = useMemo(
     () => ({ hidden: !props.spectator, dir: ownSeatDirForYaw(roomYaw) }),
     [props.spectator, roomYaw],
@@ -2244,11 +2553,13 @@ export default function Scene(props: SceneProps) {
   // and only at a stop with a seat config (three/figureSeats.ts) —
   // the King stop has none: its seated figures ride KingRail.
   const figureSeatConfig = props.storyStopId ? FIGURE_SEAT_CONFIGS[props.storyStopId] : undefined;
-  const storyFiguresActive = hi && !!figureSeatConfig && !!(props.figureSeats?.some(Boolean));
+  const storyFiguresActive = hi && !!figureSeatConfig && !!((props.figureSeats?.some(Boolean)) || (props.ownFigureKey && !props.spectator));
   // Persona figures (regular tables): bot seats at NON-story tables,
   // High only. Story tables never mount them (their cast system owns
   // the seats), whatever the prop carries.
-  const personaFiguresActive = !props.storyStopId && hi && !!(props.personaFigureSeats?.some(Boolean));
+  const personaFiguresActive = !props.storyStopId && hi && !!((props.personaFigureSeats?.some(Boolean)) || (props.ownFigureKey && !props.spectator));
+  // which seats have a figure in the chair, for plate placement (Badges)
+  const seatedSeats = useMemo(() => (personaFiguresActive ? (props.personaFigureSeats ?? []).map(Boolean) : []), [personaFiguresActive, props.personaFigureSeats]);
   const [showTable, setShowTable] = useState(false);
   const [lit, setLit] = useState(false);
   const [shadowSize, setShadowSize] = useState(0);
@@ -2259,6 +2570,14 @@ export default function Scene(props: SceneProps) {
   // and can only ever trim below it, never raise.
   const [govLevel, setGovLevel] = useState(() => perfGovernor.level);
   const govCaps = applyCaps(dprCap, shadowSize, govLevel);
+  // Wheels DPR lift (2026-11-08): while the 3D Wheels car is presenting
+  // in this scene, the canvas DPR ceiling lifts to native so the car is
+  // not compositor-upscaled from the 1.75 ramp ceiling (see
+  // wheelsDprLift.ts). The car rig's own show state drives this through
+  // onWheelsShow — engage on show start, release on show end/skip/
+  // unmount — so the lift is scoped to the moment and the ramp +
+  // governor path above owns the DPR again the instant it ends.
+  const [wheelsShow, setWheelsShow] = useState(false);
   // Scene rest (perf round 3): covered by a post-hand overlay AND the
   // load settled — the load gate always finishes first, so a cold
   // resume straight into a recap still loads the table Continue needs.
@@ -2430,6 +2749,7 @@ export default function Scene(props: SceneProps) {
   const onDressed = props.onTableDressed;
   const onTextured = useCallback(() => { setTextured(true); onDressed?.(); }, [onDressed]);
   const onDpr = useCallback((n: number) => setDprCap(n), []);
+  const onWheelsShow = useCallback((active: boolean) => setWheelsShow(active), []);
   const onShadow = useCallback((n: number) => setShadowSize(n), []);
   const onHall = useCallback(() => setHallGo(true), []);
   useEffect(() => { setLayerReady(true); }, []);
@@ -2439,7 +2759,7 @@ export default function Scene(props: SceneProps) {
       className="table-canvas"
       frameloop={resting ? 'never' : 'demand'}
       shadows={govCaps.shadow > 0 ? 'soft' : false}
-      dpr={hi ? [1, govCaps.dpr] : 1}
+      dpr={hi ? [1, effectiveCanvasDprCap(govCaps.dpr, wheelsShow)] : 1}
       gl={{ antialias: hi, powerPreference: 'high-performance', toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       camera={{ fov: 50, near: 0.05, far: 60, position: [0, 4, 3.5] }}
       onCreated={({ gl, size }) => {
@@ -2554,6 +2874,8 @@ export default function Scene(props: SceneProps) {
       <CameraRig view={props.view} people={storyFiguresActive} />
       <RoomYawEnv yaw={roomYaw} />
       <ViewAdjustControls />
+      <MotionViewControls covered={!!props.covered} />
+      <EyeZoomControls covered={!!props.covered} />
       <FxShake table={tableGroup} />
       {/* Everything from here down owns GPU resources (rooms, table,
           cards, figures, effects, badges). The keyed Fragment is the
@@ -2567,13 +2889,16 @@ export default function Scene(props: SceneProps) {
           follows the room vantage (roomYaw, 2026-11-03). */}
       <OwnChairHiddenContext.Provider value={ownSeatView}>
       <color attach="background" args={[def.clear]} />
-      {classic && <fog attach="fog" args={['#0c0712', 7, 16]} />}
+      {/* With a rendered room the fog is pushed out of range rather than removed: removing it would relink every program. */}
+      {classic && <fog attach="fog" args={['#0c0712', roomUp ? 400 : 7, roomUp ? 900 : 16]} />}
       <Lights quality={props.quality} def={def} shadowSize={govCaps.shadow} />
       <RestGate resting={resting} />
       {/* The hall is filtered one mip per frame, and only after the cloth maps are on the table.
           drei's <Preload all> stays out: it compiled and rendered a cube camera inside useLayoutEffect. */}
       <ResumeRamp quality={props.quality} def={def} onShow={onShow} onLit={onLit} onDpr={onDpr} onShadow={onShadow} onHall={onHall} />
-      {hi && classic && <HallAttach active={hallGo && textured} />}
+      {hi && (classic || renderedRoom) && <HallAttach active={hallGo && textured} room={renderedRoom ? def.id : undefined} />}
+      {/* Starts fetching at once, alongside the table: waiting for the cloth left the table on a blank backdrop for many seconds. */}
+      {renderedRoom && <RoomBackdrop id={def.id} active />}
       {/* Perf fix A (2026-11-03): everything below owns per-game GPU
           resources (room, table, cards, figures, effects, badges) and
           remounts per gameSeed — a fresh game's subtree against the
@@ -2591,6 +2916,7 @@ export default function Scene(props: SceneProps) {
           cards, figures and effects after this group are view space and
           never move; neither does the camera. */}
       <group rotation={[0, roomYaw, 0]}>
+      {shellOn && (<>
       {!classic && !cubeRoom && textured && <Venue3D key={def.id} def={def} quality={props.quality} reduceFx={!!props.reduceFx} handKey={props.handNo} storyStopId={props.storyStopId ?? null} />}
       {classic && textured && (props.storyStopId === 'rec-center' && props.quality === 'high'
         ? <RecCenterGymRoom fxOn={!props.reduceFx} />
@@ -2633,6 +2959,8 @@ export default function Scene(props: SceneProps) {
       {mansion && textured && (props.quality === 'high'
         ? <HighRisePenthouseRoom fxOn={!props.reduceFx} />
         : <MansionRoom quality={props.quality} handNo={props.handNo} />)}
+      </>)}
+      {!shellOn && roomUp && <CubeVenueRoom cfg={bareRoomFor(def.id)} quality={props.quality} handNo={props.handNo} />}
       </group>
       {showTable && (
         <group
@@ -2647,7 +2975,7 @@ export default function Scene(props: SceneProps) {
         </group>
       )}
       {showTable && props.positions.map((p, seat) => <TurnRing key={seat} pos={p} n={props.n} active={props.turnSeat === seat} />)}
-      {showTable && <Cards key={props.dealEpoch ?? 0} {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} />}
+      {showTable && <Cards key={props.dealEpoch ?? 0} {...props} dragCard={dragCard} aspect={aspect} fontsReady={fontsReady} safeFrac={safeFrac} lit={lit} slamGripRef={slamGripRef} />}
       {showTable && props.crowdCue && ((props.kingRailCast?.length ?? 0) > 0 || (props.seatedFigures ?? []).some(Boolean)) && (
         <KingRail
           cast={props.kingRailCast ?? []}
@@ -2664,7 +2992,7 @@ export default function Scene(props: SceneProps) {
       )}
       {showTable && textured && storyFiguresActive && (
         <PorchFigures
-          seats={props.figureSeats!}
+          seats={props.figureSeats ?? []}
           positions={props.positions}
           n={props.n}
           handCounts={props.handCounts}
@@ -2672,6 +3000,10 @@ export default function Scene(props: SceneProps) {
           view={props.view ?? 'standing'}
           animate={props.crowdAnimate ?? false}
           seatConfig={figureSeatConfig}
+          runStand={props.runStand ?? null}
+          slamGripRef={slamGripRef}
+          ownFigureKey={props.ownFigureKey ?? null}
+          ownSeat={props.human}
         />
       )}
       {showTable && textured && personaFiguresActive && (
@@ -2684,6 +3016,10 @@ export default function Scene(props: SceneProps) {
           view={props.view ?? 'standing'}
           animate={props.crowdAnimate ?? false}
           venue={def.id}
+          runStand={props.runStand ?? null}
+          slamGripRef={slamGripRef}
+          ownFigureKey={props.ownFigureKey ?? null}
+          ownSeat={props.human}
         />
       )}
       {showTable && (props.seatVideos?.some(Boolean) ?? false) && (
@@ -2696,8 +3032,8 @@ export default function Scene(props: SceneProps) {
       )}
       {showTable && <HandPointer onTap={props.onCardTap} onDrop={props.onCardDrop} legal={props.legal} onDragging={setDragCard} view={props.view} turnUp={props.turnUp} />}
       <DeuceFxLayer reducedProp={!!props.reduceFx} />
-      <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} />
-      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} />}
+      <AfterTable quality={props.quality} tableUp={textured} trickArmed={!!props.trickArmed} onWheelsShow={onWheelsShow} />
+      {layerReady && <Badges positions={props.positions} n={props.n} human={props.human} renderSeat={props.renderSeat} portal={badgeLayer} safeFrac={safeFrac} short={!!props.short} safe={props.safe ?? { l: 0, r: 0, t: 0, b: 0 }} seated={seatedSeats} />}
       </Fragment>
       </OwnChairHiddenContext.Provider>
       </Fragment>
@@ -2715,12 +3051,15 @@ export default function Scene(props: SceneProps) {
  *  reflections would stay in the canonical orientation while the room
  *  turns under them. Resets to the canonical orientation on unmount. */
 function RoomYawEnv({ yaw }: { yaw: number }) {
+  // A rendered room is drawn from one eye point, so its picture cannot turn with the seat: every seat sees it from the same side.
+  const fixedBackdrop = useRoomShown();
   const scene = useThree((s) => s.scene);
   useEffect(() => {
     scene.backgroundRotation.set(0, yaw, 0);
+    if (fixedBackdrop) scene.backgroundRotation.set(0, 0, 0);
     scene.environmentRotation.set(0, yaw, 0);
     return () => { scene.backgroundRotation.set(0, 0, 0); scene.environmentRotation.set(0, 0, 0); };
-  }, [scene, yaw]);
+  }, [scene, yaw, fixedBackdrop]);
   return null;
 }
 
@@ -2741,7 +3080,7 @@ function EffectWarmup({ quality }: { quality: 'high' | 'low' }) {
  * Nuke and Run it! shaders, including the postprocessing library, load only after the felt is up.
  * They are not on the reload path: a cold open used to download and compile them before the table could paint.
  */
-function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low'; tableUp: boolean; trickArmed?: boolean }) {
+function AfterTable({ quality, tableUp, trickArmed, onWheelsShow }: { quality: 'high' | 'low'; tableUp: boolean; trickArmed?: boolean; onWheelsShow?: (active: boolean) => void }) {
   const [nuke, setNuke] = useState<typeof import('./Nuke3D') | null>(null);
   const [tornado, setTornado] = useState<typeof import('./Tornado3D') | null>(null);
   const [wheels, setWheels] = useState<typeof import('./WheelsCar3D') | null>(null);
@@ -2782,7 +3121,7 @@ function AfterTable({ quality, tableUp, trickArmed }: { quality: 'high' | 'low';
       {nuke && <nuke.NukeGuard><nuke.Nuke3D quality={quality} /></nuke.NukeGuard>}
       {nuke && <nuke.NukeArmedGlow armed={!!trickArmed} />}
       {tornado && <tornado.Tornado3D quality={quality} />}
-      {wheels && <wheels.default quality={quality} />}
+      {wheels && <wheels.default quality={quality} onShowChange={onWheelsShow} />}
     </>
   );
 }

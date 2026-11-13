@@ -638,7 +638,13 @@ export default function SprayLayer() {
 
   const sprayId = snap.episodeId;
   const phase = snap.phase;
-  const active = phase !== 'idle';
+  // The spray paints ONLY its own programs. The snapshot is shared by
+  // the whole transition family, and before 2026-11-12 this layer
+  // woke for every episode — so a full spray cover played underneath
+  // the Card Fan, the Doorway and the table pair, and showed through
+  // as they lifted (owner: "i dont want them combined where the fan
+  // and the spray happens together").
+  const active = phase !== 'idle' && (snap.program === 'spray' || snap.program === 'ink');
   const fromCoverage = snap.fromCoverage;
 
   /* Create the episode's animations. Everything here runs ONCE per

@@ -28,12 +28,13 @@ import { reportCrash } from '../telemetry';
 import { createFxRunner, prepareFxInstance, type FxRunner, type FxRunnerDeps, type PreparedFx } from './runner';
 import type { PhotorealFxInstance, PhotorealFxOpts } from './modules/modules';
 
-export type PhotorealName = 'lightning' | 'meteor' | 'quake' | 'goldrain' | 'nuke';
+export type PhotorealName = 'lightning' | 'meteor' | 'quake' | 'whip' | 'goldrain' | 'nuke';
 type Mod = { createFx(c: HTMLCanvasElement, o?: PhotorealFxOpts): PhotorealFxInstance };
 const LOAD: Record<PhotorealName, () => Promise<Mod>> = {
   lightning: () => import('./modules/lightning.js') as Promise<Mod>,
   meteor: () => import('./modules/meteor.js') as Promise<Mod>,
   quake: () => import('./modules/quake.js') as Promise<Mod>,
+  whip: () => import('./modules/whip.js') as Promise<Mod>,
   goldrain: () => import('./modules/goldrain.js') as Promise<Mod>,
   nuke: () => import('./modules/nuke.js') as Promise<Mod>,
 };
@@ -45,7 +46,7 @@ export const NUKE_ENGULF = 1.9;
 /** Module ground-zero time of the nuke flash (nuke.js T0): the card sweep + Full-mode HUD blow fire here. */
 const NUKE_FLASH_T = 0.28;
 /** Module time (s, presented clock) at which the quake's table cracks get
- * their fracture sound: quake.js grows its five cracks from the table
+ * their fracture sound: quake.js grows its cracks from the table
  * centre with first-point times t0 = .45 + rr()*.25, so the fracture
  * opens across .45–.70 s of module time. The recorded glassCrack (the
  * plate crack's cue, 87bcbba4) fires once as presented T crosses this
@@ -53,6 +54,27 @@ const NUKE_FLASH_T = 0.28;
  * clock so a stalled frame stretches the picture and its sound
  * together. Change it only with quake.js's t0. */
 export const QUAKE_CRACK_T = 0.55;
+/** Fracture-sound gain by Big Joker crack tier (2026-11-06), indexed by
+ * tier − 1: LIGHT / STANDARD / HEAVY / MAX. STANDARD's 1.1 is the lift
+ * the original binding shipped with; the tier moves the gain, never
+ * the sync point and never the recording. */
+export const QUAKE_CRACK_GAIN = [0.85, 1.1, 1.3, 1.35];
+/** MAX tier only: the presented time at which the recording fires once
+ * more, low — its own crumble-settle, as the fracture crawl finishes
+ * (crack fronts run from t0 ≈ .45–.70 s outward for ~2 s of module
+ * time). Same gates as the fracture fire: live runs, presented clock,
+ * once per instance. */
+export const QUAKE_SETTLE_T = 1.75;
+/** The Whip-Crack's snap point (module s, presented clock): whip.js
+ * starts its single stroke at t0 ≈ .06–.10 and lands it in ~.34 s, so
+ * the front is mid-table as presented T crosses this point. The cue is
+ * the SAME glassCrack recording as the quake's fracture, presented as
+ * a snap instead of a shatter: under the quake's STANDARD gain and
+ * pitched up (rate), which also shortens it. Change it only with
+ * whip.js's stroke. */
+export const WHIP_SNAP_T = 0.18;
+export const WHIP_SNAP_GAIN = 0.9;
+export const WHIP_SNAP_RATE = 1.35;
 
 /** iPhone / iPad Safari: the 2D nuke replaces Nuke3D. `bwm.fx.nuke2d` = '1' forces it anywhere (QA / captures). */
 export function nuke2D(): boolean {
@@ -64,6 +86,7 @@ export function nuke2D(): boolean {
 export function photorealFor(e: Pick<FxEvent, 'kind' | 'level'>): PhotorealName | null {
   switch (e.kind) {
     case 'jokerBig': return 'quake'; // Big Joker landing rumble
+    case 'jokerWhip': return 'whip'; // Little Joker throw (the whip gate lives in landCue: never a steal, never a nuked trick)
     case 'overcut': return (e.level ?? 2) >= 3 ? 'lightning' : null; // the big over-cut (overcut3)
     case 'shot': return 'meteor'; // SHOT!
     case 'wheelsRain': return 'goldrain'; // Wheels EARNED: the declaring side's books reached the contract (the rain left the bid call — owner, 2026-11-05)
@@ -204,11 +227,15 @@ function stylePhotorealCanvas(name: PhotorealName, pl: FxPlacement, c: HTMLCanva
   c.className = `photoreal-fx photoreal-${name}`;
   c.dataset.testid = `photoreal-${name}`;
   c.width = Math.round(pl.W * pl.pr); c.height = Math.round(pl.H * pl.pr);
-  Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: `${pl.W}px`, height: `${pl.H}px`, pointerEvents: 'none', zIndex: '4', ...(pl.scale !== 1 ? { transformOrigin: `${pl.gx}px ${pl.gy}px`, transform: `scale(${pl.scale})` } : {}) });
+  // Sized as a share of the mount, never in fixed px: if the window is resized or rotated while the effect
+  // plays, the canvas keeps covering the whole mount (stretching its picture with it) instead of staying a
+  // box of the old size with the screen showing round its dark wash (owner, 2026-11-12: the screen crack
+  // "doesnt cover the screen" after a resize). The nuke's zoom origin is a share of the box for the same reason.
+  Object.assign(c.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', pointerEvents: 'none', zIndex: '4', ...(pl.scale !== 1 ? { transformOrigin: `${(pl.gx / pl.W) * 100}% ${(pl.gy / pl.H) * 100}%`, transform: `scale(${pl.scale})` } : {}) });
 }
 
-function createOpts(pl: FxPlacement): PhotorealFxOpts {
-  return { seed: seed++, lowPower: pl.low, x: pl.gx * pl.pr, y: pl.gy * pl.pr, tableRx: pl.drawRx * pl.pr, tableRy: pl.drawRy * pl.pr };
+function createOpts(pl: FxPlacement, power = 2): PhotorealFxOpts {
+  return { seed: seed++, lowPower: pl.low, x: pl.gx * pl.pr, y: pl.gy * pl.pr, tableRx: pl.drawRx * pl.pr, tableRy: pl.drawRy * pl.pr, power };
 }
 
 function takePrep(name: PhotorealName, sig: string): PreparedFx | null {
@@ -257,17 +284,21 @@ export function warmPhotoreal(name: PhotorealName): void {
   void loadModule(name).then(() => { schedulePrep(name); }, () => { warmed.delete(name); });
 }
 
-export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { at?: number; mega?: boolean; full?: boolean } = {}): void {
+export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { at?: number; mega?: boolean; full?: boolean; power?: number } = {}): void {
   lastMount = mount;
   const pl = placementFor(name, mount);
   if (!pl) return;
   const runner = runnerFor(name);
-  const prep = takePrep(name, pl.sig);
-  let flashed = false, cracked = false, first = true;
+  // the quake's degree of fracture (Big Joker crack tier, 2026-11-06);
+  // other modules ignore the opt. Absent = STANDARD, today's quake.
+  const power = Math.min(4, Math.max(1, Math.round(opts.power ?? 2)));
+  // A pre-built instance is always STANDARD power: any other tier constructs at play.
+  const prep = power === 2 ? takePrep(name, pl.sig) : (preps.delete(name), null);
+  let flashed = false, cracked = false, settled = false, first = true;
   const live = opts.at === undefined;
   runner.play({
     mount,
-    opts: createOpts(pl),
+    opts: createOpts(pl, power),
     prepared: prep,
     styleCanvas: (c) => stylePhotorealCanvas(name, pl, c),
     pinnedAt: opts.at,
@@ -285,12 +316,30 @@ export function playPhotoreal(mount: HTMLElement, name: PhotorealName, opts: { a
       }
       // the quake's cracks fracture audibly as they open (QUAKE_CRACK_T);
       // live runs only — a pinned capture frame stays silent, like the
-      // rest of the preview hook. The 1.1 gain is the bigger-beat lift:
-      // this crack spans the table, not a plate (effective .85 x 1.1
-      // staging, spectrally clear of the synth rumble it layers over).
+      // rest of the preview hook. The gain follows the crack tier
+      // (QUAKE_CRACK_GAIN): STANDARD's 1.1 is the bigger-beat lift this
+      // binding shipped with — this crack spans the table, not a plate
+      // (effective .85 x 1.1 staging, spectrally clear of the synth
+      // rumble it layers over).
       if (name === 'quake' && !cracked && opts.at === undefined && T >= QUAKE_CRACK_T) {
         cracked = true;
-        try { sound.play('glassCrack', { gain: 1.1 }); } catch { /* audio never blocks the picture */ }
+        try { sound.play('glassCrack', { gain: QUAKE_CRACK_GAIN[power - 1] }); } catch { /* audio never blocks the picture */ }
+      }
+      // MAX tier only: as the fracture finishes crawling, the recording
+      // plays once more, low — its own crumble-settle under the
+      // completed crack field (and, on a nuked trick, under the blast).
+      if (name === 'quake' && power === 4 && !settled && opts.at === undefined && T >= QUAKE_SETTLE_T) {
+        settled = true;
+        try { sound.play('glassCrack', { gain: 0.55 }); } catch { /* audio never blocks the picture */ }
+      }
+      // the whip's snap: the single stroke strikes almost at once, so
+      // the recording fires as presented T crosses WHIP_SNAP_T — under
+      // the quake's gain and pitched up (WHIP_SNAP_RATE), a snap
+      // instead of a shatter. Same gates as the fracture fire: live
+      // runs only, presented clock, once per instance.
+      if (name === 'whip' && !cracked && opts.at === undefined && T >= WHIP_SNAP_T) {
+        cracked = true;
+        try { sound.play('glassCrack', { gain: WHIP_SNAP_GAIN, rate: WHIP_SNAP_RATE }); } catch { /* audio never blocks the picture */ }
       }
     },
     onStop: () => {
@@ -312,7 +361,7 @@ export function startPhotoreal(mount: HTMLElement): () => void {
     const name = photorealFor(e);
     if (!name) return;
     if (fx.osReducedMotion && name !== 'goldrain' && name !== 'nuke') return; // OS reduce motion: no strobing/shaking overlays (the nuke still plays, as Nuke3D does)
-    playPhotoreal(mount, name, { mega: e.kind === 'mega', full: fx.nukeMode === 'full' });
+    playPhotoreal(mount, name, { mega: e.kind === 'mega', full: fx.nukeMode === 'full', ...(name === 'quake' ? { power: e.level ?? 2 } : {}) });
   });
   // capture / QA hook: draw one effect pinned at time t (no sound, no game state)
   (window as unknown as { __bwmPhotorealPreview?: unknown }).__bwmPhotorealPreview = (name: PhotorealName, t: number) => playPhotoreal(mount, name, { at: t });

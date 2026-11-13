@@ -73,6 +73,14 @@ export interface TableRules {
    * (no +1, no bag count, no bag penalty).
    */
   bagsOn?: boolean;
+  /**
+   * House rule "Renege calls" (off by default; optional for older saves = off). On: nobody is locked into
+   * following suit — any card in hand may be thrown on a led suit — and the table polices itself: a player
+   * may call an opponent's renege on a finished book. A correct call moves RENEGE_PENALTY_BOOKS books from
+   * the reneging side to the caller's side; a wrong call moves them the other way. Lead rules (spades
+   * broken, 2♣ first) stay enforced: everyone can see a lead, so there is nothing to catch.
+   */
+  renege?: boolean;
 }
 
 /** The first-hand minimum in effect (resolves the mode default for older rules objects). */
@@ -129,6 +137,9 @@ export function withCompleteNil<T extends { mode?: string; nil?: Partial<NilRule
 }
 export const bagsOnOf = (r: Pick<TableRules, 'bagsOn'>) => r.bagsOn !== false;
 export const shotOutOn = (r: Pick<TableRules, 'shotOut'>) => r.shotOut !== false;
+export const renegeOn = (r: Pick<TableRules, 'renege'>) => r.renege === true;
+/** Books that change sides on a renege call — to the caller's side when right, away from it when wrong. */
+export const RENEGE_PENALTY_BOOKS = 3;
 
 /**
  * Default removals: always the lowest NON-TRUMP cards (never a spade, joker or promoted trump), fixed and known to
@@ -361,6 +372,8 @@ export function acceptRules(input: unknown): TableRules {
   if (shot !== undefined) o.shotOut = shot;
   const bagsOn = pickBool(input, 'bagsOn', problems);
   if (bagsOn !== undefined) o.bagsOn = bagsOn;
+  const renege = pickBool(input, 'renege', problems);
+  if (renege !== undefined) o.renege = renege;
   if (has(input, 'firstHandMin')) {
     const n = input.firstHandMin;
     if (n === null || n === 3 || n === 4 || n === 5) o.firstHandMin = n;
@@ -436,6 +449,7 @@ export function validateRules(r: TableRules): string[] {
   if (r.firstHandBidsItself !== undefined && typeof r.firstHandBidsItself !== 'boolean') p.push('firstHandBidsItself must be a boolean');
   if (r.shotOut !== undefined && typeof r.shotOut !== 'boolean') p.push('shotOut must be a boolean');
   if (r.bagsOn !== undefined && typeof r.bagsOn !== 'boolean') p.push('bagsOn must be a boolean');
+  if (r.renege !== undefined && typeof r.renege !== 'boolean') p.push('renege must be a boolean');
   if (r.firstHandMin !== undefined && r.firstHandMin !== null && ![3, 4, 5].includes(r.firstHandMin)) p.push('firstHandMin must be 3, 4, 5 or off');
   if (!isRec(r.turnTimerSec) || typeof r.turnTimerSec.bid !== 'number' || !Number.isFinite(r.turnTimerSec.bid) || typeof r.turnTimerSec.play !== 'number' || !Number.isFinite(r.turnTimerSec.play)) {
     p.push('turnTimerSec.bid and turnTimerSec.play must be numbers');

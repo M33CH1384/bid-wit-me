@@ -64,7 +64,7 @@ describe('the pilot seam wiring', () => {
 
   it('Scene activates the figures on High + the prop + a seat config, and only there', () => {
     const scene = src('src/three/Scene.tsx');
-    expect(scene).toContain('const storyFiguresActive = hi && !!figureSeatConfig && !!(props.figureSeats?.some(Boolean))');
+    expect(scene).toContain('const storyFiguresActive = hi && !!figureSeatConfig && !!((props.figureSeats?.some(Boolean)) || (props.ownFigureKey && !props.spectator))');
     expect(scene).toContain('{showTable && textured && storyFiguresActive && (');
     expect(scene).toContain('<PorchFigures');
     // the King system is untouched by the pilot

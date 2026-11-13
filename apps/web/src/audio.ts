@@ -46,6 +46,8 @@ export type Sfx =
   | 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado' | 'thunder'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud'
+  // Last-card showdown (showdown.ts): lights-down hit, the heartbeat under it, each heavy card
+  | 'showdownOpen' | 'heartbeat' | 'showdownHit'
   // Versus intro (boxing-style match card on the loading screen): entrances travel
   // in 3D from each side, the collision lands center-front, a stinger marks the
   // tale-of-the-tape reveal, a wide crowd bed sits under the hold, a soft resolve
@@ -541,6 +543,22 @@ const XFADE = 4; // seconds of crossfade between tracks
 /** Dropout watchdog cadence: how often the engine verifies its stems are
  *  actually sounding (see watchdogTick). */
 const WATCHDOG_MS = 2000;
+/** Minimum wall time between two looks at the context clock (clockFrozen). */
+const CLOCK_SAMPLE_MS = 600;
+/** A running context advances its clock in real time; under this much (s) across a sample, it has stopped. */
+const CLOCK_FROZEN_EPS_S = 0.02;
+/** A stay in the background at least this long arms the iOS return heal (healReturnedAudio). */
+const RETURN_HEAL_AWAY_MS = 4000;
+/** iPhone / iPad WebKit (Safari, the installed app's web view). iPadOS reports itself as a Mac with touch. */
+function iosAudioHost(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints ?? 0) > 1);
+}
+/** How long a recorded bed gets to land its async start before the
+ *  watchdog calls it dead, and the minimum gap between bed heals —
+ *  a 64 s loop's fetch + decode on a pressured phone is slow, but it
+ *  is not twenty seconds slow (2026-11-08). */
+const BED_HEAL_GRACE_MS = 20_000;
 /** Splash sting: how long the splash entry point may wait for the sting's
  *  buffer to finish decoding before failing closed. The SFX load only
  *  starts inside the unlocking gesture's ensure(), so the wait is the
@@ -731,6 +749,35 @@ const FILES: Record<string, string[]> = {
 };
 /** Total one-shot SFX buffers a complete load() decodes (the watchdog's readiness bar). */
 const SFX_COUNT = Object.values(FILES).reduce((n, a) => n + a.length, 0);
+
+/* ---------- Menu fire bed (owner, 2026-11-07) ----------
+ * The sustained crackle under Home's streak fire. The fireIgnite cue is
+ * an ignition BUILD — it lights the fire and ends, and the burning band
+ * then stood silent for the rest of the Home stay ("the fire sound
+ * speeds up for a few seconds and then stops altogether — it should
+ * persist"). This bed is what persists: a 3.2 s seamless loop baked
+ * from the ignite recording's OWN crackle body (the same SSE Library
+ * CC0 take — CREDITS.md), faded in behind the cue's settle and held
+ * for the fire band's whole lifetime. Deliberately NOT a FILES entry:
+ * it lazy-loads on first want, so the eager SFX set (SFX_COUNT, the
+ * watchdog's readiness bar) is untouched. */
+/** The bed's staging on the sfx bus: ≈10.5 dB under the ignite cue's
+ *  0.9 — a quiet bed under the menu music, never an event. */
+const MENU_FIRE_BED_GAIN = 0.2;
+const MENU_FIRE_LOOP_URL = '/assets/sfx/fire-loop.mp3';
+/** The loop's MP3 trim, from the shipped file's own LAME offsets:
+ *  576 samples of encoder delay + the 529 a decoder adds = 1105. */
+const MENU_FIRE_LOOP_LEAD_S = 1105 / 44100;
+const MENU_FIRE_LOOP_SECONDS = 3.2;
+/** With the ignite: the bed stays silent this long (the cue's build
+ *  owns those seconds), then settles in over the fade below,
+ *  crossfading the cue's own ease-down tail — full by ≈4.4 s. */
+const MENU_FIRE_IGNITE_DELAY_S = 2.4;
+const MENU_FIRE_IGNITE_FADE_S = 2.0;
+/** A plain start (a resume, a settled arrival, calm clearing) fades in. */
+const MENU_FIRE_FADE_IN_S = 1.2;
+/** Every stop is this short exponential fade — never a hard cut. */
+const MENU_FIRE_FADE_OUT_S = 0.35;
 
 type Ctx = AudioContext;
 const AC: typeof AudioContext | undefined = typeof window !== 'undefined'
@@ -1168,6 +1215,47 @@ function trimLoopBuffer(ctx: AudioContext, buf: AudioBuffer, leadS: number, seco
   return out;
 }
 
+/**
+ * Can this decoded bed buffer be trusted to sound like its recording?
+ * A real recording — even surf, even a bright cookout crowd — is heavily
+ * correlated sample to sample: its mean absolute step sits far below its RMS
+ * (measured on all twelve production beds: medians 0.03–0.44). Uncorrelated
+ * garbage — undecoded bytes or a decode gone wrong, i.e. literal static —
+ * steps at ~1.13× RMS. Windows are judged by their median ratio so one
+ * bright transient can never convict a bed, and near-silent windows abstain.
+ * A buffer too quiet to judge can only ever play silence, so it passes.
+ */
+export const BED_NOISE_RATIO_LIMIT = 0.75;
+
+export function bedBufferSane(buf: AudioBuffer): boolean {
+  const WINDOW = 1024;
+  const WINDOWS = 48;
+  const ratios: number[] = [];
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const data = buf.getChannelData(ch);
+    if (data.length < WINDOW) continue;
+    const stride = Math.max(WINDOW, Math.floor((data.length - WINDOW) / WINDOWS));
+    for (let off = 0; off + WINDOW <= data.length; off += stride) {
+      let sumSq = 0;
+      let sumStep = 0;
+      let finite = true;
+      for (let i = 0; i < WINDOW; i++) {
+        const v = data[off + i]!;
+        if (!Number.isFinite(v)) { finite = false; break; }
+        sumSq += v * v;
+        if (i > 0) sumStep += Math.abs(v - data[off + i - 1]!);
+      }
+      if (!finite) return false;
+      const rms = Math.sqrt(sumSq / WINDOW);
+      if (rms < 0.004) continue;
+      ratios.push(sumStep / (WINDOW - 1) / rms);
+    }
+  }
+  if (!ratios.length) return true;
+  ratios.sort((a, b) => a - b);
+  return ratios[Math.floor(ratios.length / 2)]! <= BED_NOISE_RATIO_LIMIT;
+}
+
 class Engine {
   settings: SoundSettings = load();
   private listeners = new Set<() => void>();
@@ -1189,6 +1277,21 @@ class Engine {
   private ambVenue: VenueBed | null = null;
   /** Live spray-transition hiss (looping source + its gain) while a cover runs. */
   private sprayNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  /** Live menu fire bed (looping source + its gain) while Home's streak
+   *  fire stands. menuFireWanted is Setup's standing desire; the nodes
+   *  exist only while the gates let it sound (menu context, sound on,
+   *  music on) — syncMenuFire reconciles the two, stem-style. */
+  private fireNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  private menuFireWanted = false;
+  /** The current want's fade profile: true while this arrival's ignite
+   *  cue sounds, so the bed settles in behind it. Captured on the
+   *  want's rising edge only — a later plain start call in the same
+   *  arrival can never shorten the ignite crossfade. */
+  private menuFireIgnite = false;
+  private menuFireGen = 0;
+  /** The decoded fire loop, keyed to the live context like the ambience cache. */
+  private fireLoopCache: { ctx: Ctx; buf: AudioBuffer } | null = null;
+  private fireLoopLoading: { ctx: Ctx; p: Promise<AudioBuffer | null> } | null = null;
   /** Noise the shot, sheet, and tornado build on first play. Keyed by duration in milliseconds. */
   private noiseBank = new Map<number, AudioBuffer>();
   private loading: Promise<void> | null = null;
@@ -1239,6 +1342,29 @@ class Engine {
   private deckStallTicks = 0;
   private lastDeckPos = -1;
   private lastSfxRetryAt = 0;
+  /* ---- the three recoveries added 2026-11-12 (owner: after swiping the
+   * app away, and sometimes at random, "the sound goes out and i can't
+   * get it to restart"). Every earlier heal reads ctx.state or the
+   * in-graph meters, and iOS has two failures neither can see:
+   *   - a FROZEN context: state stays 'running' but the render clock
+   *     stops. Nothing flows, and the meters go on returning the last
+   *     block they saw, so they read as sound (clockFrozen);
+   *   - a DEAD OUTPUT after the app was backgrounded: samples flow, the
+   *     clock runs, every witness is healthy, and the phone plays none
+   *     of it. Only a new context rebinds the audio session — the same
+   *     cure the crash-resume heal uses (healReturnedAudio).
+   * And because no detector can promise to catch everything, turning
+   * the sound switch back ON is itself a rebuild: the player always has
+   * a way to bring sound back by hand (set). */
+  /** The context clock as last sampled: ctx.currentTime at a performance.now() instant. */
+  private clockSample: { c: AudioContext; t: number; at: number } | null = null;
+  /** Latched once this context's clock has been seen to advance — a clock that never moved proves nothing. */
+  private clockMoved: AudioContext | null = null;
+  private frozenTicks = 0;
+  /** When the page was last hidden (performance.now ms), or null while visible. */
+  private hiddenAt: number | null = null;
+  /** Back from a real stay in the background on iOS: the next gesture rebuilds the context once. */
+  private returnHealPending = false;
   private lastErrorRetryAt = 0;
   private loadGen = 0;
   /** cue counter (exposed for automated checks) */
@@ -1284,6 +1410,7 @@ class Engine {
   get loaded(): number { return this.buffers.size; }
   set(patch: Partial<SoundSettings>) {
     const clamp = (v: number) => Math.min(1, Math.max(0, v));
+    const prev = this.settings;
     const next: SoundSettings = { ...this.settings, ...patch, volume: clamp(patch.volume ?? this.settings.volume), musicVolume: clamp(patch.musicVolume ?? this.settings.musicVolume) };
     // Music and ambience are independent (Demetrius 2026-10-19): each switch only
     // controls its own source, so no reconciliation is needed here.
@@ -1296,10 +1423,18 @@ class Engine {
       this.settings = next;
     }
     try { localStorage.setItem(KEY, JSON.stringify(this.settings)); } catch { /* ignore */ }
+    // The guaranteed manual recovery: switching SOUND back on rebuilds
+    // the context (rate-limited like every rebuild), so a player whose
+    // sound died in a way no detector saw can always bring it back from
+    // the sound controls — off, then on. The rebuild re-syncs every stem
+    // itself. The music switch is left alone: music back on resumes the
+    // track in place, and a rebuild would restart it.
+    if (this.unlocked && this.ctx && !prev.on && next.on) this.escalateGraph();
     this.applyGain();
     this.syncAmbient();
     this.syncVenue();
     this.syncMusic();
+    this.syncMenuFire(); // a switch flipped under the home fire lands on its bed in the same turn
     this.emit();
   }
   /** Everything off at once (long-press / double-tap on the speaker); calling again restores what was on. */
@@ -1937,17 +2072,31 @@ class Engine {
     window.addEventListener('touchend', gesture, true);
     window.addEventListener('pointerup', gesture, true);
     window.addEventListener('click', gesture, true);
-    // backgrounding suspends the context; pageshow also fires when iOS restores the page from bfcache
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) show(); });
+    // backgrounding suspends the context; pageshow also fires when iOS restores the page from bfcache.
+    // The menu fire bed fades out as the app backgrounds (its want survives — the
+    // wake on return resyncs it, plain fade, no ignite replay: same arrival).
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { this.hiddenAt = performance.now(); this.clockSample = null; this.stopMenuFireNodes(); return; }
+      // Back from the background. The clock sample taken before the
+      // trip is meaningless now; and after a real stay away on iOS the
+      // next gesture rebuilds the context once (healReturnedAudio).
+      const away = this.hiddenAt === null ? 0 : performance.now() - this.hiddenAt;
+      this.hiddenAt = null;
+      this.clockSample = null;
+      if (away >= RETURN_HEAL_AWAY_MS && iosAudioHost()) this.returnHealPending = true;
+      show();
+    });
     window.addEventListener('pageshow', show);
   }
 
   /** Re-run every stem's sync (lounge pad, venue bed, music). All three are idempotent:
    *  a stem that is already sounding early-returns, a torn-down one rebuilds. */
   private resyncAll() {
-    this.syncAmbient();
-    this.syncVenue();
-    this.syncMusic();
+    // Stems isolated (2026-11-08): one throw cannot starve the rest.
+    try { this.syncAmbient(); } catch { /* stem down */ }
+    try { this.syncVenue(); } catch { /* stem down */ }
+    try { this.syncMusic(); } catch { /* stem down */ }
+    try { this.syncMenuFire(); } catch { /* stem down */ }
   }
 
   /**
@@ -1967,7 +2116,11 @@ class Engine {
     this.startWatchdog();
     this.armVerify();
     if (kind === 'gesture') this.healCrashResumedAudio();
+    if (kind === 'gesture') this.healReturnedAudio();
     if (kind === 'show' && !this.unlocked) return;
+    // A tap on a context whose clock has stopped: rebuild now, inside
+    // the gesture, where iOS will let the new context start.
+    if (kind === 'gesture' && this.unlocked && this.clockFrozen(performance.now())) this.escalateGraph();
     if (kind === 'gesture' && this.unlocked && this.liveState(this.ctx) === 'running') {
       if (this.needsRestore) this.publishRestore();
       // Still re-run the syncs: on cold start the first gesture may not have
@@ -2242,6 +2395,33 @@ class Engine {
     this.escalateGraph();
   }
 
+  /** Back from the background on iOS (see the field notes above): the
+   *  first gesture after the return rebuilds the context once, the way
+   *  the crash-resume heal does. Held until a graph exists and the
+   *  engine is unlocked; the rebuild's own rate limit still applies. */
+  private healReturnedAudio() {
+    if (!this.returnHealPending || !this.unlocked || !this.ctx) return;
+    this.returnHealPending = false;
+    this.escalateGraph();
+  }
+
+  /** Has a 'running' context's clock stopped? Compares ctx.currentTime
+   *  against wall time across at least CLOCK_SAMPLE_MS. Only a clock
+   *  that has been SEEN to run can be called frozen, so a context that
+   *  has not started rendering yet is never mistaken for a dead one.
+   *  Each call that has enough wall time behind it re-samples. */
+  private clockFrozen(now: number): boolean {
+    const c = this.ctx;
+    if (!c || this.testState != null || c.state !== 'running' || (typeof document !== 'undefined' && document.hidden)) { this.clockSample = null; return false; }
+    const s = this.clockSample;
+    if (!s || s.c !== c) { this.clockSample = { c, t: c.currentTime, at: now }; return false; }
+    if (now - s.at < CLOCK_SAMPLE_MS) return false;
+    const advanced = c.currentTime - s.t;
+    this.clockSample = { c, t: c.currentTime, at: now };
+    if (advanced > CLOCK_FROZEN_EPS_S) { this.clockMoved = c; return false; }
+    return this.clockMoved === c;
+  }
+
   /** Rebuild the context through the same rate limit as the interruption
    *  paths, then re-publish restore state (a rebuild that lands suspended
    *  hands over to the needs-tap + heal-timer machinery, honestly). */
@@ -2270,6 +2450,11 @@ class Engine {
     if (!this.unlocked || !this.ctx) return;
     if (this.liveState(this.ctx) !== 'running') { this.silenceTicks = 0; this.stemMissTicks = 0; this.deckStallTicks = 0; return; }
     const now = performance.now();
+    // The render clock: 'running' with a stopped clock is a dead context
+    // that every meter still reads as sound. Two ticks, then rebuild.
+    if (this.clockFrozen(now)) {
+      if (++this.frozenTicks >= 2) { this.frozenTicks = 0; this.escalateGraph(); return; }
+    } else if (this.clockSample?.at === now) this.frozenTicks = 0;
     // SFX readiness: a load that finished with holes gets a spaced retry.
     if (this.buffers.size < SFX_COUNT && !this.loading && now - this.lastSfxRetryAt > 15000) {
       this.lastSfxRetryAt = now;
@@ -2305,6 +2490,16 @@ class Engine {
     // Beds: a bed that claims to be playing must own live nodes.
     if (this.venuePlaying !== 'none' && this.venueNodes.length === 0) {
       this.stopBeds(); this.syncVenue(); this.syncAmbient();
+    } else if (this.venuePlaying !== 'none' && RECORDED_AMBIENCE[this.venuePlaying] && this.bedLoopsAlive === 0
+      && now - this.bedBuiltAt > BED_HEAL_GRACE_MS && now - this.bedHealedAt > BED_HEAL_GRACE_MS) {
+      // A recorded bed whose one-shot start failed (its fetch/decode
+      // died at table entry) leaves only its silent through-gain in
+      // venueNodes — the count above never sees the death, and
+      // syncVenue's identity gate never rebuilds (2026-11-08, the
+      // owner's fourth report of this family). The loop witness is
+      // the ground truth; past the load window, rebuild the bed.
+      this.bedHealedAt = now;
+      this.stopBeds(); this.syncVenue(); this.syncAmbient();
     } else if (this.ambTimer !== null && this.ambNodes.length === 0) {
       this.stopBeds(); this.syncAmbient(); this.syncVenue();
     }
@@ -2335,6 +2530,7 @@ class Engine {
     this.releaseDecks();
     this.stopBeds();
     this.sprayNodes = null; // the old hiss nodes die with the old context
+    this.fireNodes = null; // the old fire-bed nodes die with it too (the rebuild's resync restarts the bed if still wanted)
     const old = this.ctx;
     this.ctx = null;
     this.master = this.sfxBus = this.sfxDuck = this.nukeBus = this.ambBus = this.venueBus = this.voiceDuck = this.voiceChatBus = this.voiceChatOut = this.musicBus = this.musicDuck = null; this.voiceChatNodes.clear(); // regs kept: re-routed below
@@ -2402,6 +2598,7 @@ class Engine {
     this.venueTimers = [];
     const nodes = this.venueNodes; this.venueNodes = [];
     nodes.forEach((n) => { try { n.stop(); } catch { /* dead context */ } });
+    this.bedLoopsAlive = 0; // the loop wrappers above already decremented; this is the belt to their braces
     this.venuePlaying = 'none';
   }
 
@@ -2591,7 +2788,14 @@ class Engine {
   /* ---------- table gate: game sound only while a game is on screen ---------- */
   /** True while the table screen is mounted. Off it, only the settings previews (tap, bid) can sound. */
   atTable = false;
-  enterTable() { this.atTable = true; }
+  enterTable() {
+    this.atTable = true;
+    // A film hold belongs to its surface (2026-11-08): if the rundown
+    // unmounted without releasing (a missed onPause/onEnded), the hold
+    // must not follow the player into the table — the master would sit
+    // at 0 and the watchdog reads that as intended silence.
+    if (this.videoHold) { this.videoHold = false; this.applyGain(); }
+  }
   /** Leaving the table: refuse game sound, and cut everything already scheduled (delayed deal ticks, stingers, voice, wind). */
   leaveTable() {
     this.atTable = false;
@@ -2813,7 +3017,7 @@ class Engine {
   }
   lastSmack: SmackSound | null = null;
 
-  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number; seat?: SeatPos; playerCount?: number; versusSide?: -1 | 0 | 1 } = {}) {
+  play(name: Sfx, opts: { delay?: number; gain?: number; dur?: number; rate?: number; seat?: SeatPos; playerCount?: number; versusSide?: -1 | 0 | 1 } = {}) {
     if (!this.settings.on || !this.unlocked) return;
     if ((name === 'dmChime' || name === 'chatBlip') && this.settings.chatSounds === false) return;
     if (!this.atTable && !Engine.UI_SFX.has(name)) { this.blocked[name] = (this.blocked[name] ?? 0) + 1; return; }
@@ -2858,7 +3062,11 @@ class Engine {
       // cannot ground a seat for its plate events either). No delay —
       // play() already set t = ctx.currentTime, and the fracture's first
       // visible frame is the shot's mount instant.
-      case 'glassCrack': return this.sample('glassCrack', t, 0.85 * g, 0.98 + Math.random() * 0.04);
+      // (opts.rate is the Whip-Crack's channel: the photoreal host pitches
+      // the same recording up for the Little Joker's snap. Callers that
+      // pass no rate — the plate crack, the quake — get exactly the
+      // staging above, unchanged.)
+      case 'glassCrack': return this.sample('glassCrack', t, 0.85 * g, (opts.rate ?? 1) * (0.98 + Math.random() * 0.04));
       // Menu fire entrance: the ignition build, centred (it belongs to
       // the whole home screen, no seat) and staged at the family's
       // level — the file is mastered to the event-SFX staging, so no
@@ -2916,6 +3124,9 @@ class Engine {
       case 'deckSlam': return this.sample('deckSlam', t, 0.95 * g);
       case 'tornado': return this.tornado(t, g);
       case 'runSlam': this.overcutSlam(t, g * 1.2, 3); this.thud(t, g); return this.quake(t + 0.03, g * 0.9); // heavy slow-mo impact + bass hit — gains raised 2026-11-02 with the slam aggression retune (owner: 'isn't aggressive enough')
+      case 'showdownOpen': this.quake(t, g * 0.55); return this.whoosh(t, 0.14 * g);
+      case 'heartbeat': this.heartbeat(t, g); return;
+      case 'showdownHit': this.thud(t, g * 0.9); return this.burst(t, 0.22, 0.3 * g, 'lowpass', 420, { sweepTo: 90 });
       case 'runThud': for (let i = 0; i < 4; i++) this.thud(t + i * 0.055, g * (0.42 - i * 0.07)); return;
       case 'wheels': this.arp(t, [392, 523.25, 783.99], 0.06, 'square', 0.12 * g, 0.22); return this.streakHit(t + 0.16, 0.8 * g, 1);
     }
@@ -3105,6 +3316,12 @@ class Engine {
   }
 
   /** Little Joker: a hard, jarring thud (distorted low punch + knock). */
+  /** Showdown heartbeat: a soft lub-dub, low enough to sit under the music. */
+  private heartbeat(t: number, g: number) {
+    this.tone(t, 62, 0.16, 'sine', 0.5 * g, { glideTo: 40, attack: 0.004, dest: this.sfxBus! });
+    this.tone(t + 0.17, 52, 0.2, 'sine', 0.36 * g, { glideTo: 34, attack: 0.004, dest: this.sfxBus! });
+  }
+
   private thud(t: number, g: number) {
     const c = this.ctx!;
     const dist = this.shaper(18); const out = c.createGain(); out.gain.value = 0.55 * g;
@@ -3449,6 +3666,121 @@ class Engine {
     } catch { /* context already rebuilt: the old nodes died with it */ }
   }
 
+  /* ---------- menu fire bed (owner, 2026-11-07) ----------
+   * The sustained crackle under Home's streak fire, driven by Setup:
+   * menuFireStart beside the entrance's fireIgnite cue (the same gate),
+   * menuFireStop when the fire's lifetime ends. Everything else — the
+   * fades, the switches, backgrounding, context rebuilds — reconciles
+   * through syncMenuFire, stem-style, so the bed behaves exactly like
+   * the engine's other standing layers. It rides the sfx bus, so the
+   * master mute and the SFX category volume govern it live. */
+
+  /** Home's streak fire wants its crackle bed. `ignite` is true only
+   *  for the call that rides the entrance's cue: the bed then stays
+   *  silent through the build and settles in behind the cue's tail.
+   *  Idempotent — a repeat call in the same arrival changes nothing. */
+  menuFireStart(ignite: boolean): void {
+    if (!this.menuFireWanted) this.menuFireIgnite = ignite;
+    this.menuFireWanted = true;
+    this.syncMenuFire();
+  }
+
+  /** The fire's lifetime ended (left Home, streak off fire, calm):
+   *  the want clears and a sounding bed fades out. Safe when silent. */
+  menuFireStop(): void {
+    this.menuFireWanted = false;
+    this.menuFireIgnite = false;
+    this.syncMenuFire();
+  }
+
+  /** Whether the bed is sounding right now (checks). */
+  get menuFireOn(): boolean { return this.fireNodes != null; }
+
+  /** The bed may sound only in the menus, with sound on AND music on
+   *  (it must never outrank either switch), after the first gesture
+   *  unlock, on a running context with a live sfx bus. */
+  private menuFireGatesPass(): boolean {
+    return this.context === 'menu' && this.settings.on && this.settings.music
+      && this.unlocked && !!this.ctx && this.ctx.state === 'running' && !!this.sfxBus;
+  }
+
+  /** Reconcile the want with the gates: wanted + gates → sounding;
+   *  sounding + a gate fell → faded out. Re-run from set(), enterContext
+   *  (through its set), resyncAll() and the seam itself, so a toggle, a
+   *  context move, a wake or a rebuild lands on the bed in the same
+   *  turn it lands on every other stem. */
+  private syncMenuFire(): void {
+    if (!this.menuFireWanted || !this.menuFireGatesPass()) {
+      this.stopMenuFireNodes();
+      return;
+    }
+    if (this.fireNodes) return;
+    const gen = ++this.menuFireGen;
+    void this.loadMenuFireLoop().then((raw) => {
+      if (!raw || gen !== this.menuFireGen) return;
+      if (!this.menuFireWanted || !this.menuFireGatesPass() || this.fireNodes || !this.ctx || !this.sfxBus) return;
+      const c = this.ctx;
+      const src = c.createBufferSource();
+      src.buffer = trimLoopBuffer(c, raw, MENU_FIRE_LOOP_LEAD_S, MENU_FIRE_LOOP_SECONDS);
+      src.loop = true;
+      const g = c.createGain();
+      const t = c.currentTime;
+      if (this.menuFireIgnite) {
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.setValueAtTime(0.0001, t + MENU_FIRE_IGNITE_DELAY_S);
+        g.gain.exponentialRampToValueAtTime(MENU_FIRE_BED_GAIN, t + MENU_FIRE_IGNITE_DELAY_S + MENU_FIRE_IGNITE_FADE_S);
+      } else {
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(MENU_FIRE_BED_GAIN, t + MENU_FIRE_FADE_IN_S);
+      }
+      src.connect(g).connect(this.sfxBus);
+      src.start(t);
+      this.fireNodes = { src, gain: g };
+      this.played.menuFire = (this.played.menuFire ?? 0) + 1;
+    });
+  }
+
+  /** Fade a sounding bed out and clear it — the gates fell, or the app
+   *  backgrounded. The WANT is untouched: a gate returning (or the page
+   *  showing again) resyncs it back. Safe when nothing is playing. */
+  private stopMenuFireNodes(): void {
+    const nodes = this.fireNodes;
+    this.fireNodes = null;
+    if (!nodes || !this.ctx) return;
+    try {
+      const t = this.ctx.currentTime;
+      const g = nodes.gain.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(Math.max(g.value, 0.0001), t);
+      g.exponentialRampToValueAtTime(0.0001, t + MENU_FIRE_FADE_OUT_S);
+      nodes.src.stop(t + MENU_FIRE_FADE_OUT_S + 0.05);
+    } catch { /* context already rebuilt: the old nodes died with it */ }
+  }
+
+  /** Fetch + decode the fire loop into its own per-context cache (the
+   *  loadAmbience pattern): a load that outlives its context caches
+   *  nothing and reports null — the next want retries from HTTP cache. */
+  private loadMenuFireLoop(): Promise<AudioBuffer | null> {
+    const c = this.ctx;
+    if (!c) return Promise.resolve(null);
+    if (this.fireLoopCache && this.fireLoopCache.ctx === c) return Promise.resolve(this.fireLoopCache.buf);
+    if (this.fireLoopLoading && this.fireLoopLoading.ctx === c) return this.fireLoopLoading.p;
+    const entry: { ctx: Ctx; p: Promise<AudioBuffer | null> } = { ctx: c, p: Promise.resolve(null) };
+    entry.p = (async (): Promise<AudioBuffer | null> => {
+      try {
+        const res = await fetch(MENU_FIRE_LOOP_URL);
+        if (!res.ok) return null;
+        const buf = await decodeAudioBuffer(c, await res.arrayBuffer());
+        if (this.ctx !== c) return null;
+        this.fireLoopCache = { ctx: c, buf };
+        return buf;
+      } catch { return null; }
+      finally { if (this.fireLoopLoading === entry) this.fireLoopLoading = null; }
+    })();
+    this.fireLoopLoading = entry;
+    return entry.p;
+  }
+
   /**
    * Cop drive-by system (Demetrius 2026-10-19): positional gunfire + siren on the
    * venue (ambience) bus. Gunfire comes from a random direction each time;
@@ -3783,6 +4115,16 @@ class Engine {
   private venueBedId: VenueBed = 'none';
   private venuePlaying: VenueBed = 'none';
   private venueNodes: { stop: () => void }[] = [];
+  /** Recorded-bed loops actually started on the live context — the
+   *  ground-truth witness for the watchdog's bed check (2026-11-08):
+   *  a recorded starter whose load failed leaves venuePlaying set and
+   *  a silent through-gain in venueNodes, which reads as "playing" to
+   *  every flag check while the room is dead. */
+  private bedLoopsAlive = 0;
+  /** performance.now() of the latest buildBed (the heal's load window). */
+  private bedBuiltAt = 0;
+  /** performance.now() of the last watchdog bed heal (its throttle). */
+  private bedHealedAt = 0;
   private venueTimers: number[] = [];
   /** which bed is running (exposed for checks) */
   get venueBedNow(): VenueBed { return this.venuePlaying; }
@@ -4168,6 +4510,60 @@ class Engine {
     return entry.p;
   }
 
+  /** Start ONE recorded venue bed loop from its decoded buffer — the single
+   *  doorway every recorded bed goes through, so the witness and stop
+   *  semantics the 2026-11-08 watchdog heals against are identical for all of
+   *  them: a started loop increments bedLoopsAlive exactly once and its sink
+   *  stop decrements it exactly once. Callers have already re-checked that
+   *  their captured sink/bed are still the live ones.
+   *
+   *  SHELL WHITE-NOISE GUARD (2026-11-10): in the iOS app shell the Classic
+   *  bed reached the speaker as raw static while the music decks — routed
+   *  through <audio> elements, never decodeAudioData — played perfectly in
+   *  the same shell, and the bed file itself is a verified-normal recording.
+   *  A decode/render fault on the buffer path can hand back uncorrelated
+   *  samples, and a buffer source would play them as literal noise. So the
+   *  decoded buffer is validated BEFORE it can sound (bedBufferSane):
+   *  untrusted content falls back to the decks' proven element path for the
+   *  same file, and if the element cannot play either, the bed stays SILENT —
+   *  the watchdog's bed-heal keeps retrying, exactly as for a failed decode.
+   *  Silence beats static, always. */
+  private startRecordedBedLoop(args: { raw: AudioBuffer; url: string; leadS: number; seconds: number; dest: AudioNode; sink: { stop: () => void }[]; bed: VenueBed }): void {
+    const c = this.ctx;
+    if (!c) return;
+    if (bedBufferSane(args.raw)) {
+      const src = c.createBufferSource();
+      src.buffer = trimLoopBuffer(c, args.raw, args.leadS, args.seconds);
+      src.loop = true;
+      src.connect(args.dest);
+      src.start();
+      this.bedLoopsAlive++;
+      args.sink.push({ stop: () => { this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); try { src.stop(); } catch { /* already stopped */ } } });
+      return;
+    }
+    const el = document.createElement('audio');
+    el.loop = true;
+    el.preload = 'auto';
+    el.setAttribute('playsinline', '');
+    el.src = args.url;
+    let source: MediaElementAudioSourceNode;
+    try { source = c.createMediaElementSource(el); } catch { return; }
+    source.connect(args.dest);
+    let counted = false;
+    const stop = () => {
+      if (counted) { counted = false; this.bedLoopsAlive = Math.max(0, this.bedLoopsAlive - 1); }
+      try { el.pause(); } catch { /* already gone */ }
+      try { source.disconnect(); } catch { /* already gone */ }
+      el.removeAttribute('src');
+    };
+    args.sink.push({ stop });
+    void el.play().then(() => {
+      if (this.venueNodes !== args.sink || this.venuePlaying !== args.bed) { stop(); return; }
+      counted = true;
+      this.bedLoopsAlive++;
+    }).catch(() => { /* cannot play: silence; the bed-heal retries as for a failed decode */ });
+  }
+
   /** Start the recorded street bed for THIS bed build: decode (cached), trim the
    *  MP3's encoder delay so the 64 s loop is sample-exact, and loop it through the
    *  venue bus. The decode is async; if the bed was stopped or rebuilt meanwhile,
@@ -4179,12 +4575,7 @@ class Engine {
     const bed = this.venuePlaying;
     void this.loadAmbience('pjs-bed', PJS_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, PJS_BED_LEAD_S, PJS_BED_SECONDS);
-      src.loop = true;
-      src.connect(this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: PJS_BED_URL, leadS: PJS_BED_LEAD_S, seconds: PJS_BED_SECONDS, dest: this.venueBus, sink, bed });
     });
     for (const url of [...PJS_EVENT_URLS.voice, ...PJS_EVENT_URLS.car]) void this.loadAmbience(url, url);
     this.scheduleStreetEvents();
@@ -4272,12 +4663,7 @@ class Engine {
     }
     void this.loadAmbience('spk-bed', SPK_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, SPK_BED_LEAD_S, SPK_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: SPK_BED_URL, leadS: SPK_BED_LEAD_S, seconds: SPK_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...SPK_EVENT_URLS.glass, ...SPK_EVENT_URLS.laugh, ...SPK_EVENT_URLS.door]) void this.loadAmbience(url, url);
     this.scheduleSpeakeasyEvents();
@@ -4335,12 +4721,7 @@ class Engine {
     }
     void this.loadAmbience('brb-bed', BRB_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, BRB_BED_LEAD_S, BRB_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: BRB_BED_URL, leadS: BRB_BED_LEAD_S, seconds: BRB_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...BRB_EVENT_URLS.trimmer, ...BRB_EVENT_URLS.clippersOff, ...BRB_EVENT_URLS.scissors, ...BRB_EVENT_URLS.laugh, ...BRB_EVENT_URLS.doorBell, ...BRB_EVENT_URLS.broom, ...BRB_EVENT_URLS.register]) void this.loadAmbience(url, url);
     this.scheduleBarbershopEvents();
@@ -4403,12 +4784,7 @@ class Engine {
     }
     void this.loadAmbience('gma-bed', GMA_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, GMA_BED_LEAD_S, GMA_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: GMA_BED_URL, leadS: GMA_BED_LEAD_S, seconds: GMA_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...GMA_EVENT_URLS.dishes, ...GMA_EVENT_URLS.screenDoor, ...GMA_EVENT_URLS.rockingChair, ...GMA_EVENT_URLS.potLid, ...GMA_EVENT_URLS.chairScrape]) void this.loadAmbience(url, url);
     this.scheduleGrandmasEvents();
@@ -4469,12 +4845,7 @@ class Engine {
     }
     void this.loadAmbience('ctt-bed', CTT_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, CTT_BED_LEAD_S, CTT_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: CTT_BED_URL, leadS: CTT_BED_LEAD_S, seconds: CTT_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...CTT_EVENT_URLS.ice, ...CTT_EVENT_URLS.screenDoor, ...CTT_EVENT_URLS.kids, ...CTT_EVENT_URLS.grillFlare]) void this.loadAmbience(url, url);
     this.scheduleCookoutEvents();
@@ -4534,12 +4905,7 @@ class Engine {
     }
     void this.loadAmbience('chu-bed', CHU_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, CHU_BED_LEAD_S, CHU_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: CHU_BED_URL, leadS: CHU_BED_LEAD_S, seconds: CHU_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...CHU_EVENT_URLS.percolator, ...CHU_EVENT_URLS.door, ...CHU_EVENT_URLS.cupPour, ...CHU_EVENT_URLS.chairScrape, ...CHU_EVENT_URLS.foldChair, ...CHU_EVENT_URLS.spoonCup]) void this.loadAmbience(url, url);
     this.scheduleChurchEvents();
@@ -4605,12 +4971,7 @@ class Engine {
     }
     void this.loadAmbience('roo-bed', ROO_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, ROO_BED_LEAD_S, ROO_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: ROO_BED_URL, leadS: ROO_BED_LEAD_S, seconds: ROO_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...ROO_EVENT_URLS.gustFront, ...ROO_EVENT_URLS.roofDoor, ...ROO_EVENT_URLS.footsteps, ...ROO_EVENT_URLS.looseMetal]) void this.loadAmbience(url, url);
     this.scheduleRooftopEvents();
@@ -4673,12 +5034,7 @@ class Engine {
     }
     void this.loadAmbience('yct-bed', YACHT_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, YACHT_BED_LEAD_S, YACHT_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: YACHT_BED_URL, leadS: YACHT_BED_LEAD_S, seconds: YACHT_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...YACHT_EVENT_URLS.waveSwell, ...YACHT_EVENT_URLS.hullCreak, ...YACHT_EVENT_URLS.flagSnap, ...YACHT_EVENT_URLS.gullCalls, ...YACHT_EVENT_URLS.farHorn]) void this.loadAmbience(url, url);
     this.scheduleYachtEvents();
@@ -4743,12 +5099,7 @@ class Engine {
     }
     void this.loadAmbience('bch-bed', BEACH_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, BEACH_BED_LEAD_S, BEACH_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: BEACH_BED_URL, leadS: BEACH_BED_LEAD_S, seconds: BEACH_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...BEACH_EVENT_URLS.waveSet, ...BEACH_EVENT_URLS.gullCalls, ...BEACH_EVENT_URLS.clothFlap, ...BEACH_EVENT_URLS.torchFlare]) void this.loadAmbience(url, url);
     this.scheduleBeachEvents();
@@ -4813,12 +5164,7 @@ class Engine {
     }
     void this.loadAmbience('man-bed', MAN_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, MAN_BED_LEAD_S, MAN_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: MAN_BED_URL, leadS: MAN_BED_LEAD_S, seconds: MAN_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...MAN_EVENT_URLS.iceInGlass, ...MAN_EVENT_URLS.glassClink, ...MAN_EVENT_URLS.pour, ...MAN_EVENT_URLS.elevatorDoors, ...MAN_EVENT_URLS.footsteps]) void this.loadAmbience(url, url);
     this.scheduleMansionEvents();
@@ -4884,12 +5230,7 @@ class Engine {
     }
     void this.loadAmbience('veg-bed', VEG_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, VEG_BED_LEAD_S, VEG_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: VEG_BED_URL, leadS: VEG_BED_LEAD_S, seconds: VEG_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...VEG_EVENT_URLS.chipStack, ...VEG_EVENT_URLS.cardShuffle, ...VEG_EVENT_URLS.iceInGlass, ...VEG_EVENT_URLS.slotPayout]) void this.loadAmbience(url, url);
     this.scheduleVegasEvents();
@@ -4954,12 +5295,7 @@ class Engine {
     }
     void this.loadAmbience('cls-bed', CLS_BED_URL).then((raw) => {
       if (!raw || this.venueNodes !== sink || this.venuePlaying !== bed || !this.ctx || !this.venueBus) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = trimLoopBuffer(this.ctx, raw, CLS_BED_LEAD_S, CLS_BED_SECONDS);
-      src.loop = true;
-      src.connect(through ?? this.venueBus);
-      src.start();
-      sink.push({ stop: () => { try { src.stop(); } catch { /* already stopped */ } } });
+      this.startRecordedBedLoop({ raw, url: CLS_BED_URL, leadS: CLS_BED_LEAD_S, seconds: CLS_BED_SECONDS, dest: through ?? this.venueBus, sink, bed });
     });
     for (const url of [...CLS_EVENT_URLS.cardShuffle, ...CLS_EVENT_URLS.cardDeal, ...CLS_EVENT_URLS.glassSetDown, ...CLS_EVENT_URLS.chairShift]) void this.loadAmbience(url, url);
     this.scheduleClassicEvents();
@@ -5011,6 +5347,7 @@ class Engine {
   }
 
   private buildBed(bed: VenueBed) {
+    this.bedBuiltAt = performance.now(); // the watchdog's load window for this build
     this.filmLayers = null; // only the 'porch' case below repopulates these
     const B = this.venueBus!;
     const murmur = (k: number) => { this.vNoise('bandpass', 520, 0.7, 0.05 * k, 0.21, 0.5); this.vNoise('bandpass', 900, 1.2, 0.02 * k, 0.13, 0.6); };

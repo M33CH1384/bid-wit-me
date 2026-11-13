@@ -517,3 +517,49 @@ describe('crash-resume heal: one forced rebuild after a process death', () => {
     expect(FakeCtx.instances.length).toBe(ctxCount + 1);
   });
 });
+
+/* 2026-11-12 (owner: after swiping the app away, and sometimes at
+ * random, "the sound goes out and i can't get it to restart"). Two
+ * recoveries that need no meter and no state change to fire. */
+describe('recoveries the meters cannot see', () => {
+  const ctxCount = () => FakeCtx.instances.length;
+  const liveCtx = () => FakeCtx.instances[FakeCtx.instances.length - 1]!;
+  /** Advance fake time with the context clock running (true) or stopped (false). */
+  const run = async (ms: number, clock: boolean) => {
+    for (let t = 0; t < ms; t += 500) {
+      if (clock) liveCtx().currentTime += 0.5;
+      await step(500);
+    }
+  };
+
+  it('a running clock never rebuilds; a clock that stops under a running context does', async () => {
+    analyserLevel = 0.02; // every meter reads honest signal throughout — the stale-block case
+    await run(8000, true);
+    const before = ctxCount();
+    await run(8000, true);
+    expect(ctxCount()).toBe(before);
+    expect(liveCtx().state).toBe('running');
+    await run(8000, false); // the render clock stops; state and meters do not change
+    expect(ctxCount()).toBe(before + 1);
+  });
+
+  it('a clock that has never been seen to run is not called frozen', async () => {
+    const before = ctxCount(); // the rebuilt context's fake clock sits at 0 and never moves
+    await run(12000, false);
+    expect(ctxCount()).toBe(before);
+  });
+
+  it('sound off, then on, rebuilds the context: the manual way back', async () => {
+    await run(4000, false); // clear the rebuild rate limit
+    const before = ctxCount();
+    sound.set({ on: false });
+    expect(ctxCount()).toBe(before);
+    sound.set({ on: true });
+    expect(ctxCount()).toBe(before + 1);
+    // …and the music switch does not: music back on resumes in place.
+    await run(4000, false);
+    sound.set({ music: false });
+    sound.set({ music: true });
+    expect(ctxCount()).toBe(before + 1);
+  });
+});

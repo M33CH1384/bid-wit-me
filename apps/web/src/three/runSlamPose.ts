@@ -1,7 +1,9 @@
 import { Quaternion, Vector3 } from 'three';
+import type { Card } from '@spades/rules';
 import { GATHER_CLEARANCE, gatherClearanceLift, minCardCornerY } from './gather';
-import type { Xform } from './layout';
-import type { RunDrop } from './landing';
+import { flatRest, jitterOf, opponentFan, trickSpot, type SeatPos, type Xform } from './layout';
+import { playSeed, runScatter, type RunDrop } from './landing';
+import { RUN_ZOOM_MS } from '../runIt';
 
 /**
  * 'Run it!' slam (owner, 2026-11-01: "the run it animation suck honestly, i really
@@ -144,4 +146,69 @@ export function runSlamPose(from: Xform, to: Xform, t: number, opts: { arc?: num
   const floorY = Math.max(GATHER_CLEARANCE, restCornerY * blend);
   p.y += gatherClearanceLift(p.y, q, s, floorY - GATHER_CLEARANCE);
   return { p: [p.x, p.y, p.z], q: [q.x, q.y, q.z, q.w], s };
+}
+
+/**
+ * The claimer's grip plan for the Run It stand (owner 2026-11-08: "why
+ * dont the hands go with the cards"). The standing figure's hands ride
+ * the MIDDLE card of the slam bunch: this plan is that card's flight,
+ * computed with the EXACT calls the Cards slam builder makes for it
+ * (same runScatter seed grain, same compressed schedule, same fan
+ * departure slot, same scatter rest) — so the hands track the show's
+ * own path and phase clock, never a parallel guessed arc. Cards
+ * computes it once per claim; the figure layer reads it through
+ * figureStand's slamGripFrame on the same wall clock as the stand.
+ */
+export interface SlamGripPlan {
+  /** the claim time (performance.now) this plan belongs to */
+  at: number;
+  /** the claimer's absolute seat */
+  seat: number;
+  /** when the slam phase starts: at + RUN_ZOOM_MS */
+  startAt: number;
+  /** the middle card's fan departure slot (world frame) */
+  from: Xform;
+  /** the middle card's scatter rest on the felt (world frame) */
+  to: Xform;
+  /** the middle card's own release delay inside the slam (s) */
+  delaySec: number;
+  /** the middle card's flight duration (s) — RUN_SLAM_FLIGHT_SEC */
+  durationSec: number;
+}
+
+export function runSlamGripPlan(args: {
+  gameSeed: string;
+  handNo: number;
+  seat: number;
+  at: number;
+  cards: readonly Card[];
+  seatPos: SeatPos;
+  n: number;
+  /** the claimer's fan rest state at the claim (restFor snapshot) */
+  drop: number;
+  pinch: number;
+  trickScale?: number;
+  /** The HUMAN claimer's origin: his cards depart from his held
+   *  strip slots, not a fan — Cards passes the middle card's own
+   *  departureSlot (the slam builder's call) when the claimer is the
+   *  local human, whose figure now stands for his own run (owner
+   *  2026-11-08). Absent for figure claimers: the fan origin below. */
+  fromOverride?: Xform;
+}): SlamGripPlan | null {
+  const k = args.cards.length;
+  if (k === 0) return null;
+  const drops = runScatter(playSeed(args.gameSeed, args.handNo, 99, `runit:${args.seat}`), k);
+  const plan = runSlamSchedule(drops);
+  const m = Math.round((k - 1) / 2);
+  const d = drops[m]!;
+  const base = trickSpot('bottom', args.n, m, jitterOf(args.cards[m]!), args.trickScale);
+  return {
+    at: args.at,
+    seat: args.seat,
+    startAt: args.at + RUN_ZOOM_MS,
+    from: args.fromOverride ?? opponentFan(args.seatPos, args.n, Math.min(m, k - 1), k, args.drop, args.pinch),
+    to: flatRest(d.dx, d.dz, d.spin, 4 + m, base.s),
+    delaySec: 0.02 + plan[m]!.delay,
+    durationSec: plan[m]!.duration,
+  };
 }

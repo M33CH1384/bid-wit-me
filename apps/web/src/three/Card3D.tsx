@@ -5,9 +5,9 @@ import { cardFaceFragment } from './cardSat';
 import { createBackCardMaterial } from './cardBack';
 import { cardFaceOutlinePoints, cardGeometry, cardOutlineGeometry } from './geometry';
 import { raiseSeconds, applyFaceDepthBias, cardMeshPaint, cardTapHandlers, faceLook, liftEase, screenRaise } from './handLift';
-import { CH, CT, CW, FACE_CAP_GAP, type Xform } from './layout';
+import { CH, CT, CW, FACE_CAP_GAP, type Xform, tableClearLift } from './layout';
 import { type Sfx, sound } from '../audio';
-import { blastPose } from './blastSweep';
+import { blastClaimsCard, blastPose } from './blastSweep';
 import { releaseTornadoCard, sweepParamsFor, sweepPoseAt, type SweepCardParams } from './tornadoSweep';
 import { fireCue, fx, tornadoPresentedT } from '../fx';
 import { restingFlightWait } from '../trickTiming';
@@ -24,6 +24,11 @@ import { RUN_SLAM_IMPACT_T, runSlamPose } from './runSlamPose';
 import { DISTURBANCE_MS, disturbanceFor, disturbanceOffsetAt, lastSlamDisturbanceId, pushSlamDisturbance, slamDisturbancesAfter, type DisturbanceParams } from './slamDisturbance';
 import { cutColorFor } from '../deuceFx';
 import type { Card } from '@spades/rules';
+
+/** Landing settle: how long a played card keeps sliding after touchdown (ms)… */
+const SETTLE_MS = 420;
+/** …and how far, in world units, per flight family (a card is 0.35 long, so roughly a third of a card). */
+const SETTLE_LEN: Record<'flight' | 'glide' | 'flick', number> = { flight: 0.12, glide: 0.14, flick: 0.09 };
 
 interface Props {
   face: Texture | null; // null = we only ever see the back
@@ -228,7 +233,10 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const hideUntilStart = useRef(holdUntilMove);
   const lift = useRef<Group>(null);
   const inner = useRef<Group>(null);
-  const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false, flung: false, stamp: -1 });
+  const bl = useRef({ dir: new Vector3(), q: new Quaternion(), axis: new Vector3(), on: false, flung: false, stamp: -1, claimed: true });
+  /** When this card first rendered. The blast may only claim cards that were
+   *  already on the table when its flash went off (see applyBlast). */
+  const bornAt = useRef(-1);
   const invalidate = useThree((s) => s.invalidate);
   const cam = useThree((s) => s.camera);
   const viewSize = useThree((s) => s.size);
@@ -399,6 +407,16 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     // composed on the inner group beside the knock by composeDeuceInner.
     distSeen: lastSlamDisturbanceId(), distAt: 0, distParams: null as DisturbanceParams | null,
     distOff: null as { x: number; y: number; z: number; tilt: number } | null, dq: new Quaternion(),
+    // Landing settle (owner, 2026-11-12: played cards "hit the table and abruptly
+    // stop"): a played card arrives a little short of its spot and SLIDES the rest
+    // of the way on the felt, turning a few degrees as friction takes it, for
+    // SETTLE_MS after touchdown — past the end of the flight tween, which is the
+    // room the in-tween skid (flightPose.ts) never had. It rides the inner group
+    // like the knock and the slam disturbance, so the card's own transform, the
+    // tween's timing, the landing cues and every layout probe are untouched.
+    // slideK is the share of the slide still to cover: it ramps 0 → 1 across the
+    // flight (the card simply flies short) and runs 1 → 0 after touchdown.
+    slideK: 0, slideAt: 0, slideAmp: 0, slideYaw: 0, slideDir: { x: 0, z: 0 }, slideKey: '', slideDoneKey: '',
   });
   const raiseNow = useRef(raise);
   raiseNow.current = raise;
@@ -482,10 +500,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     const owned = bl.current.on || bl.current.flung || tn.current.on || tn.current.gone;
     if (owned) return;
     const distOff = dkS.distOff;
-    if (dipEnv > 0 || knockEnv > 0 || heroEnv > 0 || distOff) {
+    const sk = fx.reduced || fx.osReducedMotion ? 0 : dkS.slideK;
+    const sliding = sk > 0.0005;
+    if (dipEnv > 0 || knockEnv > 0 || heroEnv > 0 || distOff || sliding) {
       const calm = fx.reduced;
-      const kx = calm ? 0 : dkS.knockDir.x * 0.055 * knockEnv + (distOff ? distOff.x : 0);
-      const kz = calm ? 0 : dkS.knockDir.z * 0.055 * knockEnv + (distOff ? distOff.z : 0);
+      const kx = calm ? 0 : dkS.knockDir.x * 0.055 * knockEnv + (distOff ? distOff.x : 0) - (sliding ? dkS.slideDir.x * dkS.slideAmp * sk : 0);
+      const kz = calm ? 0 : dkS.knockDir.z * 0.055 * knockEnv + (distOff ? distOff.z : 0) - (sliding ? dkS.slideDir.z * dkS.slideAmp * sk : 0);
       const heroLift = calm ? 0 : 0.085 * heroEnv;
       const w = dkS.w.set(kx, -dkS.dipDepth * dipEnv + heroLift + (calm || !distOff ? 0 : distOff.y), kz);
       dkS.q.copy(g.quaternion).invert();
@@ -504,6 +524,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
         dkS.dq.setFromAxisAngle(dkS.axis, distOff.tilt);
         ig.quaternion.multiply(dkS.dq);
       }
+      // The landing settle's turn: about the table's up axis, unwinding as the slide runs out.
+      if (sliding) {
+        dkS.axis.set(0, 1, 0).applyQuaternion(dkS.q);
+        dkS.dq.setFromAxisAngle(dkS.axis, dkS.slideYaw * sk);
+        ig.quaternion.multiply(dkS.dq);
+      }
       ig.scale.setScalar(calm ? 1 : 1 + 0.15 * heroEnv);
       dkS.innerActive = true;
       invalidate();
@@ -520,7 +546,21 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
   const applyBlast = (g: Group) => {
     const ig = inner.current, B = fx.blast, st = bl.current;
     if (!ig) return;
-    if (B && st.stamp !== B.start) { st.stamp = B.start; st.on = false; st.flung = false; }
+    if (bornAt.current < 0) bornAt.current = performance.now();
+    if (B && st.stamp !== B.start) {
+      st.stamp = B.start; st.on = false; st.flung = false;
+      // Only a card that was on the table when the flash went off belongs
+      // to the blown set. A card thrown after it (the next trick's lead,
+      // arriving while a starved blast is still clearing) is never swept:
+      // the sweep would displace it past the rail and the flung latch
+      // would keep it off the cloth for its whole life — the lead would
+      // never appear (owner report 2026-11-06). It simply renders under
+      // the blast cloud and is there when the cloud clears. (The pause
+      // gate keeps play from starting before clearance in the first
+      // place; this is the guard for every path a gate cannot reach.)
+      st.claimed = blastClaimsCard(bornAt.current, B.start);
+    }
+    if (B && !st.claimed) return;
     // the cards ride the blast's PRESENTED clock (fx.nukeT, published by Nuke3D
     // every frame): a mid-show stall stretches the blow-away with the fireball
     // instead of the cards leaping on wall time. The wall read remains only as
@@ -607,6 +647,11 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     return true;
   };
 
+  // Table collision (layout.tableClearLift), registered AFTER the pose frame below so it corrects that frame's pose:
+  // a table card whose corner would be inside the felt or the rail is raised just clear of it. The viewer's own
+  // hand never comes near the table, and a card at rest already sits clear, so this only acts on a tilted card in
+  // flight — the corner-through-the-rail case.
+  const clearTable = blast === 'table' && onTap === undefined;
   useFrame((_, rawDt) => {
     const g = ref.current;
     if (!g) return;
@@ -750,6 +795,13 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     if (heroEnv > 0) invalidate();
     // Early compose: a resting card returns before the frame-end block
     // below, so its knock/hero must be applied here as well.
+    // The landing settle runs out here too: it outlives the flight tween.
+    if (dkS.slideAt) {
+      const u = (performance.now() - dkS.slideAt) / SETTLE_MS;
+      if (u >= 1) { dkS.slideAt = 0; dkS.slideK = 0; }
+      else { dkS.slideK = Math.pow(1 - u, 3); }
+      invalidate();
+    }
     {
       const dipUE = dkS.dipAt ? deuceFxElapsed(performance.now() - dkS.dipAt) / 300 : 1;
       const dipEnvE = dipUE < 1 ? Math.sin(Math.PI * Math.pow(Math.min(1, Math.max(0, dipUE)), 0.8)) : 0;
@@ -1029,6 +1081,24 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       } else if (s.t > 0.75) { const u = (s.t - 0.75) / 0.25; g.position.y += sl.bounce * Math.abs(Math.sin(2 * Math.PI * u)) * (1 - u); }
     }
     }
+    // Landing settle (see the dk notes): a played trick card flies a little short,
+    // then slides the rest once it has touched down. Any other motion clears it.
+    {
+      const fam = s.motionSnap === 'flight' || s.motionSnap === 'glide' || s.motionSnap === 'flick';
+      if (fam && slamNow.current && dist > 0.25 && !fx.reduced && !fx.osReducedMotion) {
+        const iT = impactFraction(s.motionSnap);
+        if (dkS.slideKey !== s.key) {
+          dkS.slideKey = s.key; dkS.slideAt = 0; dkS.slideK = 0;
+          const dx = s.tp.x - s.sp.x, dz = s.tp.z - s.sp.z, len = Math.hypot(dx, dz) || 1;
+          dkS.slideDir.x = dx / len; dkS.slideDir.z = dz / len;
+          dkS.slideAmp = SETTLE_LEN[s.motionSnap as 'flight' | 'glide' | 'flick'] * Math.min(1, len / 1.2);
+          const h = deuceSeed(`${cardId ?? ''}|${s.key}|settle`);
+          dkS.slideYaw = ((h & 1) ? 1 : -1) * (0.05 + ((h >>> 3) % 100) / 100 * 0.07);
+        }
+        if (s.t < iT) { const v = s.t / iT; dkS.slideK = v * v * (3 - 2 * v); }
+        else if (dkS.slideDoneKey !== s.key) { dkS.slideDoneKey = s.key; dkS.slideK = 1; dkS.slideAt = performance.now(); }
+      } else if (dkS.slideKey !== s.key && (dkS.slideK || dkS.slideAt)) { dkS.slideK = 0; dkS.slideAt = 0; }
+    }
     // Landing sound + thump fire here, on the frame the card visually hits the felt (after its pose is applied):
     // glide cards touch down at t=0.35 and then flop flat, so waiting for t=1 played the sound ~0.3s late.
     if (!s.landDone && s.t >= impactFraction(s.motionSnap)) {
@@ -1111,6 +1181,12 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
       const up = new Vector3(0, 1, 0).applyQuaternion(g.quaternion);
       (rw.__bwmRest ??= {})[cardId] = { s: g.scale.x, y: g.position.y, tilt: (Math.acos(Math.min(1, Math.abs(nrm.y))) * 180) / Math.PI, spin: (Math.atan2(-up.x, -up.z) * 180) / Math.PI };
     }
+  });
+  useFrame(() => {
+    const g = ref.current;
+    if (!clearTable || !g || !g.visible || g.position.y > 0.9) return;
+    const lift = tableClearLift(g.position.x, g.position.y, g.position.z, g.quaternion.x, g.quaternion.y, g.quaternion.z, g.quaternion.w, g.scale.x);
+    if (lift > 1e-5) g.position.y += lift;
   });
 
   return (

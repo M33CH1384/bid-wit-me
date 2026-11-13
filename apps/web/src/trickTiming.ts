@@ -22,6 +22,22 @@ export const TRICK_SWEEP_MS = 550;
 export const SCORE_TOAST_MS = 3200;
 
 /**
+ * Pacing trim (owner, 2026-11-06: the wait after winning a book felt "a tad
+ * bit too long"). The measured win→throw wait for an ordinary trick is this
+ * hold + the 550 ms collection sweep (+ a frame of sequence slack): 1750 ms
+ * at normal speed, 1175 ms at fast speed, of which the hold is the only pure
+ * wait — flights, the sweep and the bots' seeded pace draws are not wait and
+ * are not touched. The plain mid-hand branch sheds this much hold (scaled by
+ * table speed like the hold itself): totals land at 1400 ms (−20%) and
+ * 1000 ms (−15%; the fixed 600 ms collection dilutes the fast-speed trim).
+ * ONLY the plain branch pays it: the nuke branch keeps the designed
+ * TRICK_HOLD_MS base — it is the clearance gate's minimum hold
+ * (releaseAfterNukeClearance, c108c50f) — and the hand-end branch keeps
+ * HAND_END_REVEAL_MS. TRICK_HOLD_MS itself is unchanged.
+ */
+export const TRICK_PACING_TRIM_MS = 350;
+
+/**
  * How long `pause` stays up after a trick resolves.
  * `speed` is the table speed multiplier (1 = normal). Nuke allowance and the run show are not scaled:
  * those animations play at a fixed length. A hand-ending trick with neither show uses the reveal
@@ -34,7 +50,7 @@ export function finishedTrickHoldMs(opts: {
   nuke: NukeIntensity | null;
 }): number {
   if (opts.run) return RUN_SHOW_MS;
-  const scaled = Math.round((opts.handEnding ? HAND_END_REVEAL_MS : TRICK_HOLD_MS) * opts.speed);
+  const scaled = Math.round((opts.handEnding ? HAND_END_REVEAL_MS : TRICK_HOLD_MS - TRICK_PACING_TRIM_MS) * opts.speed);
   if (opts.nuke) return Math.round(TRICK_HOLD_MS * opts.speed) + NUKE_ALLOWANCE_MS[opts.nuke];
   return scaled;
 }

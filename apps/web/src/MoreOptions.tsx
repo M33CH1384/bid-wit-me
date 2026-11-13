@@ -3,6 +3,8 @@ import { useEscapeClose } from './useEscapeClose';
 import Credits from './Credits';
 import Feedback, { AboutRow } from './Feedback';
 import { BotTrashTalkRow, ChatSoundsRow, NukeIntensityRow, ReduceEffectsRow, SoundFields, SoundQuickActions } from './SoundControls';
+import { MotionViewRow } from './MotionViewRow';
+import { EyeZoomRow } from './EyeZoomRow';
 import { SetAnimRow } from './SetAnimPicker';
 import ThemeToggle from './ThemeToggle';
 import { CLASSIC_JOKER, makeRules } from '@spades/rules';
@@ -299,6 +301,9 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
                 <Row label="2♠ ranks under the jokers"><Toggle value={s.deuceOfSpadesHigh} onChange={(v) => set('deuceOfSpadesHigh', v)} /></Row>
               )}
               <Row label="Spades must be broken"><Toggle value={s.spadesMustBeBroken} onChange={(v) => set('spadesMustBeBroken', v)} /></Row>
+              <Row label="Renege calls" hint="Play any card. Get caught and it costs 3 books.">
+                <Toggle label="Renege calls" value={s.renege === true} onChange={(v) => set('renege', v)} />
+              </Row>
               <Row label="2♣ leads first trick" hint={rules.firstLead !== s.firstLead ? 'not available: 2♣ removed' : undefined}>
                 <Toggle value={s.firstLead === 'twoOfClubs'} onChange={(v) => set('firstLead', v ? 'twoOfClubs' : 'leftOfDealer')} />
               </Row>
@@ -371,11 +376,13 @@ export default function MoreOptions({ settings: s, onChange, tips, onTips, onClo
             <VenueSelect value={s.venue ?? 'classic'} onChange={(v) => set('venue', v)} testId="venue-select" />
           </Row>
           <Row label="Graphics" hint="Low saves battery">
-            <Seg label="Graphics" value={s.quality} options={[['high', 'High'], ['low', 'Low']]} onChange={(v) => set('quality', v)} />
+            <Seg label="Graphics" value={s.quality} options={[['high', 'High'], ['low', 'Low']]} onChange={(v) => onChange({ ...s, quality: v, qualityPicked: true })} />
           </Row>
           <Row label="Turn up (slam mode)" hint="On: Standing plays slam hard. Off (default): Standing plays are gentle. Sitting's V-gesture slam always works.">
             <Toggle label="Turn up (slam mode)" value={s.turnUp === true} onChange={(v) => set('turnUp', v)} />
           </Row>
+          <MotionViewRow value={s.motionView === true} onChange={(v) => set('motionView', v)} />
+          <EyeZoomRow value={s.eyeZoom === true} calibrated={!!s.eyeZoomCal} onChange={(v) => set('eyeZoom', v)} onCalibrated={(cal) => set('eyeZoomCal', cal)} />
           <ReduceEffectsRow />
           <NukeIntensityRow />
           <SetAnimRow value={s.setAnim ?? 'auto'} onChange={(v) => set('setAnim', v)} />

@@ -88,7 +88,9 @@ const FX_HOLD_MS: Partial<Record<FxKind, number>> = {
   jokerBig: 1100, jokerLittle: 500, nuke: 3700, mega: 4400, wheelsCar: 3000,
 };
 
-export type FxKind = 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'wheelsRain' | 'overcut' | 'hustled' | 'ranIt';
+/** How long a hero blast's boom waits for its first presented frame before playing anyway. */
+export const HERO_BOOM_FALLBACK_MS = 3500;
+export type FxKind = 'jokerLittle' | 'jokerBig' | 'jokerWhip' | 'nuke' | 'mega' | 'streak' | 'shot' | 'gotShot' | 'wheels' | 'wheelsCar' | 'wheelsRain' | 'overcut' | 'hustled' | 'ranIt';
 export interface FxEvent { id: number; kind: FxKind; at: number; level?: number; text?: string; sub?: string }
 
 const KEY = 'bwm.fx';
@@ -133,7 +135,28 @@ class FxBus {
   }
   getNuke = () => this.prefs.nuke;
   /** 3D blast impulse (cards lifted / blown outward, then settle), read by every Card3D each frame. `mega` = the both-Jokers run tier: the sweep reaches farther. */
-  blast: { start: number; hand: boolean; mega?: boolean } | null = null;
+  private _blast: { start: number; hand: boolean; mega?: boolean } | null = null;
+  get blast(): { start: number; hand: boolean; mega?: boolean } | null { return this._blast; }
+  set blast(v: { start: number; hand: boolean; mega?: boolean } | null) {
+    const was = this._blast;
+    this._blast = v;
+    // The blast episode (below) tracks the impulse's own life as a backstop:
+    // a blast that starts opens it, a blast that ends closes it.
+    if (v && !was) this._blastEpisode = true;
+    if (!v && was) this._blastEpisode = false;
+  }
+  /**
+   * A nuke/mega blast EPISODE: opened by the emit that starts the show
+   * (before the flash — the fire itself can be delayed by certification)
+   * and closed when the running blast clears (fx.blast returns to null:
+   * the photoreal host's stop, Nuke3D's cleanup, its stall/context bails —
+   * every end funnels through that assignment). The trick-pause gate reads
+   * this so the next turn opens on the explosion's actual clearance, never
+   * on the trick timer alone (owner rule 2026-11-06). Nuke Off opens no
+   * episode: there is no explosion to wait for.
+   */
+  private _blastEpisode = false;
+  get blastEpisodeOpen(): boolean { return this._blastEpisode; }
   /** The running blast's presented time in seconds (Nuke3D publishes it every
    *  frame; null when no blast is running). The blown cards read the SAME
    *  presented clock as the fireball, so a mid-show stall stretches the
@@ -262,6 +285,10 @@ class FxBus {
     if (kind === 'nuke') { const now = performance.now(); if (now - this.lastNukeAt < 4500) return; this.lastNukeAt = now; }
     const e: FxEvent = { id: this.seq++, kind, at: performance.now(), level: opts.level, text: opts.text, sub: opts.sub };
     this.fired[kind] = (this.fired[kind] ?? 0) + 1;
+    // A real blast opens its EPISODE here (see blastEpisodeOpen): this emit
+    // is the single doorway both blast presenters start from, so the pause
+    // gate can hold the next turn from the fire until the clearance.
+    if ((kind === 'nuke' || kind === 'mega') && this.nukeMode !== 'off') this._blastEpisode = true;
     const holdMs = FX_HOLD_MS[kind];
     if (holdMs) { const release = this.hold(holdMs, kind); if (kind === 'wheelsCar') this.carRelease = release; }
     // hero blasts with a 3D run defer their boom to the first presented frame (heroPresented);
@@ -270,7 +297,12 @@ class FxBus {
     if (!opts.silent) {
       if (heroDeferred) {
         if (this.heroWait) clearTimeout(this.heroWait.timer);
-        const timer = window.setTimeout(() => { const w = this.heroWait; if (w) { this.heroWait = null; this.playHero(w.kind); } }, 1500);
+        // The fallback only exists so the boom is never lost when no frame lands at all.
+        // At 1.5 s it also fired on a merely SLOW first blast (a cold chunk, shader
+        // compile) and the boom led the picture (owner, 2026-11-12: "the sound came
+        // before the explosion"). 3.5 s keeps the safety net and lets a slow start
+        // still land its boom on the first frame.
+        const timer = window.setTimeout(() => { const w = this.heroWait; if (w) { this.heroWait = null; this.playHero(w.kind); } }, HERO_BOOM_FALLBACK_MS);
         this.heroWait = { kind, timer };
       } else sound.play(sfxFor(e), { gain: 1 });
     }
@@ -316,7 +348,7 @@ export function sfxFor(e: Pick<FxEvent, 'kind' | 'level'>): Sfx {
 export const fx = new FxBus();
 if (typeof window !== 'undefined') (window as unknown as { __bwmFx?: FxBus }).__bwmFx = fx;
 
-const FX_CUES = new Set(['jokerLittle', 'jokerBig', 'nuke', 'overcut', 'overcut3']);
+const FX_CUES = new Set(['jokerLittle', 'jokerBig', 'jokerWhip', 'nuke', 'overcut', 'overcut3']);
 /** A landing cue from a card animation: plain sounds play; joker cues go through the effects bus (sound + visuals). */
 export function fireCue(c: string, delay = 0, seat?: import('./three/layout').SeatPos, playerCount = 4) {
   if (FX_CUES.has(c.split('|')[0]!)) {
@@ -325,6 +357,26 @@ export function fireCue(c: string, delay = 0, seat?: import('./three/layout').Se
       // "overcut|SAY LESS!" / "overcut3|…": level 2 / 3+ with the (seeded) callout text
       const [k, text] = c.split('|');
       const emit = () => fx.emit('overcut', { level: k === 'overcut3' ? 3 : 2, text });
+      if (delay) window.setTimeout(emit, delay * 1000); else emit();
+      return;
+    }
+    if (c === 'jokerWhip') {
+      // The Whip-Crack (2026-11-06): the Little Joker's throw action.
+      // Emitted silent — like the quake's fracture crack, the whip's
+      // snap is fired by the photoreal host, with the picture; the bus
+      // carries the event only (no rumble of its own, no shake, no
+      // hold: visuals never gate progression).
+      const emit = () => fx.emit('jokerWhip', { silent: true });
+      if (delay) window.setTimeout(emit, delay * 1000); else emit();
+      return;
+    }
+    if (c.startsWith('jokerBig')) {
+      // Big Joker crack tier (2026-11-06): "jokerBig|<tier>" rides the segment onto
+      // the event's level, where the photoreal host reads it as the quake's degree
+      // of fracture. A bare 'jokerBig' emits level-less — the host's default tier
+      // is today's quake.
+      const tier = Number(c.split('|')[1]);
+      const emit = () => fx.emit('jokerBig', tier >= 1 && tier <= 4 ? { level: tier } : {});
       if (delay) window.setTimeout(emit, delay * 1000); else emit();
       return;
     }

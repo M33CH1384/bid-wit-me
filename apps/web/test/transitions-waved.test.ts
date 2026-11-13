@@ -227,16 +227,13 @@ describe('Wave D — the Card Fan in 3D (row 64)', () => {
   });
 });
 
-describe('Wave D — the Deal flight arcs (row 65)', () => {
-  it('arc height is a pure clamped proportion of the flight distance', async () => {
-    const { dealArcHeight } = await import('../src/TableTransitionLayer');
-    expect(dealArcHeight(0, 0)).toBe(24); // floor: even a short hop breathes
-    expect(dealArcHeight(300, 400)).toBe(80); // 500 * 0.16
-    expect(dealArcHeight(3000, 4000)).toBe(120); // ceiling
-    expect(dealArcHeight(300, 400)).toBe(dealArcHeight(300, 400));
-  });
-
-  it('renders eight dealt cards, each with a landing shadow', async () => {
+/* 2026-11-12 (owner: "spray for menus and fan to start a game"): the
+ * table pair now plays the Card Fan itself. Wave D's flight-arc and
+ * gather pins went with the old small cards; the held timings (above),
+ * the compositor-only invariant, and the cancel discipline (below)
+ * still cover both programs. */
+describe('the table pair plays the Card Fan', () => {
+  it('entry and exit render the nine-card fan under the table layer id', async () => {
     const { createElement } = await import('react');
     const { createRoot } = await import('react-dom/client');
     const { act } = await import('react');
@@ -249,61 +246,77 @@ describe('Wave D — the Deal flight arcs (row 65)', () => {
     act(() => root.render(createElement(TableTransitionLayer)));
     act(() => registerTransitionRenderer(true));
     act(() => coverTableEntry());
-    expect(host.querySelectorAll('[data-anim="deal-card"]')).toHaveLength(8);
-    expect(host.querySelectorAll('[data-anim="deal-shadow"]')).toHaveLength(8);
+    const entry = host.querySelector<HTMLElement>('[data-testid="table-transition-layer"]')!;
+    expect(entry.dataset.program).toBe('deal');
+    expect(entry.dataset.direction).toBe('forwards');
+    expect(host.querySelector<HTMLElement>('[data-anim="fan-card"]')!.style.transform).toContain('translateY(26%)');
+    expect(entry.classList.contains('tfan-layer')).toBe(true);
+    expect(host.querySelectorAll('[data-anim="fan-card"]')).toHaveLength(9);
+    expect(host.querySelectorAll('.tfan-face')).toHaveLength(9);
+    expect(host.querySelector('[data-testid="fan-layer"]')).toBeNull();
     act(() => signalTableReady());
     act(() => vi.advanceTimersByTime(PROGRAM_SPECS.deal.coverMs + PROGRAM_SPECS.deal.revealMs));
+    expect(host.querySelector('[data-testid="table-transition-layer"]')).toBeNull();
+
+    const m = vi.fn();
+    act(() => coverThen(m, 'table-exit'));
+    expect(host.querySelector<HTMLElement>('[data-testid="table-transition-layer"]')!.dataset.program).toBe('sweep');
+    // Leaving plays the fan backwards: each card waits where the fan
+    // normally lifts TO (the entry's cards wait at the hand point).
+    expect(host.querySelector<HTMLElement>('[data-testid="table-transition-layer"]')!.dataset.direction).toBe('backwards');
+    expect(host.querySelector<HTMLElement>('[data-anim="fan-card"]')!.style.transform).toContain('translateY(-46%)');
+    expect(host.querySelectorAll('[data-anim="fan-card"]')).toHaveLength(9);
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.sweep.coverMs));
+    expect(m).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.sweep.holdMs + PROGRAM_SPECS.sweep.revealMs));
     expect(host.querySelector('[data-testid="table-transition-layer"]')).toBeNull();
     act(() => root.unmount());
     host.remove();
   });
 
-  it('flights ride a 3-keyframe arc; the gather home starts at the slot', () => {
-    const layer = read('TableTransitionLayer.tsx');
-    expect(layer).toContain('rotateX(16deg)');
-    expect(layer).toContain('offset: 0.55');
-    // The gather's first keyframe is the slot position itself —
-    // the shipped corner-first teleport is gone.
-    expect(layer).toContain('translate(${dx}px, ${dy}px) rotate(${slot[2]}deg) rotateX(0deg) scale(1)');
-    // The last card still lands inside the dwell (320 + 7*50 = 670).
-    expect(320 + 7 * 50).toBeLessThanOrEqual(PROGRAM_SPECS.deal.coverMs);
-  });
-});
-
-describe('Wave D — the Book Sweep gather (row 66)', () => {
-  it('the stack is a panel sibling on explicit px geometry, gathering to the dealer corner', () => {
-    const layer = read('TableTransitionLayer.tsx');
-    expect(layer).toContain('data-anim="sweep-stack"');
-    expect(layer).toContain('data-anim="sweep-card"');
-    expect(layer).toContain("qa('sweep-card')");
-    // The gather target is the Deal's own corner fractions.
-    expect(layer).toContain('const cornerX = g.vw * 0.04');
-    expect(layer).toContain('g.vh - g.h - g.vh * 0.04');
-    // The felt fades through (opacity) instead of shrinking away.
-    expect(layer).toContain('SWEEP.revealMs * 0.72');
-    // Last gather card lands inside the reveal (30 + 3*30 + 0.7*450).
-    expect(30 + 3 * 30 + PROGRAM_SPECS.sweep.revealMs * 0.7).toBeLessThanOrEqual(PROGRAM_SPECS.sweep.revealMs + 30);
-  });
-
-  it('renders the sweep with its stack of four books', async () => {
+  it('the spray stays out of every other program (never two looks at once)', async () => {
     const { createElement } = await import('react');
     const { createRoot } = await import('react-dom/client');
     const { act } = await import('react');
-    const { default: TableTransitionLayer } = await import('../src/TableTransitionLayer');
+    const { default: SprayLayer } = await import('../src/SprayLayer');
+    const { coverTableEntry } = await import('../src/transitions');
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    act(() => root.render(createElement(TableTransitionLayer)));
+    act(() => root.render(createElement(SprayLayer)));
     act(() => registerTransitionRenderer(true));
-    const m = vi.fn();
-    act(() => coverThen(m, 'table-exit'));
-    expect(host.querySelectorAll('[data-anim="sweep-card"]')).toHaveLength(4);
-    expect(host.querySelector('[data-anim="sweep-stack"]')).not.toBeNull();
-    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.sweep.coverMs));
-    expect(m).toHaveBeenCalledTimes(1);
-    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.sweep.holdMs + PROGRAM_SPECS.sweep.revealMs));
-    expect(host.querySelector('[data-testid="table-transition-layer"]')).toBeNull();
+    for (const move of ['table-exit', 'profile-social', 'story-entry'] as const) {
+      act(() => coverThen(() => undefined, move));
+      expect(host.querySelector('[data-testid="spray-layer"]'), move).toBeNull();
+      act(() => vi.advanceTimersByTime(6000));
+    }
+    act(() => coverTableEntry());
+    expect(host.querySelector('[data-testid="spray-layer"]'), 'table-entry').toBeNull();
+    act(() => vi.advanceTimersByTime(6000));
+    // …and still paints its own.
+    act(() => coverThen(() => undefined, 'screen'));
+    expect(host.querySelector('[data-testid="spray-layer"]')).not.toBeNull();
+    act(() => vi.advanceTimersByTime(6000));
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it('the fan proper ignores the table programs (never two fans at once)', async () => {
+    const { createElement } = await import('react');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = await import('react');
+    const { default: FanLayer } = await import('../src/FanLayer');
+    const { coverTableEntry } = await import('../src/transitions');
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(createElement(FanLayer)));
+    act(() => registerTransitionRenderer(true));
+    act(() => coverTableEntry());
+    expect(host.querySelector('[data-testid="fan-layer"]')).toBeNull();
+    act(() => vi.advanceTimersByTime(PROGRAM_SPECS.deal.failsafeMs + 10));
     act(() => root.unmount());
     host.remove();
   });

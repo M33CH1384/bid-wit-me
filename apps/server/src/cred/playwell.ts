@@ -28,6 +28,18 @@
  *                unanimous consent to end the hand). It still settles at
  *                the half rate in bot/unrated games and still counts
  *                against the 200/day ledger like every other line.
+ *   Made Wheels  +25 XP each hand the player's side MADE Wheels — the
+ *                stats record's own wheels predicate (a contract of 10+
+ *                that was made, or a books-bid-themselves hand with 10+
+ *                books taken; cutthroat: 10+ books taken). OWNER
+ *                EXEMPTION (2026-11-09): like Forced the Toss, this line
+ *                sits OUTSIDE the 40 XP/game cap below — it cannot be
+ *                farmed at will (it needs the 10+ contract AND the books
+ *                to make it). It still settles at the half rate in
+ *                bot/unrated games and still counts against the 200/day
+ *                ledger like every other line. No coins per make: the
+ *                one-time 'Wheels Up' achievement's 100 coins stay the
+ *                feat's only coin payout.
  *   Comeback     won after trailing by 100+ at the end of any hand (the
  *                stats.maxDeficit derivation): +10 XP.
  *   Domination   won by 150+: +8 XP.
@@ -66,8 +78,14 @@ export const BLIND_NIL_XP = 12;
 export const SET_THEM_XP = 4;
 /** Forced the Toss, per tossed hand forced (paid to each player on the forcing side). */
 export const FORCED_TOSS_XP = 25;
-/** The cap-exempt line's id (see settlePlayWell). */
+/** The Forced-the-Toss line's id (one of the cap-exempt lines — see settlePlayWell). */
 export const FORCED_TOSS_LINE_ID = 'forced-toss';
+/** Made Wheels, per made-Wheels hand (paid to each player on the making side). */
+export const MADE_WHEELS_XP = 25;
+/** The Made-Wheels line's id (one of the cap-exempt lines — see settlePlayWell). */
+export const MADE_WHEELS_LINE_ID = 'made-wheels';
+/** Lines that settle outside the per-game cap, against the day's ledger only. */
+export const CAP_EXEMPT_LINE_IDS: ReadonlySet<string> = new Set([FORCED_TOSS_LINE_ID, MADE_WHEELS_LINE_ID]);
 export const COMEBACK_XP = 10;
 export const COMEBACK_MIN_DEFICIT = 100;
 export const DOMINATION_XP = 8;
@@ -108,6 +126,8 @@ export function playWellLines(stats: PlayerGameStats, o: { won: boolean; finalMa
   if (shots > 0) lines.push({ id: 'set-them', label: plural(shots, 'Set the opponents', 'Set the opponents ×{n}'), xp: Math.min(SET_THEM_XP * shots, PLAY_WELL_SET_THEM_CAP_XP), coins: 0 });
   const tosses = stats.tossesForced ?? 0;
   if (tosses > 0) lines.push({ id: FORCED_TOSS_LINE_ID, label: plural(tosses, 'Forced the Toss', 'Forced the Toss ×{n}'), xp: FORCED_TOSS_XP * tosses, coins: 0 });
+  const wheelsMade = stats.wheels ?? 0;
+  if (wheelsMade > 0) lines.push({ id: MADE_WHEELS_LINE_ID, label: plural(wheelsMade, 'Made Wheels', 'Made Wheels ×{n}'), xp: MADE_WHEELS_XP * wheelsMade, coins: 0 });
   if (o.won && (stats.maxDeficit ?? 0) >= COMEBACK_MIN_DEFICIT) lines.push({ id: 'comeback', label: 'Comeback win', xp: COMEBACK_XP, coins: 0 });
   if (o.won && o.finalMargin >= DOMINATION_MIN_MARGIN) lines.push({ id: 'domination', label: `Domination — won by ${o.finalMargin}`, xp: DOMINATION_XP, coins: 0 });
   return lines;
@@ -122,12 +142,12 @@ export function playWellLines(stats: PlayerGameStats, o: { won: boolean; finalMa
  *
  * Two budgets, one walk: the family's lines trim against the smaller of
  * the per-game cap and the day's remaining allowance, exactly as they
- * always have. The Forced-the-Toss line (owner exemption, see the file
- * header) does NOT consume the per-game cap — it trims only against
- * what is left of the day's allowance after the lines ahead of it have
- * settled, and every line's paid XP (the toss line's included) counts
- * against that daily allowance, so the cred_playwell row stays the one
- * ledger the 200/day cap reads.
+ * always have. The cap-exempt lines (Forced the Toss, Made Wheels —
+ * owner exemptions, see the file header) do NOT consume the per-game
+ * cap — they trim only against what is left of the day's allowance
+ * after the lines ahead of them have settled, and every line's paid XP
+ * (the exempt lines' included) counts against that daily allowance, so
+ * the cred_playwell row stays the one ledger the 200/day cap reads.
  */
 export function settlePlayWell(lines: PlayWellLine[], o: { half: boolean; dailyAllowance: number }): { lines: PlayWellLine[]; xp: number; coins: number } {
   let budget = Math.max(0, Math.min(PLAY_WELL_GAME_CAP_XP, o.dailyAllowance));
@@ -138,7 +158,7 @@ export function settlePlayWell(lines: PlayWellLine[], o: { half: boolean; dailyA
   for (const l of lines) {
     let lx = o.half ? Math.floor(l.xp / 2) : l.xp;
     const lc = o.half ? Math.floor(l.coins / 2) : l.coins;
-    if (l.id === FORCED_TOSS_LINE_ID) {
+    if (CAP_EXEMPT_LINE_IDS.has(l.id)) {
       if (lx > dailyLeft) lx = dailyLeft;
       dailyLeft -= lx;
     } else {

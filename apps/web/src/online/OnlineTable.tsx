@@ -218,12 +218,15 @@ export default function OnlineTable({ conn, cs, mesh, onLobby, onMainMenu, versu
         onExit={onLobby}
         onMainMenu={onMainMenu}
         onRematch={() => conn.send({ t: 'rematch' })}
-        onQuality={(quality) => { const s = { ...settings, quality }; setSettings(s); saveSettings({ ...loadSettings(), quality }); }}
+        onQuality={(quality) => { const s = { ...settings, quality, qualityPicked: true }; setSettings(s); saveSettings({ ...loadSettings(), quality, qualityPicked: true }); }}
         onView={(view) => { const s = { ...settings, view }; setSettings(s); saveSettings({ ...loadSettings(), view }); }}
         onViewAdjust={(viewAdjust) => { const s = { ...settings, viewAdjust }; setSettings(s); saveSettings({ ...loadSettings(), viewAdjust }); }}
         onTurnUp={(turnUp) => { const s = { ...settings, turnUp }; setSettings(s); saveSettings({ ...loadSettings(), turnUp }); }}
+        onEyeZoomCalibration={(eyeZoomCal) => { const s = { ...settings, eyeZoomCal }; setSettings(s); saveSettings({ ...loadSettings(), eyeZoomCal }); }}
         online={{
           source, names, seatExtra, seatVideos, sideLabel, teamNames, botSeats, talkIntensity: room.talkIntensity, toss: tossBinding,
+          // Renege tables: a call goes to the room in REAL seats — the server's engine rules on it.
+          renege: { call: (target: number, trick: number) => conn.send({ t: 'renegeCall', target: rot.R(target), trick }) },
           // Streaming surfaces reshape the chat binding: the broadcast frame has
           // no chat surface at all; the watch view reads chat but never posts
           // (its one affordance sends the viewer to the play door). The server

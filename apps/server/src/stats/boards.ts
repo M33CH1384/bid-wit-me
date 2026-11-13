@@ -229,6 +229,11 @@ export interface PersonalStats {
   started: number;
   wins: number; streak: number; bestStreak: number;
   accuracy: number | null; bags: number; booksPerHand: number | null; nil: string; shotsGiven: number; shotsTaken: number; tkoDealt: number; tkoSuffered: number; tossesForced: number; tossesConceded: number; wheels: number;
+  /** Player of the game awards, and their share of the games an MVP was
+   *  named in: every finished game recorded since the stamp shipped,
+   *  whoever the opponents were (the books/TKO convention). Older games
+   *  and abandoned games are in neither number. Null with no such game. */
+  mvps: number; mvpGames: number; mvpPct: number | null;
   bidSec: number | null; playSec: number | null;
   bids: number;
   /** wins (and games) split by who the opponents were; a win against only guests is in neither */
@@ -241,7 +246,7 @@ export async function personalStats(db: D1Database, uid: string, kind?: 'team' |
     FROM game_players gp JOIN games g ON g.id = gp.game_id
     WHERE gp.user_id = ? ${kind ? 'AND gp.kind = ?' : ''} ORDER BY gp.ended_at ASC, g.id ASC`)
     .bind(...(kind ? [uid, kind] : [uid])).all<{ won: number; stats: string; side: number; seats: string; ended_at: number; end_reason: string; leaver_id: string | null; rated: number; family: string }>()).results;
-  const s = { games: 0, started: 0, wins: 0, streak: 0, bestStreak: 0, bids: 0, made: 0, books: 0, hands: 0, bags: 0, nilBids: 0, nilMade: 0, shotsGiven: 0, shotsTaken: 0, tkoDealt: 0, tkoSuffered: 0, tossesForced: 0, tossesConceded: 0, wheels: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0, winsVsPlayers: 0, winsVsBots: 0, gamesVsPlayers: 0, gamesVsBots: 0 };
+  const s = { games: 0, started: 0, wins: 0, streak: 0, bestStreak: 0, bids: 0, made: 0, books: 0, hands: 0, bags: 0, nilBids: 0, nilMade: 0, shotsGiven: 0, shotsTaken: 0, tkoDealt: 0, tkoSuffered: 0, tossesForced: 0, tossesConceded: 0, wheels: 0, mvps: 0, mvpGames: 0, bidMs: 0, bidN: 0, playMs: 0, playN: 0, winsVsPlayers: 0, winsVsBots: 0, gamesVsPlayers: 0, gamesVsBots: 0 };
   const order: string[] = [];
   const groups = new Map<string, typeof rows>();
   for (const r of rows) {
@@ -282,6 +287,7 @@ export async function personalStats(db: D1Database, uid: string, kind?: 'team' |
       else if (bucket === 'bots') s.winsVsBots++;
     } else run = 0;
     for (const k of ['bids', 'made', 'books', 'hands', 'bags', 'nilBids', 'nilMade', 'shotsGiven', 'shotsTaken', 'tkoDealt', 'tkoSuffered', 'tossesForced', 'tossesConceded', 'wheels', 'bidMs', 'bidN', 'playMs', 'playN'] as const) s[k] += Number(st[k]) || 0;
+    if (st.mvp !== undefined && st.mvp !== null) { s.mvpGames++; if (Number(st.mvp) > 0) s.mvps++; }
   }
   s.streak = run;
   return {
@@ -290,6 +296,7 @@ export async function personalStats(db: D1Database, uid: string, kind?: 'team' |
     bags: s.bags,
     booksPerHand: s.hands ? Math.round((100 * s.books) / s.hands) / 100 : null,
     nil: `${s.nilMade}/${s.nilBids}`, shotsGiven: s.shotsGiven, shotsTaken: s.shotsTaken, tkoDealt: s.tkoDealt, tkoSuffered: s.tkoSuffered, tossesForced: s.tossesForced, tossesConceded: s.tossesConceded, wheels: s.wheels,
+    mvps: s.mvps, mvpGames: s.mvpGames, mvpPct: s.mvpGames ? Math.round((1000 * s.mvps) / s.mvpGames) / 10 : null,
     bidSec: s.bidN ? Math.round(s.bidMs / s.bidN / 100) / 10 : null, playSec: s.playN ? Math.round(s.playMs / s.playN / 100) / 10 : null,
     bids: s.bids, winsVsPlayers: s.winsVsPlayers, winsVsBots: s.winsVsBots, gamesVsPlayers: s.gamesVsPlayers, gamesVsBots: s.gamesVsBots,
   };

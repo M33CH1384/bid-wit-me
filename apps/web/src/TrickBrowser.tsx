@@ -10,8 +10,10 @@ import { browsedTrick, stepTrickIndex, trickPositionLabel } from './lastTrickBro
  * readout's glanceable size. There is ONE stepping implementation —
  * lastTrickBrowse.ts — behind both doors: the table chip renders it in
  * place on the felt; the hand recap (the score card) renders this panel in
- * its header. Review only: the state is local, and no game action is ever
- * taken from here — closing returns the player exactly where they were.
+ * its footer, in line with the Leave button (owner, 2026-11-07; it sat in
+ * the recap header from 2026-10-26 to 2026-11-07). Review only: the state
+ * is local, and no game action is ever taken from here — closing returns
+ * the player exactly where they were.
  */
 export function TrickBrowserPanel({ tricks, face, onClose }: {
   tricks: readonly Trick[];
@@ -52,10 +54,12 @@ export function TrickBrowserPanel({ tricks, face, onClose }: {
 /**
  * The score-card door (owner, 2026-10-24: the recap's review control "should
  * allow u to use forward and back buttons to see previous tricks").
- * Collapsed it is a pill in the recap's HEADER — the top of the sheet
- * (owner, 2026-10-26: moved up from the foot of the recap's flow, where
- * landscape clipped it at the rail's edge, so it needs no scroll to
- * reach) — and open it is the trick browser over the hand just played: back through
+ * Collapsed it is a pill in the recap's FOOTER, in line with the Leave
+ * button at half the footer's width each (owner, 2026-11-07; from
+ * 2026-10-26 to 2026-11-07 it sat in the recap's header, where its own
+ * line cost the score cards their height in portrait — the footer is
+ * pinned in every orientation, so it still needs no scroll to reach) —
+ * and open it is the trick browser over the hand just played: back through
  * every trick of that hand to the first, forward again to the last. The
  * range is that hand only: completed hands keep no play-by-play anywhere
  * (HandRecord holds counts, not plays), so there is nothing older to show.
@@ -67,7 +71,11 @@ export function RecapTrickReview({ tricks, face }: { tricks: readonly Trick[]; f
   if (!open) {
     return (
       <button type="button" className="tt-tricks-show" data-testid="recap-tricks-show" onClick={() => setOpen(true)}>
-        Review the tricks ‹ ›
+        Review the tricks
+        {/* Drawn, not typed: the ‹ › text glyphs sat below the caps and off-centre. */}
+        <svg className="tt-tricks-chev" viewBox="0 0 26 12" width="26" height="12" aria-hidden="true" focusable="false">
+          <path d="M8 1 3 6l5 5M18 1l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
     );
   }

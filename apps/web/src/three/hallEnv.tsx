@@ -1,6 +1,6 @@
 import { useThree } from '@react-three/fiber';
 import { useEffect } from 'react';
-import { EquirectangularReflectionMapping, Mesh, OrthographicCamera, PMREMGenerator, PlaneGeometry, Scene, Vector3, WebGLRenderTarget, type Material, type Texture, type WebGLRenderer } from 'three';
+import { Color, DataUtils, EquirectangularReflectionMapping, HalfFloatType, LinearSRGBColorSpace, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, PMREMGenerator, PlaneGeometry, Scene, SphereGeometry, Vector3, WebGLRenderTarget, type Material, type Texture, type WebGLRenderer } from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { nextFrame } from './shaderBudget';
 
@@ -38,15 +38,28 @@ type Steps = PMREMGenerator & {
  * drei's <Environment> runs PMREMGenerator.fromEquirectangular inside a single frame: on a phone
  * that is a multi-second main-thread stall after the table is already up. The filtered map is the
  * same one three would build in one shot; only the scheduling changes.
+ *
+ * SHELL WHITEOUT GUARD (2026-11-10): in the iOS app shell (WKWebView) this private-internals
+ * drive mis-baked on the owner's phone — the scene came up washed to white on every up-facing
+ * surface while a second venue (no hall bake) rendered fine, and the same bake is correct in
+ * Safari. The custom drive leans on PMREMGenerator internals whose state (render-target stack,
+ * probe programs, half-float targets) is only ever exercised by three itself through the PUBLIC
+ * entry points, so a platform whose WebGL2 behaves differently anywhere in that chain can hand
+ * back a map full of blown values, and HallAttach would install it unchecked. The bake is now
+ * VALIDATED before it can reach the scene (probeEnvMeanLuminance + assessBake below): a sane
+ * bake passes untouched — same map, same look, one extra 16×16 probe render — a blown one is
+ * retried once through the public fromEquirectangular path three supports, and if that is blown
+ * too the bake is rejected outright, leaving the pre-bake default environment (the room lit by
+ * its lights alone) instead of white light. White is the only outcome this guard can remove.
  */
-export function ClassicHall({ active, onMap }: { active: boolean; onMap: (texture: Texture) => void }) {
+export function ClassicHall({ active, onMap, url = HDRI_URL }: { active: boolean; onMap: (texture: Texture) => void; url?: string }) {
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
     if (!active) return;
     let alive = true;
     const loader = new RGBELoader();
-    loader.load(HDRI_URL, (tex) => {
+    loader.load(url, (tex) => {
       tex.mapping = EquirectangularReflectionMapping;
       void filterHall(gl, tex, () => alive).then((map) => {
         if (!alive || !map) { tex.dispose(); return; }
@@ -55,7 +68,7 @@ export function ClassicHall({ active, onMap }: { active: boolean; onMap: (textur
       });
     });
     return () => { alive = false; };
-  }, [active, gl, invalidate, onMap]);
+  }, [active, gl, invalidate, onMap, url]);
   return null;
 }
 
@@ -79,10 +92,112 @@ async function forceLinearProgram(gl: WebGLRenderer, material: Material): Promis
   }
 }
 
+/**
+ * Mean linear luminance a baked environment would actually deliver, measured — not assumed.
+ * A roughness-1 sphere of known albedo (0.05) is rendered under the candidate map alone (no
+ * lights) into a tiny linear target and read back: outgoing ≈ albedo × mean radiance, so the
+ * readback ÷ albedo estimates the map's mean luminance on the same scale as the source HDR's.
+ * Render targets skip tone mapping and output encoding, so the bytes are linear. Any failure
+ * (no readback support, context trouble) returns null — "cannot measure", never a verdict.
+ */
+const PROBE_ALBEDO = 0.05;
+const PROBE_SIZE = 16;
+
+export async function probeEnvMeanLuminance(gl: WebGLRenderer, env: Texture): Promise<number | null> {
+  const rt = new WebGLRenderTarget(PROBE_SIZE, PROBE_SIZE);
+  const geo = new SphereGeometry(1, 24, 16);
+  const mat = new MeshStandardMaterial({ roughness: 1, metalness: 0 });
+  mat.color = new Color().setRGB(PROBE_ALBEDO, PROBE_ALBEDO, PROBE_ALBEDO, LinearSRGBColorSpace);
+  const holder = new Scene();
+  holder.environment = env;
+  holder.add(new Mesh(geo, mat));
+  const cam = new PerspectiveCamera(35, 1, 0.1, 10);
+  cam.position.set(0, 0, 2.4);
+  cam.lookAt(0, 0, 0);
+  const prev = gl.getRenderTarget();
+  try {
+    await nextFrame();
+    gl.setRenderTarget(rt);
+    gl.render(holder, cam);
+    const px = new Uint8Array(PROBE_SIZE * PROBE_SIZE * 4);
+    gl.readRenderTargetPixels(rt, 0, 0, PROBE_SIZE, PROBE_SIZE, px);
+    // The sphere overfills the frame at this distance, so the centre block is all surface.
+    let sum = 0;
+    let n = 0;
+    const lo = PROBE_SIZE / 4;
+    const hi = (PROBE_SIZE * 3) / 4;
+    for (let y = lo; y < hi; y++) {
+      for (let x = lo; x < hi; x++) {
+        const i = (y * PROBE_SIZE + x) * 4;
+        sum += (0.2126 * px[i]! + 0.7152 * px[i + 1]! + 0.0722 * px[i + 2]!) / 255;
+        n++;
+      }
+    }
+    if (!n) return null;
+    return sum / n / PROBE_ALBEDO;
+  } catch {
+    return null;
+  } finally {
+    gl.setRenderTarget(prev);
+    geo.dispose();
+    mat.dispose();
+    rt.dispose();
+  }
+}
+
+/** Mean linear luminance of the decoded equirect source, sampled from its texels (stride ~8k). */
+export function sourceMeanLuminance(tex: Texture): number {
+  const image = tex.image as { data?: ArrayLike<number> } | undefined;
+  const data = image?.data;
+  if (!data || data.length < 4) return NaN;
+  const half = tex.type === HalfFloatType;
+  const texels = Math.floor(data.length / 4);
+  const step = Math.max(1, Math.floor(texels / 8192)) * 4;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i + 2 < data.length; i += step) {
+    const r = half ? DataUtils.fromHalfFloat(data[i]!) : data[i]!;
+    const g = half ? DataUtils.fromHalfFloat(data[i + 1]!) : data[i + 1]!;
+    const b = half ? DataUtils.fromHalfFloat(data[i + 2]!) : data[i + 2]!;
+    if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) continue;
+    sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    n++;
+  }
+  return n ? sum / n : NaN;
+}
+
+/**
+ * How bright a bake may come out before it is called blown.
+ *
+ * PMREM conserves energy: a correct bake delivers about the light its source contains. So the
+ * limit is RELATIVE to the source — four times its mean — with a small absolute floor, because
+ * the probe reads back through 8 bits and cannot resolve a very dim map any finer than that.
+ *
+ * It used to be max(3, 4 × source): tuned for the old billiard-hall HDRI (mean ~0.6), and far
+ * too loose for the rendered rooms that light the table now. Their sources are dim — Classic
+ * Studio's is 0.087, the Speakeasy's 0.021 — so a bake thirty times too bright still measured
+ * under 3 and shipped, flooding the felt and the cards white (owner, 2026-11-12, iPhone, mid
+ * game). HALL_ENV_MAX_MEAN is now only the limit when the source cannot be measured at all.
+ */
+export const HALL_ENV_MAX_MEAN = 3;
+export const HALL_ENV_MIN_LIMIT = 0.6;
+
+export function bakeLimit(sourceMean: number): number {
+  return Number.isFinite(sourceMean) && sourceMean > 0 ? Math.max(HALL_ENV_MIN_LIMIT, sourceMean * 4) : HALL_ENV_MAX_MEAN;
+}
+
+/** 'ok' also covers "cannot measure" — an unmeasurable bake is not evidence against a working platform. */
+export function assessBake(sourceMean: number, probeLum: number | null): 'ok' | 'blown' {
+  if (probeLum === null || !Number.isFinite(probeLum)) return 'ok';
+  return probeLum > bakeLimit(sourceMean) ? 'blown' : 'ok';
+}
+
 async function filterHall(gl: WebGLRenderer, tex: Texture, alive: () => boolean): Promise<Texture | null> {
   const gen = new PMREMGenerator(gl) as Steps;
+  const prevTarget = gl.getRenderTarget();
   try {
     if (!alive() || !tex.image) return null;
+    const sourceMean = sourceMeanLuminance(tex);
     const image = tex.image as { width?: number };
     gen._setSize((image.width ?? 512) / 4);
     const target = gen._allocateTargets();
@@ -96,7 +211,6 @@ async function filterHall(gl: WebGLRenderer, tex: Texture, alive: () => boolean)
     await nextFrame();
     if (!alive()) return null;
     gen._textureToCubeUV(tex, target);
-    tex.dispose();
     await nextFrame();
     const n = gen._lodPlanes.length;
     const autoClear = gl.autoClear;
@@ -113,8 +227,32 @@ async function filterHall(gl: WebGLRenderer, tex: Texture, alive: () => boolean)
     }
     gl.autoClear = autoClear;
     gen._cleanup(target);
-    return target.texture;
+    // _cleanup restores the module statics captured by whichever PMREM ran last through the
+    // public entry points — possibly another consumer's target. Put back the one this renderer
+    // actually had bound when the bake started.
+    if (gl.getRenderTarget() !== prevTarget) gl.setRenderTarget(prevTarget);
+    const probe = await probeEnvMeanLuminance(gl, target.texture);
+    if (assessBake(sourceMean, probe) === 'ok') return target.texture;
+    // Blown bake: never ship it. Retry once through the public path three supports, where the
+    // generator manages its own state end to end, and validate that too.
+    try { target.dispose(); } catch { /* already gone */ }
+    if (!alive()) return null;
+    const pub = new PMREMGenerator(gl);
+    try {
+      pub.compileEquirectangularShader();
+      const rt2 = pub.fromEquirectangular(tex);
+      const probe2 = await probeEnvMeanLuminance(gl, rt2.texture);
+      if (assessBake(sourceMean, probe2) === 'ok') return rt2.texture;
+      try { rt2.dispose(); } catch { /* already gone */ }
+    } catch { /* public path failed too — fall through to no environment */ }
+    finally { try { pub.dispose(); } catch { /* already gone */ } }
+    return null;
   } catch {
     return null;
+  } finally {
+    // The source used to be disposed right after _textureToCubeUV; the public-path retry needs
+    // it alive, so disposal now happens once, here, on every exit.
+    try { tex.dispose(); } catch { /* already gone */ }
+    try { gen.dispose(); } catch { /* already gone */ }
   }
 }

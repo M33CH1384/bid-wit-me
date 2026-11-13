@@ -6,9 +6,10 @@
  * sedan precedent) driving ON the felt at High quality: it swings in under the
  * revs, lays ~1¾ powerslide doughnuts around the trick centre trailing tyre
  * smoke from its rear wheels and dark arcs on the cloth, then peels off the
- * right edge. Pure poses live in wheelsCar3d.ts; the body itself — a deep-red
- * EV roadster since the owner's 2026-11-04 remodel — and its normalization
- * live in wheelsCarModel.ts, shared with the results-page stage.
+ * right edge. Pure poses live in wheelsCar3d.ts; the body itself — the
+ * glossy purple-and-gold supercar (a deep-red EV roadster stood in from
+ * 2026-11-04 until the owner restored this body on 2026-11-08) — and its
+ * normalization live in wheelsCarModel.ts, shared with the results-page stage.
  *
  * The summons is unchanged (`wheelsCar` on the fx bus — a side took all 10
  * books); the DOM celebration (WheelsCar.tsx) keeps the banner, the timing and
@@ -29,7 +30,7 @@
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import {
-  BufferGeometry, CanvasTexture, Float32BufferAttribute, Group, MeshBasicMaterial,
+  AdditiveBlending, BufferGeometry, CanvasTexture, Float32BufferAttribute, Group, MeshBasicMaterial,
   NormalBlending, ShaderMaterial, Vector3,
 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -104,7 +105,7 @@ const SMOKE_FRAG = /* glsl */ `
   }
 `;
 
-function WheelsCarRig() {
+function WheelsCarRig({ onShowChange }: { onShowChange?: (active: boolean) => void }) {
   const gltf = useLoader(GLTFLoader, WHEELS_CAR_URL);
   const invalidate = useThree((s) => s.invalidate);
   const size = useThree((s) => s.size);
@@ -194,6 +195,17 @@ function WheelsCarRig() {
     const id = window.setInterval(() => invalidate(), 40);
     return () => clearInterval(id);
   }, [show, invalidate]);
+
+  /* The table renderer's moment-scoped DPR lift (three/wheelsDprLift.ts)
+     keys off this exact show state: engage when a show starts, release
+     when it ends. The cleanup also fires when a show is skipped
+     (setShow(null)) and when the rig unmounts — quality flip, context-
+     restore remount, scene teardown — so the lift can never strand. */
+  useEffect(() => {
+    if (!show) return;
+    onShowChange?.(true);
+    return () => { onShowChange?.(false); };
+  }, [show, onShowChange]);
 
   useFrame((_, delta) => {
     const grp = outer.current;
@@ -355,8 +367,22 @@ function WheelsCarRig() {
       <group ref={outer} visible={false} onClick={() => { showRef.current = null; blastRef.current = null; setShow(null); }}>
         <group ref={inner}>
           <primitive object={model} />
-          {/* no bolt-on headlight discs: the roadster's full-width light
-              bars are part of its baked body, unlike the old supercar's */}
+          {/* headlights: lit discs + glow at the nose (the model's own
+              lamps are texture). Retired with the roadster remodel —
+              its light bars read lit on their own — and restored with
+              the supercar body on 2026-11-08, keyed to its own dims. */}
+          {([-1, 1] as const).map((s) => (
+            <group key={s} position={[WHEELS_CAR_DIMS.len / 2 + 0.002, 0.095, s * WHEELS_CAR_DIMS.wid * 0.31]} rotation={[0, Math.PI / 2, 0]}>
+              <mesh>
+                <circleGeometry args={[0.02, 12]} />
+                <meshBasicMaterial color={0xffedb5} />
+              </mesh>
+              <mesh position={[0, 0, 0.012]}>
+                <planeGeometry args={[0.13, 0.13]} />
+                <meshBasicMaterial map={smoke.tex} color={0xffdf94} transparent opacity={0.5} blending={AdditiveBlending} depthWrite={false} />
+              </mesh>
+            </group>
+          ))}
         </group>
       </group>
       <points geometry={smoke.geo} material={smoke.mat} frustumCulled={false} />
@@ -365,12 +391,12 @@ function WheelsCarRig() {
   );
 }
 
-export default function WheelsCar3D({ quality }: { quality: 'high' | 'low' }) {
+export default function WheelsCar3D({ quality, onShowChange }: { quality: 'high' | 'low'; onShowChange?: (active: boolean) => void }) {
   if (quality !== 'high') return null;
   return (
     <WheelsBoundary>
       <Suspense fallback={null}>
-        <WheelsCarRig />
+        <WheelsCarRig onShowChange={onShowChange} />
       </Suspense>
     </WheelsBoundary>
   );

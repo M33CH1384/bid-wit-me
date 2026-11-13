@@ -62,7 +62,7 @@
  * with the fan's rest pose) and stay honest. Hands rest on the lap
  * when a seat holds no cards.
  */
-import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import {
   Box3, Euler, Group, Matrix4, Mesh, Object3D, Quaternion, Vector3, type Material, type MeshStandardMaterial,
@@ -75,6 +75,12 @@ import { FIGURE_SEAT_CONFIGS, type FigureSeatConfig, type FigureSeatSpot } from 
 import { useFigureResidency } from './figureResidency';
 import { opponentFan, seatDir, type SeatPos } from './layout';
 import { fanRestTarget } from './fanRest';
+import {
+  RUN_SLAM_GRIP_CURL, RUN_STAND_SIT_MS, RUN_STAND_SKIP_SIT_MS, slamGripFrame, standAmount, standFinished, standPelvisTarget, standShowEndMs, standSpineAmount,
+  type RunStandInfo, type SlamGripPlan, type StandLatch,
+} from './figureStand';
+import { personaFigureGlbUrl } from '../personaFigureKey';
+import { PERSONA_FIGURE_REGISTERS } from './PersonaFigures';
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -118,15 +124,26 @@ const ANKLE_FWD = 0.38;    // ankle target forward of the hip joint (seat frame)
 
 /* Grip calibration against the production opponent fan (opponentFan's
  * middle card), built in the FAN's own frame: GRIP_HALF to each side
- * of the fan's centre line (fan-local +x runs from the seat's right
- * hand toward its left), GRIP_EDGE below the centre along the fan's
- * face — just under the bottom edge of the 0.35-tall cards — and
- * GRIP_BACK to the seat side of the fan's plane, a palm's thickness
- * off it. The previous calibration targeted a point 0.26 behind +
- * 0.13 below the fan CENTRE in seat space: ~0.35 from the fan's
- * bottom edge, past fingertip reach, so the fan floated in front of
- * the hands (owner 2026-10-30: "the characters hands look a lil
- * crazy" — see the hand-orientation solve in the frame loop). */
+ * of the fan's centre line (fan-local +x runs from the seat's LEFT
+ * hand toward its RIGHT — opponentFan's yaw makes +x the seated
+ * figure's anatomical-right direction at every seat, so the Left
+ * wrist sits at −GRIP_HALF and the Right at +GRIP_HALF), GRIP_EDGE
+ * below the centre along the fan's face — just under the bottom edge
+ * of the 0.35-tall cards — and GRIP_BACK to the seat side of the
+ * fan's plane, a palm's thickness off it. The previous calibration
+ * targeted a point 0.26 behind + 0.13 below the fan CENTRE in seat
+ * space: ~0.35 from the fan's bottom edge, past fingertip reach, so
+ * the fan floated in front of the hands (owner 2026-10-30: "the
+ * characters hands look a lil crazy" — see the hand-orientation
+ * solve in the frame loop).
+ * HANDEDNESS (owner 2026-11-08: "The bot's hands are backwards"):
+ * this block previously recorded the axis the other way round and
+ * fanGripPoint placed 'Left' at +GRIP_HALF — each wrist was driven
+ * to the fan corner on the figure's opposite side, so the hand's
+ * measured anatomical frame landed thumb-out and the hand read as
+ * the opposite hand. Every audit then in the file was invariant
+ * under the swap (unsigned distances), so three calibration rounds
+ * never saw it; grip-handedness.test.ts now pins the sign. */
 const GRIP_HALF = 0.085;
 /* Round 2 (owner 2026-10-30 13:17: fingers "poke thru the cards"):
  * the wrist sat only 0.01 below the fan's bottom edge, so fingers
@@ -147,7 +164,7 @@ function fanGripPoint(fanC: Vector3, fanQ: Quaternion, side: 'Left' | 'Right', b
   const up = new Vector3(0, 1, 0).applyQuaternion(fanQ);
   const normal = new Vector3(0, 0, 1).applyQuaternion(fanQ);
   return fanC.clone()
-    .addScaledVector(right, side === 'Left' ? GRIP_HALF : -GRIP_HALF)
+    .addScaledVector(right, side === 'Left' ? -GRIP_HALF : GRIP_HALF)
     .addScaledVector(up, -GRIP_EDGE)
     .addScaledVector(normal, back);
 }
@@ -725,10 +742,18 @@ interface FigureProps {
   aspect: number;
   view: 'standing' | 'sitting';
   animate: boolean;
+  /** Run It stand (owner 2026-11-08): the claim time (performance.now)
+   *  when THIS seat is the run's claimer, else null — the figure stands
+   *  for the show (three/figureStand.ts). */
+  standAt: number | null;
+  standMega: boolean;
+  /** Run It hands-with-cards: the shared grip-plan ref Cards writes
+   *  (Scene owns it) — the claimer's middle slam card flight. */
+  slamGripRef?: { current: SlamGripPlan | null } | null;
   anchors: { trick: Vector3; human: Vector3; heads: Record<string, Vector3> };
 }
 
-function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect, view, animate, anchors }: FigureProps) {
+function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect, view, animate, standAt, standMega, slamGripRef, anchors }: FigureProps) {
   const gltf = useLoader(GLTFLoader, url);
   /* Residency (crash hardening): the GLB's decoded textures are
      accounted to the shared figure budget while this seat is mounted
@@ -743,6 +768,22 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
   const headState = useRef({ yaw: 0, pitch: 0, next: 0, idx: 0 });
   const restCur = useRef<{ drop: number; pinch: number } | null>(null);
   const fanRef = useRef(new Vector3());
+  /* Run It stand: the anchors the standing solve is built from,
+     recorded at placement (the seated root position, the pelvis and
+     the planted ankles in seat-group space, and the standing root
+     position they imply). standRoot null = this rig's legs cannot
+     carry a stand and the figure stays seated — never a fake. */
+  const standAnchors = useRef<{
+    seatedRoot: Vector3; pelvisSeat: Vector3; pelvisStand: Vector3 | null;
+    standRoot: Vector3 | null; ankleL: Vector3; ankleR: Vector3;
+  } | null>(null);
+  const standLatch = useRef<StandLatch | null>(null);
+  /* The grip plan this figure's latched stand rides (snapshotted from
+     the shared ref at the latch's claim — survives the show props
+     clearing early on a skip). */
+  const slamSnap = useRef<SlamGripPlan | null>(null);
+  const standApplied = useRef(false);
+  const standCur = useRef(0);
   const solvedFrames = useRef(0);
   /* Round-2 diagnosis: what the placement effect saw (the card
      count at mount) and the head clearance it ended with. */
@@ -1164,6 +1205,27 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
       }
       placedRef.current = { count, clear: Math.round(worst * 1000) / 1000 };
     }
+    /* Run It stand anchors: the pelvis and the planted ankles in
+       seat-group space, now that the seat solve has run — the
+       standing solve (frame loop) re-uses these exact ankle plants,
+       so the feet never move when the figure stands. */
+    {
+      group.updateMatrixWorld(true);
+      const toG = (nm: string) => group.worldToLocal(jp(nm).clone());
+      const pelvisSeat = toG('LeftUpLeg').add(toG('RightUpLeg')).multiplyScalar(0.5);
+      const ankleL = toG('LeftFoot');
+      const ankleR = toG('RightFoot');
+      const pelvisStandP = standPelvisTarget(pelvisSeat, ankleL, ankleR, prep.thigh + prep.shin);
+      const pelvisStand = pelvisStandP ? new Vector3(pelvisStandP.x, pelvisStandP.y, pelvisStandP.z) : null;
+      standAnchors.current = {
+        seatedRoot: root.position.clone(),
+        pelvisSeat,
+        pelvisStand,
+        standRoot: pelvisStand ? root.position.clone().add(pelvisStand.clone().sub(pelvisSeat)) : null,
+        ankleL,
+        ankleR,
+      };
+    }
   }, [prep, seatPos, spot, seatTop, n, reg]);
 
   const headWorld = useMemo(() => new Vector3(), []);
@@ -1172,6 +1234,64 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
     const { root, bones: b, base, fingers } = prep;
     const group = groupRef.current;
     if (!group) return;
+    /* Run It stand (owner 2026-11-08, three/figureStand.ts): latch
+       the show's claim when THIS seat is the claimer. The envelope is
+       wall-clock, so the schedule survives the show state clearing at
+       its end (the sit-down runs after it) and any covered or starved
+       stretch in between — a late frame computes the true amount from
+       the clock, never a stale pose. Presentation only: nothing in
+       the game waits on this. */
+    const standA = standAnchors.current;
+    const nowMs = performance.now();
+    const restoreSeated = () => {
+      if (!standApplied.current) return;
+      if (standA) root.position.copy(standA.seatedRoot);
+      for (const nm of ['LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot']) {
+        if (b[nm] && base[nm]) b[nm]!.quaternion.copy(base[nm]!);
+      }
+      standApplied.current = false;
+    };
+    if (animate && standAt !== null && standA?.standRoot) {
+      if (!standLatch.current || standLatch.current.at !== standAt) {
+        standLatch.current = { at: standAt, mega: standMega, skipAt: null };
+      }
+    } else if (standLatch.current && standLatch.current.skipAt === null && standAt === null) {
+      standLatch.current.skipAt = nowMs;
+    }
+    let standE = 0;
+    if (standLatch.current && standA?.standRoot) {
+      if (standFinished(nowMs, standLatch.current)) {
+        restoreSeated();
+        standLatch.current = null;
+        standCur.current = 0;
+      } else {
+        standE = standAmount(nowMs, standLatch.current);
+        standCur.current = standE;
+      }
+    }
+    if (!animate && standApplied.current) {
+      /* Reduced life switched on mid-stand: settle seated at once —
+         the static pose is the seated one, never a frozen stand. */
+      restoreSeated();
+      standLatch.current = null;
+      standCur.current = 0;
+      standE = 0;
+    }
+    /* Run It hands-with-cards (owner 2026-11-08): while this figure's
+       stand is latched, snapshot the claim's grip plan and read the
+       grip frame on the same wall clock — the hands stay on the run
+       cards through the slam instead of drifting to the sides. The
+       spine rides its own amount (the eagerness coil, figureStand). */
+    if (standLatch.current) {
+      const p = slamGripRef?.current;
+      if (p && p.at === standLatch.current.at) slamSnap.current = p;
+    } else if (slamSnap.current) slamSnap.current = null;
+    const sg = standLatch.current && slamSnap.current
+      ? slamGripFrame(nowMs, standLatch.current, slamSnap.current)
+      : null;
+    const sgC = sg ? new Vector3(...sg.p) : null;
+    const sgQ = sg ? new Quaternion(...sg.q) : null;
+    const spineE = standLatch.current ? standSpineAmount(nowMs, standLatch.current) : 0;
     /* Under reduced life the pose still solves (the fan moves with
        the game), but only until the grips settle; breath/gaze/finger
        phase stay frozen — the King figures' animate contract. */
@@ -1198,6 +1318,14 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
     fanRef.current.copy(fanC);
     if (settle) return;
     solvedFrames.current++;
+    /* Run It stand: the pelvis rides the recorded root positions —
+       seated and standing share the figure's own placement solve, so
+       the rise is the seat solve travelling, not a new pose. */
+    if (standE > 0 && standA?.standRoot) {
+      root.position.lerpVectors(standA.seatedRoot, standA.standRoot, standE);
+      standApplied.current = true;
+      root.updateMatrixWorld(true);
+    }
     const t = clock.elapsedTime;
     /* Reset the animated bones to the seated base pose, then layer
        procedural life on top (the sandbox contract). */
@@ -1248,6 +1376,50 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
         b.Head.quaternion.multiply(new Quaternion().setFromEuler(new Euler(breath * 0.006, 0, 0)));
       }
     }
+    /* Run It stand, the body: the spine un-leans toward the bind
+       stance and the legs re-solve onto their planted ankles for the
+       raised pelvis, with the placement's own two-bone IK — but
+       WITHOUT the base write, so base[] stays the seated pose the
+       figure returns to exactly. */
+    if (standE > 0 && standA?.standRoot && standA.pelvisStand) {
+      for (const nm of ['Spine', 'Spine1', 'Spine2']) {
+        if (b[nm] && prep.bind[nm]) b[nm]!.quaternion.slerp(prep.bind[nm]!, spineE);
+      }
+      root.updateMatrixWorld(true);
+      const aimLive = (boneName: string, childName: string, target: Vector3) => {
+        const bone = b[boneName]; const child = b[childName];
+        if (!bone || !child || !bone.parent) return;
+        root.updateMatrixWorld(true);
+        const pb = bone.getWorldPosition(new Vector3());
+        const pc = child.getWorldPosition(new Vector3());
+        const cur = pc.sub(pb).normalize();
+        const des = target.clone().sub(pb).normalize();
+        const R = new Quaternion().setFromUnitVectors(cur, des);
+        const qb = bone.getWorldQuaternion(new Quaternion());
+        const qp = bone.parent.getWorldQuaternion(new Quaternion());
+        bone.quaternion.copy(qp.invert().multiply(R).multiply(qb));
+        root.updateMatrixWorld(true);
+      };
+      const sideVec = new Vector3(1, 0, 0).applyQuaternion(group.getWorldQuaternion(new Quaternion()));
+      const faceW = seatDir(seatPos, n).negate();
+      for (const side of ['Left', 'Right'] as const) {
+        const upLeg = b[`${side}UpLeg`]; const footB = b[`${side}Foot`];
+        if (!upLeg || !footB) continue;
+        const hipW = upLeg.getWorldPosition(new Vector3());
+        const ankle = group.localToWorld((side === 'Left' ? standA.ankleL : standA.ankleR).clone());
+        const D = ankle.distanceTo(hipW);
+        const a = (prep.thigh * prep.thigh + D * D - prep.shin * prep.shin) / (2 * D);
+        const h = Math.sqrt(Math.max(0, prep.thigh * prep.thigh - a * a));
+        const axis = ankle.clone().sub(hipW).normalize();
+        const perp = new Vector3().crossVectors(axis, sideVec);
+        if (perp.dot(faceW) < 0) perp.negate();
+        const knee = hipW.clone().addScaledVector(axis, a).addScaledVector(perp, h);
+        aimLive(`${side}UpLeg`, `${side}Leg`, knee);
+        aimLive(`${side}Leg`, `${side}Foot`, ankle);
+        const foot = footB.getWorldPosition(new Vector3());
+        aimLive(`${side}Foot`, `${side}ToeBase`, foot.clone().add(new Vector3(faceW.x, -0.02, faceW.z)));
+      }
+    }
     /* Arms: BOTH hands are two-bone-IK'd onto their targets every
        frame — the fan's grip points while the seat holds cards
        (hands behind the fan's lower edge, backs of the cards to the
@@ -1260,6 +1432,27 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
       const targetPos = hasCards && fanQ
         ? fanGripPoint(fanC, fanQ, side, gripBackFor(prep, side))
         : group.localToWorld(new Vector3(side === 'Left' ? 0.18 : -0.18, seatTop + 0.12, 0.25));
+      /* Run It stand: as the figure rises, its hands leave the
+         fan/lap and come to rest beside its hips — the arm target
+         blends with the stand amount. */
+      if (standE > 0 && standA?.pelvisStand) {
+        const pelvisNow = standA.pelvisSeat.clone()
+          .addScaledVector(standA.pelvisStand.clone().sub(standA.pelvisSeat), standE);
+        const handG = new Vector3(
+          pelvisNow.x + (side === 'Left' ? 0.27 : -0.27),
+          pelvisNow.y - 0.42,
+          pelvisNow.z + 0.03,
+        );
+        targetPos.lerp(group.localToWorld(handG), standE);
+      }
+      /* Run It hands-with-cards: while the grip is engaged, the hand
+         target rides the middle slam card instead — lerped from the
+         shipped target (at full stand, the side hang), so as the
+         grip releases after the strike the hands settle home on
+         their own. */
+      if (sg && sgC && sgQ) {
+        targetPos.lerp(fanGripPoint(sgC, sgQ, side, gripBackFor(prep, side)), sg.engage);
+      }
       const S = arm.getWorldPosition(new Vector3());
       const E0 = fore.getWorldPosition(new Vector3());
       const H0 = hand.getWorldPosition(new Vector3());
@@ -1298,7 +1491,12 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
          the hand bone, so the curled fingers ride the rotation
          rigidly; their local drives are untouched. */
       const frame = prep.handFrames[side];
-      if (hasCards && fanQ && frame) {
+      /* While the slam grip is firmly engaged, the hand aligns to the
+         slam card's frame instead of the fan's (the same 0.35 step
+         the shipped code uses to drop fan alignment as he rises). */
+      const sgAlign = !!(sg && sgQ && sg.engage > 0.35);
+      if (frame && (sgAlign || (hasCards && fanQ && standE < 0.35))) {
+        const fq = sgAlign ? sgQ! : fanQ!;
         root.updateMatrixWorld(true);
         const hw = hand.getWorldQuaternion(new Quaternion());
         const cur = new Matrix4().makeBasis(
@@ -1306,8 +1504,8 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
           frame.y.clone().applyQuaternion(hw),
           frame.z.clone().applyQuaternion(hw),
         );
-        const yt = new Vector3(0, 0, -1).applyQuaternion(fanQ);
-        const zt = new Vector3(0, 1, 0).applyQuaternion(fanQ);
+        const yt = new Vector3(0, 0, -1).applyQuaternion(fq);
+        const zt = new Vector3(0, 1, 0).applyQuaternion(fq);
         const xt = new Vector3().crossVectors(yt, zt).normalize();
         /* Round 2: pitch the target frame about the fan's right
            (knuckle) axis — the fingers angle TOWARD the fan's
@@ -1331,7 +1529,13 @@ function Figure({ id, url, reg, seatPos, spot, seatTop, n, count, active, aspect
        loose on the lap; a breath of per-hand phase sway keeps it
        from looking machined. Rigs without grafts skip entirely. */
     if (fingers.Left.length || fingers.Right.length) {
-      const factor = !hasCards ? 0.45 : active ? 1.0 : 0.8;
+      const gripFactor = !hasCards ? 0.45 : active ? 1.0 : 0.8;
+      /* Run It stand: the grip loosens to a resting hand as the
+         figure rises (the fan is leaving its hands). */
+      const standFactor = standE > 0 ? gripFactor + (0.45 - gripFactor) * standE : gripFactor;
+      /* Run It hands-with-cards: while the slam grip is engaged the
+         fingers hold the card firmly, loosening as it releases. */
+      const factor = sg ? standFactor + (RUN_SLAM_GRIP_CURL - standFactor) * sg.engage : standFactor;
       const applyHand = (list: FingerJoint[], phase: number, curlF: number) => {
         const f = animate ? Math.min(1.05, Math.max(0, factor * (1 + 0.03 * Math.sin(t * 1.3 + phase)))) : factor;
         for (const j of list) j.bone.quaternion.setFromAxisAngle(j.axis, j.angle * f * (hasCards ? j.gripScale * curlF : 1)).multiply(j.rest);
@@ -1410,9 +1614,23 @@ export interface PorchFiguresProps {
   /** The stop's chair anchors + seat top (figureSeats.ts). Defaults
    *  to the Porch row — the pilot's own geometry. */
   seatConfig?: FigureSeatConfig;
+  /** Run It stand: the live show's claim (claimer seat, claim time,
+   *  mega), or null when no run is showing. */
+  runStand?: RunStandInfo | null;
+  /** Run It hands-with-cards: the shared grip-plan ref (Scene owns it). */
+  slamGripRef?: { current: SlamGripPlan | null } | null;
+  /** Run It — the viewer's own stand (owner 2026-11-08): the persona
+   *  figure key for the local human seat, and that seat's index. The
+   *  story cast has no player character, so his story figure is his
+   *  persona body — the same asset path as at regular tables
+   *  (PERSONA_FIGURE_REGISTERS + personaFigureGlbUrl). Mounted ONLY
+   *  while the viewer claims a run; every other moment his seat
+   *  renders exactly as it always has — no figure. */
+  ownFigureKey?: string | null;
+  ownSeat?: number;
 }
 
-export default function PorchFigures({ seats, positions, n, handCounts, activeSeat, view, animate, seatConfig }: PorchFiguresProps) {
+export default function PorchFigures({ seats, positions, n, handCounts, activeSeat, view, animate, seatConfig, runStand, slamGripRef, ownFigureKey, ownSeat }: PorchFiguresProps) {
   const config = seatConfig ?? FIGURE_SEAT_CONFIGS['porch']!;
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
@@ -1444,6 +1662,44 @@ export default function PorchFigures({ seats, positions, n, handCounts, activeSe
       heads,
     };
   }, [seats, positions, config]);
+  /* Run It — the viewer's own stand (owner 2026-11-08): the same
+     show-window latch as the regular layer (PersonaFigures) — seat
+     0 carries no figure outside his own show, so when the live
+     claim names his seat his figure mounts and stands with the
+     same envelope as any claimer (Dee and the adversaries ride
+     the seats map above, unchanged), stays until the envelope has
+     fully finished, and leaves with the show; a skip shortens the
+     window to the skip sit. His chair is never built for this
+     (the rooms suppress it at his seat, as always) — he stands at
+     the table edge and unmounts fully seated at the envelope's
+     finish, so nothing pops. */
+  const ownSeatIdx = ownSeat ?? 0;
+  const ownReady = !!ownFigureKey && animate && ownSeatIdx >= 0 && ownSeatIdx < n;
+  const [ownClaim, setOwnClaim] = useState<{ at: number; mega: boolean } | null>(null);
+  const ownTimer = useRef<number | null>(null);
+  // Parse-warm his GLB as soon as the table knows his key (the
+  // asset gate already fetched the bytes).
+  useEffect(() => {
+    if (!ownFigureKey) return;
+    useLoader.preload(GLTFLoader, personaFigureGlbUrl(ownFigureKey));
+  }, [ownFigureKey]);
+  useEffect(() => {
+    if (!ownReady) { setOwnClaim(null); return; }
+    if (runStand && runStand.seat === ownSeatIdx) {
+      const claim = { at: runStand.at, mega: runStand.mega };
+      setOwnClaim((prev) => (prev?.at === claim.at ? prev : claim));
+      if (ownTimer.current) window.clearTimeout(ownTimer.current);
+      const deadline = claim.at + standShowEndMs(claim.mega) + RUN_STAND_SIT_MS + 250;
+      ownTimer.current = window.setTimeout(() => setOwnClaim(null), Math.max(0, deadline - performance.now()));
+    } else if (ownClaim) {
+      if (ownTimer.current) window.clearTimeout(ownTimer.current);
+      const now = performance.now();
+      const natural = ownClaim.at + standShowEndMs(ownClaim.mega) + RUN_STAND_SIT_MS + 250;
+      const until = now >= ownClaim.at + standShowEndMs(ownClaim.mega) ? natural : now + RUN_STAND_SKIP_SIT_MS + 250;
+      ownTimer.current = window.setTimeout(() => setOwnClaim(null), Math.max(0, until - now));
+    }
+    return () => { if (ownTimer.current) { window.clearTimeout(ownTimer.current); ownTimer.current = null; } };
+  }, [ownReady, runStand, ownSeatIdx, ownClaim]);
   return (
     <>
       {seats.map((id, seat) => {
@@ -1482,12 +1738,62 @@ export default function PorchFigures({ seats, positions, n, handCounts, activeSe
                 aspect={aspect}
                 view={view}
                 animate={animate}
+                standAt={runStand && runStand.seat === seat ? runStand.at : null}
+                standMega={!!runStand?.mega}
+                slamGripRef={slamGripRef}
                 anchors={anchors}
               />
             </Suspense>
           </FigureBoundary>
         );
       })}
+      {ownClaim && ownFigureKey && (() => {
+        const baseReg = PERSONA_FIGURE_REGISTERS[ownFigureKey];
+        if (!baseReg) return null;
+        const seat = ownSeatIdx;
+        const url = personaFigureGlbUrl(ownFigureKey);
+        const spot = config.spots[positions[seat]!];
+        const d = seatDir(positions[seat]!, n);
+        // As in the regular layer: his gaze list may name 'human' —
+        // for his own figure that target is himself; retarget those
+        // beats to the trick.
+        const reg = baseReg.gaze.includes('human')
+          ? { ...baseReg, gaze: baseReg.gaze.map((g) => (g === 'human' ? 'trick' : g)) }
+          : baseReg;
+        return (
+          <>
+            <pointLight
+              position={[spot.x - d.x * FIGURE_FILL_DIST, FIGURE_FILL_Y, spot.z - d.z * FIGURE_FILL_DIST]}
+              color="#ffd9ae"
+              intensity={FIGURE_FILL_INTENSITY}
+              distance={FIGURE_FILL_RANGE}
+              decay={2}
+            />
+            <FigureBoundary id={ownFigureKey} url={url}>
+              <Suspense fallback={null}>
+                <Figure
+                  id={ownFigureKey}
+                  url={url}
+                  reg={reg}
+                  seatPos={positions[seat]!}
+                  spot={spot}
+                  seatTop={config.seatTop}
+                  n={n}
+                  count={handCounts[seat] ?? 0}
+                  active={activeSeat === seat}
+                  aspect={aspect}
+                  view={view}
+                  animate={animate}
+                  standAt={runStand && runStand.seat === seat ? runStand.at : null}
+                  standMega={!!runStand?.mega}
+                  slamGripRef={slamGripRef}
+                  anchors={anchors}
+                />
+              </Suspense>
+            </FigureBoundary>
+          </>
+        );
+      })()}
     </>
   );
 }

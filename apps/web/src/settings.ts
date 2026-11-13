@@ -6,6 +6,7 @@ import { CLASSIC_JOKER, cardLabel, firstHandMinOf, hostMinimum, type Mode, type 
 import { type BotSkillSetting, skillSettingOf } from '@spades/bots';
 import { trumpLadderText } from './trumpLadder';
 import { DEFAULT_VIEW_ADJUST, normalizeViewAdjust, type ViewAdjust } from './viewAdjust';
+import { normalizeEyeZoomCalibration, type EyeGazeCalibration } from './eyeZoom';
 
 export type ModeKey = 'joker' | 'cutthroat4' | 'cutthroat3' | 'aceDown';
 
@@ -40,6 +41,8 @@ export interface Settings {
   cutBlindNil: boolean;
   /** "Bags and penalties" (default on). Off: overtricks are worth nothing and there is no bag penalty. */
   bagsOn: boolean;
+  /** "Renege calls" (default off). On: any card may be thrown on a led suit, and players call each other's reneges for 3 books. */
+  renege?: boolean;
   /** Bot trash-talk intensity (table setting): family / cookout (default) / nomercy. */
   talkIntensity: 'family' | 'cookout' | 'nomercy';
   /** Voice Phase 3 host flag (default off, no menu yet): bots may use pre-voiced catalog lines at Getting set / Wheels / match win. */
@@ -47,6 +50,12 @@ export interface Settings {
   speed: 'slow' | 'relaxed' | 'normal' | 'fast' | 'turbo';
   /** 3D quality: low disables shadows, HDRI and MSAA and uses smaller textures. */
   quality: 'high' | 'low';
+  /** True once the player themselves picked the graphics quality (the table
+   *  menu's Graphics toggle). Lets load-time healing tell an explicit Low
+   *  pick apart from a value the load-time default merely produced — on
+   *  iOS the old default answered 'low' for every fresh store, so an
+   *  unmarked stored 'low' there is the default's word, not the player's. */
+  qualityPicked?: boolean;
   /** Venue (3D arena) for offline games: classic (default), one of the venues, or random (rolled per game) */
   venue: VenueChoice;
   /** Camera view: sitting = lower/closer (DEFAULT for new players, V-gesture slams); standing = higher/farther. A saved choice always wins. */
@@ -54,6 +63,18 @@ export interface Settings {
   /** Adjustable table view (owner, 2026-10-29): the player's own tilt/zoom offset on top of the
    *  stock framing, set by dragging/pinching on the table and saved with the settings. */
   viewAdjust: ViewAdjust;
+  /** Motion view (owner, 2026-11-07): opt-in, OFF by default. When on, leaning the phone
+   *  drives the same viewAdjust tilt (motionView.ts). (A push/pull zoom gesture shipped
+   *  with it and was removed the same day on the owner's verdict — tilt only.)
+   *  Turning it on asks the platform's motion permission from the toggle tap itself. */
+  motionView: boolean;
+  /** Eye zoom (owner, 2026-11-07): opt-in, OFF by default, SEPARATE from Motion view. When on,
+   *  the front camera reads — on-device only — whether the player is looking at their cards or
+   *  the table and eases the viewAdjust zoom (eyeZoom.ts). */
+  eyeZoom: boolean;
+  /** The player's personal eye-zoom calibration (two-look medians from eyeZoom calibration),
+   *  local to this device's settings; null = never calibrated, gaze control stays inactive. */
+  eyeZoomCal: EyeGazeCalibration | null;
   /** Turn up (slam mode): OFF by default for everyone. When ON, Standing plays slam at max and Sitting's V-gesture slams (sent online). When OFF, NO play slams by any route (drag, flick, V-gesture, tap/toss). */
   turnUp: boolean;
   /** Card deck art pack (Desi decks; all unlocked for now, Story/purchase lock later). */
@@ -68,22 +89,32 @@ export interface Settings {
  * The load-time graphics-quality heuristic. Exported for the ink layer
  * (src/ink/mode.ts `inkLowQuality`), which compares a stored quality
  * against a fresh heuristic read to tell an explicit user pick apart from
- * this default. NOTE: its signals are weak on WebKit — Safari has no
- * `deviceMemory`, and iOS clamps `hardwareConcurrency` to 2 — so it answers
- * 'low' on every iPhone; consumers that can adapt at runtime (the ink
- * governor) should not take its word for low-end hardware.
+ * this default.
+ *
+ * POSITIVE EVIDENCE ONLY (the ink doctrine, applied to the scene at last):
+ * the old rule `(deviceMemory <= 3) || (cores <= 3)` trusted signals that
+ * lie on WebKit — Safari/WKWebView have no `deviceMemory`, and iOS clamps
+ * `hardwareConcurrency` to 2 regardless of the chip — so it answered
+ * 'low' on EVERY iPhone, the answer was persisted into settings, and a
+ * fresh store (a new install, the app shell's empty WebView store, a
+ * cleared browser profile) started on Low while a long-lived profile
+ * kept its stored High. Core counts are therefore ignored entirely; a
+ * memory figure the browser ACTUALLY reports at <= 3 GB (Chrome/Android
+ * expose `deviceMemory` truthfully) is the only load-time evidence of a
+ * weak device. Absent signals are "unknown", never "weak" — and a weak
+ * device that slips through is still protected by the runtime governor.
  */
 export function defaultQuality(): 'high' | 'low' {
   if (typeof navigator === 'undefined') return 'high';
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-  return (mem !== undefined && mem <= 3) || (navigator.hardwareConcurrency ?? 8) <= 3 ? 'low' : 'high';
+  return mem !== undefined && mem <= 3 ? 'low' : 'high';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'joker', targetScore: 'default', losingFloor: 'on', deuceOfSpadesHigh: false, jokerOrder: 'house',
   cutthroatDeck: 'joker54', spadesMustBeBroken: true, firstLead: 'leftOfDealer', minTeamBid: 0, nilAllowed: true,
   blindNil: 'behind100', blindNilExchange: 0, nilTricksCountForPartner: false, bags: '10/100', tenForTwoHundred: false,
-  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', viewAdjust: { ...DEFAULT_VIEW_ADJUST }, turnUp: false, deck: 'classic', setAnim: 'auto',
+  firstHandBidsItself: true, botLevel: 'mixed', shotOut: true, firstHandMin: 'default', cutMinBid: 1, cutBlindNil: false, bagsOn: true, talkIntensity: 'cookout', speed: 'normal', quality: defaultQuality(), venue: 'classic', view: 'sitting', viewAdjust: { ...DEFAULT_VIEW_ADJUST }, motionView: false, eyeZoom: false, eyeZoomCal: null, turnUp: false, deck: 'classic', setAnim: 'auto',
 };
 
 export const MODES: { key: ModeKey; title: string; blurb: string; players: string }[] = [
@@ -124,6 +155,7 @@ export function settingsToRules(s: Settings): TableRules {
     losingFloor: s.losingFloor === 'on' ? -200 : null,
     shotOut: s.shotOut !== false,
     bagsOn: s.bagsOn !== false,
+    ...(s.renege === true ? { renege: true } : {}),
   };
   if ((s.mode === 'joker' || s.mode === 'aceDown') && s.firstHandMin !== undefined && s.firstHandMin !== 'default') o.firstHandMin = s.firstHandMin === 'off' ? null : s.firstHandMin;
   if (s.targetScore !== 'default') o.targetScore = s.targetScore;
@@ -203,6 +235,7 @@ export function houseRulesDiff(s: Settings): string[] {
   if ((a.bagsOn !== false) !== (b.bagsOn !== false)) diff.push(`Bags ${a.bagsOn !== false ? 'on' : 'off'}`);
   else if (a.bagsOn !== false && (a.bagsPerPenalty !== b.bagsPerPenalty || a.bagPenalty !== b.bagPenalty)) diff.push(`Bags ${a.bagsPerPenalty}/${a.bagPenalty}`);
   if (a.tenForTwoHundred !== b.tenForTwoHundred) diff.push(`10 for 200 ${a.tenForTwoHundred ? 'on' : 'off'}`);
+  if ((a.renege === true) !== (b.renege === true)) diff.push(`Renege calls ${a.renege === true ? 'on' : 'off'}`);
   return diff;
 }
 
@@ -218,10 +251,20 @@ export function loadSettings(): Settings {
 export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { botLevel?: string }): Settings {
   const s = { ...DEFAULT_SETTINGS, ...j } as Settings;
   s.botLevel = j.botLevel === 'normal' || j.botLevel === undefined ? 'mixed' : skillSettingOf(j.botLevel);
+  if (s.quality !== 'high' && s.quality !== 'low') s.quality = defaultQuality();
+  // Heal a defaulted 'low' the player never picked: under the old
+  // heuristic every fresh iOS store persisted 'low' (see defaultQuality).
+  // An explicit pick (qualityPicked) always stands, and a device that
+  // still reports <= 3 GB memory keeps its 'low' on the heuristic's own
+  // word. Everything else was the old default talking, not the player.
+  if (s.quality === 'low' && s.qualityPicked !== true && defaultQuality() === 'high') s.quality = 'high';
   if (!['family', 'cookout', 'nomercy'].includes(s.talkIntensity)) s.talkIntensity = 'cookout';
   if (!isVenueChoice(s.venue)) s.venue = 'classic';
   if (s.view !== 'sitting' && s.view !== 'standing') s.view = 'sitting'; // no saved preference (or junk) -> Sitting
   s.viewAdjust = normalizeViewAdjust(s.viewAdjust); // clamped tilt/zoom; junk -> the stock framing
+  if (typeof s.motionView !== 'boolean') s.motionView = false; // motion view is opt-in; old saves start OFF
+  if (typeof s.eyeZoom !== 'boolean') s.eyeZoom = false; // eye zoom is opt-in; old saves start OFF
+  s.eyeZoomCal = normalizeEyeZoomCalibration(s.eyeZoomCal); // personal gaze threshold; junk -> uncalibrated
   if (typeof s.turnUp !== 'boolean') s.turnUp = false; // slam mode is opt-in; old saves start OFF
   if (!DECK_IDS.includes(s.deck) || s.deck === 'base') s.deck = 'classic';
   if (!isValidSetAnimSetting(s.setAnim)) s.setAnim = 'auto';
@@ -243,6 +286,7 @@ export function rulesSummary(r: TableRules): string {
   const floor = hostMinimum(r);
   parts.push(minimumChip(floor, r.partnerships));
   parts.push(`Nil ${r.nil.allowed ? 'on' : 'off'}`, `Blind Nil ${r.blindNil.allowed ? 'on' : 'off'}`, `Bags ${r.bagsOn !== false ? 'on' : 'off'}`);
+  if (r.renege === true) parts.push('Renege calls on');
   return parts.join(' • ');
 }
 

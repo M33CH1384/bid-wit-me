@@ -56,3 +56,17 @@ export function nukeBlastCards<T extends { hand?: boolean }>(items: readonly T[]
 export function clientSeesNuke(plays: readonly { card: Card; run?: boolean }[], slam: boolean): boolean {
   return !slam && isNukeTrick(plays);
 }
+
+/**
+ * Which cards a blast may claim: only the ones already on the table when the
+ * flash went off. A card thrown AFTER the flash (the next trick's lead,
+ * arriving while a starved presented clock is still running the blast out)
+ * is not part of the blown set — sweeping it displaces it past the rail and
+ * the flung latch then keeps it off the cloth for its whole life, so the
+ * lead never appears (owner report 2026-11-06: "the nuke blows that card
+ * off the table"). The small grace covers a card whose first frame lands
+ * in the same tick as the flash itself.
+ */
+export function blastClaimsCard(bornAtMs: number, blastStartMs: number): boolean {
+  return bornAtMs <= blastStartMs + 16;
+}

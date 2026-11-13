@@ -10,6 +10,8 @@
  *   POST /api/auth/passkey/register/verify    { flow, response }
  *   POST /api/auth/passkey/login/options      → discoverable-credential sign-in
  *   POST /api/auth/passkey/login/verify       { flow, response }
+ *   POST /api/auth/handoff/mint               (signed in) → one-time code that signs the iPhone app in as you
+ *   POST /api/auth/handoff/redeem             { code } (app shell only) → the ordinary session, for the code's account
  *   GET  /api/auth/username/check?u=          → { ok, reason? }
  *   POST /api/auth/username                   { username }
  *   POST /api/auth/unlink                     { provider } | { passkey }
@@ -39,6 +41,11 @@ export interface AuthDeps { fetch: typeof fetch; now: () => number }
 export const SESSION_TTL_MS = 30 * 24 * 3600_000;
 const STATE_TTL_MS = 10 * 60_000;
 const CHALLENGE_TTL_MS = 5 * 60_000;
+const HANDOFF_TTL_MS = 10 * 60_000;
+const HANDOFF_MAX_LIVE = 5; // live handoff codes per account; a further mint retires the oldest
+/** The iOS app shell appends this to its WebView user agent (native: ios.appendUserAgent).
+ *  The same literal lives in apps/web/src/account/handoff.ts — handoff-wiring.test.ts pins both. */
+export const SHELL_UA_MARKER = 'BidWitMeApp';
 const RP_NAME = 'Bid Wit Me';
 
 interface UserRow { id: string; username: string | null; created_at: number; progress_imported_at: number | null }
@@ -142,6 +149,7 @@ async function deleteUser(db: D1Database, userId: string): Promise<void> {
     db.prepare('DELETE FROM progress WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM oauth_states WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM webauthn_challenges WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM handoff_codes WHERE user_id = ?').bind(userId),
     // Release 9 social data (game records of other players keep the game, just not this player's row)
     db.prepare('DELETE FROM social_settings WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM friends WHERE a = ? OR b = ?').bind(userId, userId),
@@ -207,6 +215,8 @@ export async function handleAuth(req: Request, env: AuthEnv, url: URL, parts: st
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (a === 'passkey') return passkey(req, env, url, b, c, body, now);
+
+  if (a === 'handoff') return handoff(req, env, url, b, body, now);
 
   const me = await currentUser(req, env, url, now);
   if (a === 'logout') {
@@ -402,6 +412,63 @@ async function passkey(req: Request, env: AuthEnv, url: URL, b: string | undefin
     await db.prepare('UPDATE passkeys SET counter = ?, last_used_at = ? WHERE id = ?').bind(v.authenticationInfo.newCounter, now, key.id).run();
     const u = await db.prepare('SELECT id, username, created_at, progress_imported_at FROM users WHERE id = ?').bind(key.user_id).first<UserRow>();
     return json({ ok: true, outcome: 'ok', user: await userView(env, u!) }, 200, { 'set-cookie': await startSession(env, url, key.user_id, now) });
+  }
+  return json({ error: 'not found' }, 404);
+}
+
+/* ------------------------------------------------------------------ app sign-in handoff */
+/**
+ * The iPhone app shell (Personal Team signing, owner decision 2026-11-10) can never run
+ * passkey ceremonies in its WKWebView — Associated Domains is a paid-team capability — so
+ * sign-in happens where the passkey works (the system browser, already signed in) and a
+ * one-time code carries it into the app. Mint requires that live browser session; redeem
+ * runs inside the WebView and lands the ordinary session via startSession() — the cookie
+ * itself can never cross over, because WKWebView and Safari keep separate cookie jars.
+ *
+ * Security shape mirrors oauth_states: the code is a 72-bit random token stored only as
+ * its SHA-256, lives 10 minutes, is single-use. Redeem answers ONE generic error for a
+ * wrong / unknown / expired / used code (nothing to probe against), deletes the row on
+ * any hit before deciding — and only the request whose delete actually removed the
+ * row (meta.changes === 1) may proceed, which closes the cross-isolate double-redeem
+ * race the delete-then-decide shape alone (mirrors takeChallenge) leaves open — and
+ * refuses to spend a code outside
+ * the app shell — the marker rides the shell's user agent (native ios.appendUserAgent),
+ * so a code can never be redeemed into the browser jar it was minted from. Codes are
+ * never logged. D1 cost stays tiny: mint is one indexed read + one batch, redeem is
+ * one primary-key lookup + one delete. Both POSTs ride the generic gates above
+ * (fromSite Origin check; the Worker-edge 'auth' rate-limit bucket in index.ts).
+ */
+async function handoff(req: Request, env: AuthEnv, url: URL, b: string | undefined, body: Record<string, unknown>, now: number): Promise<Response> {
+  const db = env.DB!;
+  if (b === 'mint') {
+    const me = await currentUser(req, env, url, now);
+    if (!me) return json({ error: 'Sign in first.' }, 401);
+    const code = randomToken(9);
+    const digest = await sha256b64(code);
+    const live = (await db.prepare('SELECT code_hash FROM handoff_codes WHERE user_id = ? AND created_at > ? ORDER BY created_at DESC').bind(me.id, now - HANDOFF_TTL_MS).all<{ code_hash: string }>()).results;
+    const stmts: D1PreparedStatement[] = [
+      db.prepare('DELETE FROM handoff_codes WHERE created_at <= ?').bind(now - HANDOFF_TTL_MS),
+      db.prepare('INSERT INTO handoff_codes (code_hash, user_id, created_at) VALUES (?, ?, ?)').bind(digest, me.id, now),
+    ];
+    for (const old of live.slice(HANDOFF_MAX_LIVE - 1)) stmts.push(db.prepare('DELETE FROM handoff_codes WHERE code_hash = ?').bind(old.code_hash));
+    await db.batch(stmts);
+    return json({ ok: true, code, expiresAt: now + HANDOFF_TTL_MS });
+  }
+  if (b === 'redeem') {
+    if (!(req.headers.get('user-agent') ?? '').includes(SHELL_UA_MARKER)) return json({ error: 'That code only works in the Bid Wit Me app. Open the app and finish signing in there.' }, 400);
+    const fail = json({ error: 'That code did not work. It may have expired or already been used — get a fresh one from the app.' }, 400);
+    const code = typeof body.code === 'string' ? body.code.trim().replace(/\s+/g, '') : '';
+    const digest = await sha256b64(code);
+    const row = await db.prepare('SELECT user_id, created_at FROM handoff_codes WHERE code_hash = ?').bind(digest).first<{ user_id: string; created_at: number }>();
+    // Single use, enforced by THIS request's delete: two isolates can both read the
+    // row, but D1 serializes the writes, so only the request whose DELETE actually
+    // removes it (meta.changes === 1) may proceed to a session — the loser's delete
+    // matches nothing and it gets the same generic failure as any bad code.
+    const consumed = row ? (await db.prepare('DELETE FROM handoff_codes WHERE code_hash = ?').bind(digest).run()).meta.changes === 1 : false;
+    if (!consumed || !row || now - row.created_at > HANDOFF_TTL_MS) return fail;
+    const u = await db.prepare('SELECT id, username, created_at, progress_imported_at FROM users WHERE id = ?').bind(row.user_id).first<UserRow>();
+    if (!u) return fail;
+    return json({ ok: true, outcome: 'ok', user: await userView(env, u) }, 200, { 'set-cookie': await startSession(env, url, u.id, now) });
   }
   return json({ error: 'not found' }, 404);
 }

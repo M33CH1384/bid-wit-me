@@ -66,15 +66,24 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
    * validation, so the full-roster refusal fires here exactly as it does
    * on a chip save (refusal shows as a note by the chips; nothing sends).
    * One shot per room visit; a side that already has a name is never
-   * stomped. Story rooms refuse team names — never applied there. */
+   * stomped. Story rooms refuse team names — never applied there.
+   * The name is the CREATOR's, for the creator's side (owner ruling
+   * 2026-11-08): the side is fixed by the seat they first hold here, not
+   * by whatever seat they happen to hold when the roster fetch resolves —
+   * and it is only ever sent while they sit on that side, because the
+   * server keys a name to the sender's side. If they have crossed to the
+   * other side in the meantime, the name waits for their return. */
   const pendingTeamRef = useRef<string | null>(null);
+  const pendingSeatRef = useRef<number | null>(null);
   const [pendingTeamNote, setPendingTeamNote] = useState('');
   useEffect(() => {
     if (!room.rules.partnerships || room.story || cs.seat === null) return;
     if (pendingTeamRef.current === null) pendingTeamRef.current = takePendingTeamName(room.code);
     const pending = pendingTeamRef.current;
     if (!pending) return;
-    const side = cs.seat % 2;
+    if (pendingSeatRef.current === null) pendingSeatRef.current = cs.seat;
+    const side = pendingSeatRef.current % 2;
+    if (cs.seat % 2 !== side) return; // crossed: the name waits for its own side
     if (room.teamNames?.[side]) { pendingTeamRef.current = ''; return; }
     if (myUid && rosters === null) return; // wait for my rosters: the full-roster check must be real
     const msg = rosterBlock(rosters?.find((x) => x.name === pending), sidePartnerRef);
@@ -112,6 +121,22 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
 
   const team = (seat: number) => (r.partnerships ? (seat % 2 === 0 ? 'A' : 'B') : null);
   const seatedHumans = room.seats.filter((s) => s.kind === 'human').length;
+  /* Crossed partners (owner incident 2026-11-06; warning added with the
+   * 2026-11-08 fix): exactly two humans seated on OPPOSITE sides of a
+   * partnership lobby almost always means a pair who came to team up got
+   * split by the seating. Say so in plain words before the game starts —
+   * a warning only, starting is never blocked. Three or more humans are a
+   * mixed table by design, and once a game is on the seats are locked:
+   * nothing to warn about in either case. */
+  const crossedText = (() => {
+    if (!r.partnerships || playing || n !== 4) return null;
+    const humans = room.seats.flatMap((s, seat) => (s.kind === 'human' ? [{ seat, name: s.name, playerId: s.playerId }] : []));
+    if (humans.length !== 2 || humans[0]!.seat % 2 === humans[1]!.seat % 2) return null;
+    const mine = humans.find((h) => h.playerId === cs.you);
+    const ordered = mine ? [mine, humans.find((h) => h !== mine)!] : humans;
+    const label = (h: { name: string; playerId: string }) => (h.playerId === cs.you ? 'You' : h.name);
+    return `${label(ordered[0]!)} and ${label(ordered[1]!)} are on opposite teams. Partners sit across from each other — tap the seat across from your partner to team up.`;
+  })();
   const wide = useWide();
   // The seat table's stage ends where the dock begins (online.css lobby v7):
   // publish the dock's real height as --dock-h so the stage tracks it in every
@@ -192,6 +217,7 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
             />
           ))}
         </div>
+        {crossedText && <p className="crossed-note" data-testid="lobby-crossed" role="note">{crossedText}</p>}
         {wide && teams}
         {wide && <MediaBar mesh={mesh} vs={vs} seated={cs.seat !== null} />}
         {room.series && room.series.games.length > 0 && <p className="hint" data-testid="lobby-series">Series {room.series.wins.join('–')} · {room.series.sides.map((s) => s.name).join(' vs ')}</p>}
@@ -316,6 +342,9 @@ export default function Lobby({ conn, cs, mesh, settings, onSettings, onBackToGa
           )}
           <label className="row"><span className="row-label">Bags and penalties<small>off: books over your bid score nothing</small></span><span className="row-control">
             <button type="button" data-testid="lobby-bags" className={`toggle ${settings.bagsOn !== false ? 'on' : ''}`} role="switch" aria-checked={settings.bagsOn !== false} aria-label="Bags and penalties" onClick={() => set('bagsOn', settings.bagsOn === false)}><span /></button>
+          </span></label>
+          <label className="row"><span className="row-label">Renege calls<small>play any card; get caught and it costs 3 books</small></span><span className="row-control">
+            <button type="button" data-testid="lobby-renege" className={`toggle ${settings.renege === true ? 'on' : ''}`} role="switch" aria-checked={settings.renege === true} aria-label="Renege calls" onClick={() => set('renege', settings.renege !== true)}><span /></button>
           </span></label>
           <p className="rules-summary" data-testid="lobby-rules-summary">{rulesSummary(settingsToRules(settings))}</p>
           <label className="row"><span className="row-label">First hand: books bid themselves<small>No bidding in hand 1 · 10 points per book</small></span><span className="row-control">
