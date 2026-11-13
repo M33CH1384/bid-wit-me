@@ -20,7 +20,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { DataUtils, FloatType, HalfFloatType, type Texture } from 'three';
-import { assessBake, bakeLimit, HALL_ENV_MAX_MEAN, HALL_ENV_MIN_LIMIT, sourceMeanLuminance } from '../src/three/hallEnv';
+import hallSrc from '../src/three/hallEnv.tsx?raw';
+import { FloatType, HalfFloatType, DataUtils, type Texture } from 'three';
+import { assessBake, bakeLimit, clampSource, HALL_ENV_MAX_MEAN, HALL_ENV_MIN_LIMIT, PROBE_VIEWS, RETRY_SOURCE_MAX, sourceBrightestFace, sourceMeanLuminance, sourceScale } from '../src/three/hallEnv';
 
 function fakeTex(data: ArrayLike<number>, type: typeof HalfFloatType | typeof FloatType): Texture {
   return { image: { data, width: 4, height: 1 }, type } as unknown as Texture;
@@ -92,5 +94,84 @@ describe('sourceMeanLuminance', () => {
   it('returns NaN when there is nothing to measure', () => {
     expect(Number.isNaN(sourceMeanLuminance({ image: undefined, type: FloatType } as unknown as Texture))).toBe(true);
     expect(Number.isNaN(sourceMeanLuminance(fakeTex(new Float32Array(0), FloatType)))).toBe(true);
+  });
+});
+
+// Owner, 2026-11-12 (Mansion on iPhone): the table still came up washed out after the limit was
+// tightened. The probe looked at its sphere from one side only, so a bake blown overhead — the
+// light that falls on the felt and the cards — read as normal and passed.
+describe('the probe judges the bake from every side', () => {
+  const src: string = hallSrc;
+  it('looks from above first, and from all six sides', () => {
+    expect(PROBE_VIEWS[0]).toEqual([0, 1, 0]);
+    expect(PROBE_VIEWS).toHaveLength(6);
+    const key = (v: readonly number[]) => v.join(',');
+    expect(new Set(PROBE_VIEWS.map(key)).size).toBe(6);
+  });
+  it('returns the brightest face, not an average', () => {
+    expect(src).toContain('for (const [x, y, z] of PROBE_VIEWS)');
+    expect(src).toContain('if (worst === null || mean > worst) worst = mean;');
+  });
+});
+
+describe('the retry bakes a tamed source', () => {
+  const tex = (type: number, data: Float32Array | Uint16Array) => ({ type, image: { data }, needsUpdate: false }) as unknown as Texture;
+  it('caps hot texels, NaN and Infinity, and leaves alpha and normal values alone', () => {
+    const data = new Float32Array([0.2, 74, 0.5, 1, NaN, Infinity, 3.9, 1]);
+    const t = tex(FloatType, data);
+    expect(clampSource(t, RETRY_SOURCE_MAX)).toBe(3);
+    expect([...data]).toEqual([expect.closeTo(0.2), 4, 0.5, 1, 4, 4, expect.closeTo(3.9), 1]);
+    expect((t as unknown as { needsUpdate: boolean }).needsUpdate).toBe(true);
+  });
+  it('works on half-float sources', () => {
+    const data = new Uint16Array([DataUtils.toHalfFloat(2621), DataUtils.toHalfFloat(0.25), DataUtils.toHalfFloat(1), DataUtils.toHalfFloat(1)]);
+    expect(clampSource(tex(HalfFloatType, data), RETRY_SOURCE_MAX)).toBe(1);
+    expect(DataUtils.fromHalfFloat(data[0]!)).toBe(4);
+    expect(DataUtils.fromHalfFloat(data[1]!)).toBeCloseTo(0.25);
+  });
+  it('a sane source is untouched', () => {
+    const t = tex(FloatType, new Float32Array([0.1, 0.2, 0.3, 1]));
+    expect(clampSource(t, RETRY_SOURCE_MAX)).toBe(0);
+    expect((t as unknown as { needsUpdate: boolean }).needsUpdate).toBe(false);
+  });
+  it('the clamp runs before the retry bake', () => {
+    const src: string = hallSrc;
+    expect(src.indexOf('clampSource(tex, RETRY_SOURCE_MAX)')).toBeGreaterThan(-1);
+    expect(src.indexOf('clampSource(tex, RETRY_SOURCE_MAX)')).toBeLessThan(src.indexOf('pub.fromEquirectangular(tex)'));
+  });
+});
+
+// A correct Mansion bake reads ~0.6 from above against a room mean of ~0.2 (measured on desktop,
+// 2026-11-12): the brightest face must be judged against the source's brightest face.
+describe('the bake is held to the source’s brightest face', () => {
+  const W = 64, H = 32;
+  const equirect = (lum: (row: number, col: number) => number) => {
+    const data = new Float32Array(W * H * 4);
+    for (let r = 0; r < H; r++) for (let c2 = 0; c2 < W; c2++) { const i = (r * W + c2) * 4; const v = lum(r, c2); data[i] = v; data[i + 1] = v; data[i + 2] = v; data[i + 3] = 1; }
+    return { type: FloatType, image: { data, width: W, height: H } } as unknown as Texture;
+  };
+  it('an even room: every face reads the mean', () => {
+    const t = equirect(() => 0.3);
+    expect(sourceBrightestFace(t)).toBeCloseTo(0.3, 2);
+    expect(sourceScale(t)).toBeCloseTo(0.3, 2);
+  });
+  it('a room lit from one pole: the brightest face is well above the mean, whichever pole', () => {
+    const top = equirect((r) => (r < H / 4 ? 2 : 0.1));
+    const bottom = equirect((r) => (r >= (H * 3) / 4 ? 2 : 0.1));
+    const face = sourceBrightestFace(top);
+    expect(face).toBeGreaterThan(sourceMeanLuminance(top) * 1.8);
+    expect(sourceBrightestFace(bottom)).toBeCloseTo(face, 2);
+    expect(sourceScale(top)).toBeCloseTo(face, 5);
+    // a correct bake of that room (probe ≈ its brightest face) passes; thirty times it does not
+    expect(assessBake(sourceScale(top), face)).toBe('ok');
+    expect(assessBake(sourceScale(top), face * 30)).toBe('blown');
+  });
+  it('an unreadable source falls back to the mean, then to unmeasurable', () => {
+    const t = { type: FloatType, image: { data: new Float32Array([0.5, 0.5, 0.5, 1]) } } as unknown as Texture;
+    expect(sourceBrightestFace(t)).toBeNaN();
+    expect(sourceScale(t)).toBeCloseTo(0.5);
+  });
+  it('filterHall measures the source with it', () => {
+    expect(hallSrc as string).toContain('const sourceMean = sourceScale(tex);');
   });
 });

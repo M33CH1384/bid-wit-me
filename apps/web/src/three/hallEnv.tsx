@@ -93,7 +93,8 @@ async function forceLinearProgram(gl: WebGLRenderer, material: Material): Promis
 }
 
 /**
- * Mean linear luminance a baked environment would actually deliver, measured — not assumed.
+ * The brightest face of a baked environment, measured — not assumed: the mean linear luminance
+ * it delivers to a surface, taken from six sides, largest returned.
  * A roughness-1 sphere of known albedo (0.05) is rendered under the candidate map alone (no
  * lights) into a tiny linear target and read back: outgoing ≈ albedo × mean radiance, so the
  * readback ÷ albedo estimates the map's mean luminance on the same scale as the source HDR's.
@@ -102,6 +103,9 @@ async function forceLinearProgram(gl: WebGLRenderer, material: Material): Promis
  */
 const PROBE_ALBEDO = 0.05;
 const PROBE_SIZE = 16;
+/** Where the probe camera stands, as unit directions from the sphere: above first (the face that
+ *  lights the table), then below and the four sides. */
+export const PROBE_VIEWS: readonly (readonly [number, number, number])[] = [[0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0]];
 
 export async function probeEnvMeanLuminance(gl: WebGLRenderer, env: Texture): Promise<number | null> {
   const rt = new WebGLRenderTarget(PROBE_SIZE, PROBE_SIZE);
@@ -112,29 +116,41 @@ export async function probeEnvMeanLuminance(gl: WebGLRenderer, env: Texture): Pr
   holder.environment = env;
   holder.add(new Mesh(geo, mat));
   const cam = new PerspectiveCamera(35, 1, 0.1, 10);
-  cam.position.set(0, 0, 2.4);
-  cam.lookAt(0, 0, 0);
   const prev = gl.getRenderTarget();
   try {
     await nextFrame();
     gl.setRenderTarget(rt);
-    gl.render(holder, cam);
     const px = new Uint8Array(PROBE_SIZE * PROBE_SIZE * 4);
-    gl.readRenderTargetPixels(rt, 0, 0, PROBE_SIZE, PROBE_SIZE, px);
-    // The sphere overfills the frame at this distance, so the centre block is all surface.
-    let sum = 0;
-    let n = 0;
-    const lo = PROBE_SIZE / 4;
-    const hi = (PROBE_SIZE * 3) / 4;
-    for (let y = lo; y < hi; y++) {
-      for (let x = lo; x < hi; x++) {
-        const i = (y * PROBE_SIZE + x) * 4;
-        sum += (0.2126 * px[i]! + 0.7152 * px[i + 1]! + 0.0722 * px[i + 2]!) / 255;
-        n++;
+    let worst: number | null = null;
+    // The centre of the frame only shows the part of the sphere that faces the camera, so one
+    // view only measures the light arriving from one side. The whiteout this guards against
+    // lands on UP-FACING surfaces (felt, cards on the table) — a single side-on view read a
+    // normal value and passed a bake that was blown overhead (owner, 2026-11-12, Mansion on
+    // iPhone, after the limit itself had been tightened). Look at the sphere from every side
+    // and judge the bake by its brightest face.
+    for (const [x, y, z] of PROBE_VIEWS) {
+      cam.position.set(x * 2.4, y * 2.4, z * 2.4);
+      cam.up.set(0, y === 0 ? 1 : 0, y === 0 ? 0 : -1);
+      cam.lookAt(0, 0, 0);
+      gl.render(holder, cam);
+      gl.readRenderTargetPixels(rt, 0, 0, PROBE_SIZE, PROBE_SIZE, px);
+      // The sphere overfills the frame at this distance, so the centre block is all surface.
+      let sum = 0;
+      let n = 0;
+      const lo = PROBE_SIZE / 4;
+      const hi = (PROBE_SIZE * 3) / 4;
+      for (let py = lo; py < hi; py++) {
+        for (let pxl = lo; pxl < hi; pxl++) {
+          const i = (py * PROBE_SIZE + pxl) * 4;
+          sum += (0.2126 * px[i]! + 0.7152 * px[i + 1]! + 0.0722 * px[i + 2]!) / 255;
+          n++;
+        }
       }
+      if (!n) continue;
+      const mean = sum / n / PROBE_ALBEDO;
+      if (worst === null || mean > worst) worst = mean;
     }
-    if (!n) return null;
-    return sum / n / PROBE_ALBEDO;
+    return worst;
   } catch {
     return null;
   } finally {
@@ -167,6 +183,66 @@ export function sourceMeanLuminance(tex: Texture): number {
 }
 
 /**
+ * What the probe SHOULD read on the brightest face of a correct bake: the source's own
+ * cosine-weighted mean radiance toward each of the six axes, largest returned. A room is not
+ * evenly lit — under the Mansion's chandelier the up face reads about three times the room's
+ * mean — so the brightest face of the bake has to be judged against the brightest face of the
+ * source, not against the average. Equirect rows run pole to pole and columns once around, so
+ * whichever way up or round the file is stored, the six axes are the same six.
+ */
+export function sourceBrightestFace(tex: Texture): number {
+  const image = tex.image as { data?: ArrayLike<number>; width?: number; height?: number } | undefined;
+  const data = image?.data;
+  const W = image?.width ?? 0;
+  const H = image?.height ?? 0;
+  if (!data || W < 2 || H < 2 || data.length < W * H * 4) return NaN;
+  const half = tex.type === HalfFloatType;
+  const sx = Math.max(1, Math.floor(W / 96));
+  const sy = Math.max(1, Math.floor(H / 48));
+  const face = [0, 0, 0, 0, 0, 0];
+  const weight = [0, 0, 0, 0, 0, 0];
+  for (let row = 0; row < H; row += sy) {
+    const theta = ((row + 0.5) / H) * Math.PI; // 0 at one pole, π at the other
+    const sinT = Math.sin(theta);
+    const y = Math.cos(theta);
+    for (let col = 0; col < W; col += sx) {
+      const i = (row * W + col) * 4;
+      const r = half ? DataUtils.fromHalfFloat(data[i]!) : data[i]!;
+      const g = half ? DataUtils.fromHalfFloat(data[i + 1]!) : data[i + 1]!;
+      const b = half ? DataUtils.fromHalfFloat(data[i + 2]!) : data[i + 2]!;
+      if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) continue;
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const phi = ((col + 0.5) / W) * Math.PI * 2;
+      const x = sinT * Math.cos(phi);
+      const z = sinT * Math.sin(phi);
+      const dots = [y, -y, x, -x, z, -z];
+      for (let k = 0; k < 6; k++) {
+        const d = dots[k]!;
+        if (d <= 0) continue;
+        face[k]! += lum * d * sinT;
+        weight[k]! += d * sinT;
+      }
+    }
+  }
+  let best = NaN;
+  for (let k = 0; k < 6; k++) {
+    if (!(weight[k]! > 0)) continue;
+    const v = face[k]! / weight[k]!;
+    if (!(best >= v)) best = v;
+  }
+  return best;
+}
+
+/** The scale a bake is held to: the source's mean, or its brightest face when that is brighter. */
+export function sourceScale(tex: Texture): number {
+  const mean = sourceMeanLuminance(tex);
+  const face = sourceBrightestFace(tex);
+  if (!Number.isFinite(mean)) return face;
+  if (!Number.isFinite(face)) return mean;
+  return Math.max(mean, face);
+}
+
+/**
  * How bright a bake may come out before it is called blown.
  *
  * PMREM conserves energy: a correct bake delivers about the light its source contains. So the
@@ -192,12 +268,40 @@ export function assessBake(sourceMean: number, probeLum: number | null): 'ok' | 
   return probeLum > bakeLimit(sourceMean) ? 'blown' : 'ok';
 }
 
+/** QA: what the last bake measured, on window.__bwmHallEnv (source mean, limit, probe readings, which path shipped). */
+function note(v: Record<string, unknown>): void {
+  if (typeof window === 'undefined') return;
+  const w = window as unknown as { __bwmHallEnv?: Record<string, unknown> };
+  w.__bwmHallEnv = { ...(w.__bwmHallEnv ?? {}), ...v };
+}
+
+/** Ceiling for source texels on the retry bake (linear). */
+export const RETRY_SOURCE_MAX = 4;
+
+/** Cap every colour channel of a decoded HDR source in place. Returns how many values it changed. */
+export function clampSource(tex: Texture, max: number): number {
+  const image = tex.image as { data?: { length: number; [i: number]: number } } | undefined;
+  const data = image?.data;
+  if (!data || data.length < 4) return 0;
+  const half = tex.type === HalfFloatType;
+  const cap = half ? DataUtils.toHalfFloat(max) : max;
+  let changed = 0;
+  for (let i = 0; i < data.length; i++) {
+    if (i % 4 === 3) continue; // alpha
+    const v = half ? DataUtils.fromHalfFloat(data[i]!) : data[i]!;
+    if (!(v <= max)) { data[i] = cap; changed++; } // also catches NaN and Infinity
+  }
+  if (changed) tex.needsUpdate = true;
+  return changed;
+}
+
 async function filterHall(gl: WebGLRenderer, tex: Texture, alive: () => boolean): Promise<Texture | null> {
   const gen = new PMREMGenerator(gl) as Steps;
   const prevTarget = gl.getRenderTarget();
   try {
     if (!alive() || !tex.image) return null;
-    const sourceMean = sourceMeanLuminance(tex);
+    // Named for the mean it used to be: now the source's brightest face (see sourceScale).
+    const sourceMean = sourceScale(tex);
     const image = tex.image as { width?: number };
     gen._setSize((image.width ?? 512) / 4);
     const target = gen._allocateTargets();
@@ -232,16 +336,23 @@ async function filterHall(gl: WebGLRenderer, tex: Texture, alive: () => boolean)
     // actually had bound when the bake started.
     if (gl.getRenderTarget() !== prevTarget) gl.setRenderTarget(prevTarget);
     const probe = await probeEnvMeanLuminance(gl, target.texture);
+    note({ source: sourceMean, limit: bakeLimit(sourceMean), probe, path: 'stepped' });
     if (assessBake(sourceMean, probe) === 'ok') return target.texture;
     // Blown bake: never ship it. Retry once through the public path three supports, where the
     // generator manages its own state end to end, and validate that too.
     try { target.dispose(); } catch { /* already gone */ }
     if (!alive()) return null;
+    // Tame the source first. Whatever goes wrong on the device, it goes wrong around the very
+    // bright texels (a chandelier, a streetlight, the sun: tens to thousands of times the room's
+    // mean). Capped, the retry has nothing extreme left to blow up, and the room still lights
+    // the table; only the hottest glints in reflections are lost.
+    clampSource(tex, RETRY_SOURCE_MAX);
     const pub = new PMREMGenerator(gl);
     try {
       pub.compileEquirectangularShader();
       const rt2 = pub.fromEquirectangular(tex);
       const probe2 = await probeEnvMeanLuminance(gl, rt2.texture);
+      note({ probe2, path: assessBake(sourceMean, probe2) === 'ok' ? 'retry' : 'rejected' });
       if (assessBake(sourceMean, probe2) === 'ok') return rt2.texture;
       try { rt2.dispose(); } catch { /* already gone */ }
     } catch { /* public path failed too — fall through to no environment */ }
