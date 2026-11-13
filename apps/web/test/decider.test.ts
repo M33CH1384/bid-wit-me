@@ -79,3 +79,19 @@ describe('match point wiring', () => {
     expect(css).toMatch(/\.mp-layer \{[^}]*pointer-events: none/);
   });
 });
+
+// Owner, 2026-11-13: "It should follow whatever theme is selected".
+describe('match point follows the theme', () => {
+  const styles = readFileSync(new URL('../src/decider.css', import.meta.url), 'utf8');
+  it('uses theme tokens, not fixed colours, for the strap', () => {
+    const strap = styles.slice(styles.indexOf('.mp-strap {'), styles.indexOf('@keyframes mp-in'));
+    expect(strap).toContain('var(--panel-hi)');
+    expect(strap).toContain('var(--gold)');
+    expect(strap).not.toMatch(/#e3222f|227, 34, 47/);
+  });
+  it('has a Neon form: rounded, violet and cyan', () => {
+    expect(styles).toMatch(/html\[data-theme="neon"\] \.mp-strap \{[^}]*clip-path: none;[^}]*border-radius: 14px/);
+    expect(styles).toContain('html[data-theme="neon"] .mp-needs em { color: rgb(var(--cyan-rgb)); }');
+    expect(styles).toContain('html[data-theme="neon"] .bug-matchpoint');
+  });
+});

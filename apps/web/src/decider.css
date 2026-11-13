@@ -1,32 +1,35 @@
 /* Match point (decider.ts): the mood between hands and through the hand that can end the match. */
 
-/* ---- recap strap ---- */
-.mp-strap { display: grid; justify-items: center; gap: 5px; margin: 2px 0 4px; padding: 10px 16px 12px; background: linear-gradient(180deg, rgba(20, 8, 12, .96), rgba(8, 5, 12, .96)); border-top: 3px solid #e3222f; border-bottom: 3px solid #e3222f; color: #fff; text-align: center; box-shadow: 0 10px 28px rgba(0, 0, 0, .5), 0 0 26px rgba(227, 34, 47, .22); animation: mp-in .6s cubic-bezier(.2, .9, .25, 1) both; }
-.mp-strap.matchPoint { border-color: #c9a227; box-shadow: 0 10px 28px rgba(0, 0, 0, .5); }
-.mp-kicker { display: inline-flex; align-items: center; gap: 7px; padding: 2px 12px; background: #e3222f; color: #fff; font: 800 12px/1.3 var(--display, 'Barlow Condensed', sans-serif); letter-spacing: .26em; text-transform: uppercase; }
-.mp-strap.matchPoint .mp-kicker { background: #c9a227; color: #17110a; }
-.mp-kicker i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: mp-live 1s steps(2, jump-none) infinite; }
-.mp-strap strong { font: 800 clamp(24px, 6.4vw, 38px)/1 var(--display, 'Barlow Condensed', sans-serif); letter-spacing: .05em; text-transform: uppercase; text-shadow: 0 2px 0 rgba(0, 0, 0, .6); }
-.mp-needs { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px 16px; font: 700 13px/1.2 var(--display, 'Barlow Condensed', sans-serif); letter-spacing: .08em; text-transform: uppercase; }
-.mp-needs > span { padding-left: 8px; border-left: 4px solid #fff; }
-.mp-needs em { font-style: normal; color: #ffd24a; }
+/* ---- recap strap ----
+   In the app's own colours (owner, 2026-11-12: the first red-on-black slab "completely clash[ed]
+   with the app itself"): the purple panel and slanted cut of the recap cards, gold for the call,
+   and the app's red only as the small live dot. */
+.mp-strap { display: grid; justify-items: center; gap: 6px; margin: 2px 0 4px; padding: 12px 18px 13px; background: linear-gradient(180deg, rgba(var(--purple-deep-rgb), .34), rgba(var(--purple-deep-rgb), .12)), var(--panel-hi); box-shadow: inset 0 0 0 1px rgba(var(--gold-rgb), .55), inset 0 3px 0 var(--gold), inset 0 -3px 0 var(--gold); clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); color: var(--ink); text-align: center; animation: mp-in .6s cubic-bezier(.2, .9, .25, 1) both; }
+.mp-strap.matchPoint { background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .35), inset 0 2px 0 rgba(var(--gold-rgb), .7), inset 0 -2px 0 rgba(var(--gold-rgb), .7); }
+.mp-kicker { display: inline-flex; align-items: center; gap: 7px; padding: 2px 14px; background: linear-gradient(90deg, var(--gold-hi), var(--gold)); color: var(--ink-deep); font: 800 12px/1.3 var(--display); letter-spacing: .26em; text-transform: uppercase; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
+.mp-strap.matchPoint .mp-kicker { background: rgba(var(--gold-rgb), .16); color: var(--gold); }
+.mp-kicker i { width: 7px; height: 7px; border-radius: 50%; background: var(--red); animation: mp-live 1s steps(2, jump-none) infinite; }
+.mp-strap strong { font: 800 clamp(24px, 6.4vw, 38px)/1 var(--display); letter-spacing: .05em; text-transform: uppercase; color: #fff; text-shadow: 0 0 18px rgba(var(--purple-rgb), .55); }
+.mp-needs { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px 16px; font: 700 13px/1.2 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--lav); }
+.mp-needs > span { padding-left: 8px; border-left: 4px solid var(--lav); }
+.mp-needs em { font-style: normal; color: var(--gold); }
 @keyframes mp-in { from { opacity: 0; transform: scale(1.12); } to { opacity: 1; transform: none; } }
 @keyframes mp-live { from { opacity: 1; } to { opacity: .25; } }
 
-/* The whole recap card feels it on a decider: a slow red breath at its edge. */
+/* The whole recap card feels it on a decider: a slow gold breath at its edge. */
 .tt:has(.mp-strap.decider) { animation: mp-card 2.6s ease-in-out infinite; }
-@keyframes mp-card { 0%, 100% { box-shadow: 0 0 0 1px rgba(227, 34, 47, .35), 0 0 26px rgba(227, 34, 47, .12); } 50% { box-shadow: 0 0 0 1px rgba(227, 34, 47, .7), 0 0 44px rgba(227, 34, 47, .32); } }
+@keyframes mp-card { 0%, 100% { box-shadow: 0 0 0 1px rgba(var(--gold-rgb), .3), 0 0 26px rgba(var(--purple-rgb), .18); } 50% { box-shadow: 0 0 0 1px rgba(var(--gold-rgb), .7), 0 0 44px rgba(var(--purple-rgb), .42); } }
 
 /* ---- at the table ---- */
-.bug-matchpoint { display: inline-flex; align-items: center; gap: 5px; margin-right: 8px; padding: 0 7px; background: #e3222f; color: #fff; font-weight: 800; letter-spacing: .14em; white-space: nowrap; }
-.bug-matchpoint.matchPoint { background: #c9a227; color: #17110a; }
-.bug-matchpoint i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: mp-live 1s steps(2, jump-none) infinite; }
+.bug-matchpoint { display: inline-flex; align-items: center; gap: 5px; margin-right: 8px; padding: 0 8px; background: linear-gradient(90deg, var(--gold-hi), var(--gold)); color: var(--ink-deep); font-weight: 800; letter-spacing: .14em; white-space: nowrap; }
+.bug-matchpoint.matchPoint { background: rgba(var(--gold-rgb), .16); color: var(--gold); }
+.bug-matchpoint i { width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: mp-live 1s steps(2, jump-none) infinite; }
 
 .mp-layer { position: absolute; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
-/* Decider only: the room leans in — a faint red breath at the edge of the screen all hand long. */
-.mp-edge { position: absolute; inset: 0; box-shadow: inset 0 0 110px 10px rgba(227, 34, 47, .2); animation: mp-edge 3.4s ease-in-out infinite; }
+/* Decider only: the room leans in — a faint purple-and-gold breath at the edge of the screen all hand long. */
+.mp-edge { position: absolute; inset: 0; box-shadow: inset 0 0 110px 10px rgba(var(--purple-rgb), .3), inset 0 0 0 2px rgba(var(--gold-rgb), .22); animation: mp-edge 3.4s ease-in-out infinite; }
 @keyframes mp-edge { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
-.mp-layer .mp-strap { position: absolute; left: 50%; top: 20%; min-width: min(80vw, 440px); margin: 0; transform: translateX(-50%); animation: mp-table 3.6s cubic-bezier(.2, .9, .25, 1) both; }
+.mp-layer .mp-strap { background: linear-gradient(180deg, rgba(var(--purple-deep-rgb), .5), rgba(var(--purple-deep-rgb), .2)), var(--panel); position: absolute; left: 50%; top: 20%; min-width: min(80vw, 440px); margin: 0; transform: translateX(-50%); animation: mp-table 3.6s cubic-bezier(.2, .9, .25, 1) both; }
 @keyframes mp-table {
   0% { opacity: 0; transform: translateX(-50%) scale(1.4); }
   8% { opacity: 1; transform: translateX(-50%) scale(1); }
@@ -41,3 +44,19 @@
   .mp-strap, .tt:has(.mp-strap.decider), .mp-edge, .mp-kicker i, .bug-matchpoint i { animation: none; }
   .mp-layer .mp-strap { animation: mp-table-still 3.6s linear both; }
 }
+
+/* ---- Neon theme (owner, 2026-11-13: "It should follow whatever theme is selected") ----
+   The colours above are all theme tokens, so they already flip. Neon also rounds what Classic
+   slants and lights its edges in violet and cyan instead of ruling them in gold. */
+html[data-theme="neon"] .mp-strap { clip-path: none; border-radius: 14px; background: linear-gradient(160deg, rgba(var(--purple-rgb), .22), rgba(var(--blue-rgb), .08)), var(--panel-hi); box-shadow: inset 0 0 0 1px var(--edge), 0 0 18px rgba(var(--purple-rgb), .4), inset 0 1px 0 rgba(255, 255, 255, .08); }
+html[data-theme="neon"] .mp-strap.matchPoint { background: var(--panel-2); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .4); }
+html[data-theme="neon"] .mp-kicker { clip-path: none; border-radius: 999px; background: linear-gradient(90deg, var(--purple), var(--purple-hot)); color: #fff; }
+html[data-theme="neon"] .mp-strap.matchPoint .mp-kicker { background: rgba(var(--blue-rgb), .16); color: rgb(var(--cyan-rgb)); }
+html[data-theme="neon"] .mp-strap strong { text-shadow: 0 0 18px rgba(var(--blue-rgb), .6); }
+html[data-theme="neon"] .mp-needs em { color: rgb(var(--cyan-rgb)); }
+html[data-theme="neon"] .tt:has(.mp-strap.decider) { animation-name: mp-card-neon; }
+@keyframes mp-card-neon { 0%, 100% { box-shadow: 0 0 0 1px rgba(var(--edge-rgb), .4), 0 0 26px rgba(var(--purple-rgb), .2); } 50% { box-shadow: 0 0 0 1px rgba(var(--cyan-rgb), .7), 0 0 46px rgba(var(--blue-rgb), .45); } }
+html[data-theme="neon"] .bug-matchpoint { border-radius: 999px; background: linear-gradient(90deg, var(--purple), var(--purple-hot)); color: #fff; }
+html[data-theme="neon"] .bug-matchpoint.matchPoint { background: rgba(var(--blue-rgb), .16); color: rgb(var(--cyan-rgb)); }
+html[data-theme="neon"] .mp-edge { box-shadow: inset 0 0 110px 10px rgba(var(--purple-rgb), .3), inset 0 0 0 2px rgba(var(--cyan-rgb), .25); }
+html[data-theme="neon"] .mp-layer .mp-strap { background: linear-gradient(160deg, rgba(var(--purple-rgb), .3), rgba(var(--blue-rgb), .12)), var(--panel); }
