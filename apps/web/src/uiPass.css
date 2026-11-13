@@ -408,3 +408,15 @@ aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
 .ctl-rail .av-btn.on small { color: #1d1204; }
 .ctl-rail .av-bar.offline .av-btn { opacity: 1; filter: none; }
 .ctl-rail .av-bar.offline .av-btn > * { opacity: .5; }
+
+/* ---- ON NOTICE dissolves once the side has made its books this hand (owner, 2026-11-13). The badge
+   lets go — a soft green flash of relief, then it blurs away and gives its space back to the plate.
+   A sticky second notice never gets this class. ---- */
+.chip.notice.made { animation: notice-dissolve 1.1s ease-out forwards; overflow: hidden; white-space: nowrap; pointer-events: none; }
+@keyframes notice-dissolve {
+  0% { opacity: 1; max-width: 9em; filter: none; transform: none; background: #ff3b3b; }
+  22% { opacity: 1; max-width: 9em; background: #1fae5b; box-shadow: 0 0 0 3px rgba(31, 174, 91, .35); }
+  70% { opacity: 0; max-width: 9em; filter: blur(5px); transform: scale(1.18); background: #1fae5b; }
+  100% { opacity: 0; max-width: 0; padding-left: 0; padding-right: 0; margin-left: 0; margin-right: 0; filter: blur(5px); }
+}
+@media (prefers-reduced-motion: reduce) { .chip.notice.made { animation: none; display: none; } }
