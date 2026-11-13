@@ -4,6 +4,7 @@ import { holdIfGuest } from './pendingClaim';
 import { HAPTIC, haptic } from './haptics';
 import { offlineTalk } from './offlineTalk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SHOWDOWN_BOT_MS, isShowdown } from './showdown';
 import { type Action, type GameHandLog, type GameState, type TableRules, HandLogBuilder, applyAction, botPaceDelayMs, canRunIt, isJoker, isNukeTrick, lastCardDropOpen, newGame, pendingTurn, renegeOn, secureSeed, sideOf, viewFor } from '@spades/rules';
 import { type BotLevel, type PartnerHint, chooseBotAction, chooseRenege, chooseRenegeCall, parseHint } from '@spades/bots';
 import { dealTimeline } from './three/dealTimeline';
@@ -228,7 +229,9 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     // as a bot play, so the drop lands after a short human-like beat, never
     // frame-instant. The card is forced: at fire time a fresh view's single legal
     // card IS the drop — no brain consult, nothing to choose.
-    if (!forced && st.phase === 'playing') {
+    // A last-card showdown plays in order, one held card at a time (showdown.ts).
+    const showdown = isShowdown(st);
+    if (!forced && !showdown && st.phase === 'playing') {
       const dropper = Array.from({ length: st.rules.playerCount }, (_, i) => i).find((i) => i !== HUMAN && i !== st.turn && lastCardDropOpen(st, i));
       if (dropper !== undefined) {
         const delay = botPaceDelayMs({
@@ -276,7 +279,8 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       baseMs: turn.kind === 'bid' ? 650 : turn.kind === 'exchange' ? 500 : BOT_PLAY_MS,
       jokerDown: turn.kind === 'play' && st.trick.plays.some((p) => isJoker(p.card)),
     }) * k
-      + (turn.kind === 'bid' ? offlineTalk.consultBidDelay(turn.seat, st) : 0);
+      + (turn.kind === 'bid' ? offlineTalk.consultBidDelay(turn.seat, st) : 0)
+      + (showdown && turn.kind === 'play' && !forced ? (SHOWDOWN_BOT_MS - BOT_PLAY_MS) * k : 0);
     let t2 = 0;
     const t = setTimeout(() => {
       const lv = levelRef.current;

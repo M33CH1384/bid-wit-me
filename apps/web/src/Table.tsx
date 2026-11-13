@@ -117,6 +117,8 @@ import { DealerPopup } from './DealerPopup';
 import { dealerAnnouncement, dealerFromServer, withCurrentDealerLine } from './dealerName';
 import { plateTally, rememberHandTally, type HandTally } from './plateStats';
 import { MARGIN_LABEL, marginTierForSeat, type MarginTier } from './thinMargin';
+import { showdownSides } from './showdown';
+import { ShowdownLayer } from './ShowdownLayer';
 import { BOOK_GATHER_MS, landedTook, shownTook, withPenaltyBooks } from './tookDisplay';
 import { bidChipText, dealerChipMatches, plateTookText, popPlateTook, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
@@ -1828,6 +1830,12 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     prevShown.current = tookShown;
   }, [shownKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const winnerSeat = pause && !ranHand ? shownTrick.winner : null;
+  // Last-card showdown (showdown.ts): every side still chasing its bid needs this final book.
+  const sdSides = showdownSides(st);
+  const sdTeams = sdSides.map((side) => ({ side, name: sideName(st.rules, side, names), color: sideColor(st.rules, side) }));
+  const sdLast = st.tricks[st.tricks.length - 1];
+  const sdWinSide = sdLast && typeof sdLast.winner === 'number' ? sideOf(sdLast.winner, st.rules) : null;
+  const sdWinner = sdWinSide === null ? null : { side: sdWinSide, name: sideName(st.rules, sdWinSide, names), color: sideColor(st.rules, sdWinSide) };
   // the Run it! button + its one-time spotlight tip
   const canRun = !spectating && !dealing && st.phase === 'playing' && !!view.canRunIt && !runFx;
   // Misdeal: offered only while the engine allows it (this seat has not bid yet — other seats
@@ -3512,6 +3520,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     // onReady never fired for the new game, and the table sat on
     // "Setting the table…" for good (owner report, 2026-11-03).
     gameSeed: online ? seed : String(st.seed ?? ''),
+    showdown: sdSides.length >= 2,
     loadSettled: !loading,
     onFeltTap: () => { if (feltClearsSelection(selected)) { playArmed.current = false; setSelected(null); } },
     renderSeat,
@@ -3719,6 +3728,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
       {showTrumpPopup && <TrumpPopup rules={r} onDone={dismissTrumpPopup} />}
+      <ShowdownLayer teams={sdTeams} cardsDown={st.trick.plays.length} winner={sdWinner} reduced={reduceFx} />
       {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={trickTakenLine(face(winnerSeat))} />}
 
       {/* toasts */}

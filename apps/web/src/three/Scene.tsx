@@ -27,6 +27,7 @@ import { useSettingsSheet } from '../settingsSheet';
 import { social } from '../social/store';
 import { paintFace } from '../cardArt';
 import { dragStarted, dropResult } from '../dragPlay';
+import { SHOWDOWN_FLIGHT } from '../showdown';
 import { DEFAULT_SLAM, type DragSample, clearDrop, dragSlamIntensity, noteDrop, releaseVector, releaseVelocity, slamFeel, slamIntensity, takeDrop } from '../slam';
 import { reducedMotion } from './handLift';
 import { fanRestSeconds, fanRestTarget, restCharacter, NEUTRAL_REST_CHARACTER, type FanRestPose, type RestCharacter } from './fanRest';
@@ -166,6 +167,8 @@ export interface SceneProps {
   landing?: 'fixed' | 'physics';
   /** The game's seed: with hand, trick and card it seeds every landing, so all clients agree. */
   gameSeed?: string;
+  /** Last-card showdown: played cards fly slower and higher (showdown.ts). */
+  showdown?: boolean;
   /** The owning Table's loader has settled for the CURRENT game (gate
    *  complete or given up). The scene persists across games inside a
    *  table session (perf fix A, 2026-11-03); this signal is what lets
@@ -1482,7 +1485,8 @@ function Cards(props: SceneProps & { dragCard?: Card | null; aspect: number; fon
     // the popup treatment, not the flight. Trump-led steals never had that
     // flight (wasOvercut false) and keep their toss, exactly as before.
     const overcut = props.landCue(pl.card).includes(',overcut') || !!dfx?.wasOvercut;
-    const flight = overcut ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : { duration: 0.5, arc: 0.35 * toss };
+    // Last-card showdown (showdown.ts): the final cards hang in the air before they land.
+    const flight = overcut ? { duration: 0.34, arc: 0.7 } : dragged ? { duration: feel.duration, arc: feel.arc } : props.showdown ? { ...SHOWDOWN_FLIGHT } : { duration: 0.5, arc: 0.35 * toss };
     // Toss family (owner, 2026-10-30): every played card draws a toss from the
     // seeded family — never the same family member twice in a row — while the
     // flick gesture overrides with its own flat skim toss built from the
