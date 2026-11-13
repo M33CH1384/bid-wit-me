@@ -112,13 +112,39 @@ function withSaturation<M extends MeshStandardMaterial>(m: M): M & { userData: {
   return m as M & { userData: { sat: { value: number } } };
 }
 
+/**
+ * Held-card face finish — satin, not gloss (owner, 2026-11-13: "we still have glare issues… if i
+ * tilt my hand enough the glare washes out the cards", standing and sitting alike).
+ *
+ * The held face kept the gloss stock (clearcoat 0.35, roughness 0.42, sheen 0.2, env 1) when the
+ * backs and the played faces went matte. A clear coat is a mirror: once the tilt — Motion view
+ * leans the camera by up to 15° — puts the fan in the reflection path of the room's bright ceiling
+ * or lamp, it lays white over the whole face and the pips drown. A fixed camera only met that
+ * angle now and then; a camera that leans with the phone finds it every hand.
+ *
+ * So the held face drops the clear coat and the sheen and goes rougher, with the room's reflection
+ * turned down. It still catches a soft highlight as it moves (it is a touch livelier than a card
+ * lying on the felt), but nothing sharp enough to wipe out the print at any angle.
+ */
+export const FACE_HELD_ROUGHNESS_HIGH = 0.72;
+export const FACE_HELD_CLEARCOAT = 0;
+export const FACE_HELD_SHEEN = 0;
+export const FACE_HELD_ENV_INTENSITY_HIGH = 0.5;
+export const FACE_HELD_ROUGHNESS_LOW = 0.72;
+export const FACE_HELD_ENV_INTENSITY_LOW = 0.55;
+
 function cardMaterial(map: Texture, quality: 'high' | 'low') {
-  return quality === 'high'
-    ? new MeshPhysicalMaterial({ map, roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.35, sheen: 0.2, sheenRoughness: 0.6 })
-    : new MeshStandardMaterial({ map, roughness: 0.5 });
+  if (quality === 'high') {
+    const m = new MeshPhysicalMaterial({ map, roughness: FACE_HELD_ROUGHNESS_HIGH, clearcoat: FACE_HELD_CLEARCOAT, clearcoatRoughness: 0.6, sheen: FACE_HELD_SHEEN, sheenRoughness: 0.6 });
+    m.envMapIntensity = FACE_HELD_ENV_INTENSITY_HIGH;
+    return m;
+  }
+  const m = new MeshStandardMaterial({ map, roughness: FACE_HELD_ROUGHNESS_LOW });
+  m.envMapIntensity = FACE_HELD_ENV_INTENSITY_LOW;
+  return m;
 }
 
-/** The lit card program (clearcoat + sheen on high). Warmed before it is ever drawn. */
+/** The lit held-card program (satin: no clear coat, no sheen). Warmed before it is ever drawn. */
 export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', saturate: boolean) {
   const m = cardMaterial(map, quality);
   return saturate ? withSaturation(m) : m;
@@ -131,7 +157,7 @@ export function createLitCardMaterial(map: Texture, quality: 'high' | 'low', sat
  * the round-1 matte backs read fine, but a played card's FACE bleaches where it
  * lies flat in the trick — the partner's A♥ read almost blank until he stood up.
  * The gloss face stock (clearcoat 0.35, roughness 0.42, env 1) suits a card
- * tilted in a hand; lying flat under the venue's overhead light at the sitting
+ * tilted in a hand (held cards went satin themselves on 2026-11-13, see FACE_HELD_*); lying flat under the venue's overhead light at the sitting
  * camera it sits in the mirror path, and the specular adds white on white until
  * the pips drown (ACES squashes what is left). A played card is print lying on a
  * table, not a held collectible: matte like the backs, tuned on the felt. Held
@@ -335,9 +361,8 @@ function Card3D({ face, back, target, from, origin, delay = 0, duration = 0.45, 
     look.current.target.setRGB(lookAt.color[0], lookAt.color[1], lookAt.color[2]);
     look.current.sat = lookAt.sat;
     if ('emissive' in frontMat && frontMat.emissive) frontMat.emissive.set('#000000');
-    // the clear coat / sheen add white on top of the colour (and ACES squashes the rest), so ease them off too when dimmed
-    // (a rest-finish face has no gloss to restore — its matte values are its home values)
-    if (frontMat instanceof MeshPhysicalMaterial && !(frontMat.userData as { restFace?: boolean }).restFace) { frontMat.clearcoat = dim ? 0.05 : 0.35; frontMat.sheen = dim ? 0 : 0.2; }
+    // (No gloss to ease off when dimmed any more: held faces are satin now — FACE_HELD_* — and a
+    // rest-finish face was always matte, so every face's finish is its home value in both states.)
     invalidate();
   }, [dim, frontMat, invalidate]);
 

@@ -15,6 +15,10 @@ import {
   FACE_REST_ENV_INTENSITY_LOW,
   FACE_REST_ROUGHNESS_HIGH,
   FACE_REST_ROUGHNESS_LOW,
+  FACE_HELD_CLEARCOAT,
+  FACE_HELD_ENV_INTENSITY_HIGH,
+  FACE_HELD_ROUGHNESS_HIGH,
+  createLitCardMaterial,
   createRestCardMaterial,
 } from '../src/three/Card3D';
 
@@ -98,17 +102,34 @@ describe('played faces take the matte rest finish (glare fix, round 2)', () => {
     expect(ud.restFace).toBe(true);
   });
 
-  it('Card3D picks the rest factory only for restFace cards; held cards keep the lit gloss path', () => {
+  it('Card3D picks the rest factory only for restFace cards; held cards take the lit (satin) path', () => {
     const src = readFileSync(new URL('../src/three/Card3D.tsx', import.meta.url), 'utf8');
     expect(src).toContain('restFace ? createRestCardMaterial(map, quality) : createLitCardMaterial(map, quality, true)');
-    // the gloss stock itself is untouched: held faces keep clearcoat + sheen
-    expect(src).toContain('clearcoat: 0.35');
-    expect(src).toContain('roughness: 0.42');
   });
 
-  it('the dim ease-off never restores gloss onto a rest-finish face', () => {
+  // 2026-11-13 (owner: "if i tilt my hand enough the glare washes out the cards", standing and
+  // sitting): the held face lost its clear coat and sheen. These two replace the pins that kept the
+  // gloss stock — a mirror coat on a fan the camera now leans around is what bleached the hand.
+  it('held faces are satin: no clear coat, no sheen, rough enough that no angle wipes the print', () => {
+    const m = createLitCardMaterial(new Texture(), 'high', true) as MeshPhysicalMaterial;
+    expect(m.clearcoat).toBe(FACE_HELD_CLEARCOAT);
+    expect(FACE_HELD_CLEARCOAT).toBe(0);
+    expect(m.sheen).toBe(0);
+    expect(m.roughness).toBe(FACE_HELD_ROUGHNESS_HIGH);
+    expect(FACE_HELD_ROUGHNESS_HIGH).toBeGreaterThanOrEqual(0.65);
+    expect(m.envMapIntensity).toBe(FACE_HELD_ENV_INTENSITY_HIGH);
+    expect(FACE_HELD_ENV_INTENSITY_HIGH).toBeLessThanOrEqual(0.6);
+    const low = createLitCardMaterial(new Texture(), 'low', true) as MeshStandardMaterial;
+    expect(low.roughness).toBeGreaterThanOrEqual(0.65);
+    expect(low.envMapIntensity).toBeLessThanOrEqual(0.6);
+  });
+
+  it('a held face stays a little livelier than a card lying on the felt, and nothing re-glosses it', () => {
+    expect(FACE_HELD_ROUGHNESS_HIGH).toBeLessThan(FACE_REST_ROUGHNESS_HIGH);
+    expect(FACE_HELD_ENV_INTENSITY_HIGH).toBeGreaterThan(FACE_REST_ENV_INTENSITY_HIGH);
     const src = readFileSync(new URL('../src/three/Card3D.tsx', import.meta.url), 'utf8');
-    expect(src).toContain('!(frontMat.userData as { restFace?: boolean }).restFace) { frontMat.clearcoat = dim ? 0.05 : 0.35;');
+    expect(src).not.toMatch(/frontMat\.clearcoat = /);
+    expect(src).not.toMatch(/clearcoat: 0\.35/);
   });
 
   it('Scene deals the rest finish to played (public) cards only', () => {
