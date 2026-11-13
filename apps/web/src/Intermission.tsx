@@ -4,6 +4,8 @@ import { resultChips, sideColor, signed } from './ScorePad';
 import { wheelsMade } from './landCue';
 import { HandsStrip, bostonSides } from './BoxScore';
 import { sideName } from './Modals';
+import { matchPoint, matchPointHeadline } from './decider';
+import './decider.css';
 import { handWinner, streakLabel, streakOf, useReduceEffects } from './fx';
 import { sound } from './audio';
 import GearIcon from './GearIcon';
@@ -226,6 +228,10 @@ export function Intermission({
   // waits for its own card to be in view (its sc-wait gate). The finale's
   // hard-way delay counts from here, so flash → finale order is preserved.
   const [presented, setPresented] = useState(false);
+  // Match point (decider.ts): one made hand can end the match from here. Never on a decided recap.
+  const mp = decided ? null : matchPoint(r, st.scores, st.eliminated);
+  const mpTier = mp?.tier ?? null;
+  useEffect(() => { if (presented && mpTier) sound.play('showdownOpen', { gain: mpTier === 'decider' ? 1 : 0.6 }); }, [presented, mpTier]);
   useEffect(() => {
     const t = window.setTimeout(() => setPresented(true), 350);
     return () => window.clearTimeout(t);
@@ -398,6 +404,15 @@ export function Intermission({
             <h3>HANDS</h3>
             <HandsStrip history={st.history} sides={sides.map((s) => s.side)} label={(s) => sideName(r, s, names)} color={(s) => sideColor(r, s)} testId="recap-strip" />
           </section>)}
+          {mp && !showcase && (
+            <div className={`mp-strap ${mp.tier}`} data-testid="match-point" data-tier={mp.tier}>
+              <span className="mp-kicker"><i />Match point</span>
+              <strong>{matchPointHeadline(mp, (s) => sideName(r, s, names))}</strong>
+              <span className="mp-needs">
+                {mp.sides.map((s) => <span key={s.side} style={{ borderColor: sideColor(r, s.side) }}>{sideName(r, s.side, names)} <em>needs {s.needs}</em></span>)}
+              </span>
+            </div>
+          )}
           {!showcase && notes.length > 0 && (
             <div className="tt-callouts">
               {notes.map((c, i) => <span key={i} className={`tt-callout ${c.kind}`}>{c.kind === 'streak' ? '🔥 ' : ''}{c.text}</span>)}
@@ -565,7 +580,7 @@ export function Intermission({
           </div>
           {ready && <span className="muted" data-testid="talk-ready-count">{ready.count}/{ready.of} ready</span>}
           <button type="button" className="primary big" data-testid="talk-ready" data-decided={decided ? 'yes' : 'no'} disabled={!!ready?.mine} onClick={onReady}>
-            {decided ? 'See final results' : online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : `Continue to hand ${rec.handNo + 1}`}
+            {decided ? 'See final results' : online ? (ready?.mine ? 'Waiting for the table…' : 'Ready') : mp?.tier === 'decider' ? 'Play the deciding hand' : `Continue to hand ${rec.handNo + 1}`}
           </button>
           {(trickReview || onLeave) && (<>
             <div className="exit-divider" aria-hidden="true" />
