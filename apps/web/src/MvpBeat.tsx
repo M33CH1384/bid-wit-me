@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import type { Mvp } from './mvp';
 
 /** How long the beat holds before the results take over (ms). */
-export const MVP_BEAT_MS = 3800;
+export const MVP_BEAT_MS = 7500;
 
 const played = new Set<string>();
 /** Tests. */
