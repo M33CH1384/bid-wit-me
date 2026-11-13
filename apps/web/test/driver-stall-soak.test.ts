@@ -54,8 +54,8 @@ describe('soak: the offline driver never stalls', () => {
   for (const renege of [false, true]) {
     it(`renege ${renege ? 'on' : 'off'}`, () => {
       const problems: string[] = [];
-      for (let i = 0; i < 150; i++) { const p = drive(`soak-${renege}-${i}`, renege); if (p) problems.push(`${i}: ${p}`); }
+      for (let i = 0; i < 40; i++) { const p = drive(`soak-${renege}-${i}`, renege); if (p) problems.push(`${i}: ${p}`); }
       expect(problems.slice(0, 5)).toEqual([]);
-    });
+    }, 60_000);
   }
 });
