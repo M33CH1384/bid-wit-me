@@ -6,6 +6,8 @@ import StoryFace from './story/StoryFace';
 import { CoinIcon } from './RepBlock';
 import { sound, type Sfx } from './audio';
 import { personaRecord, readPersonaLedger, type PersonaLedger, type PersonaLedgerSplit } from './personaLedger';
+import { predictMatchup } from './matchupPredictor';
+import { VersusPreview } from './VersusPreview';
 
 /**
  * Versus intro (owner, 2026-10-20): a boxing-style match card on the game loading
@@ -707,6 +709,26 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
   }, [model, profiles, pairRec, ledger]);
   const tapeHasRows = sides.some((s) => s.stats && (s.stats.rating !== null || s.stats.wins !== null));
 
+  // The matchup page (owner, 2026-11-13): a headline, the predictor ring, the players. Every number
+  // is one the game really has — ratings, or the viewer's own record against these opponents.
+  const preview = useMemo(() => {
+    if (model.story) return null;
+    const viewerSide = model.sides.findIndex((s) => s.members.some((m) => m.me));
+    let vsRecord: { games: number; wins: number } | null = null;
+    if (model.sides.length === 2 && viewerSide >= 0) {
+      // the opponent the viewer has met most: their games already include any shared with the other
+      for (const m of model.sides[1 - viewerSide]!.members) {
+        const split = m.isBot && m.persona ? personaRecord(ledger, m.persona)?.vs : null;
+        if (split && split.games > (vsRecord?.games ?? 0)) vsRecord = { games: split.games, wins: split.wins };
+      }
+    }
+    const prediction = predictMatchup({ ratings: sides.map((s) => s.stats?.rating ?? null), viewerSide, vsRecord });
+    const labels = sides.map((s) => s.label);
+    const title = model.mode === 'team' && labels.length === 2 ? `It's ${labels[0]} vs. ${labels[1]}` : `${labels.length}-way cutthroat: every seat for itself`;
+    const sub = cardBlocks.find((b) => b.headline && !b.headlineStory)?.headline ?? (model.pot != null ? `Pot ${model.pot.toLocaleString('en-US')} on the table` : null);
+    return { title, sub, labels, prediction };
+  }, [model, sides, ledger, cardBlocks]);
+
   // Settle deadline (see versusSettleAtMs): armed off the same clock the beat
   // sheet rides, so beats still measure visible time from the paint gate.
   const cardStartDelay = versusCardsStartDelay(tapeHasRows ? 4 : 0);
@@ -778,10 +800,13 @@ export function VersusIntro({ model, reduced, ready, onStoryComplete }: {
           </div>
         )}
 
+        {preview && <VersusPreview title={preview.title} sub={preview.sub} labels={preview.labels} prediction={preview.prediction} />}
+
         {model.story
           ? <VersusStoryTape tape={model.story.tape} />
           : <VersusTape mode={model.mode} sides={sides} pot={model.pot} />}
 
+        {!model.story && cardBlocks.some((b) => b.members.some((m) => m.rel.length || m.traits.length)) && <div className="versus-section-title" data-testid="versus-players-title">PLAYERS TO WATCH</div>}
         {!model.story && <VersusCards blocks={cardBlocks} startDelay={versusCardsStartDelay(tapeHasRows ? 4 : 0)} />}
 
         {done && !ready
