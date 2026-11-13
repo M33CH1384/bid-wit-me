@@ -1,0 +1,106 @@
+/* Set covers, re-dressed with rendered materials (owner, 2026-11-12: the drawn
+   covers "look cheap… rework it so it's more photorealistic").
+
+   animfx.css still owns every cover's geometry, timing and keyframes (and its
+   tests pin them). This sheet only changes what each piece is MADE of: the
+   flat gradients and stroke icons are replaced with rendered textures and
+   shaded objects from /assets/setcovers, plus the light that falls on them.
+   A few end states that used to be an almost empty card (Rec Center, Cookout,
+   Rooftop) now leave something of the scene behind. Loaded after animfx.css. */
+
+.setcover::before { content: ""; position: absolute; inset: 0; z-index: 0; opacity: 0; pointer-events: none; background-position: center; background-size: cover; }
+.setcover > * { z-index: 1; }
+
+/* ---------------------------------------------------------------- The Porch */
+.setcover[data-anim="porch"] .sc-door { border: 0; background: url(/assets/setcovers/screendoor.webp) center / 100% 100% no-repeat; box-shadow: 0 10px 24px rgba(0, 0, 0, .5); }
+.setcover[data-anim="porch"] .sc-mesh, .setcover[data-anim="porch"] .sc-door-bar { display: none; }
+.setcover[data-anim="porch"] .sc-light { background: radial-gradient(ellipse at 50% 0%, rgba(255, 244, 214, .95) 0%, rgba(255, 205, 110, .7) 9%, rgba(255, 190, 90, .28) 34%, rgba(255, 190, 90, 0) 68%); mix-blend-mode: screen; }
+
+/* ----------------------------------------------------------- The Barbershop */
+.setcover[data-anim="barbershop"] .sc-cape { background: url(/assets/setcovers/cape.webp) center top / cover no-repeat; box-shadow: 0 18px 30px rgba(0, 0, 0, .5); }
+.setcover[data-anim="barbershop"] .sc-neck { display: none; }
+.setcover[data-anim="barbershop"] .sc-pole { width: 22px; height: 70px; border: 0; border-radius: 11px; box-shadow: 0 0 0 2px #9aa1ab, 0 -5px 0 2px #c8ced6, 0 5px 0 2px #c8ced6, 0 6px 12px rgba(0, 0, 0, .5); }
+/* Finale winds the stripes right off the pole; keep a stopped pole behind them. */
+.setcover[data-anim="barbershop"] .sc-pole { background: repeating-linear-gradient(45deg, #9c2b30 0 12px, #cfccc3 12px 24px, #223f80 24px 36px); }
+.setcover[data-anim="barbershop"] .sc-pole::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, rgba(0, 0, 0, .45) 0%, rgba(0, 0, 0, 0) 28%, rgba(255, 255, 255, .55) 40%, rgba(255, 255, 255, 0) 52%, rgba(0, 0, 0, .15) 76%, rgba(0, 0, 0, .55) 100%); }
+.setcover[data-anim="barbershop"] .sc-word { color: #ff4d55; text-shadow: 0 0 10px rgba(255, 60, 70, .75), 0 0 2px #fff; }
+
+/* ----------------------------------------------------------- The Rec Center */
+.setcover[data-anim="rec-center"]::before { top: auto; height: 34%; opacity: .55; background-image: linear-gradient(180deg, rgba(20, 12, 34, .95) 0%, rgba(20, 12, 34, .25) 60%), url(/assets/setcovers/hardwood.webp); -webkit-mask-image: linear-gradient(180deg, transparent, #000 45%); mask-image: linear-gradient(180deg, transparent, #000 45%); }
+.setcover[data-anim="rec-center"] .sc-banner { background: linear-gradient(180deg, #1b1f27 0%, #0a0c11 14%, #06070a 86%, #15181e 100%); border: 0; box-shadow: inset 0 0 0 2px #2b3038, inset 0 0 0 3px #0a0c10, 0 14px 26px rgba(0, 0, 0, .6); }
+.setcover[data-anim="rec-center"] .sc-banner b { color: #ffcf33; text-shadow: 0 0 9px rgba(255, 190, 40, .85); -webkit-mask-image: radial-gradient(circle, #000 52%, transparent 62%); mask-image: radial-gradient(circle, #000 52%, transparent 62%); -webkit-mask-size: 2.4px 2.4px; mask-size: 2.4px 2.4px; }
+.setcover[data-anim="rec-center"] .sc-clock { background: #120304; color: #ff3b2f; text-shadow: 0 0 7px rgba(255, 50, 30, .9); box-shadow: inset 0 0 0 1px #3a0d0f, inset 0 0 10px rgba(255, 40, 20, .35); -webkit-mask-image: radial-gradient(circle, #000 52%, transparent 62%); mask-image: radial-gradient(circle, #000 52%, transparent 62%); -webkit-mask-size: 2px 2px; mask-size: 2px 2px; }
+.setcover[data-anim="rec-center"] .sc-banner em { text-shadow: 0 0 8px rgba(255, 70, 50, .8); }
+
+/* -------------------------------------------------------------- The Cookout */
+.setcover[data-anim="cookout"] .sc-puff { border-radius: 0; background: url(/assets/setcovers/smoke1.webp) center / contain no-repeat; }
+.setcover[data-anim="cookout"] .sc-puff:nth-of-type(2), .setcover[data-anim="cookout"] .sc-puff:nth-of-type(5) { background-image: url(/assets/setcovers/smoke2.webp); }
+.setcover[data-anim="cookout"] .sc-puff:nth-of-type(3) { background-image: url(/assets/setcovers/smoke3.webp); }
+.setcover[data-anim="cookout"] .sc-puff.dark { filter: brightness(.55); }
+.setcover[data-anim="cookout"].static .sc-puff:nth-of-type(1), .setcover[data-anim="cookout"].static .sc-puff:nth-of-type(3) { opacity: .34; }
+.setcover[data-anim="cookout"] .sc-lid { border-radius: 0; background: url(/assets/setcovers/lid.webp) center bottom / contain no-repeat; box-shadow: none; filter: drop-shadow(0 12px 14px rgba(0, 0, 0, .6)); }
+.setcover[data-anim="cookout"].tier-finale .sc-lid { height: 86px; padding-bottom: 12px; }
+.setcover[data-anim="cookout"].tier-finale::after { background: linear-gradient(180deg, rgba(190, 190, 195, .2), rgba(120, 118, 124, .1)); }
+.setcover[data-anim="cookout"] .sc-lid span { color: #ffb35c; text-shadow: 0 0 8px rgba(255, 140, 50, .6); }
+.setcover[data-anim="cookout"] .sc-tongs { width: 46px; height: 46px; background: url(/assets/setcovers/tongs.webp) center / contain no-repeat; filter: drop-shadow(2px 4px 4px rgba(0, 0, 0, .7)); }
+.setcover[data-anim="cookout"] .sc-tongs > * { display: none; }
+
+/* --------------------------------------------------------------- The Corner */
+.setcover[data-anim="corner"] .sc-shutter { background: linear-gradient(rgba(12, 12, 20, .30), rgba(12, 12, 20, .44)), url(/assets/setcovers/gate.webp) center top / 100% auto repeat-y; box-shadow: inset 0 22px 26px -14px rgba(0, 0, 0, .7); }
+.setcover[data-anim="corner"] .sc-shutter-bar { height: 16px; background: linear-gradient(180deg, #8f96a0 0%, #50565f 22%, #2d3138 70%, #17191d 100%); border-top: 1px solid #b9c0c9; box-shadow: 0 -3px 6px rgba(0, 0, 0, .45); }
+.setcover[data-anim="corner"] .sc-lock { width: 54px; height: 54px; background: url(/assets/setcovers/padlock.webp) center / contain no-repeat; filter: drop-shadow(0 5px 6px rgba(0, 0, 0, .7)); }
+.setcover[data-anim="corner"] .sc-lock > * { display: none; }
+
+/* ---------------------------------------------------------- Church Basement */
+.setcover[data-anim="church-basement"] .sc-chair { width: 56px; height: 78px; bottom: 6%; background: url(/assets/setcovers/chair-folded.webp) center bottom / contain no-repeat; filter: drop-shadow(4px 4px 3px rgba(0, 0, 0, .6)); transform: translateX(calc(var(--i) * 17px)) rotate(5deg); }
+.setcover[data-anim="church-basement"] .sc-chair > * { display: none; }
+.setcover[data-anim="church-basement"].fresh .sc-chair { animation-name: sc-chair-stack; }
+@keyframes sc-chair-stack {
+  0% { opacity: 0; transform: translateX(calc((var(--i) - 2) * 88px - 12px)) rotate(0); }
+  12% { opacity: 1; }
+  55% { transform: translateX(calc((var(--i) - 2) * 40px)) rotate(-2deg); }
+  88% { transform: translateX(calc(var(--i) * 17px)) rotate(7deg); }
+  100% { opacity: 1; transform: translateX(calc(var(--i) * 17px)) rotate(5deg); }
+}
+.setcover[data-anim="church-basement"] .sc-halo { background: radial-gradient(ellipse at 50% 0%, rgba(255, 246, 222, .7) 0%, rgba(255, 214, 140, .42) 14%, rgba(255, 214, 140, 0) 66%); mix-blend-mode: screen; }
+.setcover[data-anim="church-basement"] .sc-exit { text-shadow: 0 0 8px rgba(255, 60, 50, .9); }
+
+/* -------------------------------------------------------------- The Rooftop */
+.setcover[data-anim="rooftop"] .sc-dusk { opacity: .5; background: linear-gradient(180deg, rgba(16, 10, 34, .25), rgba(16, 10, 34, .62)), url(/assets/setcovers/dusk.webp) center bottom / cover no-repeat; }
+.setcover[data-anim="rooftop"].tier-finale .sc-dusk { opacity: .92; }
+.setcover[data-anim="rooftop"].fresh.tier-regular .sc-dusk { animation: sc-dusk-in 2.2s ease var(--sc-delay, 0ms) both; }
+@keyframes sc-dusk-in { from { opacity: 0; } to { opacity: .5; } }
+.setcover[data-anim="rooftop"] .sc-bird { width: 46px; height: 33px; background: url(/assets/setcovers/pigeon-a.webp) center / contain no-repeat; }
+.setcover[data-anim="rooftop"] .sc-bird:nth-of-type(even) { background-image: url(/assets/setcovers/pigeon-b.webp); width: 40px; height: 29px; }
+.setcover[data-anim="rooftop"] .sc-bird > * { display: none; }
+.setcover[data-anim="rooftop"] .sc-feather { width: 13px; height: 27px; border-radius: 0; background: url(/assets/setcovers/feather.webp) center / contain no-repeat; filter: drop-shadow(1px 2px 2px rgba(0, 0, 0, .5)); }
+
+/* ------------------------------------------------------------ The High-Rise */
+.setcover[data-anim="high-rise"] .sc-elev-l, .setcover[data-anim="high-rise"] .sc-elev-r { background: linear-gradient(rgba(10, 12, 22, .30), rgba(10, 12, 22, .40)), url(/assets/setcovers/steel.webp) center / 100% 100% no-repeat; box-shadow: inset 0 0 30px rgba(0, 0, 0, .35); }
+.setcover[data-anim="high-rise"] .sc-elev-l { border-right: 1px solid #1b1e24; }
+.setcover[data-anim="high-rise"] .sc-elev-r { border-left: 1px solid #1b1e24; }
+.setcover[data-anim="high-rise"] .sc-seam { width: 3px; background: linear-gradient(180deg, rgba(255, 244, 205, .95), rgba(255, 215, 130, .8)); box-shadow: 0 0 14px 3px rgba(255, 215, 130, .55); }
+.setcover[data-anim="high-rise"] .sc-floor { background: linear-gradient(180deg, #1c1509, #080603); color: #ffb52e; text-shadow: 0 0 8px rgba(255, 170, 40, .9); box-shadow: inset 0 0 0 1px #4a3a1a, 0 0 14px rgba(255, 180, 60, .3); }
+
+/* ------------------------------------------------------------------ The Pj's */
+.setcover[data-anim="the-pjs"]::before { opacity: .62; background-image: linear-gradient(180deg, rgba(8, 8, 18, .35), rgba(8, 8, 18, .7)), url(/assets/setcovers/brick.webp); }
+.setcover[data-anim="the-pjs"] .sc-fence { opacity: .78; background: url(/assets/setcovers/chainlink.webp) 0 0 / 58px 58px repeat; filter: drop-shadow(3px 5px 2px rgba(0, 0, 0, .55)); }
+.setcover[data-anim="the-pjs"] .sc-lamphead { position: absolute; top: 2px; left: 50%; width: 120px; height: 52px; margin-left: -78px; background: url(/assets/setcovers/lamp.webp) center / contain no-repeat; z-index: 3; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .6)); }
+.setcover[data-anim="the-pjs"] .sc-lamp { top: 2px; width: 120px; height: 52px; margin-left: -18px; border-radius: 0; background: url(/assets/setcovers/lamp-lens.webp) center / contain no-repeat; box-shadow: none; filter: drop-shadow(0 4px 12px rgba(255, 190, 80, .95)) drop-shadow(0 0 26px rgba(255, 180, 70, .7)); z-index: 3; }
+.setcover[data-anim="the-pjs"] .sc-beam { top: 6%; width: 96%; height: 100%; clip-path: polygon(40% 0, 60% 0, 100% 100%, 0 100%); background: radial-gradient(ellipse 60% 90% at 50% 0%, rgba(255, 214, 128, .62) 0%, rgba(255, 190, 90, .26) 45%, rgba(255, 190, 90, 0) 82%); mix-blend-mode: screen; z-index: 2; }
+
+/* --------------------------------------------------------- Legends' Table */
+.setcover[data-anim="legends"]::before { opacity: .42; background-image: linear-gradient(180deg, rgba(10, 4, 8, .25), rgba(10, 4, 8, .6)), url(/assets/setcovers/velvet.webp); }
+.setcover[data-anim="legends"] .sc-stamp { border-color: #e2b53f; background: linear-gradient(160deg, rgba(60, 40, 6, .6), rgba(20, 13, 2, .6)); color: #f1cb62; text-shadow: 0 1px 0 #fff3c4, 0 -1px 0 #7a5a12, 0 0 14px rgba(233, 188, 69, .55); box-shadow: 0 6px 16px rgba(0, 0, 0, .55), inset 0 0 0 1px rgba(255, 236, 170, .35); }
+.setcover[data-anim="legends"] .sc-post { width: 8px; height: 34px; background: linear-gradient(90deg, #5e4710, #f6dc8a 38%, #c79a2e 55%, #5e4710); box-shadow: 0 -5px 0 1px #d9b14a, 2px 3px 4px rgba(0, 0, 0, .5); border-radius: 4px 4px 2px 2px; }
+.setcover[data-anim="legends"] .sc-sag { border-width: 5px; border-color: #8d1f2c; border-top: 0; box-shadow: inset 0 -2px 0 rgba(255, 160, 170, .35), 0 3px 4px rgba(0, 0, 0, .45); }
+.setcover[data-anim="legends"] .sc-plaque { background: linear-gradient(180deg, #f6dc8a, #d0a236 45%, #9b751f); box-shadow: 0 2px 5px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .6); }
+
+/* ------------------------------------------------------- King of the Block */
+.setcover[data-anim="king"] .sc-crown { width: 86px; height: 70px; background: url(/assets/setcovers/crown.webp) center / contain no-repeat; filter: drop-shadow(0 0 16px rgba(240, 196, 80, .7)) drop-shadow(0 8px 8px rgba(0, 0, 0, .6)); }
+.setcover[data-anim="king"] .sc-crown > * { display: none; }
+
+@media (prefers-reduced-motion: reduce) { .setcover[data-anim="church-basement"] .sc-chair { animation: none !important; } }
+/* The Pj's finale used to drop a near-black veil over the whole yard; keep the
+   night but leave the fence and brick readable under the lit window. */
+.setcover[data-anim="the-pjs"].tier-finale::after { background: rgba(5, 5, 13, .34); }
