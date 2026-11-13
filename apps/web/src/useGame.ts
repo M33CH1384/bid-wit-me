@@ -22,6 +22,9 @@ export const SPEEDS = { slow: 2.2, relaxed: 1.5, normal: 1, fast: 0.5, turbo: 0.
 
 /** `hold`: a tip is open — bots wait and a finished trick stays on the table until it's dismissed. */
 /** `botLevel`: one level for every bot, or a per-seat resolver (Mixed skill / persona floors). `dealer`: a rematch continues the deal rotation. */
+/** A bot's move with nothing holding the table and nothing happening for this long is a stall. */
+export const STALL_MS = 7000;
+
 export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((seat: number) => BotLevel), speed: keyof typeof SPEEDS, resume?: GameState, hold = false, dealer?: number, partnerHint?: { current: { hand: number; text: string } | null }, localReport?: { current: { names: string[]; teamNames: (string | null)[] | null } }, dealReady = true, sceneDealt: number | null = null, suppressReport = false) {
   const [st, setSt] = useState<GameState>(() => resume ?? newGame(rules, seed, { dealer }));
   const levelRef = useRef(botLevel);
@@ -181,11 +184,38 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     });
   }, [pause, k, hold]);
 
+  // Stall watchdog (owner, 2026-11-12: "the game froze" with a bot on the clock and nothing
+  // holding the table). Every path below ends in a timer that either changes the state or
+  // does nothing; a timer that does nothing leaves this effect with no reason to run again,
+  // and the table sits on a bot's turn for good. If it is a bot's move, nothing is pausing
+  // the table, and nothing has happened for STALL_MS, the effect is nudged to run again —
+  // and a nudged run goes straight to the seat on the clock (see `forced`).
+  const [nudge, setNudge] = useState(0);
+  const nudgeSeen = useRef(0);
+  const lastMoveAt = useRef(performance.now());
+  useEffect(() => { lastMoveAt.current = performance.now(); }, [st, pause, busy, hold, nudge]);
+  useEffect(() => {
+    if (pause || busy || hold) return;
+    const id = window.setInterval(() => {
+      const cur = stRef.current;
+      if (cur.phase === 'handOver' || cur.phase === 'gameOver') return;
+      const turn = pendingTurn(cur);
+      if (!turn || turn.seat === HUMAN) return;
+      if (performance.now() - lastMoveAt.current < STALL_MS) return;
+      setNudge((n) => n + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [pause, busy, hold]);
+
   // bots move on their turn
   useEffect(() => {
     if (pause || busy || hold) return;
+    // A run caused by the watchdog: skip the off-turn pre-emptions (one of them may be the
+    // thing that stalled) and move the seat on the clock, promptly.
+    const forced = nudge !== nudgeSeen.current;
+    nudgeSeen.current = nudge;
     // Release 10: a bot claims 'Run it!' the moment it's guaranteed, even off-turn (mirrors the server)
-    if (st.phase === 'playing') {
+    if (!forced && st.phase === 'playing') {
       const claimer = Array.from({ length: st.rules.playerCount }, (_, i) => i).find((i) => i !== HUMAN && i !== st.turn && canRunIt(st, i));
       if (claimer !== undefined) {
         const tc = setTimeout(() => apply({ type: 'runIt', seat: claimer }), 600 * k);
@@ -198,7 +228,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     // as a bot play, so the drop lands after a short human-like beat, never
     // frame-instant. The card is forced: at fire time a fresh view's single legal
     // card IS the drop — no brain consult, nothing to choose.
-    if (st.phase === 'playing') {
+    if (!forced && st.phase === 'playing') {
       const dropper = Array.from({ length: st.rules.playerCount }, (_, i) => i).find((i) => i !== HUMAN && i !== st.turn && lastCardDropOpen(st, i));
       if (dropper !== undefined) {
         const delay = botPaceDelayMs({
@@ -215,7 +245,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     }
     // Renege tables: a bot that caught an opponent says so — only a renege the table has
     // seen proved (see chooseRenegeCall), after a beat so the proof card has landed.
-    if (renegeOn(st.rules) && (st.phase === 'playing' || st.phase === 'handOver')) {
+    if (!forced && renegeOn(st.rules) && (st.phase === 'playing' || st.phase === 'handOver')) {
       const lvOf = (seat: number) => { const lv = levelRef.current; return typeof lv === 'function' ? lv(seat) : lv; };
       const caller = Array.from({ length: st.rules.playerCount }, (_, i) => i).find((i) => i !== HUMAN && chooseRenegeCall(viewFor(st, i), lvOf(i)));
       if (caller !== undefined) {
@@ -239,7 +269,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
     // Consultation (CONSULT_SPEC §5.4/§6.2): a bid may be held a beat longer —
     // the partner finishing their spoken count, an opponent pair conferring.
     // Presentation-only: bot bids only, never the human's clock.
-    const delay = botPaceDelayMs({
+    const delay = forced ? 250 : botPaceDelayMs({
       seed: st.seed, handNo: st.handNo, trickNo: st.tricks.length, seat: turn.seat,
       position: turn.kind === 'play' ? st.trick.plays.length : 0,
       playerCount: st.rules.playerCount, kind: turn.kind,
@@ -254,7 +284,17 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       const h = turn.kind === 'bid' && st.rules.partnerships && turn.seat === (HUMAN + 2) % st.rules.playerCount ? partnerHint?.current : null;
       const hint: PartnerHint | null = h && h.hand === st.handNo ? parseHint(h.text) : null;
       let action = chooseBotAction(viewFor(st, turn.seat), typeof lv === 'function' ? lv(turn.seat) : lv, undefined, hint);
-      if (!action) return;
+      // A stalled table must move: when the brain has nothing, or its pick is refused, the
+      // seat throws its first legal card (only ever on a watchdog run).
+      const unstick = () => {
+        const cur = stRef.current;
+        const now = pendingTurn(cur);
+        if (!now || now.seat === HUMAN || now.kind !== 'play') return;
+        const legal = viewFor(cur, now.seat).legal;
+        if (legal.length) apply({ type: 'play', seat: now.seat, card: legal[0]! });
+      };
+      if (!action) { if (forced) unstick(); return; }
+      if (forced) { if (!apply(action)) unstick(); return; }
       // persona lean (kept only if legal)
       const leaned = offlineTalk.lean(action);
       if (leaned !== action) { try { applyAction(st, leaned); action = leaned; } catch { /* keep the original */ } }
@@ -269,7 +309,7 @@ export function useGame(rules: TableRules, seed: string, botLevel: BotLevel | ((
       else apply(action);
     }, delay);
     return () => { clearTimeout(t); clearTimeout(t2); };
-  }, [st, pause, busy, k, apply, hold]);
+  }, [st, pause, busy, k, apply, hold, nudge]);
 
   const restart = useCallback((r: TableRules = rules) => {
     const next = newGame(r, secureSeed());
