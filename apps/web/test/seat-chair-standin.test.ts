@@ -54,7 +54,8 @@ describe('stand-in wiring', () => {
     expect(src).toContain('window.clearTimeout(standInTimer); clearStandIn();');
   });
   it('still hides the viewer’s own chair', () => {
-    expect(src).toContain('addSimpleChairs(propsRef.current, cfg.chairSpots ?? studioSpots, (spot) => hideOwnChair && isOwnSeatSpot(spot, ownDir))');
+    expect(src).toContain('addSimpleChairs(propsRef.current, cfg.chairSpots ?? studioSpots, skipOwn)');
+    expect(src).toContain('if (skipOwn(spot)) continue;');
   });
 });
 

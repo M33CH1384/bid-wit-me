@@ -190,9 +190,11 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
     // The seated figures do not wait for the chair model, and on a phone it can arrive late or not at all —
     // which left them sitting on air (owner, 2026-11-13: "my opponents don't have chairs"). If the model is
     // not in by CHAIR_STAND_IN_MS, or its load fails, built chairs stand in until (and unless) it lands.
+    // The own-chair rule, once, for the model chairs and their stand-ins alike.
+    const skipOwn = (spot: { x: number; z: number; ry: number }) => hideOwnChair && isOwnSeatSpot(spot, ownDir);
     const standIn = () => {
       if (dead || !propsRef.current || added.length || fallback.length) return;
-      fallback.push(...addSimpleChairs(propsRef.current, cfg.chairSpots ?? studioSpots, (spot) => hideOwnChair && isOwnSeatSpot(spot, ownDir)));
+      fallback.push(...addSimpleChairs(propsRef.current, cfg.chairSpots ?? studioSpots, skipOwn));
       invalidate();
     };
     const clearStandIn = () => { for (const g of fallback) { g.parent?.remove(g); disposeSimpleChair(g); } fallback.length = 0; };
@@ -205,7 +207,7 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
         const lamp = cfg.pendants === false || rendered ? null : await load(`${CLASSIC}/lamp.glb`);
         if (dead || !propsRef.current) return; const host = propsRef.current;
         window.clearTimeout(standInTimer); clearStandIn();
-        for (const spot of CHAIR_SPOTS) { if (hideOwnChair && isOwnSeatSpot(spot, ownDir)) continue; const c = chair.clone(true) as Group; c.rotation.y = spot.ry; c.position.set(spot.x, 0, spot.z); c.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); host.add(c); ground(c, STUDIO.floorY); added.push(c); }
+        for (const spot of CHAIR_SPOTS) { if (skipOwn(spot)) continue; const c = chair.clone(true) as Group; c.rotation.y = spot.ry; c.position.set(spot.x, 0, spot.z); c.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); host.add(c); ground(c, STUDIO.floorY); added.push(c); }
         if (lamp) for (const x of [-STUDIO.lampX, STUDIO.lampX]) { const l = lamp.clone(true) as Group; l.position.set(x, 0, 0); l.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = false; m.receiveShadow = true; } }); host.add(l); l.updateMatrixWorld(true); const box = new Box3().setFromObject(l); l.position.y += STUDIO.floorY + STUDIO.lampShadeBottom - box.min.y; added.push(l); }
         (window as unknown as { __bwmVenue?: unknown }).__bwmVenue = { id: cfg.id, fx: false, studio: true, room: cfg.slug, props: true, tod: lock.tod };
         invalidate();
