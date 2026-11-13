@@ -119,6 +119,8 @@ import { plateTally, rememberHandTally, type HandTally } from './plateStats';
 import { MARGIN_LABEL, marginTierForSeat, type MarginTier } from './thinMargin';
 import { showdownSides } from './showdown';
 import { ShowdownLayer } from './ShowdownLayer';
+import { playerBoxScore } from './playerBox';
+import { PlayerBoxScore } from './PlayerBoxScore';
 import { matchPoint } from './decider';
 import { MatchPointLayer } from './MatchPointLayer';
 import { BOOK_GATHER_MS, landedTook, shownTook, withPenaltyBooks } from './tookDisplay';
@@ -1183,6 +1185,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   const [bidConfirmGate, setBidConfirmGate] = useState<boolean>(() => bidNeedsConfirmForViewport(window.innerWidth, window.innerHeight));
   const [exchangePick, setExchangePick] = useState<Card[]>([]);
   const [showPad, setShowPad] = useState(false);
+  // Results: the player box score sheet (playerBox.ts).
+  const [showBox, setShowBox] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ltOpen, setLtOpen] = useState(false);
   // Last-trick browser: an absolute index into this hand's completed tricks,
@@ -4039,6 +4043,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
               </div>
               <div className="confirm-actions">
                 <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
+                <button type="button" className="ghost-btn box-score-btn" data-testid="box-score-open" onClick={() => setShowBox(true)}>Box score</button>
                 {!spectating && <button type="button" className="primary big" data-testid="rematch" onClick={() => onRematch(nextDealer(st))}>Play again — Rematch</button>}
                 <button type="button" className="ghost-btn" data-testid="main-menu" onClick={() => exitFinished()}>Back to home</button>
               </div>
@@ -4107,6 +4112,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
             </div>
             <div className="confirm-actions">
               <button type="button" className="quiet-row-btn" onClick={() => setShowPad(true)}>Score pad</button>
+              <button type="button" className="ghost-btn box-score-btn" data-testid="box-score-open" onClick={() => setShowBox(true)}>Box score</button>
               {storyGame ? (
                 storyWon ? (
                   <button type="button" className="primary big" data-testid="story-to-map" onClick={() => leave()}>To the map</button>
@@ -4165,6 +4171,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
       )}
       <Hype reduced={reduceFx} low={settings.quality === 'low'} />
       <AnimFxLayer st={st} online={!!online} names={names} resultPresented={showResults || (st.phase === 'gameOver' && showRecap)} />
+      {showBox && st.result && <PlayerBoxScore teams={playerBoxScore(r, st.history, st.scores)} winners={st.result.winners} mvpSeat={pickMvp(r, st.history, st.result.winners)?.seat ?? null} playerName={(s) => face(s)} teamName={(s) => sideName(r, s, names)} teamColor={(s) => sideColor(r, s)} onClose={() => setShowBox(false)} />}
       {showPad && <ScorePad st={st} names={names} dealerName={dealerLabel} onClose={() => setShowPad(false)} onContinue={st.phase === 'handOver' && talkOpen && !online?.talk?.ready?.mine ? () => { setShowPad(false); apply({ type: 'nextHand' }); } : undefined} onLeave={st.phase === 'handOver' ? () => { setShowPad(false); if (online) leave(); else setConfirmLeave(true); } : undefined} locked={online ? undefined : <LockedRulesPanel rules={r} nuke={fx.tableNuke ?? fx.prefs.nuke} skill={settings.botLevel} intensity={settings.talkIntensity} />} />}
       {/* profile modal over the table (face taps): a direct child so the .modal-open
           blur rule exempts its .modal-backdrop like every other table modal */}

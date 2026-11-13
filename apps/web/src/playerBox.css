@@ -1,0 +1,53 @@
+/* Player box score sheet (PlayerBoxScore.tsx). Theme tokens throughout, so it follows Classic and Neon. */
+.pbox-backdrop { z-index: 1400; }
+.modal.pbox { width: min(940px, 96vw); max-height: min(92vh, 92dvh); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 10px; overflow: auto; scrollbar-width: none; }
+.modal.pbox::-webkit-scrollbar { display: none; }
+.pbox-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pbox-head .sheet-close { position: static; }
+
+.pbox-final { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; font-family: var(--display); }
+.pbox-final > span { display: inline-flex; align-items: baseline; gap: 10px; padding-left: 10px; border-left: 4px solid var(--lav); color: var(--muted); }
+.pbox-final > span b { font-weight: 800; font-size: 17px; letter-spacing: .04em; text-transform: uppercase; }
+.pbox-final > span i { font-style: normal; font-weight: 800; font-size: 26px; line-height: 1; }
+.pbox-final > span.won { color: var(--ink); }
+.pbox-final > span.won i { color: var(--gold); }
+.pbox-final em { margin-left: auto; font-style: normal; font-weight: 800; font-size: 12px; letter-spacing: .22em; text-transform: uppercase; color: var(--muted); }
+
+.pbox-teams { display: grid; grid-template-columns: repeat(var(--teams, 2), minmax(0, 1fr)); gap: 12px; }
+.pbox-team { min-width: 0; background: rgba(255, 255, 255, .04); box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), .22), inset 0 3px 0 var(--team, var(--purple)); padding: 10px 10px 8px; }
+.pbox-team h3 { margin: 0 0 6px; display: flex; align-items: center; gap: 8px; font: 800 16px/1.2 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.pbox-team h3 small { padding: 1px 7px; background: var(--gold); color: var(--ink-deep); font-size: 10px; letter-spacing: .16em; }
+.pbox-team table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.pbox-team th, .pbox-team td { padding: 7px 4px; text-align: right; font-size: 14px; white-space: nowrap; border-bottom: 1px solid rgba(var(--edge-rgb), .16); }
+.pbox-team thead th { font: 800 11px/1 var(--display); letter-spacing: .12em; color: var(--muted); border-bottom-color: rgba(var(--edge-rgb), .4); }
+.pbox-team .who { text-align: left; font-weight: 700; max-width: 0; width: 38%; overflow: hidden; text-overflow: ellipsis; }
+.pbox-team tbody .who { font-size: 15px; }
+.pbox-team td:nth-child(3) { font-weight: 800; color: var(--ink); } /* books: the headline number */
+.pbox-team tr.total th, .pbox-team tr.total td { border-bottom: 0; border-top: 1px solid rgba(var(--edge-rgb), .4); font-weight: 800; color: var(--gold); }
+.pbox-team tr.total .who { font-family: var(--display); letter-spacing: .12em; font-size: 12px; }
+.pbox-mvp, .pbox-nuke { margin-left: 6px; padding: 0 5px; font: 800 10px/1.5 var(--display); letter-spacing: .12em; vertical-align: middle; }
+.pbox-mvp { background: var(--gold); color: var(--ink-deep); }
+.pbox-nuke { color: var(--gold); }
+.pbox-foot { margin: 6px 0 0; font: 700 12px/1.2 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.pbox-key { margin: 0; font-size: 11px; line-height: 1.4; color: var(--muted); }
+
+/* The results footer's button. */
+.confirm-actions .box-score-btn { white-space: nowrap; }
+
+/* Narrow (upright phone): one team above the other. */
+@media (max-width: 640px) {
+  .pbox-teams { grid-template-columns: 1fr; }
+  .modal.pbox { padding: 12px 12px 10px; }
+  .pbox-team th, .pbox-team td { padding: 6px 3px; font-size: 13px; }
+}
+/* Short (phone on its side): tighter rows so both teams fit without scrolling. */
+@media (max-height: 460px) {
+  .modal.pbox { gap: 6px; padding: 8px 12px; }
+  .pbox-team { padding: 6px 8px 5px; }
+  .pbox-team th, .pbox-team td { padding: 4px 3px; }
+  .pbox-key { display: none; }
+  .pbox-final > span i { font-size: 20px; }
+}
+html[data-theme="neon"] .pbox-team { border-radius: 12px; }
+html[data-theme="neon"] .pbox-team h3 small, html[data-theme="neon"] .pbox-mvp { border-radius: 999px; background: linear-gradient(90deg, var(--purple), var(--purple-hot)); color: #fff; }
+html[data-theme="neon"] .pbox-team tr.total th, html[data-theme="neon"] .pbox-team tr.total td, html[data-theme="neon"] .pbox-final > span.won i { color: rgb(var(--cyan-rgb)); }
