@@ -1869,6 +1869,10 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   }, [renegeKey, renegeCalls.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const clearRenegeVerdict = useCallback(() => setRenegeVerdict(null), []);
   useEffect(() => { if (!canCallRenege) setRenegeSheet(false); }, [canCallRenege]);
+  // The toss sheet holds the bots while it is open (useGame's `hold`), and it only DRAWS while the
+  // engine still offers a toss. If the offer goes away with the flag still set, the bots would be
+  // held by a sheet nobody can see or close — so the flag follows the offer.
+  useEffect(() => { if (tossSheet && (!view.toss || st.phase !== 'playing')) setTossSheet(false); }, [tossSheet, view.toss, st.phase]);
   // When the human's bid panel is up, the misdeal call lives INSIDE that panel (impossible to miss);
   // the floating button only covers the window while other seats are still bidding.
   const bidPanelShowing = myTurn && !dealing && st.phase === 'bidding' && !!view.bidOptions && !autoReveal;
