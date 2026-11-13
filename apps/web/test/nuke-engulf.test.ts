@@ -58,7 +58,9 @@ describe('table coverage — the engulf', () => {
       const r = capCoverRadius(cam);
       // past the table's own half-diagonal on every camera, never absurd
       expect(r).toBeGreaterThan(TABLE_EXTENT.halfDiagonal);
-      expect(r).toBeLessThan(3.2);
+      // 3.2 until 2026-11-13: the lowered phone-landscape sitting camera needs 3.24 (the cap is sized
+      // per camera, so it still covers the table — this is only the "never absurd" ceiling).
+      expect(r).toBeLessThan(3.4);
       // and it is exactly need × margin: at need (r / margin) a corner is just barely NOT covered
       const corner = { x: TABLE_EXTENT.hx, z: TABLE_EXTENT.hz };
       expect(pointOccludedByCap(cam, corner, r)).toBe(true);
