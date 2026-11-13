@@ -696,11 +696,19 @@ export function cameraFor(aspect: number, short = false, view: 'standing' | 'sit
  * The zoom is aspect-aware: wide phones (2.2+) get a closer framing; narrow landscape keeps the wider fov so the
  * side plates stay in frame.
  */
+/** Phone-landscape eye heights (were 1.95 sitting / 3.1 standing until 2026-11-13). */
+export const SHORT_SITTING_Y = 1.4;
+export const SHORT_STANDING_Y = 2.35;
+
 function shortLandscapeCamera(aspect: number, view: 'standing' | 'sitting' = 'standing'): CamSpec {
   const wide = Math.min(1, Math.max(0, (aspect - 1.3) / (2.4 - 1.3))); // 0 at 1.3, 1 at 2.4+
   const lerp = (a: number, b: number) => a + (b - a) * wide;
-  if (view === 'sitting') { const spec: CamSpec = { pos: [0, 1.95, 3.45], look: [0, 0, -0.25], fov: lerp(52, 44) }; spec.look = pitchAimDown(spec.pos, spec.look); return spec; } // seated: low, across the felt + the +7° tilt, wide enough for the fan; aimed at the far half so the partner's hand clears the scorebug
-  return { pos: [0, 3.1, 3.5], look: [0, 0, 0.22], fov: lerp(42, 40) };
+  // Lowered 2026-11-13 (owner: "the sitting view still feels like standing and the standing view feels
+  // like I'm hovering over the table"). A phone on its side has the least height to show the table in,
+  // so these sat high: standing looked down on the felt at 43° and sitting was where standing should be. Sitting is now a seated look across the table,
+  // standing is about where sitting was, and both pull back a touch so the felt keeps its place.
+  if (view === 'sitting') { const spec: CamSpec = { pos: [0, SHORT_SITTING_Y, 3.7], look: [0, 0, -0.45], fov: lerp(52, 44) }; spec.look = pitchAimDown(spec.pos, spec.look); return spec; }
+  return { pos: [0, SHORT_STANDING_Y, 3.85], look: [0, 0, 0.1], fov: lerp(42, 40) };
 }
 
 export function makeCamera(aspect: number, short = false, view: 'standing' | 'sitting' = 'standing'): PerspectiveCamera {
