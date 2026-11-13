@@ -46,6 +46,8 @@ export type Sfx =
   | 'jokerLittle' | 'jokerBig' | 'nuke' | 'mega' | 'streak1' | 'streak2' | 'streak3' | 'shot' | 'gotShot' | 'shotgun' | 'pump' | 'siren' | 'docSting' | 'wheels' | 'wheelsCar' | 'overcut' | 'overcut3' | 'tornado' | 'thunder'
   // 'Run it!': the claimer's cards all slam at once / everyone else's cards hit in a quick cascade
   | 'runSlam' | 'runThud'
+  // Last-card showdown (showdown.ts): lights-down hit, the heartbeat under it, each heavy card
+  | 'showdownOpen' | 'heartbeat' | 'showdownHit'
   // Versus intro (boxing-style match card on the loading screen): entrances travel
   // in 3D from each side, the collision lands center-front, a stinger marks the
   // tale-of-the-tape reveal, a wide crowd bed sits under the hold, a soft resolve
@@ -3122,6 +3124,9 @@ class Engine {
       case 'deckSlam': return this.sample('deckSlam', t, 0.95 * g);
       case 'tornado': return this.tornado(t, g);
       case 'runSlam': this.overcutSlam(t, g * 1.2, 3); this.thud(t, g); return this.quake(t + 0.03, g * 0.9); // heavy slow-mo impact + bass hit — gains raised 2026-11-02 with the slam aggression retune (owner: 'isn't aggressive enough')
+      case 'showdownOpen': this.quake(t, g * 0.55); return this.whoosh(t, 0.14 * g);
+      case 'heartbeat': this.heartbeat(t, g); return;
+      case 'showdownHit': this.thud(t, g * 0.9); return this.burst(t, 0.22, 0.3 * g, 'lowpass', 420, { sweepTo: 90 });
       case 'runThud': for (let i = 0; i < 4; i++) this.thud(t + i * 0.055, g * (0.42 - i * 0.07)); return;
       case 'wheels': this.arp(t, [392, 523.25, 783.99], 0.06, 'square', 0.12 * g, 0.22); return this.streakHit(t + 0.16, 0.8 * g, 1);
     }
@@ -3311,6 +3316,12 @@ class Engine {
   }
 
   /** Little Joker: a hard, jarring thud (distorted low punch + knock). */
+  /** Showdown heartbeat: a soft lub-dub, low enough to sit under the music. */
+  private heartbeat(t: number, g: number) {
+    this.tone(t, 62, 0.16, 'sine', 0.5 * g, { glideTo: 40, attack: 0.004, dest: this.sfxBus! });
+    this.tone(t + 0.17, 52, 0.2, 'sine', 0.36 * g, { glideTo: 34, attack: 0.004, dest: this.sfxBus! });
+  }
+
   private thud(t: number, g: number) {
     const c = this.ctx!;
     const dist = this.shaper(18); const out = c.createGain(); out.gain.value = 0.55 * g;
