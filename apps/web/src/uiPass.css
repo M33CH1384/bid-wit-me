@@ -396,3 +396,15 @@ aside.soc-panel .matchup-picker > h3 + p.soc-muted { display: none; }
 .rw-postgame .rw-moments { list-style: none; margin: 0; padding: 10px 14px 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; border-top: 1px solid rgba(255,255,255,.08); font-size: 13px; color: rgba(255,255,255,.9); }
 .rw-postgame .rw-moments li { margin: 0; padding: 9px 11px; border-radius: 9px; background: rgba(255,255,255,.055); box-shadow: inset 3px 0 0 rgba(255,211,90,.75); line-height: 1.3; }
 .rw-postgame .rw-moments.rw-turning li { font: 700 13px/1.25 var(--display); letter-spacing: .06em; text-transform: uppercase; box-shadow: inset 3px 0 0 #b98cff; }
+
+/* ---- Table rail: camera and mic match the chat button (owner, 2026-11-13: on a phone in
+   landscape they "look pretty odd" — two blank grey slabs). The short-layout rule gave them the
+   old tray's cut-corner block, and the offline dim faded the whole button, so over a bright room
+   each one read as an empty grey tile. In the rail they are plain icon-and-label buttons on the
+   rail's own panel, in every layout; offline only the icon and label dim. ---- */
+.ctl-rail .av-btn, .table-screen.short .ctl-rail .av-btn { width: 44px; height: 46px; border-radius: 10px; clip-path: none; background: transparent; box-shadow: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 17px; line-height: 1; color: var(--ink); }
+.ctl-rail .av-btn small { margin-top: 0; font-size: 8px; color: var(--muted); }
+.ctl-rail .av-btn.on { background: linear-gradient(180deg, var(--gold-hi), var(--gold-deep)); box-shadow: 0 0 14px rgba(var(--gold-rgb), .6); }
+.ctl-rail .av-btn.on small { color: #1d1204; }
+.ctl-rail .av-bar.offline .av-btn { opacity: 1; filter: none; }
+.ctl-rail .av-bar.offline .av-btn > * { opacity: .5; }

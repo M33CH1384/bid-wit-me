@@ -17,6 +17,7 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { BARBER, BARBER_ASSETS, CHAIR_SPOTS, skySeekFraction, todFromDate, todLighting, type TodState } from './barbershopLayout';
 import { isOwnSeatSpot, useOwnChairHidden, useOwnSeatDir } from './ownChair';
+import { chairStandIns } from './chairStandIn';
 import { noteRoomAssets } from '../assetGate';
 
 const CLASSIC = '/assets/venues/classic';
@@ -119,11 +120,14 @@ export default function BarbershopRoom({ quality, handNo }: { quality: 'high' | 
     loader.setMeshoptDecoder(MeshoptDecoder);
     loader.setKTX2Loader(ktx2);
     const load = (url: string) => new Promise<import('three').Group>((res, rej) => loader.load(url, (g) => res(g.scene as Group), undefined, rej));
+    // Nobody sits on air while the chair model is late, or if it never lands (chairStandIn.ts).
+    const standIns = chairStandIns(() => propsRef.current, hideOwnChair ? CHAIR_SPOTS.filter((s) => !isOwnSeatSpot(s, ownDir)) : CHAIR_SPOTS, BARBER.floorY, invalidate);
     void (async () => {
       try {
         const [chair, lamp] = await Promise.all([load(`${CLASSIC}/chair.glb`), load(`${CLASSIC}/lamp.glb`)]);
         if (dead || !propsRef.current) return;
         const host = propsRef.current;
+        standIns.arrived();
         for (const spot of CHAIR_SPOTS) {
           if (hideOwnChair && isOwnSeatSpot(spot, ownDir)) continue;
           const c = chair.clone(true) as Group;
@@ -142,9 +146,9 @@ export default function BarbershopRoom({ quality, handNo }: { quality: 'high' | 
         }
         (window as unknown as { __bwmVenue?: unknown }).__bwmVenue = { id: 'barbershop', fx: false, studio: true, room: 'barbershop', props: true, tod: lock.tod };
         invalidate();
-      } catch { /* shell stays */ }
+      } catch { standIns.failed(); /* props are decoration: a failed model leaves the shell and the built chairs */ }
     })();
-    return () => { dead = true; for (const g of added) { g.parent?.remove(g); } ktx2.dispose(); };
+    return () => { dead = true; standIns.dispose(); for (const g of added) { g.parent?.remove(g); } ktx2.dispose(); };
   }, [quality, gl, invalidate, lock.tod, hideOwnChair, ownDir]);
 
   const w = BARBER.roomX * 2;

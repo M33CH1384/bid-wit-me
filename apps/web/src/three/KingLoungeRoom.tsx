@@ -9,6 +9,7 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { CHAIR_SPOTS, STUDIO } from './classicStudioLayout';
 import { isOwnSeatSpot, useOwnChairHidden, useOwnSeatDir } from './ownChair';
+import { chairStandIns } from './chairStandIn';
 
 /**
  * THE KING'S LOUNGE — story Stop 11's 3D room (The King & The Ringer).
@@ -233,11 +234,14 @@ function useStudioProps(propsRef: RefObject<Group | null>, fxOn: boolean) {
     loader.setMeshoptDecoder(MeshoptDecoder);
     loader.setKTX2Loader(ktx2);
     const load = (url: string) => new Promise<import('three').Group>((res, rej) => loader.load(url, (g) => res(g.scene as Group), undefined, rej));
+    // Nobody sits on air while the chair model is late, or if it never lands (chairStandIn.ts).
+    const standIns = chairStandIns(() => propsRef.current, hideOwnChair ? CHAIR_SPOTS.filter((s) => !isOwnSeatSpot(s, ownDir)) : CHAIR_SPOTS, STUDIO.floorY, invalidate);
     void (async () => {
       try {
         const [chair, lamp] = await Promise.all([load(`${BASE}/chair.glb`), load(`${BASE}/lamp.glb`)]);
         if (dead || !propsRef.current) return;
         const host = propsRef.current;
+        standIns.arrived();
         for (const spot of CHAIR_SPOTS) {
           if (hideOwnChair && isOwnSeatSpot(spot, ownDir)) continue;
           const c = chair.clone(true) as Group;
@@ -272,10 +276,11 @@ function useStudioProps(propsRef: RefObject<Group | null>, fxOn: boolean) {
         }
         (window as unknown as { __bwmVenue?: unknown }).__bwmVenue = { id: 'blockAfterDark', fx: fxOn, env3d: true, studio: true, room: 'king-lounge', props: true };
         invalidate();
-      } catch { /* props are decoration: a failed GLB leaves the shell, never a broken table */ }
+      } catch { standIns.failed(); /* props are decoration: a failed model leaves the shell and the built chairs */ }
     })();
     return () => {
       dead = true;
+      standIns.dispose();
       for (const g of added) {
         g.parent?.remove(g);
         g.traverse((o) => { const mesh = o as Mesh; if (mesh.isMesh) { mesh.geometry.dispose(); const m = mesh.material as MeshStandardMaterial; (Array.isArray(m) ? m : [m]).forEach((x) => { x.map?.dispose(); x.dispose(); }); } });

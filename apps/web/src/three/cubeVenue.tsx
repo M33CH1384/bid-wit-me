@@ -21,6 +21,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { STUDIO, CHAIR_SPOTS } from './classicStudioLayout';
 import { useRoomShown } from './RoomBackdrop';
 import { isOwnSeatSpot, useOwnChairHidden, useOwnSeatDir } from './ownChair';
+import { chairStandIns } from './chairStandIn';
 import { BARBER_ASSETS, skySeekFraction, todFromDate, todLighting, type TodState } from './barbershopLayout';
 
 export { STUDIO, CHAIR_SPOTS };
@@ -131,11 +132,12 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
   }, [cfg, quality, lock.tod, invalidate]);
 
   useEffect(() => {
-    if (quality !== 'high' || !propsRef.current) return;
+    if (quality !== 'high' || !propsRef.current) return; // Low seats no figures, so it stands no chairs either
     let dead = false; const added: Object3D[] = [];
     const ktx2 = new KTX2Loader().setTranscoderPath('/assets/basis/').detectSupport(gl);
     const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder); loader.setKTX2Loader(ktx2);
     const load = (url: string) => new Promise<import('three').Group>((res, rej) => loader.load(url, (g) => res(g.scene as Group), undefined, rej));
+    const standIns = chairStandIns(() => propsRef.current, hideOwnChair ? (cfg.chairSpots ?? studioSpots).filter((s) => !isOwnSeatSpot(s, ownDir)) : (cfg.chairSpots ?? studioSpots), STUDIO.floorY, invalidate);
     void (async () => {
       try {
         // This room's chair spots (a rendered room at a kit-chair venue brings its own); same loop, same own-chair guard.
@@ -143,13 +145,14 @@ export default function CubeVenueRoom({ cfg, quality, handNo }: { cfg: CubeVenue
         const chair = await load(`${CLASSIC}/chair.glb`);
         const lamp = cfg.pendants === false || rendered ? null : await load(`${CLASSIC}/lamp.glb`);
         if (dead || !propsRef.current) return; const host = propsRef.current;
+        standIns.arrived();
         for (const spot of CHAIR_SPOTS) { if (hideOwnChair && isOwnSeatSpot(spot, ownDir)) continue; const c = chair.clone(true) as Group; c.rotation.y = spot.ry; c.position.set(spot.x, 0, spot.z); c.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); host.add(c); ground(c, STUDIO.floorY); added.push(c); }
         if (lamp) for (const x of [-STUDIO.lampX, STUDIO.lampX]) { const l = lamp.clone(true) as Group; l.position.set(x, 0, 0); l.traverse((o) => { const m = o as Mesh; if (m.isMesh) { m.castShadow = false; m.receiveShadow = true; } }); host.add(l); l.updateMatrixWorld(true); const box = new Box3().setFromObject(l); l.position.y += STUDIO.floorY + STUDIO.lampShadeBottom - box.min.y; added.push(l); }
         (window as unknown as { __bwmVenue?: unknown }).__bwmVenue = { id: cfg.id, fx: false, studio: true, room: cfg.slug, props: true, tod: lock.tod };
         invalidate();
-      } catch { /* shell stays */ }
+      } catch { standIns.failed(); /* the shell stays; nobody sits on air */ }
     })();
-    return () => { dead = true; for (const g of added) g.parent?.remove(g); ktx2.dispose(); };
+    return () => { dead = true; standIns.dispose(); for (const g of added) g.parent?.remove(g); ktx2.dispose(); };
   }, [cfg, quality, gl, invalidate, lock.tod, hideOwnChair, ownDir, rendered]);
 
   const w = STUDIO.roomX * 2;
