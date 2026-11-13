@@ -1183,7 +1183,7 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
     <>
       {d.postgame && (
         <div className="rw-postgame" data-testid="postgame-report">
-          <h3 className="rw-pg-title">Postgame Report</h3>
+          <h3 className="rw-pg-title"><span>Postgame Report</span><em className="rw-pg-final">Final</em></h3>
           <table className="cmp-table">
             <thead><tr><th></th><th>Final</th><th>Books</th><th>Nils made</th></tr></thead>
             <tbody>
@@ -1191,10 +1191,10 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
                 const top = Math.max(...d.postgame!.sides.map((x) => x.score));
                 const tone: RollTone = s.score < 0 ? 'scoreLoss' : s.score > 0 && s.score === top ? 'scoreWin' : 'scoreFlat';
                 return (
-                  <tr key={s.label}><th>{s.label}</th><td><RollNum to={s.score} play={play} reduced={reduced} duration={1150} delay={250} step={50} tone={tone} origin="100% 50%" format={(v) => v.toLocaleString()} /></td><td>{s.books}</td><td>{s.nilsMade}</td></tr>
+                  <tr key={s.label} className={s.score === top ? 'rw-pg-win' : 'rw-pg-lose'}><th>{s.label}</th><td><RollNum to={s.score} play={play} reduced={reduced} duration={1150} delay={250} step={50} tone={tone} origin="100% 50%" format={(v) => v.toLocaleString()} /></td><td>{s.books}</td><td>{s.nilsMade}</td></tr>
                 );
               })}
-              <tr><th>Your books</th><td colSpan={3}>{d.postgame.myBooks} books{d.postgame.myNilsMade > 0 ? ` · ${d.postgame.myNilsMade} nil${d.postgame.myNilsMade === 1 ? '' : 's'} made` : ''}</td></tr>
+              <tr className="rw-pg-you"><th>Your books</th><td colSpan={3}>{d.postgame.myBooks} books{d.postgame.myNilsMade > 0 ? ` · ${d.postgame.myNilsMade} nil${d.postgame.myNilsMade === 1 ? '' : 's'} made` : ''}</td></tr>
             </tbody>
           </table>
           {d.postgame.moments.length > 0 && (
@@ -1215,11 +1215,27 @@ function ReportBody({ d, play, rowsPlay, reduced, guestClaim, rowsRef, xpExterna
                 </>)}
             </ul>
           )}
+          {/* The line score (owner, 2026-11-12: this screen "should read like a slide on
+              a espn show showing stats"): hands across, sides down, each cell the points
+              that side scored in that hand, the final total at the end — a broadcast line
+              score, off the same timeline the old "Hand 1 · 70–60" list printed. */}
           {(d.postgame.timeline?.length ?? 0) > 1 && (
-            <div className="rw-timeline" data-testid="postgame-timeline">
-              {d.postgame.timeline!.map((t) => (
-                <span key={t.hand} className="rw-timeline-row">Hand {t.hand} · {t.scores.join('–')}</span>
-              ))}
+            <div className="rw-timeline rw-linescore" data-testid="postgame-timeline">
+              <table>
+                <thead><tr><th></th>{d.postgame.timeline!.map((t) => <th key={t.hand}>{t.hand}</th>)}<th className="rw-ls-total">T</th></tr></thead>
+                <tbody>
+                  {d.postgame.sides.map((sd, i) => (
+                    <tr key={sd.label}>
+                      <th>{sd.label}</th>
+                      {d.postgame!.timeline!.map((t, k) => {
+                        const pts = (t.scores[i] ?? 0) - (k > 0 ? (d.postgame!.timeline![k - 1]!.scores[i] ?? 0) : 0);
+                        return <td key={t.hand} className={pts < 0 ? 'neg' : ''}>{pts}</td>;
+                      })}
+                      <td className="rw-ls-total">{sd.score}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
