@@ -205,6 +205,13 @@ export function endViewAdjustGesture(adj: ViewAdjust): void {
   if (!viewAdjustEquals(a, lastCommitted)) fireCommit(a);
 }
 
+/** A gesture that must NOT save (motion view's lean): the chip lingers out and nothing reaches
+ *  the persist channel. The caller has already put the view where it should rest. */
+export function releaseViewAdjustGesture(): void {
+  emit({ adj: state.adj, adjusting: true });
+  startLinger();
+}
+
 /** Double-tap reset: back to the stock framing, saved like any other position. */
 export function resetViewAdjust(): void {
   const a = { ...DEFAULT_VIEW_ADJUST };

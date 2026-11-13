@@ -209,15 +209,18 @@ describe('motion view driver (fake sensor target + fake clock)', () => {
     expect(commits).toEqual([]);
   });
 
-  it('leaning away 20° sweeps the view to +15° (toward the table); settle commits and the chip lingers out', () => {
+  // 2026-11-13 (owner: "both the sitting and standing view seem way too high up"): the lean is a
+  // LIVE offset and is never saved. The four tests below replace the ones that pinned saving it —
+  // a saved lean became the next anchor's base, so the view crept to the limit over sessions.
+  it('leaning away 20° sweeps the view to +15° (toward the table); nothing is saved and the chip lingers out', () => {
     driver.setEnabled(true);
     feed(90, 3); // anchor upright
     feed(70, 14); // lean away over ~700ms (smoothing converges)
     expect(Math.abs(adj().tilt - 15)).toBeLessThan(0.75);
     expect(getViewAdjustState().adjusting).toBe(true); // chip is up while it moves
     vi.advanceTimersByTime(700); // settle window passes
-    expect(commits.length).toBeGreaterThanOrEqual(1);
-    expect(Math.abs(commits[commits.length - 1]!.tilt - 15)).toBeLessThan(0.75);
+    expect(commits).toEqual([]); // the lean never reaches the save channel
+    expect(Math.abs(adj().tilt - 15)).toBeLessThan(0.75); // still leaning: the view holds
     vi.advanceTimersByTime(2200); // readout linger expires
     expect(getViewAdjustState().adjusting).toBe(false);
   });
@@ -238,13 +241,15 @@ describe('motion view driver (fake sensor target + fake clock)', () => {
     const held = adj().tilt;
     expect(Math.abs(held - 6.67)).toBeLessThan(0.6);
     noteExternalViewGesture(true);
+    expect(adj().tilt).toBe(0); // motion steps back: the view rests at the player's own tilt
     feed(90, 6); // the player straightens the phone mid-drag — view must NOT follow
-    expect(adj().tilt).toBe(held);
+    expect(adj().tilt).toBe(0);
     noteExternalViewGesture(false);
-    feed(90, 3); // resume at the new holding angle: re-baselined, still no jump
-    expect(adj().tilt).toBe(held);
-    feed(85, 14); // lean 5° from the NEW neutral adds its tilt on top of the held value
-    expect(Math.abs(adj().tilt - (held + 2.5))).toBeLessThan(0.6);
+    feed(90, 3); // resume at the new holding angle: re-baselined, no jump
+    expect(adj().tilt).toBe(0);
+    feed(85, 14); // lean 5° from the NEW neutral adds its tilt on top of the saved tilt
+    expect(Math.abs(adj().tilt - 2.5)).toBeLessThan(0.6);
+    expect(commits).toEqual([]);
   });
 
   it('a covering sheet suspends; closing it re-baselines (no jump on return)', () => {
@@ -287,29 +292,47 @@ describe('motion view driver (fake sensor target + fake clock)', () => {
     expect(commits).toEqual([]);
   });
 
-  it('persistence throttle: a 3s continuous wiggle commits a handful of times, never per tick', () => {
+  it('a 3s continuous wiggle saves nothing at all', () => {
     driver.setEnabled(true);
     feed(90, 3);
     for (let i = 0; i < 30; i++) { vi.advanceTimersByTime(100); orient(i % 2 === 0 ? 80 : 100); }
-    expect(commits.length).toBeGreaterThanOrEqual(2);
-    expect(commits.length).toBeLessThanOrEqual(8); // ~2/s ceiling + settle headroom
     vi.advanceTimersByTime(700); // settle
-    const last = commits[commits.length - 1]!;
-    expect(last).toEqual(adj()); // what was saved is exactly where the view rests
+    expect(commits).toEqual([]);
   });
 
-  it('toggle-off mid-lean closes the gesture and commits where the view rests', () => {
+  it('toggle-off mid-lean takes the lean back: the view rests at the saved tilt, nothing saved', () => {
     driver.setEnabled(true);
     feed(90, 3);
     feed(80, 14);
-    const held = adj().tilt;
-    expect(Math.abs(held - 6.67)).toBeLessThan(0.6);
+    expect(Math.abs(adj().tilt - 6.67)).toBeLessThan(0.6);
     driver.setEnabled(false);
     expect(driver.isListening()).toBe(false);
-    expect(commits.length).toBeGreaterThanOrEqual(1);
-    expect(commits[commits.length - 1]!.tilt).toBe(held);
+    expect(adj().tilt).toBe(0);
+    expect(commits).toEqual([]);
     feed(70, 5); // no listeners: nothing happens
-    expect(adj().tilt).toBe(held);
+    expect(adj().tilt).toBe(0);
+  });
+
+  it('sessions do not creep: anchor off-posture, play, stop — again and again — and the tilt is where it began', () => {
+    for (let session = 0; session < 6; session++) {
+      driver.setEnabled(true);
+      feed(60, 3); // anchored while the phone was held flat-ish (the launch tap)
+      feed(80, 14); // then lifted to the playing posture: a big lean
+      expect(adj().tilt).not.toBe(0);
+      driver.setEnabled(false);
+      expect(adj().tilt).toBe(0);
+    }
+    expect(commits).toEqual([]);
+  });
+
+  it('a tilt the player set by hand is the base the lean adds to, and what it rests back on', () => {
+    seedViewAdjust({ tilt: 5, zoom: 1 });
+    driver.setEnabled(true);
+    feed(90, 3);
+    feed(80, 14);
+    expect(Math.abs(adj().tilt - 11.67)).toBeLessThan(0.6);
+    driver.setSuspended('covered', true);
+    expect(adj().tilt).toBe(5);
   });
 });
 

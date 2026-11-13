@@ -81,3 +81,20 @@ describe('motion view asks again after a relaunch', () => {
     expect(src).toContain('useEffect(() => (settings.motionView === true ? armMotionSensorsOnTap() : undefined), [settings.motionView]);');
   });
 });
+
+// Owner, 2026-11-13: "both the sitting and standing view seem way too high up" — Motion view had been
+// saving its lean into the stored tilt. Existing saves are healed once.
+describe('saved tilt heal', () => {
+  it('a Motion view player gets the stock tilt back once, zoom kept; a hand-set tilt afterwards stands', async () => {
+    const { normalizeSettings } = await import('../src/settings');
+    const healed = normalizeSettings({ motionView: true, viewAdjust: { tilt: 15, zoom: 1.2 } });
+    expect(healed.viewAdjust).toEqual({ tilt: 0, zoom: 1.2 });
+    expect(healed.motionTiltHealed).toBe(true);
+    const later = normalizeSettings({ ...healed, viewAdjust: { tilt: 6, zoom: 1.2 } });
+    expect(later.viewAdjust.tilt).toBe(6);
+  });
+  it('a player who never used Motion view keeps their tilt', async () => {
+    const { normalizeSettings } = await import('../src/settings');
+    expect(normalizeSettings({ motionView: false, viewAdjust: { tilt: 9, zoom: 1 } }).viewAdjust.tilt).toBe(9);
+  });
+});
