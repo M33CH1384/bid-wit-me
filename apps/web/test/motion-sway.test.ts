@@ -343,7 +343,9 @@ describe('quick-suspend store (the in-table button’s state — in-memory only)
     expect(getMotionQuickSuspended()).toBe(false);
   });
 
-  it('the driver honours the quick suspend exactly like a sheet pause (frozen, then re-baselined)', () => {
+  // 2026-11-13: a pause no longer freezes the lean in place — the lean is live-only, so pausing
+  // rests the view back on the saved tilt (what the button's own description always said).
+  it('the driver honours the quick suspend exactly like a sheet pause (rested on the saved tilt, then re-baselined)', () => {
     vi.useFakeTimers();
     __resetViewAdjustStore();
     seedViewAdjust({ tilt: 0, zoom: 1 });
@@ -365,10 +367,10 @@ describe('quick-suspend store (the in-table button’s state — in-memory only)
     driver.setSuspended('quick', true);
     expect(getMotionSwayDeg()).toBe(0); // sway released
     feed(0, 0, 6); // sensors ignored while suspended
-    expect(getViewAdjustState().adj.tilt).toBe(heldTilt); // tilt frozen where it settled
+    expect(getViewAdjustState().adj.tilt).toBe(0); // the lean is taken back: the saved tilt
     driver.setSuspended('quick', false);
     feed(0, 0, 3); // resume re-baselines at the current posture: no jump
-    expect(getViewAdjustState().adj.tilt).toBe(heldTilt);
+    expect(getViewAdjustState().adj.tilt).toBe(0);
     expect(getMotionSwayDeg()).toBe(0);
     driver.dispose();
     vi.useRealTimers();

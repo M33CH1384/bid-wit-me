@@ -68,6 +68,8 @@ export interface Settings {
    *  with it and was removed the same day on the owner's verdict — tilt only.)
    *  Turning it on asks the platform's motion permission from the toggle tap itself. */
   motionView: boolean;
+  /** Set once the saved tilt has been cleared of Motion view's old saved lean (see normalizeSettings). */
+  motionTiltHealed?: boolean;
   /** Eye zoom (owner, 2026-11-07): opt-in, OFF by default, SEPARATE from Motion view. When on,
    *  the front camera reads — on-device only — whether the player is looking at their cards or
    *  the table and eases the viewAdjust zoom (eyeZoom.ts). */
@@ -263,6 +265,12 @@ export function normalizeSettings(j: Omit<Partial<Settings>, 'botLevel'> & { bot
   if (s.view !== 'sitting' && s.view !== 'standing') s.view = 'sitting'; // no saved preference (or junk) -> Sitting
   s.viewAdjust = normalizeViewAdjust(s.viewAdjust); // clamped tilt/zoom; junk -> the stock framing
   if (typeof s.motionView !== 'boolean') s.motionView = false; // motion view is opt-in; old saves start OFF
+  // One-time heal (2026-11-13): Motion view used to SAVE its lean into this tilt, and the saved
+  // value crept toward the limit over sessions ("both the sitting and standing view seem way too
+  // high up"). Whoever had it on gets the stock tilt back once; their zoom is untouched, and any
+  // tilt they set by hand afterwards is theirs.
+  if (s.motionView && s.motionTiltHealed !== true) s.viewAdjust = { ...s.viewAdjust, tilt: 0 };
+  s.motionTiltHealed = true;
   if (typeof s.eyeZoom !== 'boolean') s.eyeZoom = false; // eye zoom is opt-in; old saves start OFF
   s.eyeZoomCal = normalizeEyeZoomCalibration(s.eyeZoomCal); // personal gaze threshold; junk -> uncalibrated
   if (typeof s.turnUp !== 'boolean') s.turnUp = false; // slam mode is opt-in; old saves start OFF

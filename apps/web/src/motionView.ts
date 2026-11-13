@@ -43,7 +43,7 @@
  */
 import {
   clampViewAdjust, getViewAdjustState, beginViewAdjustGesture, updateViewAdjustLive,
-  endViewAdjustGesture, viewAdjustEquals, type CamSpecLike, type ViewAdjust,
+  releaseViewAdjustGesture, type CamSpecLike,
 } from './viewAdjust';
 
 /* ------------------------------------------------------------- constants
@@ -483,8 +483,6 @@ export class MotionViewDriver {
 
   private gestureOpen = false;
   private lastChangeAt = 0;
-  private lastCommitAt = 0;
-  private lastCommittedAdj: ViewAdjust | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private unsubTouch: (() => void) | null = null;
 
@@ -507,7 +505,7 @@ export class MotionViewDriver {
     if (v) {
       this.attach();
     } else {
-      if (this.gestureOpen) this.closeGesture();
+      this.rest();
       this.detach();
       this.anchored = false;
     }
@@ -524,7 +522,7 @@ export class MotionViewDriver {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.gestureOpen) this.closeGesture();
+    this.rest();
     this.detach();
     setMotionSwayDeg(0); // the live offset dies with the driver
     this.unsubTouch?.();
@@ -538,7 +536,7 @@ export class MotionViewDriver {
     if (r === this.wasRunning) return;
     this.wasRunning = r;
     if (!r) {
-      if (this.gestureOpen) this.closeGesture();
+      this.rest();
       // Motion stopped: the sway offset is released at once and the
       // view rests at exactly the saved manual tilt/zoom again.
       setMotionSwayDeg(0);
@@ -567,7 +565,7 @@ export class MotionViewDriver {
   private onReorient = (): void => {
     // The lean frame rotated with the screen: commit where we are and
     // re-anchor on the next sample rather than swing the view.
-    if (this.gestureOpen) this.closeGesture();
+    this.rest();
     setMotionSwayDeg(0);
     this.pendingAnchor = true;
   };
@@ -616,19 +614,8 @@ export class MotionViewDriver {
 
   private onTick = (): void => {
     if (!this.gestureOpen || !this.running()) return;
-    const now = this.nowFn();
-    const cur = getViewAdjustState().adj;
-    const changed = !this.lastCommittedAdj || !viewAdjustEquals(cur, this.lastCommittedAdj);
-    if (changed && now - this.lastCommitAt >= MOTION_PERSIST_INTERVAL_MS) {
-      // The throttled save: close (commits) and instantly re-open, so the
-      // chip never flickers and the linger never starts mid-movement.
-      endViewAdjustGesture(cur);
-      this.lastCommittedAdj = clampViewAdjust(cur);
-      this.lastCommitAt = now;
-      beginViewAdjustGesture();
-      return;
-    }
-    if (now - this.lastChangeAt >= MOTION_SETTLE_MS) this.closeGesture();
+    // Quiet for a while: the readout chip lingers out. Nothing is saved — see rest().
+    if (this.nowFn() - this.lastChangeAt >= MOTION_SETTLE_MS) this.closeGesture();
   };
 
   private openGestureIfNeeded(now: number): void {
@@ -636,16 +623,27 @@ export class MotionViewDriver {
     beginViewAdjustGesture();
     this.gestureOpen = true;
     this.lastChangeAt = now;
-    this.lastCommitAt = now;
-    this.lastCommittedAdj = clampViewAdjust(getViewAdjustState().adj);
   }
 
   private closeGesture(): void {
     if (!this.gestureOpen) return;
-    const cur = getViewAdjustState().adj;
-    endViewAdjustGesture(cur);
-    this.lastCommittedAdj = clampViewAdjust(cur);
-    this.lastCommitAt = this.nowFn();
+    releaseViewAdjustGesture();
     this.gestureOpen = false;
+  }
+
+  /**
+   * Motion is stopping (paused, a touch, a sheet, the toggle, a rotation, unmount): the lean it
+   * added is taken back and the view rests at the tilt it was anchored on — the player's own saved
+   * tilt. THE LEAN IS NEVER SAVED (owner, 2026-11-13: "both the sitting and standing view seem way
+   * too high up"). It used to be written into the saved tilt, and each new anchor then started
+   * from that already-leaned value, so the view crept a little further every session until it sat
+   * pinned at the limit. Like the sway, the lean is a live offset and nothing more.
+   */
+  private rest(): void {
+    if (this.anchored) {
+      const cur = getViewAdjustState().adj;
+      if (cur.tilt !== this.anchorTilt) updateViewAdjustLive({ tilt: this.anchorTilt, zoom: cur.zoom });
+    }
+    this.closeGesture();
   }
 }
