@@ -1981,9 +1981,25 @@ function HandFill() {
 }
 const _up = new Vector3(0, 0.25, 0);
 
+/**
+ * Shadow bias by shadow-map size. The key light's shadow map covers the whole table, so each
+ * texel of a smaller map spans more felt — and with the bias tuned for the 2k map, the felt
+ * starts shadowing ITSELF in dark curved bands, worst on the far side from the light (owner,
+ * 2026-11-12, on an iPhone: a streaky "shadow" across the top of the table "in a few games").
+ * Phones run 1k maps and the governor drops lower still, so the offsets grow as the map
+ * shrinks. The 2k values are the original tuning, unchanged. Pure (tests).
+ */
+export function shadowBiasFor(size: number): { bias: number; normalBias: number } {
+  if (size >= 2048) return { bias: -0.00012, normalBias: 0.012 };
+  if (size >= 1024) return { bias: -0.0003, normalBias: 0.02 };
+  if (size >= 512) return { bias: -0.0006, normalBias: 0.035 };
+  return { bias: -0.001, normalBias: 0.06 };
+}
+
 function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: VenueDef; shadowSize: number }) {
   const hi = quality === 'high';
   const cast = hi && shadowSize > 0;
+  const sb = shadowBiasFor(shadowSize);
   return (
     <>
       <ambientLight intensity={hi ? 0.15 : 0.55} />
@@ -1997,8 +2013,8 @@ function Lights({ quality, def, shadowSize }: { quality: 'high' | 'low'; def: Ve
         color={def.key}
         castShadow={cast}
         shadow-mapSize={[Math.max(shadowSize, 256), Math.max(shadowSize, 256)]}
-        shadow-bias={-0.00012}
-        shadow-normalBias={0.012}
+        shadow-bias={sb.bias}
+        shadow-normalBias={sb.normalBias}
         shadow-radius={6}
       />
       {/* Classic used to skip this. The spotlight falls off at the near edge, so the hand
