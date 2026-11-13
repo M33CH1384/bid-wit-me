@@ -8,10 +8,11 @@
  * Rail: camera and mic are plain icon-and-label buttons like CHAT in every layout; offline only
  * the icon and label dim, never the whole button.
  */
-import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
 import { Box3, type Mesh } from 'three';
-import { CHAIR_STAND_IN_MS, SIMPLE_CHAIR_SEAT, SIMPLE_CHAIR_TRIS, buildSimpleChair } from '../src/three/cubeVenue';
+import { Group } from 'three';
+import { CHAIR_STAND_IN_MS, SIMPLE_CHAIR_SEAT, SIMPLE_CHAIR_TRIS, buildSimpleChair, chairStandIns } from '../src/three/chairStandIn';
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
@@ -44,18 +45,64 @@ describe('the built chair', () => {
   });
 });
 
-describe('stand-in wiring', () => {
-  const src = read('../src/three/cubeVenue.tsx');
-  it('stands in after a short wait and on a failed load, and steps aside for the model', () => {
+describe('stand-in behaviour', () => {
+  const spots = [{ x: -2.3, z: 0, ry: 1 }, { x: 2.3, z: 0, ry: -1 }];
+  it('stands chairs at the seats after the wait, on the room floor', async () => {
+    vi.useFakeTimers();
+    const host = new Group(); let drew = 0;
+    const s = chairStandIns(() => host, spots, -0.9, () => { drew++; });
+    expect(host.children).toHaveLength(0);
+    vi.advanceTimersByTime(CHAIR_STAND_IN_MS + 10);
+    expect(host.children).toHaveLength(2);
+    expect(host.children[0]!.position.toArray()).toEqual([-2.3, -0.9, 0]);
+    expect(drew).toBe(1);
+    s.dispose();
+    expect(host.children).toHaveLength(0);
+    vi.useRealTimers();
+  });
+  it('a model that lands in time means no stand-ins at all', () => {
+    vi.useFakeTimers();
+    const host = new Group();
+    const s = chairStandIns(() => host, spots, -0.9, () => {});
+    s.arrived();
+    vi.advanceTimersByTime(CHAIR_STAND_IN_MS * 3);
+    expect(host.children).toHaveLength(0);
+    vi.useRealTimers();
+  });
+  it('a failed load stands them in at once; a late model then replaces them', () => {
+    vi.useFakeTimers();
+    const host = new Group();
+    const s = chairStandIns(() => host, spots, -0.9, () => {});
+    s.failed();
+    expect(host.children).toHaveLength(2);
+    s.arrived();
+    expect(host.children).toHaveLength(0);
+    vi.useRealTimers();
+  });
+  it('the wait is short', () => {
     expect(CHAIR_STAND_IN_MS).toBeGreaterThanOrEqual(1000);
     expect(CHAIR_STAND_IN_MS).toBeLessThanOrEqual(5000);
-    expect(src).toContain('window.setTimeout(standIn, CHAIR_STAND_IN_MS)');
-    expect(src).toContain('} catch { window.clearTimeout(standInTimer); standIn();');
-    expect(src).toContain('window.clearTimeout(standInTimer); clearStandIn();');
   });
-  it('still hides the viewer’s own chair', () => {
-    expect(src).toContain('addSimpleChairs(propsRef.current, hideOwnChair ? spots.filter((s) => !isOwnSeatSpot(s, ownDir)) : spots)');
+});
+
+// "We need to make sure All venues have chairs": every room that loads the chair MODEL (rather
+// than building its chairs in code) goes through the stand-in, and none of them seats the viewer.
+describe('every model-loading room has stand-ins', () => {
+  const rooms = ['cubeVenue.tsx', 'ClassicStudio.tsx', 'BarbershopRoom.tsx', 'KingLoungeRoom.tsx'];
+  it('covers every room that loads chair.glb', () => {
+    const dir = new URL('../src/three/', import.meta.url);
+    const loaders = readdirSync(dir).filter((f) => f.endsWith('.tsx') && readFileSync(new URL(f, dir), 'utf8').includes('/chair.glb`)'));
+    expect(loaders.sort()).toEqual([...rooms].sort());
   });
+  for (const f of rooms) {
+    it(`${f}: arrives, fails and disposes through chairStandIns, own chair left out`, () => {
+      const src = read(`../src/three/${f}`);
+      expect(src).toContain('chairStandIns(() => propsRef.current, hideOwnChair ? ');
+      expect(src).toContain('standIns.arrived();');
+      expect(src).toContain('} catch { standIns.failed();');
+      expect(src).toContain('standIns.dispose();');
+    });
+  }
 });
 
 describe('rail camera and mic', () => {

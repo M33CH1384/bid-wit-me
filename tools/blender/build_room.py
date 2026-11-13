@@ -426,7 +426,8 @@ def backyard():
     string_lights('s1', (-9.0, -1.0, 5.6), (0, R - 0.1, 4.6), 0.9, 14)
     string_lights('s2', (9.0, -1.0, 5.6), (0, R - 0.1, 4.6), 0.9, 14)
     string_lights('s3', (-9.0, -1.0, 5.6), (9.0, -1.0, 5.6), 1.2, 16)
-    prop('wooden_picnic_table', (0.5, 7.4), 8)
+    # Three-quarter size and a little further off: straight behind the partner it dwarfed the game table.
+    prop('wooden_picnic_table', (0.5, 8.0), 8, SCALE * 0.72)
     prop('barrel_stove', (-6.2, 5.0), 30)
     point('coals', (-6.2, 5.0, 1.2), (1.0, 0.45, 0.15), 260, 0.2)
     prop('propane_tank', (-7.4, 4.2), 0)
@@ -617,10 +618,12 @@ def speakeasy():
     prop('wine_barrel_01', (6.0, 8.6), 40, SCALE * 1.1)
     prop('wooden_barrels_01', (X - 1.6, 4.6), -90)
     prop('sofa_03', (2.6, 7.4), 0)
-    table = prop('gothic_coffee_table', (2.6, 5.4), 0)
-    on(table, 'vintage_oil_lamp', 0, 0, 0)
-    on(table, 'brass_candleholders', 0.9, 0, 0)
-    point('oil-lamp', (2.6, 5.4, 1.2), (1.0, 0.6, 0.25), 260, 0.1)
+    # Smaller and tucked up to the sofa, like the Mansion's: at full size this close to the game it read as
+    # big as the game table from the sitting view (owner, 2026-11-13: no oversized props in the background).
+    table = prop('gothic_coffee_table', (2.6, 5.8), 0, SCALE * 0.62)
+    on(table, 'vintage_oil_lamp', 0, 0, 0, SCALE * 0.8)
+    on(table, 'brass_candleholders', 0.5, 0, 0, SCALE * 0.8)
+    point('oil-lamp', (2.6, 5.8, 1.0), (1.0, 0.6, 0.25), 260, 0.1)
     prop('GreenChair_01', (5.6, 3.2), -70)
     shelf = prop('wooden_display_shelves_01', (X - 0.75, 0.4), -90)
     on(shelf, 'vintage_radio_transceiver', dy=-0.5, rot=-90)
