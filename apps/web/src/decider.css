@@ -26,9 +26,17 @@
 .bug-matchpoint i { width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: mp-live 1s steps(2, jump-none) infinite; }
 
 .mp-layer { position: absolute; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
-/* Decider only: the room leans in — a faint purple-and-gold breath at the edge of the screen all hand long. */
-.mp-edge { position: absolute; inset: 0; box-shadow: inset 0 0 110px 10px rgba(var(--purple-rgb), .3), inset 0 0 0 2px rgba(var(--gold-rgb), .22); animation: mp-edge 3.4s ease-in-out infinite; }
-@keyframes mp-edge { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+/* House lights down for the whole match-point hand: a spotlight on the table and the room around it
+   dropped away. It sits above the 3D scene and UNDER the player plates and the score bar (z-index 1;
+   the plates are 2), so names and bids stay readable. The lit pool is tall enough for the player's
+   own hand, and warm at its centre like a lamp over the felt. */
+.mp-spot { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(ellipse 56% 60% at 50% 57%, rgba(255, 236, 200, .07) 0%, rgba(3, 2, 8, 0) 36%, rgba(3, 2, 8, .62) 66%, rgba(3, 2, 8, .9) 92%); animation: mp-spot-in 1.6s ease-out both; }
+@keyframes mp-spot-in { from { opacity: 0; } to { opacity: 1; } }
+.mp-spot.still { animation: none; }
+/* Upright phone: the hand fans across the full width, so the pool widens to keep every card lit. */
+@media (orientation: portrait) {
+  .mp-spot { background: radial-gradient(ellipse 96% 58% at 50% 62%, rgba(255, 236, 200, .07) 0%, rgba(3, 2, 8, 0) 44%, rgba(3, 2, 8, .62) 72%, rgba(3, 2, 8, .9) 96%); }
+}
 .mp-layer .mp-strap { background: linear-gradient(180deg, rgba(var(--purple-deep-rgb), .5), rgba(var(--purple-deep-rgb), .2)), var(--panel); position: absolute; left: 50%; top: 20%; min-width: min(80vw, 440px); margin: 0; transform: translateX(-50%); animation: mp-table 3.6s cubic-bezier(.2, .9, .25, 1) both; }
 @keyframes mp-table {
   0% { opacity: 0; transform: translateX(-50%) scale(1.4); }
@@ -37,11 +45,11 @@
   100% { opacity: 0; transform: translateX(-50%) scale(.94); }
 }
 
-.mp-layer.still .mp-edge, .mp-layer.still .mp-kicker i { animation: none; }
+.mp-layer.still .mp-kicker i { animation: none; }
 .mp-layer.still .mp-strap { animation: mp-table-still 3.6s linear both; }
 @keyframes mp-table-still { 0%, 99% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .mp-strap, .tt:has(.mp-strap.decider), .mp-edge, .mp-kicker i, .bug-matchpoint i { animation: none; }
+  .mp-strap, .tt:has(.mp-strap.decider), .mp-spot, .mp-kicker i, .bug-matchpoint i { animation: none; }
   .mp-layer .mp-strap { animation: mp-table-still 3.6s linear both; }
 }
 
@@ -58,5 +66,4 @@ html[data-theme="neon"] .tt:has(.mp-strap.decider) { animation-name: mp-card-neo
 @keyframes mp-card-neon { 0%, 100% { box-shadow: 0 0 0 1px rgba(var(--edge-rgb), .4), 0 0 26px rgba(var(--purple-rgb), .2); } 50% { box-shadow: 0 0 0 1px rgba(var(--cyan-rgb), .7), 0 0 46px rgba(var(--blue-rgb), .45); } }
 html[data-theme="neon"] .bug-matchpoint { border-radius: 999px; background: linear-gradient(90deg, var(--purple), var(--purple-hot)); color: #fff; }
 html[data-theme="neon"] .bug-matchpoint.matchPoint { background: rgba(var(--blue-rgb), .16); color: rgb(var(--cyan-rgb)); }
-html[data-theme="neon"] .mp-edge { box-shadow: inset 0 0 110px 10px rgba(var(--purple-rgb), .3), inset 0 0 0 2px rgba(var(--cyan-rgb), .25); }
 html[data-theme="neon"] .mp-layer .mp-strap { background: linear-gradient(160deg, rgba(var(--purple-rgb), .3), rgba(var(--blue-rgb), .12)), var(--panel); }

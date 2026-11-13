@@ -95,3 +95,33 @@ describe('match point follows the theme', () => {
     expect(styles).toContain('html[data-theme="neon"] .bug-matchpoint');
   });
 });
+
+// Owner, 2026-11-13: "there should only be a spotlight on the table during match point and the area
+// around the table should dim dramatically the music should turn down a bit and the ambiance should echo".
+describe('match point room', () => {
+  const styles = readFileSync(new URL('../src/decider.css', import.meta.url), 'utf8');
+  const layer = readFileSync(new URL('../src/MatchPointLayer.tsx', import.meta.url), 'utf8');
+  const audio = readFileSync(new URL('../src/audio.ts', import.meta.url), 'utf8');
+  it('the spotlight sits over the scene and under the plates, and never takes a tap', () => {
+    expect(styles).toMatch(/\.mp-spot \{[^}]*z-index: 1;[^}]*pointer-events: none;/);
+    expect(styles).toMatch(/\.mp-spot \{[^}]*rgba\(3, 2, 8, \.9\)/); // dramatic at the edge
+    expect(styles).toMatch(/\.mp-spot \{[^}]*rgba\(3, 2, 8, 0\)/); // clear over the table
+    expect(styles).toContain('@media (orientation: portrait)');
+  });
+  it('shows for either tier, for the whole hand, and switches the room sound with it', () => {
+    expect(layer).toContain('data-testid="match-point-spot"');
+    expect(layer).toContain('sound.setMatchPoint(on); return () => sound.setMatchPoint(false);');
+  });
+  it('the music sits back a bit, not off', async () => {
+    const { MATCH_POINT_MUSIC_TRIM, MATCH_POINT_ECHO } = await import('../src/audio');
+    expect(MATCH_POINT_MUSIC_TRIM).toBeGreaterThan(0.5);
+    expect(MATCH_POINT_MUSIC_TRIM).toBeLessThan(0.8);
+    expect(MATCH_POINT_ECHO.feedback).toBeLessThan(0.7); // decays, never runs away
+    expect(MATCH_POINT_ECHO.seconds).toBeGreaterThan(0.2);
+  });
+  it('the echo is fed by the room ambience only, and is silent at rest', () => {
+    expect(audio).toContain('this.venueBus?.connect(send); this.ambBus?.connect(send);');
+    expect(audio).toContain('const send = c.createGain(); send.gain.value = 0;');
+    expect(audio).toContain("this.settings.musicVolume ** 1.6 * 0.85 * this.matchPointMusicTrim()");
+  });
+});
