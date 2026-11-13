@@ -1,13 +1,16 @@
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
 import './animfx.css';
+import './setcoverReal.css';
 import { setAnimForStop, type FinaleHeadline } from '../setAnims';
 
 /**
  * The per-stop SET cover on a recap scorecard (owner, 2026-10-21): replaces
  * the retired caution tape (regular tier) and white sheet (finale tier) in
  * the slot those treatments used to occupy — over the card's background,
- * under its text, so names and scores stay readable. Synthesized CSS/SVG
- * only, no assets. Fresh = the animation plays; static = the end state
+ * under its text, so names and scores stay readable. The motion is CSS; the
+ * materials and objects are rendered textures (public/assets/setcovers,
+ * dressed in setcoverReal.css — owner, 2026-11-12: the drawn versions
+ * "look cheap"). Fresh = the animation plays; static = the end state
  * (an eliminated side's card keeps wearing its finale on later recaps).
  * Reduced effects (Settings / OS) collapse fresh to the static end state
  * plus the name tag, the same bargain the other animfx moments make.
@@ -123,7 +126,7 @@ const ART: Record<string, (finale: boolean) => ReactNode> = {
   ),
   'the-pjs': () => (
     <>
-      <div className="sc-beam" /><i className="sc-lamp" />
+      <div className="sc-beam" /><i className="sc-lamphead" /><i className="sc-lamp" />
       <div className="sc-window" />
       <div className="sc-fence" />
     </>
