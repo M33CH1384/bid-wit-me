@@ -20,7 +20,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { DataUtils, FloatType, HalfFloatType, type Texture } from 'three';
-import { assessBake, bakeLimit, HALL_ENV_MAX_MEAN, sourceMeanLuminance } from '../src/three/hallEnv';
+import { assessBake, bakeLimit, HALL_ENV_MAX_MEAN, HALL_ENV_MIN_LIMIT, sourceMeanLuminance } from '../src/three/hallEnv';
 
 function fakeTex(data: ArrayLike<number>, type: typeof HalfFloatType | typeof FloatType): Texture {
   return { image: { data, width: 4, height: 1 }, type } as unknown as Texture;
@@ -45,10 +45,15 @@ describe('assessBake: a blown bake is rejected', () => {
     expect(assessBake(0.3, 20)).toBe('blown');
   });
 
-  it('the absolute floor convicts a flood from a dim source', () => {
-    expect(bakeLimit(0.1)).toBe(HALL_ENV_MAX_MEAN);
-    expect(assessBake(0.1, HALL_ENV_MAX_MEAN + 0.01)).toBe('blown');
-    expect(assessBake(0.1, HALL_ENV_MAX_MEAN - 0.01)).toBe('ok');
+  it('a dim source is held to its own scale, down to the probe’s resolution floor', () => {
+    // 2026-11-12: the limit used to floor at 3 whatever the source, so a bake thirty times
+    // too bright for a dim rendered room (Classic Studio's source mean is 0.087) still passed.
+    expect(bakeLimit(0.1)).toBe(HALL_ENV_MIN_LIMIT);
+    expect(assessBake(0.1, HALL_ENV_MIN_LIMIT + 0.01)).toBe('blown');
+    expect(assessBake(0.1, HALL_ENV_MIN_LIMIT - 0.01)).toBe('ok');
+    expect(assessBake(0.087, 2.9)).toBe('blown'); // the white-table bake
+    expect(assessBake(0.087, 0.16)).toBe('ok'); // a correct bake read through 8 bits
+    expect(assessBake(0.021, 0.08)).toBe('ok'); // the Speakeasy, the dimmest room
   });
 
   it('a bright source scales its allowance — but only 4x', () => {

@@ -167,14 +167,23 @@ export function sourceMeanLuminance(tex: Texture): number {
 }
 
 /**
- * A real interior HDRI's mean luminance sits around 0.2–1.5. The cap is generous — a bake only
- * fails when it delivers several times the light its own source contains (or an absolute flood
- * from a dim source), which no correct PMREM of this hall can do: the filter conserves energy.
+ * How bright a bake may come out before it is called blown.
+ *
+ * PMREM conserves energy: a correct bake delivers about the light its source contains. So the
+ * limit is RELATIVE to the source — four times its mean — with a small absolute floor, because
+ * the probe reads back through 8 bits and cannot resolve a very dim map any finer than that.
+ *
+ * It used to be max(3, 4 × source): tuned for the old billiard-hall HDRI (mean ~0.6), and far
+ * too loose for the rendered rooms that light the table now. Their sources are dim — Classic
+ * Studio's is 0.087, the Speakeasy's 0.021 — so a bake thirty times too bright still measured
+ * under 3 and shipped, flooding the felt and the cards white (owner, 2026-11-12, iPhone, mid
+ * game). HALL_ENV_MAX_MEAN is now only the limit when the source cannot be measured at all.
  */
 export const HALL_ENV_MAX_MEAN = 3;
+export const HALL_ENV_MIN_LIMIT = 0.6;
 
 export function bakeLimit(sourceMean: number): number {
-  return Number.isFinite(sourceMean) && sourceMean > 0 ? Math.max(HALL_ENV_MAX_MEAN, sourceMean * 4) : HALL_ENV_MAX_MEAN;
+  return Number.isFinite(sourceMean) && sourceMean > 0 ? Math.max(HALL_ENV_MIN_LIMIT, sourceMean * 4) : HALL_ENV_MAX_MEAN;
 }
 
 /** 'ok' also covers "cannot measure" — an unmeasurable bake is not evidence against a working platform. */
