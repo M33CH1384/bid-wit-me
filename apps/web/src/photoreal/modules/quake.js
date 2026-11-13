@@ -1,6 +1,6 @@
 /*
  * quake.js — Bid Wit Me effect prototype (motion-studio, code-made, no assets, no deps).
- * Earthquake: rumble shake with motion blur, propagating table cracks, dust spurts, chips, falling ceiling dust.
+ * Earthquake: a short impact rattle, fast-landing table fractures that stop at the rail, dust spurts, chips, falling ceiling dust.
  * API:
  *   const fx = createFx(canvas, { seed, drawScene?(ctx,W,H,t), lowPower?, x?, y? });
  *   fx.duration (s); fx.render(t) draws frame t (deterministic: same seed+t => same pixels);
@@ -70,25 +70,27 @@ function finish(env,t){const{ctx,W,H}=env;ctx.globalCompositeOperation='source-o
 function build(env){const{ctx,W,H,S,cx,cy,Q}=env,R=env.R,D=4.2,N=v=>Math.round(v*Q);
   const DU=env.spritesSmoke([140,124,104],6);
   const amp=t=>sstep(.1,1.0,t)*(1-sstep(2.6,3.8,t));
+  /* impact rattle: tight, fast and over with the table's own jolt — a long slow sway slid the cracks around on a table that was not moving (owner, 2026-11-12) */
+  const rattle=t=>sstep(.08,.3,t)*(1-sstep(.45,1.15,t));
   /* fractal cracks: random walk from centre, branches */
   const cracks=[];const rr=rngOf(env.seed+11);
   /* crack tier by host-passed power (STANDARD row = the original fracture, exactly) */
   const PW=env.power??2,CN=[3,5,7,9][PW-1]||5,CL=[36,52,64,76][PW-1]||52,CV=[14,20,24,28][PW-1]||20,CW=[.0055,.008,.0105,.013][PW-1]||.008,CS=[.55,1,1.4,1.8][PW-1]||1,CD=[.14,.25,.33,.42][PW-1]||.25;
-  function grow(x,y,ang,len,w,t0,depth){const pts=[[x,y,t0]];let tt=t0;const a0=ang;for(let i=0;i<len;i++){ang+=(rr()-.5)*1.3+(a0-ang)*.25;const st=S*.014*(.5+rr());w*=.99;x+=Math.cos(ang)*st;y+=Math.sin(ang)*st*.42;tt+=(.02+rr()*.03)*(1+i*.06)*(rr()<.1?3:1);pts.push([x,y,tt]);
-      if(depth<2&&rr()<.05)grow(x,y,ang+(rr()<.5?-1:1)*(.5+rr()*.6),len*.45|0,w*.55,tt,depth+1);}cracks.push({pts,w});}
+  function grow(x,y,ang,len,w,t0,depth){const pts=[[x,y,t0]];let tt=t0;const a0=ang;for(let i=0;i<len;i++){ang+=(rr()-.5)*.7+(a0-ang)*.42;const st=S*.014*(.5+rr());w*=.99;x+=Math.cos(ang)*st;y+=Math.sin(ang)*st*.42;if(Math.hypot((x-cx)/(env.trx*.66),(y-cy)/(env.tryy*.74))>1)break;/* a fracture dies at the rail, never out on the floor */tt+=(.007+rr()*.008)*(1+i*.02)*(rr()<.1?2.2:1);pts.push([x,y,tt]);
+      if(depth<2&&rr()<.06)grow(x,y,ang+(rr()<.5?-1:1)*(.5+rr()*.6),len*.45|0,w*.45,tt,depth+1);}cracks.push({pts,w});}
   for(let i=0;i<CN;i++)grow(cx,cy,i/CN*6.283+rr()*.6,CL+rr()*CV|0,S*CW,.45+rr()*.25,0);
   const tips=[];cracks.forEach(c=>c.pts.forEach((p,i)=>{if(i%4===2)tips.push({x:p[0],y:p[1],t:p[2],v:rr()});}));
   const chips=Array.from({length:N(50)},()=>({i:(rr()*tips.length)|0,a:rr()*6.283,sp:.2+rr()*.5,v:rr()}));
   const fall=Array.from({length:N(120)},()=>({x:rr(),d:rr()*2.5+.5,v:rr()}));
   return{duration:D,
-  shake(t){const A=amp(t);return env.shake(t,S*.018*CS*A,11+6*A).map((v,i)=>v+Math.sin(t*(i?47:53))*S*.004*CS*A);},
+  shake(t){const A=rattle(t);return env.shake(t,S*.0045*CS*A,44).map((v,i)=>v+Math.sin(t*(i?83:97))*S*.0015*CS*A);},
   draw(t){const fade=1-sstep(D-.6,D,t),A=amp(t);
    /* motion blur: ghost the shaken scene */
    if(A>.2){ctx.globalAlpha=.35*A;ctx.drawImage(env.snap,-S*.01*A*Math.sin(t*50),S*.006*A*Math.cos(t*43));ctx.globalAlpha=1;}
    env.fill('rgb(10,8,6)',CD*A);
    /* cracks: shadowed gash + 1px lit lip, revealed progressively */
    ctx.save();ctx.beginPath();ctx.ellipse(cx,cy,env.trx*.97,env.tryy*.97,0,0,7);ctx.clip();
-   for(const c of cracks){const op=sstep(0,1.2,t-c.pts[0][2]);ctx.lineCap='round';ctx.lineJoin='round';
+   for(const c of cracks){const op=sstep(0,.45,t-c.pts[0][2]);ctx.lineCap='round';ctx.lineJoin='round';
      for(const [col,lw,ox,oy,al] of [['rgba(0,0,0,1)',c.w*(1.4+1.6*op),c.w*.3,c.w*.5,.45],['rgba(12,7,4,1)',c.w*(.5+.9*op),0,0,1],['rgba(2,1,0,1)',c.w*(.2+.4*op),0,c.w*.15,1],['rgba(140,185,140,1)',Math.max(1,c.w*.3),-c.w*(.4+.5*op),-c.w*(.5+.4*op),.4]]){
        ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.globalAlpha=al*fade;ctx.beginPath();let on=false;
        for(let i=1;i<c.pts.length;i++){const p=c.pts[i];if(p[2]>t)break;const q=c.pts[i-1];ctx.moveTo(q[0]+ox,q[1]+oy);ctx.lineTo(p[0]+ox,p[1]+oy);on=true;}if(on)ctx.stroke();}}
