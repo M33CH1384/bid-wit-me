@@ -99,7 +99,7 @@ import { stashRewards, type RewardsPayload } from './rewardsStash';
 import { carriedTableSeats } from './seatNames';
 import { flushLocalGames, localGameId } from './localStats';
 import { warmTableEffects } from './effects/warm';
-import { THIRD_SET_HEADLINE, endReasonText, onNoticeSides, shotChatLines, shotOutBannerFor, stickyNoticeSides, tkoDirectionFor } from './shotOut';
+import { THIRD_SET_HEADLINE, endReasonText, noticeMadeSides, onNoticeSides, shotChatLines, shotOutBannerFor, stickyNoticeSides, tkoDirectionFor } from './shotOut';
 import { type Sfx, sound } from './audio';
 import { sessionRoom } from './spatial';
 import { HAPTIC, haptic } from './haptics';
@@ -3021,6 +3021,8 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
     names.forEach((nm, i) => { if (isBotSeat(i)) preloadVoice(personaForName(nm), nm); });
   }, [botKey, talkPrefs.voices]); // eslint-disable-line react-hooks/exhaustive-deps
   const notice = onNoticeSides(sb);
+  // A first notice dissolves the moment the side has made its books this hand (shotOut.ts).
+  const noticeMade = noticeMadeSides(sb);
   // Sticky second notice (owner, 2026-10-28): those plates wear the caution-tape dressing
   // for the rest of the game; a first notice leaves the plate exactly as it has always been.
   const stickyNotice = stickyNoticeSides(sb);
@@ -3108,7 +3110,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
           </button>
         ) : <PlateFace uid={seatUid} name={names[seat] ?? ''} color={SEAT_COLORS[seat]} storyId={storySeatIds?.[seat]} bot={isBotSeat(seat)} />)}
         <div className="plate-body">
-          <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className="chip notice" data-testid={`notice-${seat}`} title={stickyNotice.includes(sideOf(seat, r)) ? noticeStickyTip(true) : "Got shot last hand: one more shot and they're out"}>ON NOTICE</span>}</div>
+          <div className="plate-name">{names[seat]}{dealerSeat === seat && <span className="chip dealer" data-testid={`dealer-${seat}`}>DEALER</span>}{partner && <span className="chip ally">PARTNER</span>}{notice.includes(sideOf(seat, r)) && <span className={`chip notice${noticeMade.includes(sideOf(seat, r)) ? ' made' : ''}`} data-testid={`notice-${seat}`} data-made={noticeMade.includes(sideOf(seat, r)) ? 'yes' : undefined} title={stickyNotice.includes(sideOf(seat, r)) ? noticeStickyTip(true) : "Got shot last hand: one more shot and they're out"}>ON NOTICE</span>}</div>
           <div className="plate-stats" key={st.handNo}>
             <span className="chip" data-testid={`bid-${seat}`}>{bidChipText(b ?? null, isTurn && st.phase === 'bidding')}</span>
             <span className="chip took" data-testid={`books-${seat}`}>{plateTookText(took, st.phase)}</span>
@@ -3829,7 +3831,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
             </button>
           ) : <MyPlateFace name={seatInitial(face(HUMAN))} color={spectating ? SEAT_COLORS[HUMAN] : USER_COLORS.You} />}
           <div className="plate-body">
-            <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className="chip notice" data-testid="notice-0" title={stickyNotice.includes(sideOf(HUMAN, r)) ? noticeStickyTip(spectating) : noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
+            <div className="plate-name">{face(HUMAN).toUpperCase()}{dealerSeat === HUMAN && <span className="chip dealer" data-testid="dealer-0">DEALER</span>}{notice.includes(sideOf(HUMAN, r)) && <span className={`chip notice${noticeMade.includes(sideOf(HUMAN, r)) ? ' made' : ''}`} data-testid="notice-0" data-made={noticeMade.includes(sideOf(HUMAN, r)) ? 'yes' : undefined} title={stickyNotice.includes(sideOf(HUMAN, r)) ? noticeStickyTip(spectating) : noticeTip(spectating)}>ON NOTICE</span>}{!spectating && myBadges.map((b) => BADGES[b.id] && <span key={b.id} className="chip badge" title={`${BADGES[b.id]!.name}: ${BADGES[b.id]!.desc}`} data-testid={`plate-badge-${b.id}`}>{BADGES[b.id]!.icon}</span>)}</div>
             <div className="plate-stats" key={st.handNo}>
               <span className="chip" data-testid="bid-0">{bidChipText(plates.bids[HUMAN] ?? null, actor === HUMAN && st.phase === 'bidding')}</span>
               <span className="chip took" data-testid="books-0">{plateTookText(tookShown[HUMAN] ?? 0, st.phase)}</span>

@@ -1,4 +1,4 @@
-import { isShot, sideCount, tkoOutSides } from '@spades/rules';
+import { booksStillNeeded, isNilBid, isShot, sideCount, sideOf, tkoOutSides } from '@spades/rules';
 import type { GameState, HandRecord, TableRules } from '@spades/rules';
 
 /**
@@ -34,6 +34,30 @@ export function onNoticeSides(st: Pick<GameState, 'history' | 'phase' | 'rules'>
   const last = st.history[st.history.length - 1];
   if (last) for (const s of last.sides) if (s.shot) out.add(s.side);
   return [...out].sort((a, b) => a - b);
+}
+
+/**
+ * First-notice sides that have already made their books THIS hand (owner, 2026-11-13: "If a team is
+ * on notice and they make their books the on notice badge should dissolve"). The danger a first
+ * notice warns about is getting shot again this hand; once the side's contract is covered that
+ * cannot happen, so the badge can go now instead of sitting there until the hand is scored.
+ *
+ * Not cleared early:
+ *  - a sticky second notice — making their books never clears that one;
+ *  - a side with a Nil bidder — in a partnership a Nil that takes a book is a shot too, so the side
+ *    is not safe until the hand ends;
+ *  - a side with no numeric contract (nothing to make), and any hand that is not being played.
+ */
+export function noticeMadeSides(st: Pick<GameState, 'history' | 'phase' | 'rules' | 'bids' | 'tricksWon'>): number[] {
+  if (st.phase !== 'playing') return [];
+  const sticky = stickyNoticeSides(st);
+  return onNoticeSides(st).filter((side) => {
+    if (sticky.includes(side)) return false;
+    const seats = Array.from({ length: st.rules.playerCount }, (_, i) => i).filter((s) => sideOf(s, st.rules) === side);
+    if (seats.some((s) => isNilBid(st.bids[s]!))) return false;
+    const needed = booksStillNeeded(st.rules, st.bids, st.tricksWon, side);
+    return needed !== null && needed <= 0;
+  });
 }
 
 /**
