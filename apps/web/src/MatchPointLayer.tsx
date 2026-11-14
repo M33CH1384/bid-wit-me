@@ -53,3 +53,54 @@ export function MatchPointLayer({ mp, handKey, name, color, reduced }: {
     </div>
   </>);
 }
+
+/** How long the recap's match point alert holds the stage before it has fully dissolved (ms). */
+export const MATCH_POINT_ALERT_MS = 3700;
+const alerted = new Set<string>();
+/** Tests. */
+export function resetMatchPointAlerts(): void { alerted.clear(); }
+
+/**
+ * The recap's match point alert (owner, 2026-11-13: "this area should be a modal that curves in over
+ * the recap card like a marquee espn alert, pause and dissolve to show the recap behind it").
+ *
+ * It swings in over the whole card on a curve, holds for a beat, then dissolves away and leaves the
+ * recap as it was, with a small MATCH POINT chip in the callout row so the fact stays on the card.
+ * Once per hand; a tap lets it go early. Under reduced motion only the chip shows.
+ */
+export function MatchPointAlert({ mp, alertKey, name, color, reduced, start }: {
+  mp: MatchPoint;
+  alertKey: string;
+  name: (side: number) => string;
+  color: (side: number) => string;
+  reduced?: boolean;
+  /** The recap card is on screen (its presented gate): the alert waits for it. */
+  start: boolean;
+}) {
+  const [live, setLive] = useState(() => !reduced && !alerted.has(alertKey));
+  useEffect(() => {
+    if (!live || !start) return;
+    alerted.add(alertKey);
+    const t = window.setTimeout(() => setLive(false), MATCH_POINT_ALERT_MS);
+    return () => window.clearTimeout(t);
+  }, [live, start, alertKey]);
+  if (!live) return null;
+  return (
+    <div className={`mp-alert ${mp.tier}${start ? ' go' : ''}`} data-testid="match-point" data-tier={mp.tier} role="alert" onPointerDown={() => setLive(false)}>
+      <div className="mp-alert-veil" />
+      <div className={`mp-strap mp-alert-card ${mp.tier}`}>
+        <i className="mp-alert-sheen" />
+        <span className="mp-kicker"><i />Match point</span>
+        <strong>{matchPointHeadline(mp, name)}</strong>
+        <span className="mp-needs">
+          {mp.sides.map((s) => <span key={s.side} style={{ borderColor: color(s.side) }}>{name(s.side)} <em>needs {s.needs}</em></span>)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** What stays on the recap after the alert: one chip in the callout row. */
+export function matchPointChipText(mp: MatchPoint, name: (side: number) => string): string {
+  return `MATCH POINT · ${mp.sides.map((s) => `${name(s.side)} needs ${s.needs}`).join(' · ')}`;
+}

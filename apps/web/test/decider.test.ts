@@ -68,7 +68,9 @@ describe('match point wording', () => {
 describe('match point wiring', () => {
   it('the recap shows the strap, never on a decided match, and renames Continue on a decider', () => {
     expect(intermissionSrc).toContain('const mp = decided ? null : matchPoint(r, st.scores, st.eliminated);');
-    expect(intermissionSrc).toContain('data-testid="match-point"');
+    // 2026-11-13: the strap is an alert over the card now (MatchPointAlert), and a chip stays behind.
+    expect(intermissionSrc).toContain('{mp && !showcase && <MatchPointAlert mp={mp}');
+    expect(intermissionSrc).toContain('data-testid="match-point-chip"');
     expect(intermissionSrc).toContain("mp?.tier === 'decider' ? 'Play the deciding hand' : `Continue to hand ${rec.handNo + 1}`");
   });
   it('the table reads the scores the hand started with, only while it is bid or played', () => {
@@ -123,5 +125,35 @@ describe('match point room', () => {
     expect(audio).toContain('this.venueBus?.connect(send); this.ambBus?.connect(send);');
     expect(audio).toContain('const send = c.createGain(); send.gain.value = 0;');
     expect(audio).toContain("this.settings.musicVolume ** 1.6 * 0.85 * this.matchPointMusicTrim()");
+  });
+});
+
+// Owner, 2026-11-13: "this area should be a modal that curves in over the recap card like a marquee
+// espn alert pause and dissolve to show the recap behind it".
+describe('match point alert over the recap', () => {
+  const layerSrc = readFileSync(new URL('../src/MatchPointLayer.tsx', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../src/decider.css', import.meta.url), 'utf8');
+  it('covers the whole recap card, above its content', () => {
+    expect(styles).toContain('.tt { position: relative; }');
+    expect(styles).toMatch(/\.mp-alert \{ position: absolute; inset: 0; z-index: 30;/);
+  });
+  it('curves in, holds, and dissolves to nothing — then it is gone', () => {
+    expect(styles).toMatch(/@keyframes mp-alert-card \{\s*0% \{ opacity: 0; transform: translateX\(52%\) rotateY\(-68deg\)/);
+    expect(styles).toMatch(/74% \{ opacity: 1; transform: none; filter: none;/);
+    expect(styles).toMatch(/100% \{ opacity: 0; transform: scale\(1\.08\); filter: blur\(10px\); \}/);
+    expect(styles).toContain('.mp-alert.go .mp-alert-card { animation: mp-alert-card 3.7s linear both; }');
+    expect(layerSrc).toContain('export const MATCH_POINT_ALERT_MS = 3700;');
+    expect(layerSrc).toContain('window.setTimeout(() => setLive(false), MATCH_POINT_ALERT_MS)');
+  });
+  it('waits for the card, plays once per hand, a tap lets it go, reduced motion skips it', () => {
+    expect(layerSrc).toContain('if (!live || !start) return;');
+    expect(layerSrc).toContain('!reduced && !alerted.has(alertKey)');
+    expect(layerSrc).toContain('onPointerDown={() => setLive(false)}');
+    expect(styles).toContain('@media (prefers-reduced-motion: reduce) { .mp-alert { display: none; }');
+  });
+  it('the fact stays on the card as a chip', async () => {
+    const { matchPointChipText } = await import('../src/MatchPointLayer');
+    const mp = matchPoint(team, [202, 187])!;
+    expect(matchPointChipText(mp, name)).toBe('MATCH POINT · Homies needs 48 · Bag Busters needs 63');
   });
 });

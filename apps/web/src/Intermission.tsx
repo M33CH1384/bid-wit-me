@@ -4,7 +4,8 @@ import { resultChips, sideColor, signed } from './ScorePad';
 import { wheelsMade } from './landCue';
 import { HandsStrip, bostonSides } from './BoxScore';
 import { sideName } from './Modals';
-import { matchPoint, matchPointHeadline } from './decider';
+import { matchPoint } from './decider';
+import { MatchPointAlert, matchPointChipText } from './MatchPointLayer';
 import './decider.css';
 import { handWinner, streakLabel, streakOf, useReduceEffects } from './fx';
 import { sound } from './audio';
@@ -354,6 +355,8 @@ export function Intermission({
         </div>
       )}
       <div className={`tt glass slant espn${showcase ? ' showcase' : ''}`}>
+        {/* Match point: swings in over the card, holds, dissolves to the recap (MatchPointLayer.tsx). */}
+        {mp && !showcase && <MatchPointAlert mp={mp} alertKey={`${st.seed ?? ''}:${rec.handNo}`} name={(s) => sideName(r, s, names)} color={(s) => sideColor(r, s)} reduced={reduceFx} start={presented} />}
         {!showcase && (<header className="tt-head">
           <span className="tt-title">HAND {rec.handNo} RECAP</span>
           {series}
@@ -404,17 +407,9 @@ export function Intermission({
             <h3>HANDS</h3>
             <HandsStrip history={st.history} sides={sides.map((s) => s.side)} label={(s) => sideName(r, s, names)} color={(s) => sideColor(r, s)} testId="recap-strip" />
           </section>)}
-          {mp && !showcase && (
-            <div className={`mp-strap ${mp.tier}`} data-testid="match-point" data-tier={mp.tier}>
-              <span className="mp-kicker"><i />Match point</span>
-              <strong>{matchPointHeadline(mp, (s) => sideName(r, s, names))}</strong>
-              <span className="mp-needs">
-                {mp.sides.map((s) => <span key={s.side} style={{ borderColor: sideColor(r, s.side) }}>{sideName(r, s.side, names)} <em>needs {s.needs}</em></span>)}
-              </span>
-            </div>
-          )}
-          {!showcase && notes.length > 0 && (
+          {!showcase && (notes.length > 0 || mp) && (
             <div className="tt-callouts">
+              {mp && <span className={`tt-callout mp-pill ${mp.tier}`} data-testid="match-point-chip"><i />{matchPointChipText(mp, (s) => sideName(r, s, names))}</span>}
               {notes.map((c, i) => <span key={i} className={`tt-callout ${c.kind}`}>{c.kind === 'streak' ? '🔥 ' : ''}{c.text}</span>)}
             </div>
           )}
