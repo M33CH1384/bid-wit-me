@@ -24,6 +24,11 @@ export function showdownSides(st: ShowdownState): number[] {
   return riding.length >= 2 ? riding : [];
 }
 
+/** The hand is on its final trick (every player down to the last card). */
+export function isLastTrick(st: Pick<GameState, 'rules' | 'tricks' | 'trickCount'>): boolean {
+  return tricksStillRemaining(st) === 1;
+}
+
 export const isShowdown = (st: ShowdownState): boolean => showdownSides(st).length >= 2;
 
 /** Bots take their time over the last card: a held beat instead of the usual
