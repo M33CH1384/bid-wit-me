@@ -403,11 +403,13 @@ describe('slam grip plan — the HUMAN claimer departs from his held strip slot'
 describe('wiring — the viewer’s own player stands for his own run (owner 2026-11-08)', () => {
   const src = (p: string) => readFileSync(join(process.cwd(), 'apps/web', p), 'utf8');
 
-  it('Table resolves the viewer’s own figure key from his seat name (spectators: none)', () => {
+  it('Table mounts no figure in the viewer’s own seat (owner 2026-11-13: it blocked the slam)', () => {
     const table = src('src/Table.tsx');
-    expect(table).toContain("ownFigureKey: spectating ? null : personaFigureKeyForName(names[HUMAN] ?? '')");
-    // and his GLB joins the High asset gate, so the body is warm before he can claim
-    expect(table).toContain('glb figure (own run-it ');
+    // Was: ownFigureKey resolved from his seat name, GLB preloaded in the
+    // asset gate. Now his seat stays empty for his own run — the show is
+    // the cards rising and slamming down, with nothing in front of them.
+    expect(table).toContain('ownFigureKey: null,');
+    expect(table).not.toContain('glb figure (own run-it ');
   });
 
   it('Scene threads ownFigureKey through both figure layers — and no camera branch keys on his claim (owner correction 2026-11-08)', () => {
