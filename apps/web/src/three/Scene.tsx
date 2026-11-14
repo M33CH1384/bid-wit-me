@@ -2,7 +2,7 @@ import { RUN_SLAM_MS } from '../runIt';
 import { Html } from '@react-three/drei';
 import { Canvas, events as r3fEvents, useFrame, useThree } from '@react-three/fiber';
 import { type ReactNode, type RefObject, Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Color, DataTexture, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
+import { type BufferGeometry, type Camera, type Group, type Material, type Mesh, type Object3D, ACESFilmicToneMapping, AdditiveBlending, CanvasTexture, Color, DataTexture, DoubleSide, Matrix4, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, Quaternion, RepeatWrapping, Scene as ThreeScene, SRGBColorSpace, Texture, Vector2, Vector3 } from 'three';
 import { type Card, type Play, type Trick, botPaceDelayMs, isJoker, isNukeTrick } from '@spades/rules';
 import Card3D, { createLitCardMaterial, createRestCardMaterial } from './Card3D';
 import { enterFigureLeanMode } from './figureResidency';
@@ -914,6 +914,12 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
   const logo = useMemo(() => logoTexture(invalidate), [invalidate]);
   const logoMat = useMemo(() => new MeshBasicMaterial({ map: logo, transparent: true, opacity: 0.13, depthWrite: false }), [logo]);
   const railShadowMat = useMemo(() => new MeshBasicMaterial({ map: railShadowTexture(), transparent: true, opacity: 0.42, depthWrite: false }), []);
+  // The felt's shadow blocker (owner 2026-11-14: cards played on the table left a dark card-shaped
+  // patch on the floor behind it). The felt is a one-sided top face, which the shadow pass skips,
+  // so the key light went straight through the tabletop and every card's shadow landed on the
+  // room's floor (the invisible shadow catcher under a rendered room). This draws nothing on
+  // screen, but it casts from both sides, a hair under the felt so the felt never shadows itself.
+  const feltBlockMat = useMemo(() => new MeshBasicMaterial({ colorWrite: false, depthWrite: false, shadowSide: DoubleSide }), []);
   const textured = useRef(false);
   /* Maps are session-shared Textures now (streamedTexCache), so the
    * "already applied" mark cannot live on the texture — it belongs to
@@ -994,6 +1000,7 @@ function TableModel({ quality, lit, onReady, onTextured, def, roomFloor }: { qua
       {geos ? (
         <>
           <mesh geometry={geos.felt} material={feltMat} receiveShadow />
+          <mesh geometry={geos.felt} material={feltBlockMat} position={[0, -0.03, 0]} castShadow renderOrder={-2} />
           <mesh geometry={geos.rail} material={woodMat} castShadow receiveShadow />
           <mesh geometry={geos.body} material={apronMat} receiveShadow />
           {lit && full.cushion && geos.cushion && <mesh geometry={geos.cushion} material={full.cushion} castShadow receiveShadow />}
