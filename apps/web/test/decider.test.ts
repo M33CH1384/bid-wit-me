@@ -112,7 +112,7 @@ describe('match point room', () => {
   });
   it('shows for either tier, for the whole hand, and switches the room sound with it', () => {
     expect(layer).toContain('data-testid="match-point-spot"');
-    expect(layer).toContain('sound.setMatchPoint(on); return () => sound.setMatchPoint(false);');
+    expect(layer).toContain('sound.setMatchPoint(dark); return () => sound.setMatchPoint(false);');
   });
   it('the music sits back a bit, not off', async () => {
     const { MATCH_POINT_MUSIC_TRIM, MATCH_POINT_ECHO } = await import('../src/audio');
@@ -155,5 +155,59 @@ describe('match point alert over the recap', () => {
     const { matchPointChipText } = await import('../src/MatchPointLayer');
     const mp = matchPoint(team, [202, 187])!;
     expect(matchPointChipText(mp, name)).toBe('MATCH POINT · Homies needs 48 · Bag Busters needs 63');
+  });
+});
+
+// Owner, 2026-11-13: "once the lights dim for the announcement of match point they should not come
+// back up, the darkness should persist until theres no possibility for match point again".
+describe('the darkness persists while match point is possible', () => {
+  const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+  const layer = readFileSync(new URL('../src/MatchPointLayer.tsx', import.meta.url), 'utf8');
+  it('is decided by the current scores in every phase but game over — recaps and deals included', () => {
+    expect(table).toContain("const mpDark = st.phase !== 'gameOver' && !!matchPoint(st.rules, st.scores, st.eliminated);");
+    expect(table).toContain('dark={!loading && mpDark}');
+    // not tied to the deal or to the hand's own strap, so it never lifts between hands
+    expect(table).not.toMatch(/dark=\{[^}]*dealing/);
+  });
+  it('the spotlight follows `dark`, the opening strap follows the hand', () => {
+    expect(layer).toContain("{dark && <div className={`mp-spot");
+    expect(layer).toContain('{mp && <div className={`mp-layer');
+    expect(layer).toContain('if (!dark && !mp) return null;');
+  });
+  it('a side set out of reach ends it; so does a side reaching the target', () => {
+    expect(matchPoint(team, [233, 221])).not.toBeNull();
+    expect(matchPoint(team, [140, 120])).toBeNull(); // both set back out of reach: lights up
+    expect(matchPoint(team, [251, 221])!.sides.map((s) => s.side)).toEqual([1]); // still possible for the other side
+  });
+});
+
+// Owner, 2026-11-13: "if the match point comes down to the last card in each players hand the light
+// should dim even more to the point you can only see the table and your cards".
+describe('last card at match point: only the table and your cards', () => {
+  const table = readFileSync(new URL('../src/Table.tsx', import.meta.url), 'utf8');
+  const layer = readFileSync(new URL('../src/MatchPointLayer.tsx', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../src/decider.css', import.meta.url), 'utf8');
+  it('switches on for the final trick of a hand played in the dark', async () => {
+    expect(table).toContain("const mpLastCard = mpDark && st.phase === 'playing' && isLastTrick(st);");
+    expect(table).toContain('lastCard={!loading && mpLastCard}');
+    const { isLastTrick } = await import('../src/showdown');
+    const r = makeRules('joker');
+    const at = (done: number) => ({ rules: r, tricks: Array.from({ length: done }, () => ({})), trickCount: 13 }) as never;
+    expect(isLastTrick(at(12))).toBe(true);
+    expect(isLastTrick(at(11))).toBe(false);
+  });
+  it('a near-black layer over the spotlight, cut out around the table and the hand, plates above it', () => {
+    expect(layer).toContain('{dark && lastCard && <div className={`mp-spot-last');
+    expect(styles).toMatch(/\.mp-spot-last \{ position: absolute; inset: 0; z-index: 1; pointer-events: none; background: rgba\(2, 1, 6, \.94\);/);
+    expect(styles).toContain('mask-composite: intersect;');
+    expect(styles).toContain('at var(--lc-x, 50%) var(--lc-y, 58%), transparent 80%, #000 100%)');
+  });
+  it('the lit pool follows the table on screen', async () => {
+    const { lastCardPool } = await import('../src/MatchPointLayer');
+    const pool = lastCardPool({ w: 1000, h: 462, table: { cx: 500, cy: 328, x0: 22, x1: 978, y0: 262, y1: 528 } }) as Record<string, string>;
+    expect(pool['--lc-x']).toBe('50%');
+    expect(pool['--lc-y']).toBe('85.5%'); // the middle of the table's projected box
+    expect(parseFloat(pool['--lc-rx']!)).toBeGreaterThan(50); // a touch wider than the table so the rail stays lit
+    expect(lastCardPool(null)).toBeUndefined(); // no layout: the stylesheet's centred pool
   });
 });

@@ -123,6 +123,7 @@ import { playerBoxScore } from './playerBox';
 import { PlayerBoxScore } from './PlayerBoxScore';
 import { matchPoint } from './decider';
 import { MatchPointLayer } from './MatchPointLayer';
+import { isLastTrick } from './showdown';
 import { BOOK_GATHER_MS, landedTook, shownTook, withPenaltyBooks } from './tookDisplay';
 import { bidChipText, dealerChipMatches, plateTookText, popPlateTook, syncPlateFacts, type SeatFact } from './plateFacts';
 import { leaveChoice, leaveMenuAction, type LeaveGesture } from './leaveMenu';
@@ -1841,6 +1842,13 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
   // Match point (decider.ts): the hand in progress can end the match. Read from the scores the hand
   // started with, and only while it is being bid or played — the recap carries its own strap.
   const mpLive = st.phase === 'bidding' || st.phase === 'exchange' || st.phase === 'playing' ? matchPoint(st.rules, st.handStart?.scores ?? st.scores, st.eliminated) : null;
+  // The lights stay down for as long as match point is possible at all: from the recap that
+  // announces it, through the deals, bids and recaps after, until no side is in reach or the game
+  // is over (MatchPointLayer `dark`). The current scores are the ones that decide it.
+  const mpDark = st.phase !== 'gameOver' && !!matchPoint(st.rules, st.scores, st.eliminated);
+  // …and on the last card of a match-point hand it goes darker still: only the table and the
+  // player's own cards are left in the light (owner, 2026-11-13).
+  const mpLastCard = mpDark && st.phase === 'playing' && isLastTrick(st);
   // Last-card showdown (showdown.ts): every side still chasing its bid needs this final book.
   const sdSides = showdownSides(st);
   const sdTeams = sdSides.map((side) => ({ side, name: sideName(st.rules, side, names), color: sideColor(st.rules, side) }));
@@ -3741,7 +3749,7 @@ function TableGame({ rules: initialRules, seed, settings, onExit, onSuspend, onR
         {st.phase === 'exchange' && !humanExchanging && <div className="center-note">{names[exchangeStep!.from]} passes {exchangeStep!.count} to {names[exchangeStep!.to]}…</div>}
       </div>
       {showTrumpPopup && <TrumpPopup rules={r} onDone={dismissTrumpPopup} />}
-      <MatchPointLayer mp={dealing || loading ? null : mpLive} handKey={`${online ? seed : String(st.seed ?? '')}:${st.handNo}`} name={(s) => sideName(st.rules, s, names)} color={(s) => sideColor(st.rules, s)} reduced={reduceFx} />
+      <MatchPointLayer mp={dealing || loading ? null : mpLive} dark={!loading && mpDark} lastCard={!loading && mpLastCard} handKey={`${online ? seed : String(st.seed ?? '')}:${st.handNo}`} name={(s) => sideName(st.rules, s, names)} color={(s) => sideColor(st.rules, s)} reduced={reduceFx} />
       <ShowdownLayer teams={sdTeams} cardsDown={st.trick.plays.length} winner={sdWinner} reduced={reduceFx} />
       {winnerSeat !== null && <TrickBanner key={`${st.handNo}-${st.tricks.length}`} text={trickTakenLine(face(winnerSeat))} />}
 
