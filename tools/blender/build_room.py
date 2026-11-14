@@ -24,6 +24,39 @@ FLOOR = -0.9
 SCALE = 2.7
 EYE = Vector((0.0, -3.55, 3.9))  # the standing camera, midway between its phone and desktop positions
 
+# ---------------------------------------------------------- furniture scale
+# SCALE assumes every model is modelled at real-world size (1 unit = 1 m).
+# Most are; the models below are NOT — measured from the shipped 1k glTF
+# bounds against the real object (owner report 2026-11-13: background chairs
+# render too large). MODEL_FIX[asset] = real size / measured size, applied
+# inside prop() so every placement of a corrected model — floor or on() a
+# surface — lands at real size. Placement scale arguments stay honest:
+# nothing is placed above SCALE any more; the sub-SCALE values left in the
+# venues are deliberate and documented at each call site.
+MODEL_FIX = {
+    'SchoolChair_01': 0.795,               # 1.006 m modelled, 0.80 m real
+    'plastic_monobloc_chair_01': 0.932,    # 0.880 -> 0.82
+    'WoodenChair_01': 0.405,               # 2.274 -> 0.92
+    'BarberShopChair_01': 0.839,           # 1.489 -> 1.25
+    'ArmChair_01': 0.892,                  # 1.065 -> 0.95
+    'GreenChair_01': 0.897,                # 1.059 -> 0.95
+    'modern_arm_chair_01': 0.880,          # 1.023 -> 0.90
+    'mid_century_lounge_chair': 0.684,     # 1.169 -> 0.80
+    'metal_stool_01': 0.850,               # 0.883 -> 0.75
+    'WoodenTable_01': 1.366,               # 0.549 -> 0.75 (modelled SMALL)
+    'painted_wooden_cabinet_02': 0.779,    # 2.569 -> 2.00
+    'steel_frame_shelves_03': 0.822,       # 2.312 -> 1.90
+    'vintage_microwave': 0.609,            # 0.526 -> 0.32
+    'boombox': 0.638,                      # 0.470 -> 0.30
+    'vintage_oil_lamp': 0.474,             # 0.802 -> 0.38
+    'football': 0.550,                     # 0.509 long -> 0.28
+    'american_football': 0.618,            # 0.453 long -> 0.28
+    'life_jacket': 0.655,                  # 0.992 -> 0.65
+    'korean_fire_extinguisher_01': 0.789,  # 0.659 -> 0.52
+    'wooden_bucket_01': 0.637,             # 0.550 -> 0.35
+    'wooden_barrels_01': 0.941,            # 0.957 -> 0.90
+}
+
 
 # ---------------------------------------------------------------- materials
 
@@ -131,6 +164,7 @@ def prop(asset, at, rot=0.0, scale=SCALE):
             o.parent = root
     root.location = (at[0], at[1], at[2] if len(at) > 2 else FLOOR)
     root.rotation_euler = (0, 0, math.radians(rot))
+    scale = scale * MODEL_FIX.get(asset, 1.0)  # normalise models not modelled at real size
     root.scale = (scale, scale, scale)
     return root
 
@@ -378,8 +412,8 @@ def classic():
     prop('mid_century_lounge_chair', (5.0, 5.4), -55)
     radio_table = prop('side_table_01', (-3.5, 8.0), 0)
     on(radio_table, 'boombox', rot=20)  # speakers toward the table
-    prop('potted_plant_01', (-8.4, 8.6), 30, SCALE * 1.5)
-    prop('potted_plant_02', (8.6, 8.4), -20, SCALE * 1.5)
+    prop('potted_plant_01', (-8.4, 8.6), 30, SCALE)
+    prop('potted_plant_02', (8.6, 8.4), -20, SCALE)
 
     # either side of the table: bar stools and a cabinet on the left, a reading corner on the right
     cabinet = prop('modern_wooden_cabinet', (-X + 0.9, 2.6), 90)
@@ -388,7 +422,7 @@ def classic():
     prop('bar_chair_round_01', (-6.9, -0.4), 70)
     prop('mid_century_lounge_chair', (6.6, 0.6), -80)
     prop('side_table_01', (7.0, 2.6), 0)
-    prop('potted_plant_02', (7.4, -2.2), 90, SCALE * 1.3)
+    prop('potted_plant_02', (7.4, -2.2), 90, SCALE)
     prop('wooden_display_shelves_01', (X - 0.75, 5.4), -90)
     prop('wooden_display_shelves_01', (X - 0.75, 1.6), -90)
     prop('hanging_picture_frame_01', (-X + 0.05, 0.4, 2.6), 90)
@@ -397,7 +431,7 @@ def classic():
     prop('hanging_picture_frame_02', (6.2, Y1 - 0.06, 2.6), 0)
 
     # practical lights: a pendant over the game, warm lamps in the lounge, sconces on the brick
-    prop('modern_ceiling_lamp_01', (0, 0, TOP - 0.02), 0, SCALE * 1.4)
+    prop('modern_ceiling_lamp_01', (0, 0, TOP - 0.02), 0, SCALE)
     area('pendant', (0, 0, 5.6), (2.4, 2.4), (1.0, 0.86, 0.68), 1500)
     point('lamp-left', (-3.5, 8.0, 2.3), (1.0, 0.72, 0.42), 420, 0.25)
     point('lamp-right', (7.0, 2.6, 2.0), (1.0, 0.72, 0.42), 320, 0.25)
@@ -435,9 +469,9 @@ def backyard():
     point('fire', (6.4, 6.2, 0.2), (1.0, 0.5, 0.18), 520, 0.3)
     for i, (x, y, r) in enumerate(((4.6, 4.4, -40), (8.2, 5.0, 20), (6.8, 8.2, -80), (-5.2, 1.4, 70), (5.6, 0.2, -80))):
         prop('plastic_monobloc_chair_01', (x, y), r)
-    prop('planter_box_01', (-10.8, 11.4), 0, SCALE * 1.2)
-    prop('potted_plant_01', (10.6, 11.2), 40, SCALE * 1.5)
-    prop('garden_gnome', (-9.2, 10.2), 30, SCALE * 1.4)
+    prop('planter_box_01', (-10.8, 11.4), 0, SCALE)
+    prop('potted_plant_01', (10.6, 11.2), 40, SCALE)
+    prop('garden_gnome', (-9.2, 10.2), 30, SCALE)
     prop('boombox', (-6.0, -1.2), 70)
     prop('football', (3.4, 3.2), 0)
     prop('plastic_crate_01', (-7.2, 1.0), 20)
@@ -459,7 +493,7 @@ def mansion():
     for x in (-7.5, 7.5):
         cyl(f'column{x}', (x, Y1 - 1.0, FLOOR), 0.55, TOP - FLOOR, marble, 32)
         box(f'plinth{x}', (x - 0.75, Y1 - 1.75, FLOOR), (x + 0.75, Y1 - 0.25, FLOOR + 0.5), marble, 0.03)
-    prop('Chandelier_01', (0, 0.5, TOP - 0.05), 0, SCALE * 1.3)
+    prop('Chandelier_01', (0, 0.5, TOP - 0.05), 0, SCALE)
     area('chandelier', (0, 0.5, 6.0), (2.6, 2.6), (1.0, 0.86, 0.66), 2200)
     prop('Chandelier_03', (0, 7.2, TOP - 0.05), 0, SCALE)
     point('chandelier-2', (0, 7.2, 5.6), (1.0, 0.82, 0.6), 900, 0.4)
@@ -467,19 +501,19 @@ def mansion():
     on(console, 'marble_bust_01', 0, 0, 0)
     on(console, 'brass_candleholders', -1.5, 0, 0)
     on(console, 'brass_vase_01', 1.5, 0, 0)
-    prop('ornate_mirror_01', (0, Y1 - 0.08, 3.4), 0, SCALE * 1.2)
-    prop('fancy_picture_frame_01', (-5.0, Y1 - 0.08, 3.6), 0, SCALE * 1.3)
-    prop('fancy_picture_frame_02', (5.0, Y1 - 0.08, 3.6), 0, SCALE * 1.3)
+    prop('ornate_mirror_01', (0, Y1 - 0.08, 3.4), 0, SCALE)
+    prop('fancy_picture_frame_01', (-5.0, Y1 - 0.08, 3.6), 0, SCALE)
+    prop('fancy_picture_frame_02', (5.0, Y1 - 0.08, 3.6), 0, SCALE)
     prop('vintage_grandfather_clock_01', (-X + 0.8, 4.0), 90)
-    prop('horse_statue_01', (X - 1.6, 4.4), -90, SCALE * 1.4)
+    prop('horse_statue_01', (X - 1.6, 4.4), -90, SCALE)
     prop('sofa_02', (0, 7.4), 0)
     # Smaller and tucked up to the sofa: at full size, straight behind the partner's seat, it read as big as
     # the game table from the sitting view (owner, 2026-11-13: "the table behind my partner is too large").
     prop('gothic_coffee_table', (0, 5.75), 0, SCALE * 0.6)
     prop('GreenChair_01', (-5.0, 5.4), 55)
     prop('GreenChair_01', (5.0, 5.4), -55)
-    prop('antique_ceramic_vase_01', (-7.0, 1.2), 0, SCALE * 1.6)
-    prop('potted_plant_02', (7.2, 0.6), 0, SCALE * 1.5)
+    prop('antique_ceramic_vase_01', (-7.0, 1.2), 0, SCALE)
+    prop('potted_plant_02', (7.2, 0.6), 0, SCALE)
     for y in (-2.0, 4.5):
         point(f'sconce-l{y}', (-X + 0.5, y, 4.2), (1.0, 0.8, 0.55), 240, 0.15)
         point(f'sconce-r{y}', (X - 0.5, y, 4.2), (1.0, 0.8, 0.55), 240, 0.15)
@@ -504,10 +538,10 @@ def barbershop():
     for i, (x, y) in enumerate(((-4.0, -1.5), (4.0, -1.5), (-4.0, 4.5), (4.0, 4.5))):
         fluorescent(f'tube{i}', (x, y, TOP - 0.02))
     bench = prop('painted_wooden_bench', (X - 1.0, 3.0), -90)
-    prop('potted_plant_04', (X - 1.2, 6.6), 0, SCALE * 1.6)
+    prop('potted_plant_04', (X - 1.2, 6.6), 0, SCALE)
     desk = prop('ClassicConsole_01', (3.4, Y1 - 0.9), 0)
     on(desk, 'CashRegister_01', 0, 0, 0)
-    prop('wall_clock', (0, Y1 - 0.06, 4.6), 0, SCALE * 1.4)
+    prop('wall_clock', (0, Y1 - 0.06, 4.6), 0, SCALE)
     prop('WetFloorSign_01', (6.4, 6.6), 30)
     prop('metal_stool_01', (5.4, 0.2), 0)
     shelves = prop('steel_frame_shelves_03', (X - 0.8, -2.4), -90)
@@ -532,8 +566,8 @@ def church():
     box('dado', (-X, Y1 - 0.05, FLOOR + 2.2), (X, Y1, FLOOR + 2.36), plain('dado', (0.32, 0.22, 0.14), 0.5))
     for i, (x, y) in enumerate(((-6.0, -1.0), (0.0, -1.0), (6.0, -1.0), (-6.0, 5.5), (0.0, 5.5), (6.0, 5.5))):
         fluorescent(f'tube{i}', (x, y, TOP - 0.02), 3.4, 330)
-    prop('ceiling_fan', (0, 2.4, TOP - 0.02), 0, SCALE * 1.2)
-    buffet = prop('WoodenTable_01', (0, 8.4), 0, SCALE * 1.2)
+    prop('ceiling_fan', (0, 2.4, TOP - 0.02), 0, SCALE)
+    buffet = prop('WoodenTable_01', (0, 8.4), 0, SCALE)
     on(buffet, 'pot_enamel_01', -1.4, 0, 0)
     on(buffet, 'carrot_cake', 0, 0.1, 30)
     on(buffet, 'strawberry_chocolate_cake', 1.2, -0.1, 0)
@@ -542,10 +576,10 @@ def church():
         prop('SchoolChair_01', (-7.5 + i * 1.5, 5.6), (2 - i) * 6)
     for i, (x, y, r) in enumerate(((-5.4, 1.6, 70), (5.6, 1.2, -75), (6.4, 4.0, -70), (-6.6, -1.4, 85))):
         prop('plastic_monobloc_chair_01', (x, y), r)
-    prop('standing_chalkboard_01', (-8.4, 9.4), 20, SCALE * 1.2)
-    prop('projector_screen', (6.6, Y1 - 0.6), 0, SCALE * 1.1)
-    prop('wall_clock', (0, Y1 - 0.06, 4.6), 0, SCALE * 1.4)
-    prop('hanging_picture_frame_01', (-4.4, Y1 - 0.06, 3.6), 0, SCALE * 1.3)
+    prop('standing_chalkboard_01', (-8.4, 9.4), 20, SCALE)
+    prop('projector_screen', (6.6, Y1 - 0.6), 0, SCALE)
+    prop('wall_clock', (0, Y1 - 0.06, 4.6), 0, SCALE)
+    prop('hanging_picture_frame_01', (-4.4, Y1 - 0.06, 3.6), 0, SCALE)
     prop('fire_alarm', (X - 0.06, 2.0, 3.6), -90)
     prop('korean_fire_extinguisher_01', (X - 0.5, 3.2), -90)
     prop('cardboard_box_01', (-X + 1.2, 6.8), 15)
@@ -574,13 +608,13 @@ def rooftop():
     string_lights('r1', (-10, 11, 6.2), (10, 11, 6.2), 1.0, 16)
     string_lights('r2', (-10, -2, 6.2), (10, 11, 6.2), 1.4, 20)
     string_lights('r3', (10, -2, 6.2), (-10, 11, 6.2), 1.4, 20)
-    prop('exterior_aircon_unit', (8.6, 11.6), 0, SCALE * 1.2)
-    prop('exterior_aircon_unit', (5.4, 11.8), 0, SCALE * 1.2)
+    prop('exterior_aircon_unit', (8.6, 11.6), 0, SCALE)
+    prop('exterior_aircon_unit', (5.4, 11.8), 0, SCALE)
     prop('outdoor_table_chair_set_01', (2.0, 7.2), 20)
     prop('modular_street_seating', (9.6, 3.4), -90)
-    prop('planter_box_02', (-4.0, 12.0), 0, SCALE * 1.3)
-    prop('planter_box_03', (11.6, 8.0), 90, SCALE * 1.3)
-    prop('potted_plant_01', (-6.0, 4.4), 0, SCALE * 1.5)
+    prop('planter_box_02', (-4.0, 12.0), 0, SCALE)
+    prop('planter_box_03', (11.6, 8.0), 90, SCALE)
+    prop('potted_plant_01', (-6.0, 4.4), 0, SCALE)
     prop('metal_stool_02', (-5.6, 1.4), 0)
     crate = prop('plastic_crate_01', (-7.6, 3.2), 25)
     on(crate, 'boombox', rot=60)
@@ -614,8 +648,8 @@ def speakeasy():
     prop('brass_goblets', (-X + 1.2, 2.6, FLOOR + 2.86), 0)
     box('back-bar', (-X + 0.02, -1.5, FLOOR + 3.6), (-X + 0.5, 6.5, FLOOR + 3.7), wood)
     box('back-bar-glow', (-X + 0.03, -1.5, FLOOR + 3.5), (-X + 0.08, 6.5, FLOOR + 3.56), glow('amber', (1.0, 0.55, 0.2), 10))
-    prop('wine_barrel_01', (7.6, 8.0), 0, SCALE * 1.1)
-    prop('wine_barrel_01', (6.0, 8.6), 40, SCALE * 1.1)
+    prop('wine_barrel_01', (7.6, 8.0), 0, SCALE)
+    prop('wine_barrel_01', (6.0, 8.6), 40, SCALE)
     prop('wooden_barrels_01', (X - 1.6, 4.6), -90)
     prop('sofa_03', (2.6, 7.4), 0)
     # Smaller and tucked up to the sofa, like the Mansion's: at full size this close to the game it read as
@@ -628,9 +662,9 @@ def speakeasy():
     shelf = prop('wooden_display_shelves_01', (X - 0.75, 0.4), -90)
     on(shelf, 'vintage_radio_transceiver', dy=-0.5, rot=-90)
     on(shelf, 'mantel_clock_01', dy=0.6, rot=-90)
-    prop('fancy_picture_frame_01', (X - 0.06, 4.0, 3.6), -90, SCALE * 1.2)
-    prop('fancy_picture_frame_02', (X - 0.06, -2.6, 3.4), -90, SCALE * 1.2)
-    prop('Chandelier_02', (0, 0.4, TOP - 0.05), 0, SCALE * 1.1)
+    prop('fancy_picture_frame_01', (X - 0.06, 4.0, 3.6), -90, SCALE)
+    prop('fancy_picture_frame_02', (X - 0.06, -2.6, 3.4), -90, SCALE)
+    prop('Chandelier_02', (0, 0.4, TOP - 0.05), 0, SCALE)
     area('chandelier', (0, 0.4, 5.0), (2.2, 2.2), (1.0, 0.74, 0.46), 1250)
     for y in (-2.0, 3.0, 8.0):
         prop('industrial_wall_sconce', (X - 0.04, y, 4.2), -90)
@@ -680,7 +714,7 @@ def vegas():
     neon('HIGH ROLLER', (0, Y1 - 0.14, 5.9), 1.15, (1.0, 0.74, 0.2), 28)
     neon('JACKPOT', (0, Y1 - 0.14, 5.0), 0.6, (1.0, 0.2, 0.5), 30)
     area('sign-spill', (0, Y1 - 0.7, 5.4), (9, 1.6), (1.0, 0.65, 0.3), 420, aim=(0, -1, -0.4))
-    prop('Chandelier_01', (0, 0.5, TOP - 0.05), 0, SCALE * 1.4)
+    prop('Chandelier_01', (0, 0.5, TOP - 0.05), 0, SCALE)
     area('chandelier', (0, 0.5, 5.8), (2.6, 2.6), (1.0, 0.84, 0.6), 1900)
     for x in (-5.0, 5.0):
         for y in (-4.0, 3.0):
@@ -693,8 +727,8 @@ def vegas():
         box(f'rope{sx}', (sx * 6.0 - 0.05, -3.0, FLOOR + 2.0), (sx * 6.0 + 0.05, 3.0, FLOOR + 2.1), tex_material(f'rope{sx}', 'velour_velvet', tile=1.0, tint=(0.3, 0.012, 0.03), dye=True))
     prop('sofa_02', (-6.6, 7.8), 30)
     prop('modern_arm_chair_01', (6.6, 7.6), -30)
-    prop('brass_vase_02', (-9.6, 9.6), 0, SCALE * 2.0)
-    prop('potted_plant_02', (9.8, 9.6), 0, SCALE * 1.6)
+    prop('brass_vase_02', (-9.6, 9.6), 0, SCALE)
+    prop('potted_plant_02', (9.8, 9.6), 0, SCALE)
 
 
 def tiki_torch(name, at):
@@ -767,13 +801,13 @@ def grandma():
     on(tea, 'carrot_cake', 0.9, 0.1, 0)
     prop('WoodenChair_01', (6.0, 1.6), -80)
     prop('WoodenChair_01', (-5.8, 1.2), 80)
-    prop('wall_clock', (5.4, Y1 - 0.06, 4.6), 0, SCALE * 1.3)
-    prop('hanging_picture_frame_01', (-5.4, Y1 - 0.06, 3.8), 0, SCALE * 1.2)
-    prop('hanging_picture_frame_02', (X - 0.06, -1.6, 3.8), -90, SCALE * 1.2)
-    prop('hanging_picture_frame_03', (X - 0.06, 3.4, 4.2), -90, SCALE * 1.2)
+    prop('wall_clock', (5.4, Y1 - 0.06, 4.6), 0, SCALE)
+    prop('hanging_picture_frame_01', (-5.4, Y1 - 0.06, 3.8), 0, SCALE)
+    prop('hanging_picture_frame_02', (X - 0.06, -1.6, 3.8), -90, SCALE)
+    prop('hanging_picture_frame_03', (X - 0.06, 3.4, 4.2), -90, SCALE)
     prop('jug_01', (-X + 0.95, 8.0, FLOOR + 2.5), 0)
     prop('wooden_bowl_01', (-X + 0.95, 5.6, FLOOR + 2.5), 0)
-    prop('ceiling_fan', (0, 0.6, TOP - 0.02), 0, SCALE * 1.1)
+    prop('ceiling_fan', (0, 0.6, TOP - 0.02), 0, SCALE)
     area('ceiling-light', (0, 0.6, 5.6), (1.6, 1.6), (1.0, 0.88, 0.7), 1500)
     point('stove-light', (-X + 1.2, -0.6, 4.4), (1.0, 0.85, 0.65), 200, 0.2)
     area('fill', (0, -6, 6.0), (8, 5), (1.0, 0.92, 0.8), 380, aim=(0, 0.4, -1))
@@ -818,7 +852,7 @@ def yacht():
     prop('life_jacket', (-5.6, 2.0), 30)
     prop('wooden_bucket_01', (5.6, 1.4), 0)
     prop('wicker_basket_02', (5.2, 11.6), 0)
-    prop('potted_plant_04', (-5.4, 12.0), 0, SCALE * 1.5)
+    prop('potted_plant_04', (-5.4, 12.0), 0, SCALE)
     for x in (-W + 0.4, W - 0.4):
         for y in (-2.0, 6.0, 13.0):
             point(f'deck-light{x}{y}', (x, y, FLOOR + 0.5), (1.0, 0.8, 0.55), 60, 0.08)
