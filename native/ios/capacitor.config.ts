@@ -1,0 +1,24 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'com.demetriusrobinson.bidwitme',
+  appName: 'Bid Wit Me',
+  webDir: 'www',
+  backgroundColor: '#0c0712',
+  ios: {
+    backgroundColor: '#0c0712',
+    appendUserAgent: 'BidWitMeApp',
+    contentInset: 'never',
+    limitsNavigationsToAppBoundDomains: true,
+    preferredContentMode: 'mobile'
+  },
+  server: {
+    url: 'https://bid-wit-me.pages.dev',
+    allowNavigation: [
+      'bid-wit-me.pages.dev',
+      'bid-wit-me-server.demetrius-robinson31.workers.dev'
+    ]
+  }
+};
+
+export default config;
